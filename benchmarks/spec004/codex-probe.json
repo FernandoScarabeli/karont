@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-10-24T01:09:17.990Z",
+  "status": "BLOQUEADO",
+  "environment": "disposable Linux VM; empty HOME/CODEX_HOME; no credentials imported",
+  "version": "codex-cli 0.164.0",
+  "checks": {
+    "schemaGenerated": true,
+    "thread/resume": true,
+    "account/rateLimits/read": true,
+    "resetsAt": true,
+    "rateLimitReachedType": true,
+    "usageLimitExceeded": true,
+    "authRequired": false,
+    "ptyStarted": true,
+    "nativeAuthScreen": true
+  },
+  "rpc": {
+    "initialize": true,
+    "account/read": {
+      "success": true,
+      "errorCode": null,
+      "timeout": false,
+      "accountPresent": false
+    },
+    "account/rateLimits/read": {
+      "success": false,
+      "errorCode": -32600,
+      "timeout": false,
+      "verifiedReset": false
+    },
+    "thread/resume": {
+      "success": false,
+      "errorCode": -32600,
+      "timeout": false
+    }
+  },
+  "limitations": [
+    "No account in isolated environment. Authentication requires the user inside the native CLI. No credentials copied or captured.",
+    "Controlled Git edit, real rollback, real Electron/session continuation and quota/reset/native Auto Resume remain BLOCKED. Protocol schema or unauthenticated RPC does not prove functional provider support."
+  ]
+}

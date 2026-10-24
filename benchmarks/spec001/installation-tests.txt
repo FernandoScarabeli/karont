@@ -1,0 +1,108 @@
+
+added 61 packages, and audited 66 packages in 3s
+
+11 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+npm notice
+npm notice New major version of npm available! 11.19.0 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice
+
+> eros-phase-zero@0.0.1 check
+> tsc --noEmit
+
+
+> eros-phase-zero@0.0.1 test
+> npm run build && node --test tests/*.test.mjs
+
+
+> eros-phase-zero@0.0.1 build
+> node scripts/build.mjs
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 32 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/renderer/index.html                   0.66 kB │ gzip:   0.38 kB
+dist/renderer/assets/index-Dpc9u8JF.css    4.69 kB │ gzip:   1.63 kB
+dist/renderer/assets/index-a9IV1vML.js   227.48 kB │ gzip:  71.48 kB
+dist/renderer/assets/Editor-D4SeSVgg.js  383.84 kB │ gzip: 123.70 kB
+
+✓ built in 373ms
+✔ daemon: singleton concorrente, socket, handshake, limites, heartbeat, reconexão e SQLite (7149.018919ms)
+✔ recusa diretório público e symlink no lock (74.909545ms)
+✔ cliente recusa prova de servidor inválida e confirmação antiga (9.331596ms)
+✔ benchmark recusa PID inexistente em vez de reportar consumo zero (5.006856ms)
+✔ fechar cliente durante handshake cancela a conexão imediatamente (11.011735ms)
+✔ benchmark recusa processo que encerra durante a amostra (109.122122ms)
+✔ relatório não converte falha funcional em diagnóstico de sandbox nem aceita prova ausente (1.809713ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7580.751487
+
+> eros-phase-zero@0.0.1 sandbox:diagnose
+> node scripts/sandbox-diagnose.mjs
+
+Downloading Electron binary...
+{
+  "date": "2026-10-23T22:09:23.415Z",
+  "validation": "diagnostic-only; not desktop acceptance",
+  "uid": 1000,
+  "electron": "45.0.0",
+  "playwright": "1.64.1",
+  "binary": {
+    "path": "/home/eros/eros/node_modules/electron/dist/electron",
+    "resolved": "/home/eros/eros/node_modules/electron/dist/electron",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "755",
+    "rootSetuidHelper": false
+  },
+  "helpers": [
+    {
+      "path": "/home/eros/eros/node_modules/electron/dist/chrome-sandbox",
+      "resolved": "/home/eros/eros/node_modules/electron/dist/chrome-sandbox",
+      "uid": 1000,
+      "gid": 1000,
+      "mode": "755",
+      "rootSetuidHelper": false
+    },
+    {
+      "path": "/opt/google/chrome/chrome-sandbox",
+      "unavailable": "ENOENT"
+    }
+  ],
+  "securityContext": "unconfined",
+  "sysctls": {
+    "apparmor_restrict_unprivileged_userns": {
+      "unavailable": "ENOENT"
+    },
+    "apparmor_restrict_unprivileged_unconfined": {
+      "unavailable": "EACCES"
+    },
+    "unprivileged_userns_clone": "1"
+  },
+  "userNamespaceProbe": {
+    "command": [
+      "unshare",
+      "--user",
+      "--map-root-user",
+      "--",
+      "true"
+    ],
+    "status": 0,
+    "signal": null,
+    "stderr": "",
+    "note": "unshare and Electron may have different AppArmor profiles; only an actual desktop run establishes compatibility."
+  },
+  "changesApplied": false
+}

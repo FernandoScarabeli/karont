@@ -1,0 +1,56 @@
+Package: genisoimage
+Version: 9:1.1.11-5
+
+Package: ipxe-qemu
+Version: 1.21.1+git-20250829.969ce2c55+dfsg-3ubuntu2
+
+Package: libaio1t64
+Version: 0.3.113-8build1
+
+Package: libcacard0
+Version: 1:2.8.1-2
+
+Package: libdaxctl1
+Version: 81-1ubuntu1
+
+Package: libfdt1
+Version: 1.7.2-2ubuntu1
+
+Package: libmpathcmd0
+Version: 0.14.3-2ubuntu1
+
+Package: libmpathpersist0
+Version: 0.14.3-2ubuntu1
+
+Package: libmultipath0
+Version: 0.14.3-2ubuntu1
+
+Package: libndctl6
+Version: 81-1ubuntu1
+
+Package: libpmem1
+Version: 1.13.1-1.1ubuntu4
+
+Package: librdmacm1t64
+Version: 61.0-2ubuntu3
+
+Package: libslirp0
+Version: 4.9.1-1ubuntu1.1
+
+Package: libusbredirparser1t64
+Version: 0.15.0-1build1
+
+Package: qemu-system-common
+Version: 1:10.2.1+ds-1ubuntu3.3
+
+Package: qemu-system-data
+Version: 1:10.2.1+ds-1ubuntu3.3
+
+Package: qemu-system-x86
+Version: 1:10.2.1+ds-1ubuntu3.3
+
+Package: qemu-utils
+Version: 1:10.2.1+ds-1ubuntu3.3
+
+Package: seabios
+Version: 1.17.0-1ubuntu1

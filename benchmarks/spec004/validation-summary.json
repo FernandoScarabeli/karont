@@ -1,0 +1,51 @@
+{
+  "unit": {
+    "hostPassed": 27,
+    "vmPassed": 27,
+    "previousTestsPreserved": 16
+  },
+  "e2e": {
+    "status": "passed",
+    "evidence": "benchmarks/runs/2026-10-24T01-24-37-774Z/phase1-e2e.json",
+    "sandboxVerified": true,
+    "continuityNotifications": [
+      {
+        "title": "Recuperação necessária",
+        "bodySafe": true
+      },
+      {
+        "title": "Recuperação necessária",
+        "bodySafe": true
+      },
+      {
+        "title": "Execução retomada em nova sessão",
+        "bodySafe": true
+      }
+    ]
+  },
+  "series": {
+    "passed": true,
+    "rounds": 5,
+    "directory": "benchmarks/series/2026-10-24T01-20-02-258Z"
+  },
+  "continuityBenchmark": {
+    "status": "passed",
+    "waitingRowChanges": 0,
+    "queueBefore": {
+      "queued": 18,
+      "running": 2
+    },
+    "queueAfter": {
+      "queued": 16,
+      "running": 2,
+      "recovery_needed": 2
+    }
+  },
+  "realCodex": {
+    "version": "0.164.0",
+    "status": "BLOQUEADO",
+    "productionAutoResume": "unavailable"
+  },
+  "remoteCIExecuted": false,
+  "phase4Started": false
+}

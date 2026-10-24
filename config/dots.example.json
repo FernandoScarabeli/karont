@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "id": "meu-projeto",
+      "name": "Meu projeto",
+      "root": "/home/SEU_USUARIO/codigo/meu-projeto"
+    }
+  ],
+  "dots": [
+    {
+      "id": "implementador",
+      "name": "Implementador",
+      "role": "Implemente a tarefa no projeto. Inspecione os arquivos necessários, faça mudanças focadas e explique o resultado.",
+      "executable": "/usr/bin/codex",
+      "args": [],
+      "projectIds": ["meu-projeto"]
+    },
+    {
+      "id": "revisor",
+      "name": "Revisor",
+      "role": "Analise a tarefa com atenção a bugs e casos de borda. Faça alterações apenas quando solicitado e valide o resultado.",
+      "executable": "/usr/local/bin/claude",
+      "args": [],
+      "projectIds": ["meu-projeto"]
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-23T21:45:24.765Z",
+  "validation": "diagnostic-only; not desktop acceptance",
+  "uid": 1000,
+  "electron": "45.0.0",
+  "playwright": "1.64.1",
+  "binary": {
+    "path": "/home/scarabeli/Área de trabalho/karont/node_modules/electron/dist/electron",
+    "resolved": "/home/scarabeli/Área de trabalho/karont/node_modules/electron/dist/electron",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "755",
+    "rootSetuidHelper": false
+  },
+  "helpers": [
+    {
+      "path": "/home/scarabeli/Área de trabalho/karont/node_modules/electron/dist/chrome-sandbox",
+      "resolved": "/home/scarabeli/Área de trabalho/karont/node_modules/electron/dist/chrome-sandbox",
+      "uid": 1000,
+      "gid": 1000,
+      "mode": "755",
+      "rootSetuidHelper": false
+    },
+    {
+      "path": "/opt/google/chrome/chrome-sandbox",
+      "unavailable": "ENOENT"
+    }
+  ],
+  "securityContext": "unconfined",
+  "sysctls": {
+    "apparmor_restrict_unprivileged_userns": "1",
+    "apparmor_restrict_unprivileged_unconfined": "1",
+    "unprivileged_userns_clone": "1"
+  },
+  "userNamespaceProbe": {
+    "command": [
+      "unshare",
+      "--user",
+      "--map-root-user",
+      "--",
+      "true"
+    ],
+    "status": 1,
+    "signal": null,
+    "stderr": "unshare: write failed /proc/self/uid_map: Operation not permitted",
+    "note": "unshare and Electron may have different AppArmor profiles; only an actual desktop run establishes compatibility."
+  },
+  "changesApplied": false
+}

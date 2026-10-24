@@ -1,0 +1,32 @@
+npm notice run eros-phase-zero@0.0.1 test
+npm notice run npm run build && node --test tests/*.test.mjs
+npm notice run eros-phase-zero@0.0.1 build
+npm notice run node scripts/build.mjs
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 32 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/renderer/index.html                   0.66 kB │ gzip:   0.38 kB
+dist/renderer/assets/index-Dpc9u8JF.css    4.69 kB │ gzip:   1.63 kB
+dist/renderer/assets/index-a9IV1vML.js   227.48 kB │ gzip:  71.48 kB
+dist/renderer/assets/Editor-D4SeSVgg.js  383.84 kB │ gzip: 123.70 kB
+
+✓ built in 280ms
+✔ daemon: singleton concorrente, socket, handshake, limites, heartbeat, reconexão e SQLite (7020.351309ms)
+✔ recusa diretório público e symlink no lock (60.881114ms)
+✔ cliente recusa prova de servidor inválida e confirmação antiga (5.257614ms)
+✔ benchmark recusa PID inexistente em vez de reportar consumo zero (8.603531ms)
+✔ fechar cliente durante handshake cancela a conexão imediatamente (7.110089ms)
+✔ benchmark recusa processo que encerra durante a amostra (122.095004ms)
+✔ relatório não converte falha funcional em diagnóstico de sandbox nem aceita prova ausente (6.421048ms)
+✔ aceite recusa evidência contraditória e argumentos inseguros mesmo com passed:true (1.001977ms)
+✔ série exige cinco rodadas válidas; percentil usa nearest-rank e não inventa amostras (1.418904ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7179.142817

@@ -1,0 +1,55 @@
+{
+  "host": {
+    "date": "2026-10-23T21:27:04.943Z",
+    "platform": "linux",
+    "release": "7.0.0-38-generic",
+    "arch": "x64",
+    "cpu": "Intel(R) Core(TM) i3-10100F CPU @ 3.60GHz",
+    "logicalCPUs": 8,
+    "ramGiB": 30.000484466552734,
+    "node": "v24.21.0",
+    "electron": "45.0.0",
+    "display": "Wayland",
+    "distribution": "PRETTY_NAME=\"Ubuntu 26.04.1 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"26.04\"\nVERSION=\"26.04.1 LTS (Resolute Raccoon)\"\nVERSION_CODENAME=resolute\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=resolute\nLOGO=ubuntu-logo\n",
+    "notes": "Single local run; other desktop workloads active. CPU=100% per logical core; RSS sum double counts shared pages; PSS apportions shared pages. No CLIs/models."
+  },
+  "metrics": {
+    "startupMs": 112.373674,
+    "idle": {
+      "durationMs": 5271.924488000001,
+      "processes": [
+        {
+          "pid": 113156,
+          "ppid": 113148,
+          "cpuSeconds": 0.1,
+          "rssBytes": 66125824,
+          "pssBytes": 34751488
+        }
+      ],
+      "rssMiB": 63.0625,
+      "pssMiB": 33.1416015625,
+      "cpuPercentOneCore": 0
+    },
+    "streaming": {
+      "durationMs": 5258.389537,
+      "processes": [
+        {
+          "pid": 113156,
+          "ppid": 113148,
+          "cpuSeconds": 0.11,
+          "rssBytes": 66207744,
+          "pssBytes": 34833408
+        }
+      ],
+      "rssMiB": 63.140625,
+      "pssMiB": 33.2197265625,
+      "cpuPercentOneCore": 0.19017205529923734
+    },
+    "roundtrip": {
+      "samples": 200,
+      "p50Ms": 0.35738599999967846,
+      "p95Ms": 0.5574459999988903,
+      "maxMs": 1.284787000000506
+    }
+  }
+}

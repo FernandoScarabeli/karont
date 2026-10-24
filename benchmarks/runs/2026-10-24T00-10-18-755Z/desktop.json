@@ -1,0 +1,30 @@
+{
+  "host": {
+    "date": "2026-10-24T00:10:18.756Z",
+    "platform": "linux",
+    "release": "7.0.0-38-generic",
+    "arch": "x64",
+    "cpu": "Intel(R) Core(TM) i3-10100F CPU @ 3.60GHz",
+    "logicalCPUs": 8,
+    "ramGiB": 30.000484466552734,
+    "node": "v24.21.0",
+    "electron": "45.0.0",
+    "testEnvironment": "local desktop; uncontrolled concurrent load",
+    "display": "Wayland",
+    "distribution": "PRETTY_NAME=\"Ubuntu 26.04.1 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"26.04\"\nVERSION=\"26.04.1 LTS (Resolute Raccoon)\"\nVERSION_CODENAME=resolute\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=resolute\nLOGO=ubuntu-logo\n",
+    "notes": "Single local run; other desktop workloads active. CPU=100% per logical core; RSS sum double counts shared pages; PSS apportions shared pages. No CLIs/models."
+  },
+  "runId": "2026-10-24T00-10-18-755Z",
+  "status": "blocked",
+  "stage": "native-preflight",
+  "checks": [],
+  "artifacts": [],
+  "metrics": {},
+  "passed": false,
+  "error": "Error: Electron sandbox preflight exited null/SIGTRAP: [182803:1023/211018.817053:FATAL:sandbox/linux/suid/client/setuid_sandbox_host.cc:172] The SUID sandbox helper binary was found, but is not configured correctly. Rather than run without sandboxing I'm aborting now. You need to make sure that /home/scarabeli/Área de trabalho/karont/node_modules/electron/dist/chrome-sandbox is owned by root and has mode 4755.\n\n    at ChildProcess.<anonymous> (file:///home/scarabeli/%C3%81rea%20de%20trabalho/karont/scripts/desktop-test.mjs:62:14)\n    at ChildProcess.wrapper (node:events:639:12)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)",
+  "failure": {
+    "kind": "sandbox-host",
+    "stage": "native-preflight",
+    "message": "Electron sandbox preflight exited null/SIGTRAP: [182803:1023/211018.817053:FATAL:sandbox/linux/suid/client/setuid_sandbox_host.cc:172] The SUID sandbox helper binary was found, but is not configured correctly. Rather than run without sandboxing I'm aborting now. You need to make sure that /home/scarabeli/Área de trabalho/karont/node_modules/electron/dist/chrome-sandbox is owned by root and has mode 4755.\n"
+  }
+}

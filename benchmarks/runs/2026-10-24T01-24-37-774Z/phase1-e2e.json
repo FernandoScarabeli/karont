@@ -1,0 +1,226 @@
+{
+  "status": "passed",
+  "stage": "complete",
+  "checks": [
+    "sandbox runtime, Seccomp=2 e NoNewPrivs=1",
+    "Diagnóstico, prévia de relatório sanitizado e IPC inválido recusado",
+    "dois dots iniciados em PTYs independentes",
+    "BrowserWindow destruída; daemon e dois processos PTY permaneceram ativos",
+    "janela reaberta recuperou os mesmos PIDs, saída PTY e entrada interativa",
+    "diff exibido, prévia confirmada, rollback auditado na Central de Aprovações",
+    "Notificações recebidas via D-Bus freedesktop, conteúdo fixo e sem duplicação",
+    "Notificação de erro entregue sem BrowserWindow e sem renderer adicional",
+    "Layout 900px sem overflow horizontal; mensagens de reconexão removidas após recuperar a conexão",
+    "Falha de conexão, reconexão ao mesmo daemon e preferência de notificações",
+    "Checkpoint manual na UI; SIGKILL real do daemon com duas Runs; reconexão; aviso de risco e nova sessão explicitamente confirmada",
+    "D-Bus recebeu duas notificações de recuperação e uma de nova sessão; títulos/corpos fixos, sem repetição no polling após restart do daemon"
+  ],
+  "artifacts": [
+    "benchmarks/runs/2026-10-24T01-24-37-774Z/phase2-diagnostics.png",
+    "benchmarks/runs/2026-10-24T01-24-37-774Z/phase2-report.md",
+    "benchmarks/runs/2026-10-24T01-24-37-774Z/phase1-two-terminals.png",
+    "benchmarks/runs/2026-10-24T01-24-37-774Z/phase1-reconnected.png",
+    "benchmarks/runs/2026-10-24T01-24-37-774Z/phase2-approvals.png",
+    "benchmarks/runs/2026-10-24T01-24-37-774Z/phase2-diagnostics-after-events.png",
+    "benchmarks/runs/2026-10-24T01-24-37-774Z/phase2-compact.png",
+    "benchmarks/runs/2026-10-24T01-24-37-774Z/phase3-recovery.png",
+    "benchmarks/runs/2026-10-24T01-24-37-774Z/phase3-compact.png"
+  ],
+  "runId": "2026-10-24T01-24-37-774Z",
+  "metrics": {
+    "idle": {
+      "electron": {
+        "durationMs": 2509.508737,
+        "processCount": 8,
+        "rssMiB": 711.73828125,
+        "pssMiB": 378.107421875,
+        "cpuPercentOneCore": 1.5939374671322388
+      },
+      "daemon": {
+        "durationMs": 2500,
+        "processCount": 1,
+        "rssMiB": 69.44140625,
+        "pssMiB": 47.888671875,
+        "cpuPercentOneCore": 0
+      },
+      "clis": [],
+      "total": {
+        "rssMiB": 781.1796875,
+        "pssMiB": 425.99609375,
+        "cpuPercentOneCore": 1.5939374671322388
+      }
+    },
+    "twoTerminals": {
+      "electron": {
+        "durationMs": 2517.6821249999994,
+        "processCount": 10,
+        "rssMiB": 854.9609375,
+        "pssMiB": 444.37890625,
+        "cpuPercentOneCore": 1.1915721886455353
+      },
+      "daemon": {
+        "durationMs": 2500,
+        "processCount": 1,
+        "rssMiB": 71.1796875,
+        "pssMiB": 41.5146484375,
+        "cpuPercentOneCore": 0
+      },
+      "clis": [
+        {
+          "durationMs": 2518.075102,
+          "processCount": 1,
+          "rssMiB": 46.3984375,
+          "pssMiB": 19.3251953125,
+          "cpuPercentOneCore": 0
+        },
+        {
+          "durationMs": 2518.5374970000003,
+          "processCount": 1,
+          "rssMiB": 44.3671875,
+          "pssMiB": 17.349609375,
+          "cpuPercentOneCore": 0
+        }
+      ],
+      "total": {
+        "rssMiB": 1016.90625,
+        "pssMiB": 522.568359375,
+        "cpuPercentOneCore": 1.1915721886455353
+      }
+    },
+    "windowClosed": {
+      "electron": {
+        "durationMs": 2510.292477000001,
+        "processCount": 9,
+        "rssMiB": 657.98046875,
+        "pssMiB": 349.123046875,
+        "cpuPercentOneCore": 0.7967199114543655
+      },
+      "daemon": {
+        "durationMs": 2500,
+        "processCount": 1,
+        "rssMiB": 71.1875,
+        "pssMiB": 41.52734375,
+        "cpuPercentOneCore": 0
+      },
+      "clis": [
+        {
+          "durationMs": 2508.8982559999995,
+          "processCount": 1,
+          "rssMiB": 46.3984375,
+          "pssMiB": 19.328125,
+          "cpuPercentOneCore": 0.39858132852080075
+        },
+        {
+          "durationMs": 2508.6139760000005,
+          "processCount": 1,
+          "rssMiB": 44.3671875,
+          "pssMiB": 17.3515625,
+          "cpuPercentOneCore": 0
+        }
+      ],
+      "total": {
+        "rssMiB": 819.93359375,
+        "pssMiB": 427.330078125,
+        "cpuPercentOneCore": 1.1953012399751661
+      }
+    }
+  },
+  "runs": [
+    {
+      "id": "2442c10f-242c-4ff1-9c61-1ba6027671ea",
+      "dotId": "beta",
+      "pid": 15091,
+      "branch": "eros/run-2442c10f-242c-4ff1-9c61-1ba6027671ea"
+    },
+    {
+      "id": "c3b6199b-25df-4661-9b1b-e74b99b7ef17",
+      "dotId": "alpha",
+      "pid": 15063,
+      "branch": "eros/run-c3b6199b-25df-4661-9b1b-e74b99b7ef17"
+    }
+  ],
+  "initialTerminalOutput": [
+    "PTY_READY beta 15091",
+    "PTY_READY alpha 15063"
+  ],
+  "backendReadyCounts": [
+    1,
+    1
+  ],
+  "nativeNotificationState": {
+    "enabled": false,
+    "history": [
+      {
+        "event": "run",
+        "status": "submitted",
+        "at": 1792805088257
+      },
+      {
+        "event": "run",
+        "status": "submitted",
+        "at": 1792805088284
+      },
+      {
+        "event": "rollback",
+        "status": "submitted",
+        "at": 1792805088647
+      },
+      {
+        "event": "run",
+        "status": "submitted",
+        "at": 1792805089148
+      },
+      {
+        "event": "daemon",
+        "status": "submitted",
+        "at": 1792805092886
+      },
+      {
+        "event": "run",
+        "status": "disabled",
+        "at": 1792805094872
+      }
+    ]
+  },
+  "notifications": [
+    {
+      "id": 1,
+      "title": "Execução concluída",
+      "bodySafe": true
+    },
+    {
+      "id": 2,
+      "title": "Execução concluída",
+      "bodySafe": true
+    },
+    {
+      "id": 3,
+      "title": "Rollback concluído",
+      "bodySafe": true
+    },
+    {
+      "id": 4,
+      "title": "Execução com erro",
+      "bodySafe": true
+    },
+    {
+      "id": 5,
+      "title": "Conexão com daemon interrompida",
+      "bodySafe": true
+    }
+  ],
+  "continuityNotifications": [
+    {
+      "title": "Recuperação necessária",
+      "bodySafe": true
+    },
+    {
+      "title": "Recuperação necessária",
+      "bodySafe": true
+    },
+    {
+      "title": "Execução retomada em nova sessão",
+      "bodySafe": true
+    }
+  ]
+}

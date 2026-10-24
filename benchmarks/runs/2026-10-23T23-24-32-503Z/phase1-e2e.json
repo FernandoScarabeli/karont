@@ -1,0 +1,127 @@
+{
+  "status": "passed",
+  "stage": "complete",
+  "checks": [
+    "dois dots iniciados em PTYs independentes",
+    "BrowserWindow destruída; daemon e dois processos PTY permaneceram ativos",
+    "janela reaberta recuperou os mesmos PIDs, saída PTY e entrada interativa",
+    "diff exibido, prévia confirmada e rollback registrado"
+  ],
+  "artifacts": [
+    "benchmarks/runs/2026-10-23T23-24-32-503Z/phase1-two-terminals.png",
+    "benchmarks/runs/2026-10-23T23-24-32-503Z/phase1-reconnected.png"
+  ],
+  "runId": "2026-10-23T23-24-32-503Z",
+  "metrics": {
+    "idle": {
+      "electron": {
+        "durationMs": 2511.237242,
+        "processCount": 8,
+        "rssMiB": 719.40625,
+        "pssMiB": 375.7265625,
+        "cpuPercentOneCore": 2.389260520531896
+      },
+      "daemon": {
+        "durationMs": 2500,
+        "processCount": 1,
+        "rssMiB": 68.77734375,
+        "pssMiB": 40.892578125,
+        "cpuPercentOneCore": 0
+      },
+      "clis": [],
+      "total": {
+        "rssMiB": 788.18359375,
+        "pssMiB": 416.619140625,
+        "cpuPercentOneCore": 2.389260520531896
+      }
+    },
+    "twoTerminals": {
+      "electron": {
+        "durationMs": 2512.892715,
+        "processCount": 10,
+        "rssMiB": 845.4296875,
+        "pssMiB": 435.8193359375,
+        "cpuPercentOneCore": 1.9897387461684786
+      },
+      "daemon": {
+        "durationMs": 2500,
+        "processCount": 1,
+        "rssMiB": 69.31640625,
+        "pssMiB": 36.9853515625,
+        "cpuPercentOneCore": 0
+      },
+      "clis": [
+        {
+          "durationMs": 2512.669116,
+          "processCount": 1,
+          "rssMiB": 46.9296875,
+          "pssMiB": 17.830078125,
+          "cpuPercentOneCore": 0
+        },
+        {
+          "durationMs": 2512.5085549999994,
+          "processCount": 1,
+          "rssMiB": 46.9296875,
+          "pssMiB": 17.830078125,
+          "cpuPercentOneCore": 0
+        }
+      ],
+      "total": {
+        "rssMiB": 1008.60546875,
+        "pssMiB": 508.46484375,
+        "cpuPercentOneCore": 1.9897387461684786
+      }
+    },
+    "windowClosed": {
+      "electron": {
+        "durationMs": 2510.161104999999,
+        "processCount": 9,
+        "rssMiB": 662.890625,
+        "pssMiB": 346.595703125,
+        "cpuPercentOneCore": 0
+      },
+      "daemon": {
+        "durationMs": 2500,
+        "processCount": 1,
+        "rssMiB": 69.390625,
+        "pssMiB": 37.0634765625,
+        "cpuPercentOneCore": 0
+      },
+      "clis": [
+        {
+          "durationMs": 2510.0404149999995,
+          "processCount": 1,
+          "rssMiB": 46.9296875,
+          "pssMiB": 17.83203125,
+          "cpuPercentOneCore": 0
+        },
+        {
+          "durationMs": 2509.5747489999994,
+          "processCount": 1,
+          "rssMiB": 46.9296875,
+          "pssMiB": 17.83203125,
+          "cpuPercentOneCore": 0
+        }
+      ],
+      "total": {
+        "rssMiB": 826.140625,
+        "pssMiB": 419.3232421875,
+        "cpuPercentOneCore": 0
+      }
+    }
+  },
+  "runs": [
+    {
+      "id": "4d0f0e48-d29f-4665-b5e5-e0147168e9e9",
+      "dotId": "beta",
+      "pid": 4720,
+      "branch": "eros/run-4d0f0e48-d29f-4665-b5e5-e0147168e9e9"
+    },
+    {
+      "id": "d544b95b-d9b2-4765-a845-3f5e26933815",
+      "dotId": "alpha",
+      "pid": 4707,
+      "branch": "eros/run-d544b95b-d9b2-4765-a845-3f5e26933815"
+    }
+  ]
+}

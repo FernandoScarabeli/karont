@@ -1,0 +1,17 @@
+{
+  "series": "2026-10-24T00-34-57-999Z",
+  "rounds": 5,
+  "seriesPassed": true,
+  "e2e": "benchmarks/runs/2026-10-24T00-40-12-960Z/phase1-e2e.json",
+  "e2ePassed": true,
+  "unitTests": 16,
+  "unitFailures": 0,
+  "idlePssMiB": 372.9150390625,
+  "idleCpuPercentOneCore": 1.3277717564121603,
+  "twoPtysPssMiB": 529.91015625,
+  "windowClosedPssMiB": 429.7578125,
+  "nativeNotificationDeliveries": 5,
+  "realCliFunctionalAcceptance": "BLOQUEADO",
+  "remoteCI": "não executada",
+  "physicalGNOMEKDE": "pendente"
+}

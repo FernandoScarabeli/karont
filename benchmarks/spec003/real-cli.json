@@ -1,0 +1,37 @@
+{
+  "cli": "codex",
+  "status": "BLOQUEADO",
+  "checks": [
+    "Codex iniciado pelo daemon em PTY gerenciado e worktree temporária"
+  ],
+  "limitations": [
+    "A tarefa não produziu o diff controlado dentro do prazo; saída privada não registrada.",
+    "Fechar/reabrir Electron com esta CLI real ainda não validado; teste completo não aprovado por execução isolada do PTY."
+  ],
+  "timestamp": "2026-10-24T00:10:11.067Z",
+  "capabilities": [
+    {
+      "mode": "ask",
+      "status": "available",
+      "detail": "Política nativa do Codex; aprovações na CLI. Ferramentas externas e configuração da CLI exigem revisão própria."
+    },
+    {
+      "mode": "auto",
+      "status": "available",
+      "detail": "Política nativa do Codex; aprovações na CLI. Ferramentas externas e configuração da CLI exigem revisão própria."
+    },
+    {
+      "mode": "full",
+      "status": "available",
+      "detail": "Política nativa do Codex; aprovações na CLI. Ferramentas externas e configuração da CLI exigem revisão própria."
+    },
+    {
+      "mode": "readOnly",
+      "status": "available",
+      "detail": "Política nativa do Codex; aprovações na CLI. Ferramentas externas e configuração da CLI exigem revisão própria."
+    }
+  ],
+  "nativeAuthRequested": false,
+  "tuiReady": true,
+  "controlledDiff": false
+}

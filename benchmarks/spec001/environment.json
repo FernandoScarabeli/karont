@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-23T22:13:37.495333+00:00",
+  "hostDistribution": "PRETTY_NAME=\"Ubuntu 26.04.1 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"26.04\"\nVERSION=\"26.04.1 LTS (Resolute Raccoon)\"\nVERSION_CODENAME=resolute\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=resolute\nLOGO=ubuntu-logo\n",
+  "hostAppArmorContext": "unconfined",
+  "hostSysctls": {
+    "apparmor_restrict_unprivileged_userns": "1",
+    "apparmor_restrict_unprivileged_unconfined": "1",
+    "unprivileged_userns_clone": "1"
+  },
+  "vm": {
+    "distribution": "Debian 13 genericcloud amd64",
+    "imageSource": "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2",
+    "imageSHA512": "SHA512 16e0965312c56feb331049d45d2b1b5778f3f942a33d4300eedbb97527707f2bea87c0006f3e4cc7a25fadbff739c4e235a51fb9bcd1b66fd554f7f8e80ba45c  debian-13-genericcloud-amd64.qcow2",
+    "qemu": "10.2.1, Ubuntu packages extracted locally; no host package installation",
+    "acceleration": "KVM",
+    "vCPU": 2,
+    "memoryMiB": 4096,
+    "diskGiB": 24,
+    "network": "QEMU user-mode NAT, SSH bound 127.0.0.1:22220",
+    "hostMounts": false,
+    "display": "Xvfb 1440x1000x24 inside guest, D-Bus session; no GNOME/KDE",
+    "guestAppArmor": "enabled by default; no profiles/sysctls altered",
+    "privilegedHelperInstalled": false
+  },
+  "hostGlobalChangesApplied": false,
+  "harnessSHA256": {
+    "scripts/sandbox-diagnose.mjs": "e5812f521241b7cfe706a3baa7d7c2e30cd88f885d2c49a301297922a7528307",
+    "scripts/daemon-control.mjs": "f2a811577858c13acae3454a3b9fe3c984d310e006d3c77f4afae3f4ba3b5863",
+    "scripts/report.mjs": "013b8c640767aa2580cd7f77a1c3b4306374ccaf7fb37f5e541f37d7aed5bd95",
+    "scripts/benchmark-series.mjs": "00fe79660663314c17eb7c5550de3b030692cb8d8cd063bc7f909d3e19384940",
+    "scripts/harness.mjs": "133c947e842960df2faaa88d4f5af937cc937b9832736b4cadb6659e7da2c378",
+    "scripts/desktop-proof.mjs": "35fde93bdc3c42a83ca9cd9490b77423de81788b61a4fce320f9dcf17d85cd00",
+    "scripts/build.mjs": "1cf360340a722d6eb14f76aeb4987b745b585bbf3b7633119a62bc547803ab14",
+    "scripts/desktop-test.mjs": "d86a69ffe763d803088f0f74bd508bd1c3f08d6151ed6dac8937430594de3fe1",
+    "scripts/benchmark.mjs": "e4395b7f62a229e517ebcefbbb5d63506f30579dd2ac0d5dee5d87a8d296cdd5"
+  },
+  "sourceVerification": "tested-source-sha256.txt captured in guest and matched against workspace after validation"
+}

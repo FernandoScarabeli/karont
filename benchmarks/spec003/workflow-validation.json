@@ -1,0 +1,13 @@
+{
+  "yamlValid": true,
+  "job": "linux",
+  "commands": [
+    "sudo apt-get update\nsudo apt-get install -y python3-dbus build-essential git xvfb xauth dbus-x11 libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libcups2t64 libdrm2 libgbm1 libgtk-3-0t64 libnotify4 libnss3 libx11-xcb1 libxkbcommon0 libxss1 libxtst6\n",
+    "npm ci",
+    "npm run check",
+    "npm test",
+    "xvfb-run -a dbus-run-session -- npm run test:desktop",
+    "EROS_TEST_NOTIFICATIONS=1 xvfb-run -a dbus-run-session -- npm run test:e2e"
+  ],
+  "remoteExecution": "não executada nesta sessão"
+}

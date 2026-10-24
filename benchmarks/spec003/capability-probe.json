@@ -1,0 +1,48 @@
+{
+  "version": "codex-cli 0.164.0",
+  "timestamp": "2026-10-24T00:26:04.195Z",
+  "validation": "Help e mapeamento local apenas; não valida efeito funcional da CLI",
+  "modes": [
+    {
+      "mode": "ask",
+      "status": "available",
+      "detail": "Sandbox nativo workspace-write e aprovação on-request na CLI; ela decide quando perguntar. Worktree não é sandbox.",
+      "args": [
+        "--sandbox",
+        "workspace-write",
+        "--ask-for-approval",
+        "on-request"
+      ]
+    },
+    {
+      "mode": "auto",
+      "status": "available",
+      "detail": "Revisão automática nativa do Codex em workspace-write. Sem botões de aprovação no eros.",
+      "args": [
+        "--approve-for-me"
+      ]
+    },
+    {
+      "mode": "full",
+      "status": "available",
+      "detail": "Sandbox de comandos desativado. Acesso aos arquivos da conta e à rede; exige confirmação por execução.",
+      "args": [
+        "--sandbox",
+        "danger-full-access",
+        "--ask-for-approval",
+        "never"
+      ]
+    },
+    {
+      "mode": "readOnly",
+      "status": "available",
+      "detail": "Sandbox nativo read-only, sem escalonamento. Restringe comandos gerados; MCP, hooks e ferramentas externas exigem revisão própria. Não isola todo o processo.",
+      "args": [
+        "--sandbox",
+        "read-only",
+        "--ask-for-approval",
+        "never"
+      ]
+    }
+  ]
+}

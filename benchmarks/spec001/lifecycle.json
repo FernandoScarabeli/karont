@@ -1,0 +1,71 @@
+{
+  "derivedFrom": "benchmarks/series/2026-10-23T22-10-53-606Z/manifest.json",
+  "validation": "Cross-check of recorded process identities; no new measurement",
+  "runs": [
+    {
+      "runId": "2026-10-23T22-10-54-021Z",
+      "daemonPid": 4033,
+      "daemonStartTicks": "15330",
+      "rendererPid": 4091,
+      "rendererPresentBeforeClose": true,
+      "rendererAbsentWithoutWindow": true,
+      "sameDaemonAfterCloseAndResume": true,
+      "shellProcessCountIdle": 7,
+      "shellProcessCountNoWindow": 6,
+      "duplicateExitAfterResume": 73,
+      "reopenMs": 493.6039920000003
+    },
+    {
+      "runId": "2026-10-23T22-11-35-843Z",
+      "daemonPid": 4326,
+      "daemonStartTicks": "19517",
+      "rendererPid": 4393,
+      "rendererPresentBeforeClose": true,
+      "rendererAbsentWithoutWindow": true,
+      "sameDaemonAfterCloseAndResume": true,
+      "shellProcessCountIdle": 7,
+      "shellProcessCountNoWindow": 6,
+      "duplicateExitAfterResume": 73,
+      "reopenMs": 372.8381509999999
+    },
+    {
+      "runId": "2026-10-23T22-12-17-713Z",
+      "daemonPid": 4636,
+      "daemonStartTicks": "23703",
+      "rendererPid": 4701,
+      "rendererPresentBeforeClose": true,
+      "rendererAbsentWithoutWindow": true,
+      "sameDaemonAfterCloseAndResume": true,
+      "shellProcessCountIdle": 7,
+      "shellProcessCountNoWindow": 6,
+      "duplicateExitAfterResume": 73,
+      "reopenMs": 391.2940480000034
+    },
+    {
+      "runId": "2026-10-23T22-12-59-643Z",
+      "daemonPid": 4966,
+      "daemonStartTicks": "27895",
+      "rendererPid": 5031,
+      "rendererPresentBeforeClose": true,
+      "rendererAbsentWithoutWindow": true,
+      "sameDaemonAfterCloseAndResume": true,
+      "shellProcessCountIdle": 7,
+      "shellProcessCountNoWindow": 6,
+      "duplicateExitAfterResume": 73,
+      "reopenMs": 380.24124799999845
+    },
+    {
+      "runId": "2026-10-23T22-13-41-064Z",
+      "daemonPid": 5266,
+      "daemonStartTicks": "32029",
+      "rendererPid": 5328,
+      "rendererPresentBeforeClose": true,
+      "rendererAbsentWithoutWindow": true,
+      "sameDaemonAfterCloseAndResume": true,
+      "shellProcessCountIdle": 7,
+      "shellProcessCountNoWindow": 6,
+      "duplicateExitAfterResume": 73,
+      "reopenMs": 339.68413900000087
+    }
+  ]
+}

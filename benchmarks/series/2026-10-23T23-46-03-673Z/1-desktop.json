@@ -1,0 +1,453 @@
+{
+  "host": {
+    "date": "2026-10-23T23:46:04.139Z",
+    "platform": "linux",
+    "release": "6.12.113+deb13-cloud-amd64",
+    "arch": "x64",
+    "cpu": "Intel(R) Core(TM) i3-10100F CPU @ 3.60GHz",
+    "logicalCPUs": 2,
+    "ramGiB": 3.8304901123046875,
+    "node": "v24.21.0",
+    "electron": "45.0.0",
+    "testEnvironment": "Debian13 QEMU10 KVM 2vCPU 4GiB Xvfb1440x1000x24 DBus software-GPU; host workloads uncontrolled",
+    "display": "X11",
+    "distribution": "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"13\"\nVERSION=\"13 (trixie)\"\nVERSION_CODENAME=trixie\nDEBIAN_VERSION_FULL=13.7\nID=debian\nHOME_URL=\"https://www.debian.org/\"\nSUPPORT_URL=\"https://www.debian.org/support\"\nBUG_REPORT_URL=\"https://bugs.debian.org/\"\n",
+    "notes": "Single local run; other desktop workloads active. CPU=100% per logical core; RSS sum double counts shared pages; PSS apportions shared pages. No CLIs/models."
+  },
+  "runId": "2026-10-23T23-46-04-138Z",
+  "status": "passed",
+  "stage": "complete",
+  "checks": [
+    "oito painéis em um renderer",
+    "sandbox efetivo: runtime isolado, filtro seccomp e NoNewPrivs no renderer",
+    "sandbox, contextIsolation e ausência de Node no renderer",
+    "IPC inválido rejeitado",
+    "layout compacto sem overflow horizontal",
+    "fechamento nativo equivalente ao X destrói BrowserWindow; mesmo daemon continua heartbeat e streaming",
+    "segunda execução reabre janela, restaura editor e colunas com mesmo daemon",
+    "pausa simulada e retomada: reconexão, identidades preservadas, singleton continua recusando duplicado",
+    "encerrar Electron preserva daemon independente",
+    "nenhum erro no renderer"
+  ],
+  "artifacts": [
+    "benchmarks/runs/2026-10-23T23-46-04-138Z/desktop-eight-panels.png",
+    "benchmarks/runs/2026-10-23T23-46-04-138Z/desktop-compact.png"
+  ],
+  "metrics": {
+    "coldStartMs": 596.461698,
+    "daemonStartupMs": 160.19487600000002,
+    "electronStartupMs": 625.977404,
+    "idle": {
+      "electron": {
+        "durationMs": 3012.928647,
+        "processes": [
+          {
+            "pid": 11886,
+            "ppid": 11766,
+            "startTicks": "144867",
+            "cpuSeconds": 0.34,
+            "rssBytes": 172470272,
+            "pssBytes": 103947264
+          },
+          {
+            "pid": 11889,
+            "ppid": 11886,
+            "startTicks": "144871",
+            "cpuSeconds": 0.02,
+            "rssBytes": 58048512,
+            "pssBytes": 15767552
+          },
+          {
+            "pid": 11890,
+            "ppid": 11886,
+            "startTicks": "144871",
+            "cpuSeconds": 0.02,
+            "rssBytes": 58396672,
+            "pssBytes": 13756416
+          },
+          {
+            "pid": 11892,
+            "ppid": 11890,
+            "startTicks": "144875",
+            "cpuSeconds": 0,
+            "rssBytes": 14544896,
+            "pssBytes": 4395008
+          },
+          {
+            "pid": 11918,
+            "ppid": 11889,
+            "startTicks": "144889",
+            "cpuSeconds": 0.11,
+            "rssBytes": 157388800,
+            "pssBytes": 104576000
+          },
+          {
+            "pid": 11923,
+            "ppid": 11886,
+            "startTicks": "144890",
+            "cpuSeconds": 0.04,
+            "rssBytes": 83783680,
+            "pssBytes": 31136768
+          },
+          {
+            "pid": 11930,
+            "ppid": 11892,
+            "startTicks": "144895",
+            "cpuSeconds": 0.25,
+            "rssBytes": 142524416,
+            "pssBytes": 82642944
+          }
+        ],
+        "rssMiB": 655.32421875,
+        "pssMiB": 339.7197265625,
+        "cpuPercentOneCore": 1.659514905863617
+      },
+      "daemon": {
+        "durationMs": 3013.143815,
+        "processes": [
+          {
+            "pid": 11868,
+            "ppid": 11766,
+            "startTicks": "144850",
+            "cpuSeconds": 0.14,
+            "rssBytes": 72204288,
+            "pssBytes": 39787520
+          }
+        ],
+        "rssMiB": 68.859375,
+        "pssMiB": 37.9443359375,
+        "cpuPercentOneCore": 0
+      },
+      "total": {
+        "rssMiB": 724.18359375,
+        "pssMiB": 377.6640625,
+        "cpuPercentOneCore": 1.659514905863617
+      }
+    },
+    "responsiveness": {
+      "frameGapP50Ms": 16.699999999999818,
+      "frameGapP95Ms": 16.700000000000728,
+      "frames": 151,
+      "over50ms": 0
+    },
+    "streaming": {
+      "electron": {
+        "durationMs": 3010.1073099999994,
+        "processes": [
+          {
+            "pid": 11886,
+            "ppid": 11766,
+            "startTicks": "144867",
+            "cpuSeconds": 0.4,
+            "rssBytes": 173109248,
+            "pssBytes": 103920640
+          },
+          {
+            "pid": 11889,
+            "ppid": 11886,
+            "startTicks": "144871",
+            "cpuSeconds": 0.02,
+            "rssBytes": 58048512,
+            "pssBytes": 15754240
+          },
+          {
+            "pid": 11890,
+            "ppid": 11886,
+            "startTicks": "144871",
+            "cpuSeconds": 0.02,
+            "rssBytes": 58396672,
+            "pssBytes": 13742080
+          },
+          {
+            "pid": 11892,
+            "ppid": 11890,
+            "startTicks": "144875",
+            "cpuSeconds": 0,
+            "rssBytes": 14544896,
+            "pssBytes": 4395008
+          },
+          {
+            "pid": 11918,
+            "ppid": 11889,
+            "startTicks": "144889",
+            "cpuSeconds": 0.28,
+            "rssBytes": 156643328,
+            "pssBytes": 104202240
+          },
+          {
+            "pid": 11923,
+            "ppid": 11886,
+            "startTicks": "144890",
+            "cpuSeconds": 0.04,
+            "rssBytes": 83849216,
+            "pssBytes": 31089664
+          },
+          {
+            "pid": 11930,
+            "ppid": 11892,
+            "startTicks": "144895",
+            "cpuSeconds": 0.72,
+            "rssBytes": 159547392,
+            "pssBytes": 99084288
+          }
+        ],
+        "rssMiB": 671.51953125,
+        "pssMiB": 354.9462890625,
+        "cpuPercentOneCore": 3.9865688376405433
+      },
+      "daemon": {
+        "durationMs": 3010.0837200000005,
+        "processes": [
+          {
+            "pid": 11868,
+            "ppid": 11766,
+            "startTicks": "144850",
+            "cpuSeconds": 0.17,
+            "rssBytes": 72232960,
+            "pssBytes": 39816192
+          }
+        ],
+        "rssMiB": 68.88671875,
+        "pssMiB": 37.9716796875,
+        "cpuPercentOneCore": 0.33221667336216176
+      },
+      "total": {
+        "rssMiB": 740.40625,
+        "pssMiB": 392.91796875,
+        "cpuPercentOneCore": 4.318785511002705
+      }
+    },
+    "editor": {
+      "electron": {
+        "durationMs": 3009.7262850000006,
+        "processes": [
+          {
+            "pid": 11886,
+            "ppid": 11766,
+            "startTicks": "144867",
+            "cpuSeconds": 0.91,
+            "rssBytes": 175185920,
+            "pssBytes": 105767936
+          },
+          {
+            "pid": 11889,
+            "ppid": 11886,
+            "startTicks": "144871",
+            "cpuSeconds": 0.02,
+            "rssBytes": 58048512,
+            "pssBytes": 15746048
+          },
+          {
+            "pid": 11890,
+            "ppid": 11886,
+            "startTicks": "144871",
+            "cpuSeconds": 0.02,
+            "rssBytes": 58396672,
+            "pssBytes": 13725696
+          },
+          {
+            "pid": 11892,
+            "ppid": 11890,
+            "startTicks": "144875",
+            "cpuSeconds": 0,
+            "rssBytes": 14544896,
+            "pssBytes": 4395008
+          },
+          {
+            "pid": 11918,
+            "ppid": 11889,
+            "startTicks": "144889",
+            "cpuSeconds": 0.72,
+            "rssBytes": 158232576,
+            "pssBytes": 104984576
+          },
+          {
+            "pid": 11923,
+            "ppid": 11886,
+            "startTicks": "144890",
+            "cpuSeconds": 0.04,
+            "rssBytes": 83849216,
+            "pssBytes": 31075328
+          },
+          {
+            "pid": 11930,
+            "ppid": 11892,
+            "startTicks": "144895",
+            "cpuSeconds": 2.19,
+            "rssBytes": 197943296,
+            "pssBytes": 136510464
+          }
+        ],
+        "rssMiB": 711.6328125,
+        "pssMiB": 393.109375,
+        "cpuPercentOneCore": 80.40598283175771
+      },
+      "daemon": {
+        "durationMs": 3009.5411729999996,
+        "processes": [
+          {
+            "pid": 11868,
+            "ppid": 11766,
+            "startTicks": "144850",
+            "cpuSeconds": 0.29,
+            "rssBytes": 75120640,
+            "pssBytes": 42703872
+          }
+        ],
+        "rssMiB": 71.640625,
+        "pssMiB": 40.7255859375,
+        "cpuPercentOneCore": 3.987318767278416
+      },
+      "total": {
+        "rssMiB": 783.2734375,
+        "pssMiB": 433.8349609375,
+        "cpuPercentOneCore": 84.39330159903612
+      }
+    },
+    "focusToPaintMs": [
+      31.300000000046566,
+      32,
+      32.0999999998603,
+      31,
+      32.9000000001397,
+      25.899999999906868,
+      31.899999999906868,
+      32.199999999953434,
+      31.199999999953434,
+      32.199999999953434
+    ],
+    "noWindow": {
+      "electron": {
+        "durationMs": 3007.053726000002,
+        "processes": [
+          {
+            "pid": 11886,
+            "ppid": 11766,
+            "startTicks": "144867",
+            "cpuSeconds": 1.57,
+            "rssBytes": 176955392,
+            "pssBytes": 120971264
+          },
+          {
+            "pid": 11889,
+            "ppid": 11886,
+            "startTicks": "144871",
+            "cpuSeconds": 0.02,
+            "rssBytes": 58048512,
+            "pssBytes": 16540672
+          },
+          {
+            "pid": 11890,
+            "ppid": 11886,
+            "startTicks": "144871",
+            "cpuSeconds": 0.02,
+            "rssBytes": 58396672,
+            "pssBytes": 16183296
+          },
+          {
+            "pid": 11892,
+            "ppid": 11890,
+            "startTicks": "144875",
+            "cpuSeconds": 0,
+            "rssBytes": 14610432,
+            "pssBytes": 6176768
+          },
+          {
+            "pid": 11918,
+            "ppid": 11889,
+            "startTicks": "144889",
+            "cpuSeconds": 1.18,
+            "rssBytes": 136302592,
+            "pssBytes": 97698816
+          },
+          {
+            "pid": 11923,
+            "ppid": 11886,
+            "startTicks": "144890",
+            "cpuSeconds": 0.05,
+            "rssBytes": 83849216,
+            "pssBytes": 34036736
+          }
+        ],
+        "rssMiB": 503.6953125,
+        "pssMiB": 278.0986328125,
+        "cpuPercentOneCore": 0.3325514244569903
+      },
+      "daemon": {
+        "durationMs": 3007.6103409999996,
+        "processes": [
+          {
+            "pid": 11868,
+            "ppid": 11766,
+            "startTicks": "144850",
+            "cpuSeconds": 0.41,
+            "rssBytes": 76480512,
+            "pssBytes": 44072960
+          }
+        ],
+        "rssMiB": 72.9375,
+        "pssMiB": 42.03125,
+        "cpuPercentOneCore": 0
+      },
+      "total": {
+        "rssMiB": 576.6328125,
+        "pssMiB": 320.1298828125,
+        "cpuPercentOneCore": 0.3325514244569903
+      }
+    },
+    "reopenMs": 471.0343500000017
+  },
+  "coldStart": {
+    "definition": "fresh shell + daemon + profile; OS caches retained",
+    "daemonPid": 11823
+  },
+  "sandbox": {
+    "preferences": {
+      "sandbox": true,
+      "contextIsolation": true,
+      "nodeIntegration": false
+    },
+    "runtime": {
+      "sandboxed": true,
+      "contextIsolated": true
+    },
+    "kernel": {
+      "pid": 11930,
+      "noNewPrivs": 1,
+      "seccomp": 2,
+      "seccompFilters": 1
+    },
+    "launchArgs": [
+      "/home/eros/eros-phase1/node_modules/electron/dist/electron",
+      "-r",
+      "/home/eros/eros-phase1/node_modules/playwright-core/lib/server/electron/loader.js",
+      "--inspect=0",
+      "--remote-debugging-port=0",
+      "dist/desktop/main.cjs"
+    ],
+    "verified": true
+  },
+  "suspendResume": {
+    "simulated": true,
+    "mechanism": "SIGSTOP/SIGCONT main + daemon; client timeout >3s",
+    "daemon": {
+      "pid": 11868,
+      "ppid": 11766,
+      "startTicks": "144850",
+      "cpuSeconds": 0.42,
+      "rssBytes": 76505088,
+      "pssBytes": 44088320
+    },
+    "shell": {
+      "pid": 11886,
+      "ppid": 11766,
+      "startTicks": "144867",
+      "cpuSeconds": 1.66,
+      "rssBytes": 178274304,
+      "pssBytes": 108495872
+    },
+    "duplicateExitCode": 73,
+    "passed": true
+  },
+  "passed": true
+}

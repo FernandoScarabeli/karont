@@ -1,0 +1,53 @@
+{
+  "date": "2026-10-23T22:09:23.415Z",
+  "validation": "diagnostic-only; not desktop acceptance",
+  "uid": 1000,
+  "electron": "45.0.0",
+  "playwright": "1.64.1",
+  "binary": {
+    "path": "/home/eros/eros/node_modules/electron/dist/electron",
+    "resolved": "/home/eros/eros/node_modules/electron/dist/electron",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "755",
+    "rootSetuidHelper": false
+  },
+  "helpers": [
+    {
+      "path": "/home/eros/eros/node_modules/electron/dist/chrome-sandbox",
+      "resolved": "/home/eros/eros/node_modules/electron/dist/chrome-sandbox",
+      "uid": 1000,
+      "gid": 1000,
+      "mode": "755",
+      "rootSetuidHelper": false
+    },
+    {
+      "path": "/opt/google/chrome/chrome-sandbox",
+      "unavailable": "ENOENT"
+    }
+  ],
+  "securityContext": "unconfined",
+  "sysctls": {
+    "apparmor_restrict_unprivileged_userns": {
+      "unavailable": "ENOENT"
+    },
+    "apparmor_restrict_unprivileged_unconfined": {
+      "unavailable": "EACCES"
+    },
+    "unprivileged_userns_clone": "1"
+  },
+  "userNamespaceProbe": {
+    "command": [
+      "unshare",
+      "--user",
+      "--map-root-user",
+      "--",
+      "true"
+    ],
+    "status": 0,
+    "signal": null,
+    "stderr": "",
+    "note": "unshare and Electron may have different AppArmor profiles; only an actual desktop run establishes compatibility."
+  },
+  "changesApplied": false
+}

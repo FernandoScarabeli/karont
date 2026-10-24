@@ -1,0 +1,528 @@
+{
+  "environment": {
+    "date": "2026-10-24T01:23:29.978Z",
+    "platform": "linux",
+    "release": "6.12.113+deb13-cloud-amd64",
+    "arch": "x64",
+    "cpu": "Intel(R) Core(TM) i3-10100F CPU @ 3.60GHz",
+    "logicalCPUs": 2,
+    "ramGiB": 3.830493927001953,
+    "node": "v24.21.0",
+    "electron": "45.0.0",
+    "testEnvironment": "local desktop; uncontrolled concurrent load",
+    "display": "none",
+    "distribution": "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"13\"\nVERSION=\"13 (trixie)\"\nVERSION_CODENAME=trixie\nDEBIAN_VERSION_FULL=13.7\nID=debian\nHOME_URL=\"https://www.debian.org/\"\nSUPPORT_URL=\"https://www.debian.org/support\"\nBUG_REPORT_URL=\"https://bugs.debian.org/\"\n",
+    "notes": "Single local run; other desktop workloads active. CPU=100% per logical core; RSS sum double counts shared pages; PSS apportions shared pages. No CLIs/models."
+  },
+  "method": "5 batches x 100 logical automatic checkpoints; 20 runs queued; one simulated trusted quota job due in 1h; 5 samples x 7s with scheduler timer; actual daemon queue of 20 runs before/after SIGKILL. No window/provider/model. Not a production Codex support test.",
+  "batches": [
+    {
+      "batch": 1,
+      "checkpointMedianMs": 7.190114499999993,
+      "checkpointP95Ms": 9.387796999999978,
+      "sqliteRowChanges": 100,
+      "bytesBefore": {
+        "db": 4096,
+        "-wal": 473832,
+        "-shm": 32768
+      },
+      "bytesAfter": {
+        "db": 4096,
+        "-wal": 1854032,
+        "-shm": 32768
+      },
+      "retained": 100
+    },
+    {
+      "batch": 2,
+      "checkpointMedianMs": 7.497813000000065,
+      "checkpointP95Ms": 8.432378000000085,
+      "sqliteRowChanges": 200,
+      "bytesBefore": {
+        "db": 4096,
+        "-wal": 1854032,
+        "-shm": 32768
+      },
+      "bytesAfter": {
+        "db": 233472,
+        "-wal": 4120032,
+        "-shm": 32768
+      },
+      "retained": 100
+    },
+    {
+      "batch": 3,
+      "checkpointMedianMs": 7.503204499999924,
+      "checkpointP95Ms": 8.612617999999884,
+      "sqliteRowChanges": 200,
+      "bytesBefore": {
+        "db": 233472,
+        "-wal": 4120032,
+        "-shm": 32768
+      },
+      "bytesAfter": {
+        "db": 233472,
+        "-wal": 4120032,
+        "-shm": 32768
+      },
+      "retained": 100
+    },
+    {
+      "batch": 4,
+      "checkpointMedianMs": 7.496867999999722,
+      "checkpointP95Ms": 8.738130000000183,
+      "sqliteRowChanges": 200,
+      "bytesBefore": {
+        "db": 233472,
+        "-wal": 4120032,
+        "-shm": 32768
+      },
+      "bytesAfter": {
+        "db": 233472,
+        "-wal": 4128272,
+        "-shm": 32768
+      },
+      "retained": 100
+    },
+    {
+      "batch": 5,
+      "checkpointMedianMs": 7.864556999999877,
+      "checkpointP95Ms": 9.740103999999974,
+      "sqliteRowChanges": 200,
+      "bytesBefore": {
+        "db": 233472,
+        "-wal": 4128272,
+        "-shm": 32768
+      },
+      "bytesAfter": {
+        "db": 233472,
+        "-wal": 4128272,
+        "-shm": 32768
+      },
+      "retained": 100
+    }
+  ],
+  "waiting": [
+    {
+      "durationMs": 7009.5262379999995,
+      "processes": [
+        {
+          "pid": 13165,
+          "ppid": 10111,
+          "startTicks": "102635",
+          "cpuSeconds": 1.79,
+          "rssBytes": 93413376,
+          "pssBytes": 90644480
+        }
+      ],
+      "rssMiB": 89.0859375,
+      "pssMiB": 86.4453125,
+      "cpuPercentOneCore": 0.42798898215637193
+    },
+    {
+      "durationMs": 7008.344906000002,
+      "processes": [
+        {
+          "pid": 13165,
+          "ppid": 10111,
+          "startTicks": "102635",
+          "cpuSeconds": 1.79,
+          "rssBytes": 93413376,
+          "pssBytes": 90644480
+        }
+      ],
+      "rssMiB": 89.0859375,
+      "pssMiB": 86.4453125,
+      "cpuPercentOneCore": 0
+    },
+    {
+      "durationMs": 7003.252806,
+      "processes": [
+        {
+          "pid": 13165,
+          "ppid": 10111,
+          "startTicks": "102635",
+          "cpuSeconds": 1.8,
+          "rssBytes": 93417472,
+          "pssBytes": 90648576
+        }
+      ],
+      "rssMiB": 89.08984375,
+      "pssMiB": 86.44921875,
+      "cpuPercentOneCore": 0
+    },
+    {
+      "durationMs": 7006.630445999999,
+      "processes": [
+        {
+          "pid": 13165,
+          "ppid": 10111,
+          "startTicks": "102635",
+          "cpuSeconds": 1.8,
+          "rssBytes": 93417472,
+          "pssBytes": 90648576
+        }
+      ],
+      "rssMiB": 89.08984375,
+      "pssMiB": 86.44921875,
+      "cpuPercentOneCore": 0
+    },
+    {
+      "durationMs": 7004.968904999998,
+      "processes": [
+        {
+          "pid": 13165,
+          "ppid": 10111,
+          "startTicks": "102635",
+          "cpuSeconds": 1.81,
+          "rssBytes": 93417472,
+          "pssBytes": 90648576
+        }
+      ],
+      "rssMiB": 89.08984375,
+      "pssMiB": 86.44921875,
+      "cpuPercentOneCore": 0.14275580856414968
+    }
+  ],
+  "waitingRowChanges": 0,
+  "finalSizes": {
+    "db": 233472,
+    "-wal": 4128272,
+    "-shm": 32768
+  },
+  "checkpoints": 100,
+  "queueBefore": {
+    "queued": 18,
+    "running": 2
+  },
+  "queueSamples": [
+    {
+      "durationMs": 1504.5025710000045,
+      "processes": [
+        {
+          "pid": 14712,
+          "ppid": 13165,
+          "startTicks": "106544",
+          "cpuSeconds": 0.19,
+          "rssBytes": 74317824,
+          "pssBytes": 43236352
+        },
+        {
+          "pid": 14736,
+          "ppid": 14712,
+          "startTicks": "106564",
+          "cpuSeconds": 0.02,
+          "rssBytes": 45465600,
+          "pssBytes": 18878464
+        },
+        {
+          "pid": 14758,
+          "ppid": 14712,
+          "startTicks": "106569",
+          "cpuSeconds": 0.01,
+          "rssBytes": 45477888,
+          "pssBytes": 18850816
+        }
+      ],
+      "rssMiB": 157.60546875,
+      "pssMiB": 77.21484375,
+      "cpuPercentOneCore": 0
+    },
+    {
+      "durationMs": 1504.368948999996,
+      "processes": [
+        {
+          "pid": 14712,
+          "ppid": 13165,
+          "startTicks": "106544",
+          "cpuSeconds": 0.19,
+          "rssBytes": 74321920,
+          "pssBytes": 43240448
+        },
+        {
+          "pid": 14736,
+          "ppid": 14712,
+          "startTicks": "106564",
+          "cpuSeconds": 0.02,
+          "rssBytes": 45465600,
+          "pssBytes": 18878464
+        },
+        {
+          "pid": 14758,
+          "ppid": 14712,
+          "startTicks": "106569",
+          "cpuSeconds": 0.01,
+          "rssBytes": 45477888,
+          "pssBytes": 18850816
+        }
+      ],
+      "rssMiB": 157.609375,
+      "pssMiB": 77.21875,
+      "cpuPercentOneCore": 0
+    },
+    {
+      "durationMs": 1504.2148420000012,
+      "processes": [
+        {
+          "pid": 14712,
+          "ppid": 13165,
+          "startTicks": "106544",
+          "cpuSeconds": 0.19,
+          "rssBytes": 74321920,
+          "pssBytes": 43240448
+        },
+        {
+          "pid": 14736,
+          "ppid": 14712,
+          "startTicks": "106564",
+          "cpuSeconds": 0.02,
+          "rssBytes": 45465600,
+          "pssBytes": 18878464
+        },
+        {
+          "pid": 14758,
+          "ppid": 14712,
+          "startTicks": "106569",
+          "cpuSeconds": 0.01,
+          "rssBytes": 45477888,
+          "pssBytes": 18850816
+        }
+      ],
+      "rssMiB": 157.609375,
+      "pssMiB": 77.21875,
+      "cpuPercentOneCore": 0
+    },
+    {
+      "durationMs": 1503.181199999999,
+      "processes": [
+        {
+          "pid": 14712,
+          "ppid": 13165,
+          "startTicks": "106544",
+          "cpuSeconds": 0.19,
+          "rssBytes": 74326016,
+          "pssBytes": 43244544
+        },
+        {
+          "pid": 14736,
+          "ppid": 14712,
+          "startTicks": "106564",
+          "cpuSeconds": 0.02,
+          "rssBytes": 45465600,
+          "pssBytes": 18878464
+        },
+        {
+          "pid": 14758,
+          "ppid": 14712,
+          "startTicks": "106569",
+          "cpuSeconds": 0.01,
+          "rssBytes": 45477888,
+          "pssBytes": 18850816
+        }
+      ],
+      "rssMiB": 157.61328125,
+      "pssMiB": 77.22265625,
+      "cpuPercentOneCore": 0
+    },
+    {
+      "durationMs": 1504.6640909999987,
+      "processes": [
+        {
+          "pid": 14712,
+          "ppid": 13165,
+          "startTicks": "106544",
+          "cpuSeconds": 0.19,
+          "rssBytes": 74326016,
+          "pssBytes": 43244544
+        },
+        {
+          "pid": 14736,
+          "ppid": 14712,
+          "startTicks": "106564",
+          "cpuSeconds": 0.02,
+          "rssBytes": 45465600,
+          "pssBytes": 18878464
+        },
+        {
+          "pid": 14758,
+          "ppid": 14712,
+          "startTicks": "106569",
+          "cpuSeconds": 0.01,
+          "rssBytes": 45477888,
+          "pssBytes": 18850816
+        }
+      ],
+      "rssMiB": 157.61328125,
+      "pssMiB": 77.22265625,
+      "cpuPercentOneCore": 0
+    }
+  ],
+  "queueAfter": {
+    "queued": 16,
+    "running": 2,
+    "recovery_needed": 2
+  },
+  "recoverySamples": [
+    {
+      "durationMs": 1504.3206310000023,
+      "processes": [
+        {
+          "pid": 14769,
+          "ppid": 13165,
+          "startTicks": "107327",
+          "cpuSeconds": 0.18,
+          "rssBytes": 74432512,
+          "pssBytes": 43443200
+        },
+        {
+          "pid": 14799,
+          "ppid": 14769,
+          "startTicks": "107345",
+          "cpuSeconds": 0.01,
+          "rssBytes": 45510656,
+          "pssBytes": 18882560
+        },
+        {
+          "pid": 14821,
+          "ppid": 14769,
+          "startTicks": "107349",
+          "cpuSeconds": 0.02,
+          "rssBytes": 45510656,
+          "pssBytes": 18882560
+        }
+      ],
+      "rssMiB": 157.7890625,
+      "pssMiB": 77.4462890625,
+      "cpuPercentOneCore": 0.6647519015512314
+    },
+    {
+      "durationMs": 1504.7986029999956,
+      "processes": [
+        {
+          "pid": 14769,
+          "ppid": 13165,
+          "startTicks": "107327",
+          "cpuSeconds": 0.18,
+          "rssBytes": 74436608,
+          "pssBytes": 43447296
+        },
+        {
+          "pid": 14799,
+          "ppid": 14769,
+          "startTicks": "107345",
+          "cpuSeconds": 0.01,
+          "rssBytes": 45510656,
+          "pssBytes": 18882560
+        },
+        {
+          "pid": 14821,
+          "ppid": 14769,
+          "startTicks": "107349",
+          "cpuSeconds": 0.02,
+          "rssBytes": 45510656,
+          "pssBytes": 18882560
+        }
+      ],
+      "rssMiB": 157.79296875,
+      "pssMiB": 77.4501953125,
+      "cpuPercentOneCore": 0
+    },
+    {
+      "durationMs": 1504.2225420000032,
+      "processes": [
+        {
+          "pid": 14769,
+          "ppid": 13165,
+          "startTicks": "107327",
+          "cpuSeconds": 0.18,
+          "rssBytes": 74436608,
+          "pssBytes": 43447296
+        },
+        {
+          "pid": 14799,
+          "ppid": 14769,
+          "startTicks": "107345",
+          "cpuSeconds": 0.01,
+          "rssBytes": 45510656,
+          "pssBytes": 18882560
+        },
+        {
+          "pid": 14821,
+          "ppid": 14769,
+          "startTicks": "107349",
+          "cpuSeconds": 0.02,
+          "rssBytes": 45510656,
+          "pssBytes": 18882560
+        }
+      ],
+      "rssMiB": 157.79296875,
+      "pssMiB": 77.4501953125,
+      "cpuPercentOneCore": 0
+    },
+    {
+      "durationMs": 1503.6872670000012,
+      "processes": [
+        {
+          "pid": 14769,
+          "ppid": 13165,
+          "startTicks": "107327",
+          "cpuSeconds": 0.18,
+          "rssBytes": 74436608,
+          "pssBytes": 43447296
+        },
+        {
+          "pid": 14799,
+          "ppid": 14769,
+          "startTicks": "107345",
+          "cpuSeconds": 0.01,
+          "rssBytes": 45510656,
+          "pssBytes": 18882560
+        },
+        {
+          "pid": 14821,
+          "ppid": 14769,
+          "startTicks": "107349",
+          "cpuSeconds": 0.02,
+          "rssBytes": 45510656,
+          "pssBytes": 18882560
+        }
+      ],
+      "rssMiB": 157.79296875,
+      "pssMiB": 77.4501953125,
+      "cpuPercentOneCore": 0
+    },
+    {
+      "durationMs": 1504.335159000002,
+      "processes": [
+        {
+          "pid": 14769,
+          "ppid": 13165,
+          "startTicks": "107327",
+          "cpuSeconds": 0.18,
+          "rssBytes": 74436608,
+          "pssBytes": 43447296
+        },
+        {
+          "pid": 14799,
+          "ppid": 14769,
+          "startTicks": "107345",
+          "cpuSeconds": 0.01,
+          "rssBytes": 45510656,
+          "pssBytes": 18882560
+        },
+        {
+          "pid": 14821,
+          "ppid": 14769,
+          "startTicks": "107349",
+          "cpuSeconds": 0.02,
+          "rssBytes": 45510656,
+          "pssBytes": 18882560
+        }
+      ],
+      "rssMiB": 157.79296875,
+      "pssMiB": 77.4501953125,
+      "cpuPercentOneCore": 0
+    }
+  ],
+  "status": "passed"
+}

@@ -1,0 +1,49 @@
+PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
+NAME="Debian GNU/Linux"
+VERSION_ID="13"
+VERSION="13 (trixie)"
+VERSION_CODENAME=trixie
+DEBIAN_VERSION_FULL=13.7
+ID=debian
+HOME_URL="https://www.debian.org/"
+SUPPORT_URL="https://www.debian.org/support"
+BUG_REPORT_URL="https://bugs.debian.org/"
+Linux eros-spec001 6.12.113+deb13-cloud-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.113-1 (2026-10-15) x86_64 GNU/Linux
+Y
+unconfined
+1
+15589
+               total        used        free      shared  buff/cache   available
+Mem:            3922         712        1661          63        1855        3209
+Swap:              0           0           0
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           39 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  2
+On-line CPU(s) list:                     0,1
+Vendor ID:                               GenuineIntel
+Model name:                              Intel(R) Core(TM) i3-10100F CPU @ 3.60GHz
+CPU family:                              6
+Model:                                   165
+Thread(s) per core:                      1
+Core(s) per socket:                      2
+Socket(s):                               1
+Stepping:                                3
+BogoMIPS:                                7199.99
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon rep_good nopl xtopology cpuid tsc_known_freq pni pclmulqdq vmx ssse3 fma cx16 pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid mpx rdseed adx smap clflushopt xsaveopt xsavec xgetbv1 xsaves arat vnmi umip md_clear flush_l1d arch_capabilities
+Virtualization:                          VT-x
+Hypervisor vendor:                       KVM
+Virtualization type:                     full
+L1d cache:                               64 KiB (2 instances)
+   3667 bash            bash -c cd /home/eros/eros && npm run check && npm test && EROS_TEST_ENVIRONMENT="Debian13 QEMU10 KVM 2vCPU 4GiB Xvfb1440x1000x24 DBus software-GPU; host workloads uncontrolled" xvfb-run -a -s "-screen 0 1440x1000x24" dbus-run-session -- npm run benchmark:series && npm run benchmark:report
+   3867 Xvfb            Xvfb :99 -screen 0 1440x1000x24 -nolisten tcp -auth /tmp/xvfb-run.VINxyy/Xauthority
+   4343 electron        /home/eros/eros/node_modules/electron/dist/electron -r --inspect=0 --remote-debugging-port=0 /home/eros/eros/node_modules/playwright-core/lib/server/electron/loader.js dist/desktop/main.cjs
+   4346 electron        /home/eros/eros/node_modules/electron/dist/electron --type=zygote --no-zygote-sandbox
+   4347 electron        /home/eros/eros/node_modules/electron/dist/electron --type=zygote
+   4349 electron        /home/eros/eros/node_modules/electron/dist/electron --type=zygote
+   4374 electron        /home/eros/eros/node_modules/electron/dist/electron --type=gpu-process --gpu-recent-crash-count=0 --disable-dev-shm-usage --disable-breakpad --ozone-platform=x11 --enable-crash-reporter=f9d301b1-7b6f-4183-a78d-01b012f3611b,no_channel --user-data-dir=/tmp/eros-bench-QSyMBm/desktop --gpu-preferences=YAAAAAAAAAAgAQAEAAAAAAAAAAAAAGAASAAAAAAAAAABAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAAEAAAAAAAAACAAAAAAAAAAMAAAAAQAAAAAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --shared-files --field-trial-handle=3,i,14464552530182084118,12011012615658326592,262144 --enable-features=CDPScreenshotNewSurface,GlobalShortcutsPortalPreferredTrigger,PdfUseShowSaveFilePicker --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,DropInputEventsWhilePaintHolding,GlobalMediaControls,HttpsUpgrades,LensOverlay,LocalNetworkAccessChecks,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ScreenAIOCREnabled,SpareRendererForSitePerProcess,ThirdPartyStoragePartitioning,TraceSiteInstanceGetProcessCreation,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,5631254562703145149,3307026108494798001,4 --trace-process-track-uuid=3190708988185955192
+   4378 electron        /home/eros/eros/node_modules/electron/dist/electron --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --disable-dev-shm-usage --enable-crash-reporter=f9d301b1-7b6f-4183-a78d-01b012f3611b,no_channel --user-data-dir=/tmp/eros-bench-QSyMBm/desktop --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,14464552530182084118,12011012615658326592,262144 --enable-features=CDPScreenshotNewSurface,GlobalShortcutsPortalPreferredTrigger,PdfUseShowSaveFilePicker --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,DropInputEventsWhilePaintHolding,GlobalMediaControls,HttpsUpgrades,LensOverlay,LocalNetworkAccessChecks,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ScreenAIOCREnabled,SpareRendererForSitePerProcess,ThirdPartyStoragePartitioning,TraceSiteInstanceGetProcessCreation,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,5631254562703145149,3307026108494798001,4 --trace-process-track-uuid=3190708989122997041
+   4393 electron        /home/eros/eros/node_modules/electron/dist/electron --type=renderer --enable-crash-reporter=f9d301b1-7b6f-4183-a78d-01b012f3611b,no_channel --user-data-dir=/tmp/eros-bench-QSyMBm/desktop --app-path=/home/eros/eros/dist/desktop --enable-sandbox --disable-dev-shm-usage --allow-file-access-from-files --disable-back-forward-cache --disable-background-timer-throttling --disable-breakpad --force-color-profile=srgb --remote-debugging-port=0 --allow-pre-commit-input --ozone-platform=x11 --lang=en-US --num-raster-threads=1 --renderer-client-id=4 --launch-time-ticks=195600142 --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,14464552530182084118,12011012615658326592,262144 --enable-features=CDPScreenshotNewSurface,GlobalShortcutsPortalPreferredTrigger,PdfUseShowSaveFilePicker --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,DropInputEventsWhilePaintHolding,GlobalMediaControls,HttpsUpgrades,LensOverlay,LocalNetworkAccessChecks,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ScreenAIOCREnabled,SpareRendererForSitePerProcess,ThirdPartyStoragePartitioning,TraceSiteInstanceGetProcessCreation,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,5631254562703145149,3307026108494798001,4 --trace-process-track-uuid=3190708990060038890
+   4432 bash            bash -c cat /etc/os-release; uname -a; cat /sys/module/apparmor/parameters/enabled; cat /proc/self/attr/current; cat /proc/sys/kernel/unprivileged_userns_clone; cat /proc/sys/user/max_user_namespaces; free -m; lscpu | head -20; ps -eo pid,comm,args | grep -E "electron|Xvfb" | head -12
+   4443 grep            grep -E electron|Xvfb
