@@ -1,0 +1,58 @@
+{
+  "host": {
+    "date": "2026-10-24T01:23:16.895Z",
+    "platform": "linux",
+    "release": "6.12.113+deb13-cloud-amd64",
+    "arch": "x64",
+    "cpu": "Intel(R) Core(TM) i3-10100F CPU @ 3.60GHz",
+    "logicalCPUs": 2,
+    "ramGiB": 3.830493927001953,
+    "node": "v24.21.0",
+    "electron": "45.0.0",
+    "testEnvironment": "Debian13 KVM 2vCPU 4GiB Xvfb1440x1000 DBus software GPU; host load uncontrolled",
+    "display": "X11",
+    "distribution": "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"13\"\nVERSION=\"13 (trixie)\"\nVERSION_CODENAME=trixie\nDEBIAN_VERSION_FULL=13.7\nID=debian\nHOME_URL=\"https://www.debian.org/\"\nSUPPORT_URL=\"https://www.debian.org/support\"\nBUG_REPORT_URL=\"https://bugs.debian.org/\"\n",
+    "notes": "Single local run; other desktop workloads active. CPU=100% per logical core; RSS sum double counts shared pages; PSS apportions shared pages. No CLIs/models."
+  },
+  "metrics": {
+    "startupMs": 167.759392,
+    "idle": {
+      "durationMs": 5005.6133899999995,
+      "processes": [
+        {
+          "pid": 13150,
+          "ppid": 13142,
+          "startTicks": "101341",
+          "cpuSeconds": 0.12,
+          "rssBytes": 72048640,
+          "pssBytes": 40393728
+        }
+      ],
+      "rssMiB": 68.7109375,
+      "pssMiB": 38.5224609375,
+      "cpuPercentOneCore": 0
+    },
+    "streaming": {
+      "durationMs": 5004.832896000001,
+      "processes": [
+        {
+          "pid": 13150,
+          "ppid": 13142,
+          "startTicks": "101341",
+          "cpuSeconds": 0.13,
+          "rssBytes": 72060928,
+          "pssBytes": 40406016
+        }
+      ],
+      "rssMiB": 68.72265625,
+      "pssMiB": 38.5341796875,
+      "cpuPercentOneCore": 0.1998068708346343
+    },
+    "roundtrip": {
+      "samples": 200,
+      "p50Ms": 0.47462799999993877,
+      "p95Ms": 0.7212060000001657,
+      "maxMs": 1.1155409999992116
+    }
+  }
+}

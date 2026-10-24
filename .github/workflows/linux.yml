@@ -1,0 +1,37 @@
+name: Linux validation
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-dbus build-essential git xvfb xauth dbus-x11 libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libcups2t64 libdrm2 libgbm1 libgtk-3-0t64 libnotify4 libnss3 libx11-xcb1 libxkbcommon0 libxss1 libxtst6
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - name: Phase 0 Electron sandbox and lifecycle
+        run: xvfb-run -a dbus-run-session -- npm run test:desktop
+      - name: Phase 3 continuity, recovery, security and PTY lifecycle
+        run: EROS_TEST_NOTIFICATIONS=1 xvfb-run -a dbus-run-session -- npm run test:e2e
+      - name: Upload benchmark and E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eros-linux-phase3-evidence
+          path: benchmarks/runs/
+          if-no-files-found: ignore
