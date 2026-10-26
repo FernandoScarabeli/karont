@@ -17,6 +17,23 @@ import {
   diffResultSchema,
   rollbackResultSchema,
   fileChangeSchema,
+  addProjectResultSchema,
+  chatDetailsSchema,
+  chatPageSchema,
+  chatRunPageSchema,
+  deliveryListSchema,
+  deliverySchema,
+  messagePageSchema,
+  messageSaveResultSchema,
+  movePreviewSchema,
+  navigationSchema,
+  projectPageSchema,
+  workspacePageSchema,
+  workspaceSchema,
+  workspaceProjectSchema,
+  taskDetailsSchema,
+  taskEventPageSchema,
+  taskPageSchema,
   type Command,
   type Snapshot,
   type TerminalEvent,
@@ -26,6 +43,70 @@ const okSchema = z.object({ ok: z.literal(true) }).strict();
 function responseValidator(command: Command) {
   let schema: z.ZodType;
   switch (command.method) {
+    case 'workspaces.list':
+      schema = workspacePageSchema;
+      break;
+    case 'workspaces.create':
+    case 'workspaces.rename':
+      schema = workspaceSchema;
+      break;
+    case 'projects.update':
+      schema = workspaceProjectSchema;
+      break;
+    case 'projects.add':
+      schema = addProjectResultSchema;
+      break;
+    case 'projects.list':
+      schema = command.value ? projectPageSchema : projectListSchema;
+      break;
+    case 'chats.list':
+      schema = chatPageSchema;
+      break;
+    case 'chats.create':
+    case 'chats.get':
+    case 'chats.rename':
+    case 'chats.open':
+    case 'chats.favorite':
+    case 'chats.draft':
+    case 'chats.move':
+      schema = chatDetailsSchema;
+      break;
+    case 'chats.move.preview':
+      schema = movePreviewSchema;
+      break;
+    case 'messages.list':
+      schema = messagePageSchema;
+      break;
+    case 'messages.save':
+      schema = messageSaveResultSchema;
+      break;
+    case 'messages.send':
+      schema = deliverySchema;
+      break;
+    case 'messages.deliveries':
+      schema = deliveryListSchema;
+      break;
+    case 'chats.runs.list':
+      schema = chatRunPageSchema;
+      break;
+    case 'tasks.list':
+      schema = taskPageSchema;
+      break;
+    case 'tasks.events.list':
+      schema = taskEventPageSchema;
+      break;
+    case 'tasks.get':
+    case 'tasks.create':
+    case 'tasks.update':
+    case 'tasks.assignees.set':
+    case 'tasks.runs.link':
+    case 'tasks.runs.unlink':
+      schema = taskDetailsSchema;
+      break;
+    case 'navigation.get':
+    case 'navigation.set':
+      schema = navigationSchema;
+      break;
     case 'checkpoints.list':
     case 'checkpoints.create':
       schema = z.array(checkpointSchema).max(100);
@@ -57,9 +138,6 @@ function responseValidator(command: Command) {
       break;
     case 'dots.list':
       schema = dotListSchema;
-      break;
-    case 'projects.list':
-      schema = projectListSchema;
       break;
     case 'runs.list':
       schema = z.array(runSchema).max(100);

@@ -164,6 +164,7 @@ try {
   const page = await app.firstWindow();
   page.setDefaultTimeout(12000);
   await page.getByText('Daemon conectado', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Laboratório', exact: true }).click();
   electronProcess = app.process();
   const electronPid = electronProcess.pid;
   daemonPid = (await client.request({ method: 'ping' })).pid;
@@ -181,7 +182,7 @@ try {
   result.checks.push('sandbox runtime, Seccomp=2 e NoNewPrivs=1');
   await page.getByRole('button', { name: 'Diagnóstico', exact: true }).click();
   await page.getByText('Coleta sob demanda. “Não verificado” não significa disponível.').waitFor();
-  assert.ok((await page.locator('.diagnostic-list dt').count()) > 5);
+  await page.waitForFunction(() => document.querySelectorAll('.diagnostic-list dt').length > 5);
   const diagnosticShot = path.join(evidence, 'phase2-diagnostics.png');
   await page.screenshot({ path: diagnosticShot, fullPage: true });
   result.artifacts.push(diagnosticShot);
@@ -199,6 +200,7 @@ try {
   assert.ok(!report.includes('PTY_READY'));
   assert.ok(!report.includes(repo));
   await page.getByRole('button', { name: 'Copiar relatório', exact: true }).click();
+  await page.getByText('Relatório copiado.', { exact: true }).waitFor();
   assert.match(await app.evaluate(({ clipboard }) => clipboard.readText()), /# eros/);
   const savedReport = path.join(ctx.root, 'saved-report.md');
   await app.evaluate(({ dialog }, file) => {
@@ -319,6 +321,7 @@ try {
   });
   let restored = await nextWindow;
   await restored.getByText('Daemon conectado', { exact: true }).waitFor();
+  await restored.getByRole('button', { name: 'Laboratório', exact: true }).click();
   assert.equal(
     (await client.request({ method: 'ping' })).pid,
     daemonPid,
@@ -463,6 +466,7 @@ try {
   });
   restored = await nextAgain;
   await restored.getByText('Daemon conectado', { exact: true }).waitFor();
+  await restored.getByRole('button', { name: 'Laboratório', exact: true }).click();
   if (second.exitCode === null && second.signalCode === null) await once(second, 'exit');
   const reconnectRun = await client.request({
     method: 'runs.start',

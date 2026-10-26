@@ -22,15 +22,74 @@ contextBridge.exposeInMainWorld('eros', {
     ipcRenderer.on('eros:focus-run', handler);
     return () => ipcRenderer.removeListener('eros:focus-run', handler);
   },
+  workspaces: (cursor?: string, limit = 100) =>
+    ipcRenderer.invoke('eros:workspaces:list', { cursor, limit }),
+  createWorkspace: (name: string) =>
+    ipcRenderer.invoke('eros:workspaces:create', { name, operationId: crypto.randomUUID() }),
+  renameWorkspace: (workspaceId: string, name: string) =>
+    ipcRenderer.invoke('eros:workspaces:rename', { workspaceId, name, operationId: crypto.randomUUID() }),
   dots: () => ipcRenderer.invoke('eros:dots:list'),
-  projects: () => ipcRenderer.invoke('eros:projects:list'),
+  projects: (workspaceId?: string, cursor?: string, limit = 100) =>
+    ipcRenderer.invoke('eros:projects:list', workspaceId ? { workspaceId, cursor, limit } : undefined),
+  projectIndex: (cursor?: string, limit = 100) =>
+    ipcRenderer.invoke('eros:projects:list', { cursor, limit }),
+  updateProject: (input: { projectId: string; name: string; root: string; icon: string }) => ipcRenderer.invoke('eros:projects:update', { ...input, operationId: crypto.randomUUID() }),
+  chooseProjectFolder: () => ipcRenderer.invoke('eros:projects:choose-folder'),
+  addProject: (input: { workspaceId: string; name: string; root: string; icon: string; dotIds: string[] }) =>
+    ipcRenderer.invoke('eros:projects:add', input),
+  chats: (input: { scope?: 'all' | 'favorites' | 'recent' | 'free'; workspaceId?: string; projectId?: string; cursor?: string; limit?: number }) =>
+    ipcRenderer.invoke('eros:chats:list', { ...input, limit: input.limit ?? 100 }),
+  createChat: (input: { workspaceId?: string | null; projectId?: string | null; dotId?: string | null; title: string }) =>
+    ipcRenderer.invoke('eros:chats:create', { ...input, operationId: crypto.randomUUID() }),
+  chat: (chatId: string) => ipcRenderer.invoke('eros:chats:get', { chatId }),
+  renameChat: (chatId: string, title: string, expectedRevision: number) =>
+    ipcRenderer.invoke('eros:chats:rename', { chatId, title, expectedRevision, operationId: crypto.randomUUID() }),
+  openChat: (chatId: string) =>
+    ipcRenderer.invoke('eros:chats:open', { chatId, operationId: crypto.randomUUID() }),
+  favoriteChat: (chatId: string, favorite: boolean, expectedRevision: number) =>
+    ipcRenderer.invoke('eros:chats:favorite', { chatId, favorite, expectedRevision, operationId: crypto.randomUUID() }),
+  saveDraft: (chatId: string, draft: string, expectedRevision: number) =>
+    ipcRenderer.invoke('eros:chats:draft', { chatId, draft, expectedRevision, operationId: crypto.randomUUID() }),
+  previewMoveChat: (chatId: string, projectId: string, dotId?: string) =>
+    ipcRenderer.invoke('eros:chats:move-preview', { chatId, projectId, ...(dotId ? { dotId } : {}) }),
+  moveChat: (chatId: string, projectId: string, dotId: string, expectedRevision: number) =>
+    ipcRenderer.invoke('eros:chats:move', { chatId, projectId, dotId, expectedRevision, confirmed: true, operationId: crypto.randomUUID() }),
+  messages: (chatId: string, cursor?: string, limit = 100) =>
+    ipcRenderer.invoke('eros:messages:list', { chatId, cursor, limit }),
+  saveMessage: (chatId: string, body: string, expectedRevision: number) =>
+    ipcRenderer.invoke('eros:messages:save', { chatId, body, expectedRevision, operationId: crypto.randomUUID() }),
+  sendMessage: (input: { chatId: string; messageId: string; runId: string; reviewedUncertain?: boolean }) =>
+    ipcRenderer.invoke('eros:messages:send', { ...input, operationId: crypto.randomUUID() }),
+  messageDeliveries: (chatId: string, messageId: string) =>
+    ipcRenderer.invoke('eros:messages:deliveries', { chatId, messageId }),
+  chatRuns: (chatId: string, cursor?: string, limit = 100) =>
+    ipcRenderer.invoke('eros:chats:runs', { chatId, cursor, limit }),
+  tasks: (input: { workspaceId?: string; projectId?: string; state?: string; assignee?: { kind: 'local' | 'dot'; id: string }; cursor?: string; limit?: number }) =>
+    ipcRenderer.invoke('eros:tasks:list', { ...input, limit: input.limit ?? 100 }),
+  task: (taskId: string) => ipcRenderer.invoke('eros:tasks:get', { taskId }),
+  createTask: (input: { projectId: string; title: string; description?: string; state?: string; assignees?: { kind: 'local' | 'dot'; id: string }[]; originChatId?: string | null; originMessageId?: string | null }, operationId = crypto.randomUUID()) =>
+    ipcRenderer.invoke('eros:tasks:create', { ...input, operationId }),
+  updateTask: (input: { taskId: string; title?: string; description?: string; state?: string; expectedRevision: number }) =>
+    ipcRenderer.invoke('eros:tasks:update', { ...input, operationId: crypto.randomUUID() }),
+  setTaskAssignees: (input: { taskId: string; assignees: { kind: 'local' | 'dot'; id: string }[]; expectedRevision: number }) =>
+    ipcRenderer.invoke('eros:tasks:assignees:set', { ...input, operationId: crypto.randomUUID() }),
+  linkTaskRun: (input: { taskId: string; runId: string; expectedRevision: number }) =>
+    ipcRenderer.invoke('eros:tasks:runs:link', { ...input, operationId: crypto.randomUUID() }),
+  unlinkTaskRun: (input: { taskId: string; runId: string; expectedRevision: number }) =>
+    ipcRenderer.invoke('eros:tasks:runs:unlink', { ...input, operationId: crypto.randomUUID() }),
+  taskEvents: (taskId: string, cursor?: string, limit = 100) =>
+    ipcRenderer.invoke('eros:tasks:events:list', { taskId, cursor, limit }),
+  navigation: () => ipcRenderer.invoke('eros:navigation:get'),
+  setNavigation: (input: { workspaceId: string | null; projectId: string | null; chatId: string | null }) =>
+    ipcRenderer.invoke('eros:navigation:set', { ...input, operationId: crypto.randomUUID() }),
   runs: (limit = 40) => ipcRenderer.invoke('eros:runs:list', { limit }),
-  startRun: (dotId: string, projectId: string, permissionMode = 'ask', elevatedConfirmed = false) =>
+  startRun: (dotId: string, projectId: string, permissionMode = 'ask', elevatedConfirmed = false, chatId?: string) =>
     ipcRenderer.invoke('eros:runs:start', {
       dotId,
       projectId,
       permissionMode,
       elevatedConfirmed,
+      ...(chatId ? { chatId } : {}),
       operationId: crypto.randomUUID(),
     }),
   attachTerminal: (runId: string) => ipcRenderer.invoke('eros:terminal:attach', { runId }),

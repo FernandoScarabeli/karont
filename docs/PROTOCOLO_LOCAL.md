@@ -94,3 +94,68 @@ Replay de criação de checkpoint, enqueue e retomada com a mesma chave e transi
 Riscos residuais: processos do mesmo UID podem acessar os dados locais; PID/starttime são observações sujeitas a mudanças entre leituras; não há pidfd, supervisor ou isolamento de descendentes que mudam de sessão. Não é oferecido reattach de PTY após morte do daemon. Revalidação do Git reduz alterações de escopo, sem eliminar corridas com processos externos do usuário. Fingerprints têm limites de leitura (diff 8 MiB, arquivo não rastreado 2 MiB); inspeção incompleta falha conservadoramente. A migração desativa FKs apenas para reconstruir runs em transação e verifica referências após reativação; backups e recuperação de corrupção física não fazem parte desta fase.
 
 Notificações são deduplicadas no main por evento/sessão durante reinícios do daemon; notificações não são confirmação de execução nem de leitura humana. Se o próprio main reiniciar, sua memória de entregas não persiste: títulos podem ser submetidos novamente. Uma outbox durável com confirmação D-Bus não foi implementada; não se promete exactly once de notificações.
+
+## SPEC-005 — organização do trabalho (Fase 4A)
+
+A versão de transporte permanece 1: socket Unix privado, HMAC mútuo, framing
+JSON/LF limitado a 64 KiB, validação Zod estrita e main process como fronteira
+dos diálogos nativos. O preload acrescenta capacidades nomeadas para workspaces,
+projetos, chats, mensagens, navegação e entregas; não há `invoke` genérico nem
+API de caminhos para o renderer. `projects.add` só é alcançado pelo main depois
+da seleção e confirmação nativas. A raiz, executável, argumentos e ambiente não
+são campos editáveis pelo renderer.
+
+Requests e respostas incluem `workspaces.list/create/rename`, `projects.list`,
+`chats.list/create/get/rename/open/favorite/move.preview/move`,
+`messages.list/save/send/deliveries`, `chats.runs.list` e `navigation.get/set`.
+Mutação recebe `operationId`; o daemon associa a chave ao método e hash do payload
+em transação e rejeita reuse com outro conteúdo. Chat/mensagem usam revisão
+otimista. Listagens têm cursor estável, limite 100 e orçamento de resposta menor
+que o frame máximo; mensagens grandes continuam pagináveis sem omitir itens.
+
+Eventos tipados `workspace.updated`, `project.updated`, `chat.updated`,
+`message.created` e `message.delivery.updated` carregam IDs, revisão, sequência e
+estado de entrega, não o corpo da mensagem. Uma tentativa `messages.send` precisa
+referenciar a mensagem e a Run da mesma conversa, reserva uma intenção persistida
+antes da escrita PTY e nunca repete automaticamente. Intenção sem confirmação é
+`uncertain`; nova tentativa requer revisão explícita e chave nova. Eventos e
+relatório não recebem texto de terminal nem conteúdo de Messages.
+
+A associação a Chat é opcional em `runs.start` para preservar clientes existentes.
+Quando presente, o daemon deriva e valida Dot/projeto do Chat, restringe a uma Run
+não terminal por conversa e revalida grants no enqueue/launch/resume. Eventos e
+consultas autoritativas reconduzem a UI após perda; eventos não transportam
+comandos de replay.
+
+A implementação requer main, renderer, daemon e cliente da mesma build. Esta
+extensão documenta o contrato executado localmente; não representa revisão formal
+ou aprovação externa do protocolo, que continua pendente.
+
+## SPEC-006 — tarefas Kanban (extensão local, revisão formal pendente)
+
+A versão de transporte continua 1 e conserva socket privado, HMAC, frame JSON/LF
+de até 64 KiB, limites por conexão e validação Zod estrita. A extensão adiciona
+somente operações nomeadas: `tasks.list/get/create/update`,
+`tasks.assignees.set`, `tasks.runs.link/unlink` e `tasks.events.list`. O main
+registra canais IPC específicos; preload e API do renderer não expõem chamada
+arbitrária, shell ou filesystem genérico.
+
+`tasks.create`, `tasks.update`, `tasks.assignees.set` e operações de vínculo
+recebem `operationId`; alterações também recebem revisão esperada. O daemon gera
+ID/timestamps, verifica projeto e origem, valida Dot contra configuração/grants
+efetivos, e rejeita referência cruzada de projeto. Uma conversa ou mensagem de
+origem precisa pertencer ao projeto/conversa declarados; Run precisa existir e
+ser do mesmo projeto. Reuse de chave com payload diferente e revisão obsoleta
+são recusados. Remover ou adicionar Run muda só a associação.
+
+Listagens e histórico usam cursor, limite máximo de 100 e orçamento em bytes
+abaixo do frame. Resumos não incluem descrição; detalhes e eventos são sob
+demanda. Eventos de tarefa são append-only. Título/descrição são texto simples e
+não chegam a notificação, relatório ou log. Eventos tipados de tarefa carregam
+IDs/revisão e estado, sem texto privado. Criação, atribuição e mudança de estado
+não iniciam Runs nem enviam mensagens.
+
+O cliente desktop, main, daemon e contratos precisam ser da mesma build. Esta
+extensão registra a implementação local, sem representar revisão ou aprovação
+formal do protocolo completo. Ver [SPEC_006_IMPLEMENTACAO.md](SPEC_006_IMPLEMENTACAO.md)
+para migração v5→v6, testes, matriz B0–B16, evidências e limites.

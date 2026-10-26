@@ -13,10 +13,12 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { issueReport } from '../../../packages/local/src/report';
 import { NotificationCenter } from './notifications';
-import { APP_VERSION, type DiagnosticItem } from '../../../packages/contracts/src';
+import { APP_VERSION, type DiagnosticItem, type Dot } from '../../../packages/contracts/src';
 import { pathToFileURL } from 'node:url';
 import { trayIcon } from './tray-icon';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { Client } from '../../../packages/local/src/client';
 import {
   layoutSchema,
@@ -60,6 +62,14 @@ const notifications = new NotificationCenter((title, click, fail) => {
   notification.show();
   return true;
 });
+const projectAddUiSchema = z.object({
+  workspaceId: z.string().uuid(),
+  name: z.string().trim().min(1).max(120),
+  root: z.string().min(1).max(4096),
+  icon: z.enum(['folder', 'code-xml', 'globe', 'terminal', 'layers', 'briefcase', 'book-open', 'rocket']),
+  dotIds: z.array(z.string().min(1).max(80).regex(/^[a-zA-Z0-9._-]+$/)).max(8)
+    .refine((ids) => new Set(ids).size === ids.length),
+}).strict();
 try {
   notifications.enabled = JSON.parse(fs.readFileSync(preferencesPath, 'utf8')).enabled !== false;
 } catch {}
@@ -215,11 +225,51 @@ if (!app.requestSingleInstanceLock()) {
         targetRun = undefined;
         return id;
       });
+      ipcMain.handle('eros:projects:choose-folder', async (event) => {
+        authorize(event);
+        const selected = await dialog.showOpenDialog(win!, { title: 'Escolher pasta raiz', buttonLabel: 'Selecionar pasta', properties: ['openDirectory'] });
+        authorize(event);
+        return selected.canceled ? null : selected.filePaths[0] ?? null;
+      });
+      ipcMain.handle('eros:projects:add', async (event, value: unknown) => {
+        authorize(event);
+        const input = projectAddUiSchema.parse(value);
+        if (input.dotIds.length) throw Error('Concessões são configuradas separadamente do cadastro de projeto');
+        return client.request({ method: 'projects.add', value: { ...input, operationId: randomUUID() } });
+      });
       const handlers: [string, Command['method'], (value: any) => object][] = [
+        ['eros:workspaces:list', 'workspaces.list', (value) => ({ value })],
+        ['eros:workspaces:create', 'workspaces.create', (value) => ({ value })],
+        ['eros:workspaces:rename', 'workspaces.rename', (value) => ({ value })],
         ['eros:approvals:list', 'approvals.list', noValue],
         ['eros:approvals:decide', 'approvals.decide', (value) => ({ value })],
         ['eros:dots:list', 'dots.list', noValue],
-        ['eros:projects:list', 'projects.list', noValue],
+        ['eros:projects:list', 'projects.list', (value) => value === undefined ? {} : ({ value })],
+        ['eros:projects:update', 'projects.update', (value) => ({ value })],
+        ['eros:chats:list', 'chats.list', (value) => ({ value })],
+        ['eros:chats:create', 'chats.create', (value) => ({ value })],
+        ['eros:chats:get', 'chats.get', (value) => ({ value })],
+        ['eros:chats:rename', 'chats.rename', (value) => ({ value })],
+        ['eros:chats:open', 'chats.open', (value) => ({ value })],
+        ['eros:chats:favorite', 'chats.favorite', (value) => ({ value })],
+        ['eros:chats:draft', 'chats.draft', (value) => ({ value })],
+        ['eros:chats:move-preview', 'chats.move.preview', (value) => ({ value })],
+        ['eros:chats:move', 'chats.move', (value) => ({ value })],
+        ['eros:messages:list', 'messages.list', (value) => ({ value })],
+        ['eros:messages:save', 'messages.save', (value) => ({ value })],
+        ['eros:messages:send', 'messages.send', (value) => ({ value })],
+        ['eros:messages:deliveries', 'messages.deliveries', (value) => ({ value })],
+        ['eros:chats:runs', 'chats.runs.list', (value) => ({ value })],
+        ['eros:tasks:list', 'tasks.list', (value) => ({ value })],
+        ['eros:tasks:get', 'tasks.get', (value) => ({ value })],
+        ['eros:tasks:create', 'tasks.create', (value) => ({ value })],
+        ['eros:tasks:update', 'tasks.update', (value) => ({ value })],
+        ['eros:tasks:assignees:set', 'tasks.assignees.set', (value) => ({ value })],
+        ['eros:tasks:runs:link', 'tasks.runs.link', (value) => ({ value })],
+        ['eros:tasks:runs:unlink', 'tasks.runs.unlink', (value) => ({ value })],
+        ['eros:tasks:events:list', 'tasks.events.list', (value) => ({ value })],
+        ['eros:navigation:get', 'navigation.get', noValue],
+        ['eros:navigation:set', 'navigation.set', (value) => ({ value })],
         ['eros:runs:list', 'runs.list', (value) => ({ value })],
         ['eros:checkpoints:list', 'checkpoints.list', (value) => ({ value })],
         ['eros:checkpoints:create', 'checkpoints.create', (value) => ({ value })],
@@ -376,8 +426,8 @@ async function createWindow() {
     minWidth: 840,
     minHeight: 620,
     show: false,
-    backgroundColor: '#151918',
-    title: 'eros · laboratório de arquitetura',
+    backgroundColor: '#141414',
+    title: 'Karont',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

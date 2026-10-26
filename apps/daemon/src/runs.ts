@@ -21,6 +21,7 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024;
 type State = RunState;
 type RunRow = {
   id: string;
+  chat_id: string | null;
   dot_id: string;
   project_id: string;
   state: State;
@@ -167,7 +168,11 @@ export class RunManager {
       id: dot.id,
       name: dot.name,
       role: dot.role,
-      projectIds: dot.projectIds,
+      projectIds: (this.db.prepare('SELECT id,origin FROM projects ORDER BY id').all() as { id: string; origin: string }[])
+        .filter((project) => project.origin === 'config'
+          ? dot.projectIds.includes(project.id)
+          : Boolean(this.db.prepare('SELECT 1 FROM project_dot_grants WHERE project_id=? AND dot_id=?').get(project.id, dot.id)))
+        .map((project) => project.id),
       capabilities: capabilities(dot),
     }));
   }
@@ -187,6 +192,7 @@ export class RunManager {
       permissionMode: row.permission_mode,
       autoResumeEnabled: row.auto_resume === 1,
       id: row.id,
+      chatId: row.chat_id ?? null,
       dotId: row.dot_id,
       projectId: row.project_id,
       state: row.state,
@@ -209,21 +215,55 @@ export class RunManager {
     if (!row) throw Error('Execução não encontrada');
     return { row, run: this.serialize(row) };
   }
+  private authorizedForProject(
+    dot: DotConfig,
+    project: { id: string; origin: string },
+  ) {
+    if (!this.configuredDots.some((configured) => configured.id === dot.id)) return false;
+    if (project.origin === 'config') return dot.projectIds.includes(project.id);
+    return Boolean(
+      this.db
+        .prepare('SELECT 1 FROM project_dot_grants WHERE project_id=? AND dot_id=?')
+        .get(project.id, dot.id),
+    );
+  }
+  private validateProjectRoot(rootValue: string) {
+    try {
+      const root = fs.realpathSync(rootValue);
+      if (!fs.statSync(root).isDirectory()) throw Error();
+      fs.accessSync(root, fs.constants.R_OK | fs.constants.X_OK);
+      const topLevel = fs.realpathSync(String(git(root, ['rev-parse', '--show-toplevel'])).trim());
+      if (topLevel !== root || git(root, ['rev-parse', '--is-inside-work-tree']).trim() !== 'true')
+        throw Error();
+      execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd: root, stdio: 'ignore' });
+      return root;
+    } catch {
+      throw Error('Projeto Git indisponível ou sem commit inicial');
+    }
+  }
   async start(
     dotId: string,
     projectId: string,
     mode: PermissionMode = 'ask',
     confirmed = false,
     operationId?: string,
+    chatId?: string,
   ) {
     const dot = this.configuredDots.find((d) => d.id === dotId);
-    if (!dot || !dot.projectIds.includes(projectId))
+    const project = this.db
+      .prepare('SELECT id,root,git_root,origin FROM projects WHERE id=?')
+      .get(projectId) as { id: string; root: string; git_root: string; origin: string } | undefined;
+    if (!dot || !project || !this.authorizedForProject(dot, project))
       throw Error('Dot não autorizado para este projeto');
     permissionArgs(dot, mode, confirmed);
-    const project = this.db
-      .prepare('SELECT id,root,git_root FROM projects WHERE id=?')
-      .get(projectId) as { id: string; root: string; git_root: string } | undefined;
-    if (!project) throw Error('Projeto não encontrado');
+    this.validateProjectRoot(project.root);
+    if (chatId) {
+      const chat = this.db.prepare('SELECT project_id,dot_id FROM chats WHERE id=?').get(chatId) as
+        | { project_id: string | null; dot_id: string | null }
+        | undefined;
+      if (!chat || chat.project_id !== projectId || (chat.dot_id !== null && chat.dot_id !== dotId))
+        throw Error('Conversa não corresponde ao Dot e projeto selecionados');
+    }
     if (operationId) {
       const previous = this.db
         .prepare('SELECT run_id,kind FROM operations WHERE id=?')
@@ -234,23 +274,31 @@ export class RunManager {
           previous.kind !== 'enqueue' ||
           old.dotId !== dotId ||
           old.projectId !== projectId ||
-          old.permissionMode !== mode
+          old.permissionMode !== mode ||
+          old.chatId !== (chatId ?? null)
         )
           throw Error('Chave de operação reutilizada');
         return old;
       }
     }
+    if (chatId) {
+      const activeChatRun = this.db
+        .prepare("SELECT id FROM runs WHERE chat_id=? AND state NOT IN ('completed','failed','cancelled') LIMIT 1")
+        .get(chatId);
+      if (activeChatRun) throw Error('Conversa já tem uma execução não terminal vinculada');
+    }
     const id = randomUUID(),
       now = Date.now();
     this.continuity.transaction(() => {
+      if (chatId) this.db.prepare('UPDATE chats SET dot_id=?,revision=revision+1,updated_at=? WHERE id=? AND dot_id IS NULL').run(dotId, now, chatId);
       this.db
         .prepare(
-          "INSERT INTO runs(id,dot_id,project_id,state,created_at,permission_mode,auto_resume) VALUES(?,?,?,'queued',?,?,?)",
+          "INSERT INTO runs(id,dot_id,project_id,chat_id,state,created_at,permission_mode,auto_resume) VALUES(?,?,?,?,'queued',?,?,?)",
         )
-        .run(id, dotId, projectId, now, mode, dot.autoResume === false ? 0 : 1);
+        .run(id, dotId, projectId, chatId ?? null, now, mode, dot.autoResume === false ? 0 : 1);
       const key = operationId ?? randomUUID();
       this.continuity.begin(key, id, 'enqueue');
-      this.event(id, 'run.queued', { dotId, projectId });
+      this.event(id, 'run.queued', { dotId, projectId, chatId: chatId ?? null });
       this.continuity.complete(key);
       this.continuity.checkpoint(id, 'before_start');
     });
@@ -284,14 +332,16 @@ export class RunManager {
     const { row } = this.getRun(id);
     const dot = this.configuredDots.find((d) => d.id === row.dot_id);
     const project = this.db
-      .prepare('SELECT root,git_root FROM projects WHERE id=?')
-      .get(row.project_id) as { root: string; git_root: string } | undefined;
-    if (!dot || !project) throw Error('Configuração de execução indisponível');
-    const root = fs.realpathSync(project.root);
+      .prepare('SELECT root,git_root,origin,id FROM projects WHERE id=?')
+      .get(row.project_id) as { root: string; git_root: string; origin: string; id: string } | undefined;
+    if (!dot || !project || !this.authorizedForProject(dot, project))
+      throw Error('Dot não autorizado para este projeto');
+    const root = this.validateProjectRoot(project.root);
     const gitRoot = String(git(root, ['rev-parse', '--show-toplevel'])).trim();
     const isWorktree = String(git(root, ['rev-parse', '--is-inside-work-tree'])).trim() === 'true';
     if (!isWorktree || fs.realpathSync(gitRoot) !== root)
       throw Error('Projeto não é a raiz de um repositório Git válido');
+    execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd: root, stdio: 'ignore' });
     const executable = fs.realpathSync(dot.executable);
     const execStat = fs.statSync(executable);
     fs.accessSync(executable, fs.constants.X_OK);
@@ -607,8 +657,12 @@ export class RunManager {
         throw Error('Acesso total exige nova execução e confirmação nativa');
     }
     const dot = this.configuredDots.find((d) => d.id === row.dot_id);
-    if (!dot || !dot.projectIds.includes(row.project_id))
+    const project = this.db.prepare('SELECT id,root,origin FROM projects WHERE id=?').get(row.project_id) as
+      | { id: string; root: string; origin: string }
+      | undefined;
+    if (!dot || !project || !this.authorizedForProject(dot, project))
       throw Error('Dot não autorizado para este projeto');
+    this.validateProjectRoot(project.root);
     permissionArgs(
       dot,
       row.permission_mode,
@@ -664,6 +718,9 @@ export class RunManager {
     if (!active) throw Error('Terminal não está ativo');
     active.process.write(data);
     return { ok: true };
+  }
+  isActive(runId: string) {
+    return this.active.has(runId);
   }
   resize(runId: string, cols: number, rows: number) {
     const active = this.active.get(runId);

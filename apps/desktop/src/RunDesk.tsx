@@ -4,7 +4,15 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import type { TerminalEvent, PermissionMode } from '../../../packages/contracts/src';
-import type { UiDiff, UiDot, UiProject, UiRollback, UiRun } from './api';
+import type {
+  UiChatDetails,
+  UiDiff,
+  UiDot,
+  UiProject,
+  UiRollback,
+  UiRun,
+  UiWorkspaceProject,
+} from './api';
 
 export const modeLabels: Record<PermissionMode, string> = {
   ask: 'Pedir aprovação',
@@ -213,7 +221,13 @@ function TerminalPane({
   );
 }
 
-export function RunDesk() {
+export function RunDesk({
+  chat,
+  previousOnly = false,
+}: {
+  chat?: UiChatDetails['chat'];
+  previousOnly?: boolean;
+}) {
   const [dots, setDots] = useState<UiDot[]>([]),
     [projects, setProjects] = useState<UiProject[]>([]),
     [runs, setRuns] = useState<UiRun[]>([]);
@@ -224,6 +238,17 @@ export function RunDesk() {
     [rollback, setRollback] = useState<UiRollback>(),
     [busy, setBusy] = useState(false);
   const rollbackDialog = useRef<HTMLDialogElement>(null);
+  useEffect(
+    () => () => {
+      void window.eros.detachTerminals().catch(() => {});
+    },
+    [],
+  );
+  const loadRuns = React.useCallback(async () => {
+    if (chat) return (await window.eros.chatRuns(chat.id)).items;
+    const listed = await window.eros.runs(100);
+    return previousOnly ? listed.filter((run) => run.chatId === null) : listed;
+  }, [chat?.id, previousOnly]);
   useEffect(() => {
     if (rollback) rollbackDialog.current?.showModal();
   }, [rollback]);
@@ -256,20 +281,27 @@ export function RunDesk() {
     });
     const dispose = window.eros.onEvent((event) => {
       setConnectionError('');
-      if (event.type === 'run.updated')
+      if (
+        event.type === 'run.updated' &&
+        (chat ? event.run.chatId === chat.id : previousOnly ? event.run.chatId === null : true)
+      )
         setRuns((current) =>
           current.some((run) => run.id === event.run.id)
             ? current.map((run) => (run.id === event.run.id ? event.run : run))
             : [event.run, ...current].slice(0, 100),
         );
     });
-    void Promise.all([window.eros.dots(), window.eros.projects(), window.eros.runs(100)])
+    const projectRequest =
+      chat?.projectId && chat.workspaceId
+        ? window.eros.projects(chat.workspaceId).then((page) => page.items)
+        : window.eros.projects();
+    void Promise.all([window.eros.dots(), projectRequest, loadRuns()])
       .then(([nextDots, nextProjects, nextRuns]) => {
         if (!mounted) return;
         setDots(nextDots);
         setProjects(nextProjects);
         setRuns(nextRuns);
-        setProjectId(nextProjects[0]?.id ?? '');
+        setProjectId(chat?.projectId ?? nextProjects[0]?.id ?? '');
       })
       .catch(() => {
         if (mounted) setError('Não foi possível carregar dots, projetos e execuções.');
@@ -278,8 +310,7 @@ export function RunDesk() {
         if (mounted) setLoading(false);
       });
     const reconnect = setInterval(() => {
-      void window.eros
-        .runs(100)
+      void loadRuns()
         .then((next) => {
           if (mounted) {
             setRuns(next);
@@ -297,7 +328,7 @@ export function RunDesk() {
       window.removeEventListener('eros-open-run', openRequested);
       clearInterval(reconnect);
     };
-  }, []);
+  }, [chat?.id, chat?.projectId, chat?.workspaceId, loadRuns]);
   const activeCount = runs.filter((run) => run.state === 'running').length;
   // Render a terminal only once its PTY has a session ID. A queued card would
   // attach before launch and then replay again when the PTY starts.
@@ -323,7 +354,7 @@ export function RunDesk() {
     setNotice('');
     setError('');
     try {
-      const run = await window.eros.startRun(dot.id, projectId, mode, mode === 'full');
+      const run = await window.eros.startRun(dot.id, projectId, mode, mode === 'full', chat?.id);
       setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 100));
     } catch {
       setError('Esta execução não pôde iniciar. Confira o dot, o projeto Git e a CLI configurada.');
@@ -395,25 +426,37 @@ export function RunDesk() {
       <div className="desk-heading">
         <div>
           <div className="eyebrow">EROS / EXECUÇÕES LOCAIS</div>
-          <h2 id="runs-title">Bancada de agentes</h2>
-          <p>Dois dots em paralelo, cada um no próprio Git worktree.</p>
+          <h2 id="runs-title">
+            {chat
+              ? 'Execuções desta conversa'
+              : previousOnly
+                ? 'Execuções anteriores'
+                : 'Bancada de agentes'}
+          </h2>
+          <p>
+            {chat
+              ? 'A execução fica vinculada a esta conversa; o terminal continua ativo ao trocar de contexto.'
+              : 'Dois dots em paralelo, cada um no próprio Git worktree.'}
+          </p>
         </div>
-        <label className="project-picker">
-          Projeto Git{' '}
-          <select
-            aria-label="Projeto Git"
-            value={projectId}
-            disabled={!projects.length}
-            onChange={(event) => setProjectId(event.target.value)}
-          >
-            <option value="">Selecione</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!chat && (
+          <label className="project-picker">
+            Projeto Git{' '}
+            <select
+              aria-label="Projeto Git"
+              value={projectId}
+              disabled={!projects.length}
+              onChange={(event) => setProjectId(event.target.value)}
+            >
+              <option value="">Selecione</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       {connectionError && (
         <p className="desk-alert" role="alert">
@@ -444,8 +487,21 @@ export function RunDesk() {
               </p>
             </div>
           ) : (
-            <div className="dot-launchers" aria-label="Dots configurados">
-              {dots.map((dot) => (
+            <div
+              className="dot-launchers"
+              aria-label={chat ? 'Dot desta conversa' : 'Dots configurados'}
+            >
+              {(chat
+                ? dots.filter((dot) =>
+                    chat.dotId
+                      ? dot.id === chat.dotId
+                      : (
+                          (selectedProject as UiWorkspaceProject | undefined)?.dotIds ??
+                          dot.projectIds
+                        ).includes(dot.id) || dot.projectIds.includes(chat.projectId ?? ''),
+                  )
+                : dots
+              ).map((dot) => (
                 <article className="dot-launcher" key={dot.id}>
                   <div className="dot-avatar" aria-hidden="true">
                     {dot.name.slice(0, 1).toUpperCase()}
@@ -491,16 +547,34 @@ export function RunDesk() {
                       busy ||
                       !projectId ||
                       !dot.projectIds.includes(projectId) ||
+                      (chat
+                        ? runs.some(
+                            (run) =>
+                              run.state !== 'completed' &&
+                              run.state !== 'failed' &&
+                              run.state !== 'cancelled',
+                          )
+                        : false) ||
                       dot.capabilities.find((cap) => cap.mode === (modes[dot.id] ?? 'ask'))
                         ?.status === 'unavailable'
                     }
                     onClick={() => void start(dot)}
                   >
-                    {!dot.projectIds.includes(projectId)
-                      ? 'Sem acesso'
-                      : activeCount >= 2
-                        ? 'Enfileirar dot'
-                        : 'Iniciar dot'}
+                    {chat &&
+                    runs.some(
+                      (run) =>
+                        run.state !== 'completed' &&
+                        run.state !== 'failed' &&
+                        run.state !== 'cancelled',
+                    )
+                      ? 'Execução vinculada em andamento'
+                      : !dot.projectIds.includes(projectId)
+                        ? 'Sem acesso'
+                        : activeCount >= 2
+                          ? 'Enfileirar dot'
+                          : chat
+                            ? 'Iniciar execução'
+                            : 'Iniciar dot'}
                   </button>
                 </article>
               ))}

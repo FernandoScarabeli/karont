@@ -19,7 +19,7 @@
     "test": "npm run build && node --test --test-concurrency=1 tests/*.test.mjs",
     "benchmark": "npm run build && node scripts/benchmark.mjs",
     "test:desktop": "npm run build && node scripts/desktop-test.mjs",
-    "test:e2e": "npm run build && node scripts/phase1-e2e.mjs",
+    "test:e2e": "npm run build && node scripts/phase1-e2e.mjs && node scripts/spec005-e2e.mjs && node scripts/spec006-e2e.mjs",
     "daemon:status": "node scripts/daemon-control.mjs",
     "daemon:stop": "node scripts/daemon-control.mjs --stop",
     "format": "prettier --write \"apps/**/*.{ts,tsx,css,html,json}\" \"packages/**/*.{ts,json}\" \"scripts/*.mjs\" \"tests/*.mjs\"",
@@ -28,9 +28,12 @@
     "benchmark:series": "npm run build && node scripts/benchmark-series.mjs"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "codemirror": "^6.0.2",
+    "lucide-react": "^1.61.0",
     "node-pty": "^1.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

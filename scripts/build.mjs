@@ -14,6 +14,7 @@ await build({
     'daemon/continuity': 'apps/daemon/src/continuity.ts',
     'daemon/database': 'apps/daemon/src/database.ts',
     'daemon/runs': 'apps/daemon/src/runs.ts',
+    'daemon/workspaces': 'apps/daemon/src/workspaces.ts',
     'daemon/permissions': 'apps/daemon/src/permissions.ts',
     'daemon/diagnostics': 'apps/daemon/src/diagnostics.ts',
     'desktop/notifications': 'apps/desktop/src/notifications.ts',

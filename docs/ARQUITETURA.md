@@ -31,7 +31,7 @@ As distinções Dot × Chat × Run × Task e a hierarquia Workspace \> Project s
 • Chat/Session — conversa independente de um Dot; opcionalmente livre ou vinculada a Project.  
 • Message — registro de interação em Chat; pode originar tarefa e contexto de Run.  
 • Run — instância de execução com estado; pertence ao contexto de Chat/Dot e pode vincular Task.  
-• Task — trabalho duradouro no Kanban; envolve uma ou mais Runs e responsáveis.  
+• Task — trabalho duradouro no Kanban; pode existir sem Run ou responsável e associar várias Runs ao longo do tempo.
 • Approval — pedido/decisão de autorização associado a Run e operação.  
 • ToolCall — uso de ferramenta dentro de Run; guarda resultado, status e risco.  
 • FileRef — referência a arquivo local ou item importado da biblioteca de Project.  
@@ -161,3 +161,61 @@ Central, Diagnóstico e relatório usam o único renderer existente. Notificaç�
 ## Registro SPEC-004 — continuidade
 
 A Fase 3 acrescenta ao daemon existente uma camada transacional de estados/checkpoints e uma infraestrutura de agendamento por capacidade, sem supervisor externo. Migração v4 preserva dados e adiciona checkpoints/operações/jobs e identidade Linux. Runs interrompidas ficam recovery_needed; PTY perdido não é reanexado. Nova sessão na mesma worktree exige confirmação e não reenvia prompt. Codex é a única candidata investigada; nenhum adaptador Nível 2 está certificado para Auto Resume na produção. [Implementação e evidências](SPEC_004_IMPLEMENTACAO.md). Fase 4 não iniciada.
+
+## Registro SPEC-005 — Fase 4A: organização do trabalho
+
+O daemon continua sendo o único escritor do SQLite. A migração v5 cria
+`workspaces`, conversas, mensagens, entregas, concessões explícitas de Dot e
+registro de operações; `projects` recebe workspace/origem e `runs` recebe
+`chat_id` opcional. Projetos da configuração são preservados e associados ao
+workspace “Meus projetos”. Projetos cadastrados pela UI permanecem no banco, sem
+gravar executáveis ou permissões no JSON. `syncConfig` mantém associações e grants
+e recusa colisões de ID/raiz. FKs e triggers impedem que uma Run vinculada tenha
+conversa, Dot ou projeto divergentes.
+
+Workspace, Project, Chat e Run são domínios distintos. Conversa de projeto fixa
+seu Dot; cada conversa permite no máximo uma Run não terminal e continua sujeita
+ao limite global de dois PTYs. Conversa livre tem `project_id = NULL`, pode guardar
+mensagens e rascunho, mas não pode iniciar agente. Somente texto explicitamente
+salvo pelo usuário vira Message; stdout, ANSI, credenciais e entrada bruta de PTY
+não são gravados como mensagens.
+
+Favoritos, abertura recente e navegação ficam persistidos; abertura explícita
+atualiza `last_opened_at`, enquanto polling não o altera. Listas usam cursor
+estável, no máximo 100 itens, com paginação adicional para caber no frame local.
+Mover uma conversa livre para projeto usa preview, grant validado, confirmação e
+revisão otimista, preservando ID, conteúdo e favorito e sem reenviar mensagens.
+Envio ao PTY registra intenção antes da escrita; mesma chave não reenvia e falha
+ambígua exige revisão explícita.
+
+As telas de execução, diff, rollback, atenção e laboratório existentes continuam
+acessíveis pelo mesmo renderer. Comportamento, migração, limites e evidências
+estão detalhados em [SPEC_005_IMPLEMENTACAO.md](SPEC_005_IMPLEMENTACAO.md). A
+Fase 4B (Kanban) e Auto Resume não faziam parte daquela entrega.
+
+## Registro SPEC-006 — Fase 4B: Kanban e `/kanban`
+
+SQLite v6 acrescenta `tasks`, `task_assignees`, `task_run_links` e
+`task_events` por migração transacional v5→v6. O daemon valida projeto fixo,
+conversa/mensagem de origem, Runs relacionadas, responsáveis e grants atuais.
+Referências históricas a Dots que perderam disponibilidade continuam visíveis,
+sem autorizar nova atribuição. Triggers garantem contexto de projeto e eventos
+append-only; revisão otimista e `operationId` protegem concorrência e replay.
+
+Chat, Task e Run seguem distintos. Tarefa não exige chat, Run ou responsável;
+uma Run pode estar ligada a tarefas diferentes do mesmo projeto. Alterar estado,
+responsável ou vínculo não inicia nem altera Run, concede permissão ou envia
+mensagens. O estado da tarefa não segue a conclusão da CLI automaticamente.
+
+O compositor estruturado reconhece `/kanban` apenas no início do texto como
+comando completo ou seguido por espaço. Texto em frase, terminal e stdout não
+acionam criação. A prévia é editável e requer confirmação; conversa livre exige
+vinculação e uma nova revisão. Ação em mensagem salva preserva os IDs de chat e
+mensagem. Quadros têm quatro colunas, detalhes e histórico; controles explícitos
+funcionam por teclado. A visão agregada mantém filtros e acesso às páginas além
+dos primeiros 100 itens.
+
+Main, preload, cliente e daemon usam operações IPC nomeadas `tasks.*` com schemas
+estritos; não há `invoke` arbitrário. Texto de tarefa não é incluído em logs,
+relatórios ou notificações. Implementação, matriz de aceite, medições locais,
+limitações e evidências estão em [SPEC_006_IMPLEMENTACAO.md](SPEC_006_IMPLEMENTACAO.md).
