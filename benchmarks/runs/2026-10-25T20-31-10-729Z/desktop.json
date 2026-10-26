@@ -1,0 +1,30 @@
+{
+  "host": {
+    "date": "2026-10-25T20:31:10.729Z",
+    "platform": "linux",
+    "release": "7.0.0-38-generic",
+    "arch": "x64",
+    "cpu": "Intel(R) Core(TM) i5-10210U CPU @ 1.60GHz",
+    "logicalCPUs": 8,
+    "ramGiB": 14.80002212524414,
+    "node": "v24.22.1",
+    "electron": "45.0.0",
+    "testEnvironment": "local desktop; uncontrolled concurrent load",
+    "display": "Wayland",
+    "distribution": "PRETTY_NAME=\"Ubuntu 26.04.1 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"26.04\"\nVERSION=\"26.04.1 LTS (Resolute Raccoon)\"\nVERSION_CODENAME=resolute\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=resolute\nLOGO=ubuntu-logo\n",
+    "notes": "Single local run; other desktop workloads active. CPU=100% per logical core; RSS sum double counts shared pages; PSS apportions shared pages. No CLIs/models."
+  },
+  "runId": "2026-10-25T20-31-10-729Z",
+  "status": "failed",
+  "stage": "native-preflight",
+  "checks": [],
+  "artifacts": [],
+  "metrics": {},
+  "passed": false,
+  "error": "Error: Electron sandbox preflight exited 1/null: Authorization required, but no authorization protocol specified\n\n[73551:1025/173110.874766:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:257] Missing X server or $DISPLAY\n[73551:1025/173110.874790:ERROR:ui/aura/env.cc:253] The platform failed to initialize.  Exiting.\n\n    at ChildProcess.<anonymous> (file:///home/scarabeli/%C3%81rea%20de%20trabalho/Pessoal/karont/karont/scripts/desktop-test.mjs:62:14)\n    at ChildProcess.wrapper (node:events:639:12)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:324:12)",
+  "failure": {
+    "kind": "test-failure",
+    "stage": "native-preflight",
+    "message": "Electron sandbox preflight exited 1/null: Authorization required, but no authorization protocol specified\n\n[73551:1025/173110.874766:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:257] Missing X server or $DISPLAY\n[73551:1025/173110.874790:ERROR:ui/aura/env.cc:253] The platform failed to initialize.  Exiting.\n"
+  }
+}

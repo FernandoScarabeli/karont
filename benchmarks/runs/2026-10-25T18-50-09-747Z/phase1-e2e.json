@@ -1,0 +1,37 @@
+{
+  "status": "failed",
+  "stage": "launch",
+  "checks": [
+    "sandbox runtime, Seccomp=2 e NoNewPrivs=1"
+  ],
+  "artifacts": [
+    "benchmarks/runs/2026-10-25T18-50-09-747Z/phase2-diagnostics.png"
+  ],
+  "runId": "2026-10-25T18-50-09-747Z",
+  "metrics": {
+    "idle": {
+      "electron": {
+        "durationMs": 2537.9657020000004,
+        "processCount": 11,
+        "rssMiB": 903.28125,
+        "pssMiB": 371.2705078125,
+        "cpuPercentOneCore": 27.975161344398657
+      },
+      "daemon": {
+        "durationMs": 2500,
+        "processCount": 1,
+        "rssMiB": 75.2265625,
+        "pssMiB": 49.3544921875,
+        "cpuPercentOneCore": 0.40000000000000036
+      },
+      "clis": [],
+      "total": {
+        "rssMiB": 978.5078125,
+        "pssMiB": 420.625,
+        "cpuPercentOneCore": 28.375161344398656
+      }
+    }
+  },
+  "notificationFixtureErrors": "",
+  "error": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /# eros/. Input:\n\n'git@github.com:FernandoScarabeli/karont.git'\n"
+}

@@ -1,0 +1,35 @@
+[
+  {
+    "stage": "check",
+    "iteration": 1,
+    "exitCode": 0,
+    "seconds": 4.145,
+    "summary": [],
+    "assertions": [],
+    "remainingFixtureDirectories": [
+      "eros-test-PWXkpI"
+    ],
+    "remainingDaemonPids": [],
+    "resourceAuditNote": "Sample overlapped preliminary suite; use final-check.json for isolated check resource audit."
+  },
+  {
+    "stage": "e2e",
+    "iteration": 1,
+    "exitCode": 0,
+    "seconds": 133.076,
+    "summary": [],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "diff",
+    "iteration": 1,
+    "exitCode": 0,
+    "seconds": 0.008,
+    "summary": [],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  }
+]

@@ -1,0 +1,176 @@
+{
+  "runId": "2026-10-25T19-58-59-201Z",
+  "status": "failed",
+  "stage": "chats-runs-and-delivery",
+  "checks": [
+    "shell Workspaces inicia sem criar Run; amostras de referência ociosa: 5",
+    "Escape cancela sem gravar; formulário de workspace opera por teclado; workspace criado, renomeado e persistido no daemon",
+    "cancelamento não grava; raiz inválida recusada; diretório com espaços confirmado; concessão explícita validada",
+    "repositório duplicado reconhecido e não reassociado ao workspace novo"
+  ],
+  "artifacts": [],
+  "metrics": {
+    "idle": {
+      "rounds": [
+        {
+          "round": 1,
+          "electron": {
+            "durationMs": 2517.4347209999996,
+            "processCount": 7,
+            "rssMiB": 693.78515625,
+            "pssMiB": 276.111328125,
+            "cpuPercentOneCore": 1.9861488197850274
+          },
+          "daemonTree": {
+            "durationMs": 2516.306274,
+            "processCount": 1,
+            "rssMiB": 76.515625,
+            "pssMiB": 40.6376953125,
+            "cpuPercentOneCore": 0.3974079031366755
+          },
+          "combined": {
+            "rssMiB": 770.30078125,
+            "pssMiB": 316.7490234375,
+            "cpuPercentOneCore": 2.383556722921703
+          }
+        },
+        {
+          "round": 2,
+          "electron": {
+            "durationMs": 2515.011592,
+            "processCount": 7,
+            "rssMiB": 694.7578125,
+            "pssMiB": 276.552734375,
+            "cpuPercentOneCore": 0.7952249629233524
+          },
+          "daemonTree": {
+            "durationMs": 2515.95594,
+            "processCount": 1,
+            "rssMiB": 76.52734375,
+            "pssMiB": 40.6494140625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 771.28515625,
+            "pssMiB": 317.2021484375,
+            "cpuPercentOneCore": 0.7952249629233524
+          }
+        },
+        {
+          "round": 3,
+          "electron": {
+            "durationMs": 2515.0874680000006,
+            "processCount": 7,
+            "rssMiB": 695.20703125,
+            "pssMiB": 277.001953125,
+            "cpuPercentOneCore": 0.39760048615533894
+          },
+          "daemonTree": {
+            "durationMs": 2514.7037760000003,
+            "processCount": 1,
+            "rssMiB": 76.52734375,
+            "pssMiB": 40.6494140625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 771.734375,
+            "pssMiB": 317.6513671875,
+            "cpuPercentOneCore": 0.39760048615533894
+          }
+        },
+        {
+          "round": 4,
+          "electron": {
+            "durationMs": 2517.277253,
+            "processCount": 7,
+            "rssMiB": 695.609375,
+            "pssMiB": 277.2783203125,
+            "cpuPercentOneCore": 0.7945092252418646
+          },
+          "daemonTree": {
+            "durationMs": 2518.513155999999,
+            "processCount": 1,
+            "rssMiB": 76.5390625,
+            "pssMiB": 40.6611328125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 772.1484375,
+            "pssMiB": 317.939453125,
+            "cpuPercentOneCore": 0.7945092252418646
+          }
+        },
+        {
+          "round": 5,
+          "electron": {
+            "durationMs": 2516.8954360000007,
+            "processCount": 7,
+            "rssMiB": 695.40234375,
+            "pssMiB": 277.0712890625,
+            "cpuPercentOneCore": 0.39731487677106686
+          },
+          "daemonTree": {
+            "durationMs": 2516.3744970000007,
+            "processCount": 1,
+            "rssMiB": 76.5390625,
+            "pssMiB": 40.6611328125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 771.94140625,
+            "pssMiB": 317.732421875,
+            "cpuPercentOneCore": 0.39731487677106686
+          }
+        }
+      ],
+      "median": {
+        "electronRssMiB": {
+          "median": 695.20703125,
+          "p95": 695.609375
+        },
+        "electronPssMiB": {
+          "median": 277.001953125,
+          "p95": 277.2783203125
+        },
+        "electronCpuPercentOneCore": {
+          "median": 0.7945092252418646,
+          "p95": 1.9861488197850274
+        },
+        "daemonTreeRssMiB": {
+          "median": 76.52734375,
+          "p95": 76.5390625
+        },
+        "daemonTreePssMiB": {
+          "median": 40.6494140625,
+          "p95": 40.6611328125
+        },
+        "daemonTreeCpuPercentOneCore": {
+          "median": 0,
+          "p95": 0.3974079031366755
+        },
+        "combinedRssMiB": {
+          "median": 771.734375,
+          "p95": 772.1484375
+        },
+        "combinedPssMiB": {
+          "median": 317.6513671875,
+          "p95": 317.939453125
+        },
+        "combinedCpuPercentOneCore": {
+          "median": 0.7945092252418646,
+          "p95": 2.383556722921703
+        }
+      }
+    }
+  },
+  "error": "locator.waitFor: Error: strict mode violation: locator('#run-622ddaa9-3ed9-45b6-9909-fedf697143cf .terminal-shell').getByText(/SPEC005_INPUT SPEC005_PRIVATE_TEST_MESSAGE/) resolved to 2 elements:\n    1) <div tabindex=\"-1\" role=\"listitem\" aria-posinset=\"3\" aria-setsize=\"15\">SPEC005_INPUT SPEC005_PRIVATE_TEST_MESSAGE</div> aka getByText('SPEC005_INPUT SPEC005_PRIVATE_TEST_MESSAGE', { exact: true })\n    2) <div class=\"live-region\" aria-live=\"assertive\">SPEC005_READY fixture-dot 54798↵^[[200~SPEC005_PR…</div> aka getByText('SPEC005_READY fixture-dot 54798 ^[[200~SPEC005_PRIVATE_TEST_MESSAGE^[[201~')\n\nCall log:\n\u001b[2m  - waiting for locator('#run-622ddaa9-3ed9-45b6-9909-fedf697143cf .terminal-shell').getByText(/SPEC005_INPUT SPEC005_PRIVATE_TEST_MESSAGE/) to be visible\u001b[22m\n\n    at /home/scarabeli/Área de trabalho/Pessoal/karont/karont/scripts/spec005-e2e.mjs:263:119",
+  "daemonErrors": [],
+  "daemonExit": {
+    "code": null,
+    "signal": null
+  },
+  "harnessSocket": {
+    "destroyed": false,
+    "connected": true
+  }
+}

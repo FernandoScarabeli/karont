@@ -1,0 +1,24 @@
+Original execution: 2026-10-25T21:26:38.861Z
+Test: entrega exige Run da conversa, não repete a mesma chave e retry incerto é explícito
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'uncertain'
+  - 'sent'
+  
+      at TestContext.<anonymous> (file://<repo>/tests/workspaces.test.mjs:430:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'uncertain',
+    expected: 'sent',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+Fixture: synchronous simulated callbacks; intentional write exception, then explicit retry; no PTY, CLI, IPC, shutdown or restart.

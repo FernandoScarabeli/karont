@@ -1,0 +1,66 @@
+{
+  "runId": "2026-10-25T21-46-35-461Z",
+  "status": "passed",
+  "stage": "complete",
+  "checks": [
+    "Ajuste 01 / B17: filtros de estado e responsável não restringem as quatro colunas do quadro; mudança de estado move o cartão; filtros são restaurados na visão agregada e projeto diferente permanece excluído",
+    "B1/B2/B3: tarefa manual com responsável, cancelamento sem efeitos e /kanban com prévia editável/cancelável; comando não foi salvo nem enviado a Run",
+    "B11: replay com a mesma chave retorna a tarefa original; payload diferente e revisão obsoleta são recusados",
+    "B6/B9: título, descrição e estado persistem; histórico registra alterações; tarefa concluída reabre sem alterar Run",
+    "B7/B8/B9: Dot não inicia execução; Run do mesmo projeto associa; Run de outro projeto recusa; estados Task/Run continuam independentes",
+    "B12/B13/B16: filtros por workspace/projeto/estado/responsável; paginação carrega mais de 100 tarefas; layouts 900/1440px sem overflow global",
+    "B0: fechar e recriar a janela restaura conversa global null/null com histórico, rascunho e ID originais",
+    "B4/B5: conversa livre exige vinculação, cancelamento não cria tarefa e nova revisão é solicitada; mensagem salva preenche descrição e preserva origem correta",
+    "B15: conteúdo de tarefas não é incluído em notificações/relatórios; checagem no E2E usa somente dados sintéticos locais"
+  ],
+  "artifacts": [
+    "benchmarks/spec006/2026-10-25T21-46-35-461Z/kanban-residual-filter-1440.png",
+    "benchmarks/spec006/2026-10-25T21-46-35-461Z/kanban-project-1440.png",
+    "benchmarks/spec006/2026-10-25T21-46-35-461Z/tasks-aggregate-1440.png",
+    "benchmarks/spec006/2026-10-25T21-46-35-461Z/tasks-aggregate-900.png",
+    "benchmarks/spec006/2026-10-25T21-46-35-461Z/global-restored-1440.png"
+  ],
+  "metrics": {
+    "boardOpenMs": 34.3869679999998,
+    "idleBaseline": [
+      {
+        "durationMs": 1219.9411370000003,
+        "processCount": 7,
+        "rssMiB": 759.9921875,
+        "pssMiB": 330.0625,
+        "cpuPercentOneCore": 1.6394233617846916
+      },
+      {
+        "durationMs": 1217.1281479999998,
+        "processCount": 1,
+        "rssMiB": 84.52734375,
+        "pssMiB": 43.76953125,
+        "cpuPercentOneCore": 0
+      }
+    ],
+    "pageResponseMs": 1.2012340000001132,
+    "uiPaginationMs": 108.41619499999979,
+    "whileTwoRuns": [
+      {
+        "durationMs": 1221.9974430000002,
+        "processCount": 7,
+        "rssMiB": 736.15234375,
+        "pssMiB": 307.578125,
+        "cpuPercentOneCore": 0.8183323179015856
+      },
+      {
+        "durationMs": 1222.3037920000006,
+        "processCount": 3,
+        "rssMiB": 210.40625,
+        "pssMiB": 84.9306640625,
+        "cpuPercentOneCore": 0
+      }
+    ],
+    "comparison": {
+      "scope": "mesmo host/processos do aplicativo e daemon, 1,2s por raiz; execuções explicitamente iniciadas para validar vínculos; uma amostra local por cenário",
+      "idleBaseline": "capturada antes de iniciar as duas Runs; ver benchmarks/spec006/<runId>/spec006-e2e.json",
+      "limitations": "carga concorrente do desktop não controlada; RSS soma páginas compartilhadas; uma amostra não certifica consumo prolongado nem CI remota"
+    }
+  },
+  "evidence": {}
+}

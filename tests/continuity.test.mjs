@@ -31,7 +31,12 @@ function fixture() {
     '["repo"]',
     Date.now(),
   );
-  db.prepare('INSERT INTO projects VALUES(?,?,?,?,?)').run('repo', 'Repo', root, root, Date.now());
+  const workspaceId = db
+    .prepare("SELECT value FROM settings WHERE key='default_workspace_id'")
+    .get().value;
+  db.prepare(
+    "INSERT INTO projects(id,name,root,git_root,created_at,workspace_id,origin) VALUES(?,?,?,?,?,?,'config')",
+  ).run('repo', 'Repo', root, root, Date.now(), workspaceId);
   const run = (state = 'queued') => {
     const id = randomUUID();
     db.prepare('INSERT INTO runs(id,dot_id,project_id,state,created_at) VALUES(?,?,?,?,?)').run(
@@ -53,7 +58,7 @@ function fixture() {
     },
   };
 }
-test('migração v3→v4 preserva Runs, sessões, referências, checkpoints e WAL', () => {
+test('migração v3→v6 preserva Runs, sessões, referências, checkpoints e WAL', () => {
   const f = fixture();
   try {
     const id = f.run();
@@ -62,15 +67,46 @@ test('migração v3→v4 preserva Runs, sessões, referências, checkpoints e WA
         "INSERT INTO sessions(id,run_id,pid,cols,rows,state,started_at) VALUES(?,?,?,100,30,'queued',?)",
       )
       .run(randomUUID(), id, 123, Date.now());
-    f.db.exec(
-      'DROP TABLE checkpoints; DROP TABLE operations; DROP TABLE resume_jobs; ALTER TABLE sessions DROP COLUMN identity_json; ALTER TABLE runs DROP COLUMN auto_resume; PRAGMA user_version=3',
-    );
+    f.db.exec(`PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE;
+      DROP TRIGGER task_run_same_project_insert;
+      DROP TRIGGER task_events_no_update;
+      DROP TRIGGER task_events_no_delete;
+      DROP TRIGGER task_origin_context_insert;
+      DROP TRIGGER task_origin_context_update;
+      DROP TABLE task_events;
+      DROP TABLE task_run_links;
+      DROP TABLE task_assignees;
+      DROP TABLE tasks;
+      DROP TRIGGER projects_require_workspace_insert;
+      DROP TRIGGER projects_require_workspace_update;
+      DROP TRIGGER runs_chat_context_insert;
+      DROP TRIGGER runs_chat_context_update;
+      DROP INDEX runs_chat_created;
+      DROP INDEX projects_workspace_id;
+      DROP INDEX projects_workspace_created;
+      DROP TABLE message_deliveries;
+      DROP TABLE messages;
+      DROP TABLE chat_events;
+      DROP TABLE chats;
+      DROP TABLE project_dot_grants;
+      DROP TABLE product_operations;
+      DELETE FROM settings WHERE key='default_workspace_id';
+      ALTER TABLE runs DROP COLUMN chat_id;
+      ALTER TABLE projects DROP COLUMN origin;
+      ALTER TABLE projects DROP COLUMN workspace_id;
+      DROP TABLE workspaces;
+      DROP TABLE checkpoints; DROP TABLE operations; DROP TABLE resume_jobs;
+      ALTER TABLE sessions DROP COLUMN identity_json;
+      ALTER TABLE runs DROP COLUMN auto_resume;
+      ALTER TABLE projects DROP COLUMN icon;
+      PRAGMA user_version=3;
+      COMMIT; PRAGMA foreign_keys=ON;`);
     f.db.close();
     f.db = openDatabase(path.join(f.root, 'test.sqlite'));
     const c = new Continuity(f.db);
     c.checkpoint(id, 'manual');
     assert.equal(f.db.prepare('SELECT run_id FROM sessions').get().run_id, id);
-    assert.equal(f.db.prepare('PRAGMA user_version').get().user_version, 4);
+    assert.equal(f.db.prepare('PRAGMA user_version').get().user_version, 7);
     assert.equal(f.db.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
     assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
     // Reopen is idempotent, including actual SQLite rollback/recovery.
@@ -480,9 +516,15 @@ test('SIGKILL durante rollback deixa operação incerta; restauração parcial n
   fs.mkdirSync(bin);
   const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
   const shim = path.join(bin, 'git');
+  const shimScript = path.join(bin, 'git-shim.cjs');
+  const shellQuote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
+  fs.writeFileSync(
+    shimScript,
+    `const {spawnSync}=require('child_process');const args=process.argv.slice(2);const r=spawnSync(${JSON.stringify(realGit)},args,{stdio:'inherit'});if(args[0]==='restore'&&r.status===0)process.kill(process.ppid,'SIGKILL');process.exit(r.status??1);`,
+  );
   fs.writeFileSync(
     shim,
-    `#!${process.execPath}\nconst {spawnSync}=require('child_process');const args=process.argv.slice(2);const r=spawnSync(${JSON.stringify(realGit)},args,{stdio:'inherit'});if(args[0]==='restore'&&r.status===0)process.kill(process.ppid,'SIGKILL');process.exit(r.status??1);`,
+    `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(shimScript)} "$@"\n`,
     { mode: 0o700 },
   );
   const config = path.join(e.root, 'dots.json');

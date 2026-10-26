@@ -1,0 +1,4 @@
+{
+  "apps/daemon/src/workspaces.ts": "5f18fb10eafb9c3829baea02eb753b84492a3f9575ca8618be485f7fa76001d9",
+  "tests/workspaces.test.mjs": "36b36d57682987d7cd8885d8c7d5212f92b819c62e99b474dc6777127973e23c"
+}

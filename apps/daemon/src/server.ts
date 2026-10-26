@@ -7,6 +7,7 @@ import { requestSchema, defaultLayout, layoutSchema } from '../../../packages/co
 import { openDatabase, readDotConfig, syncConfig } from './database';
 import { daemonDiagnostics } from './diagnostics';
 import { RunManager } from './runs';
+import { WorkspaceManager } from './workspaces';
 process.umask(0o077);
 const p = paths();
 const secret = randomBytes(32).toString('hex');
@@ -14,6 +15,7 @@ let db: ReturnType<typeof openDatabase> | undefined;
 let timer: NodeJS.Timeout | undefined;
 let streamTimer: NodeJS.Timeout | undefined;
 let manager: RunManager | undefined;
+let work: WorkspaceManager | undefined;
 const sockets = new Set<net.Socket>();
 let stopping = false;
 const server = net.createServer();
@@ -45,6 +47,7 @@ try {
   const config = readDotConfig(p.dots);
   syncConfig(db, config.dots, config.projects);
   manager = new RunManager(db, p.worktrees, config.dots);
+  work = new WorkspaceManager(db, config.dots);
   let streaming = false,
     sequence = 0,
     heartbeat = 0;
@@ -75,6 +78,7 @@ try {
     let authenticated = false;
     const subscriptions = new Map<string, (event: unknown) => void>();
     let unsubscribe: (() => void) | undefined;
+    let unsubscribeWork: (() => void) | undefined;
     const listener = (event: unknown) => {
       const value = event as { type?: string; runId?: string };
       if (value.type === 'terminal.output' && value.runId && !subscriptions.has(value.runId))
@@ -91,6 +95,7 @@ try {
       clearTimeout(timeout);
       clearInterval(rate);
       unsubscribe?.();
+      unsubscribeWork?.();
       for (const callback of subscriptions.values()) manager!.detach(callback);
       subscriptions.clear();
     });
@@ -118,6 +123,7 @@ try {
           proof: proof(secret, 'ready', nonce + ':' + v.nonce),
         });
         unsubscribe = manager!.onEvent(listener);
+        unsubscribeWork = work!.onEvent(listener);
         return;
       }
       const parsed = requestSchema.safeParse(v);
@@ -158,7 +164,100 @@ try {
             result = manager!.listDots();
             break;
           case 'projects.list':
-            result = manager!.listProjects();
+            result = r.value
+              ? work!.listProjects(r.value.workspaceId, r.value.cursor, r.value.limit)
+              : manager!.listProjects();
+            break;
+          case 'workspaces.list':
+            result = work!.listWorkspaces(r.value.cursor, r.value.limit);
+            break;
+          case 'workspaces.create':
+            result = work!.createWorkspace(r.value.name, r.value.operationId);
+            break;
+          case 'workspaces.rename':
+            result = work!.renameWorkspace(r.value.workspaceId, r.value.name, r.value.operationId);
+            break;
+          case 'projects.update':
+            result = work!.updateProject(r.value);
+            break;
+          case 'projects.add':
+            result = work!.addProject(r.value);
+            break;
+          case 'chats.list':
+            result = work!.listChats(r.value);
+            break;
+          case 'chats.create':
+            result = work!.createChat(r.value);
+            break;
+          case 'chats.get':
+            result = work!.getChat(r.value.chatId);
+            break;
+          case 'chats.rename':
+            result = work!.renameChat(r.value.chatId, r.value.title, r.value.expectedRevision, r.value.operationId);
+            break;
+          case 'chats.open':
+            result = work!.openChat(r.value.chatId, r.value.operationId);
+            break;
+          case 'chats.favorite':
+            result = work!.favoriteChat(r.value.chatId, r.value.favorite, r.value.expectedRevision, r.value.operationId);
+            break;
+          case 'chats.draft':
+            result = work!.setDraft(r.value.chatId, r.value.draft, r.value.expectedRevision, r.value.operationId);
+            break;
+          case 'chats.move.preview':
+            result = work!.previewMove(r.value.chatId, r.value.projectId, r.value.dotId);
+            break;
+          case 'chats.move':
+            result = work!.moveChat(r.value);
+            break;
+          case 'messages.list':
+            result = work!.listMessages(r.value.chatId, r.value.cursor, r.value.limit);
+            break;
+          case 'messages.save':
+            result = work!.saveMessage(r.value.chatId, r.value.body, r.value.expectedRevision, r.value.operationId);
+            break;
+          case 'messages.send':
+            result = work!.sendMessage(
+              r.value,
+              (runId) => manager!.isActive(runId),
+              (runId, data) => manager!.write(runId, data),
+            );
+            break;
+          case 'messages.deliveries':
+            result = work!.listDeliveries(r.value.chatId, r.value.messageId);
+            break;
+          case 'chats.runs.list':
+            result = work!.listChatRuns(r.value.chatId, r.value.cursor, r.value.limit);
+            break;
+          case 'tasks.list':
+            result = work!.listTasks(r.value);
+            break;
+          case 'tasks.get':
+            result = work!.getTask(r.value.taskId);
+            break;
+          case 'tasks.create':
+            result = work!.createTask(r.value);
+            break;
+          case 'tasks.update':
+            result = work!.updateTask(r.value);
+            break;
+          case 'tasks.assignees.set':
+            result = work!.setTaskAssignees(r.value);
+            break;
+          case 'tasks.runs.link':
+            result = work!.linkTaskRun(r.value, true);
+            break;
+          case 'tasks.runs.unlink':
+            result = work!.linkTaskRun(r.value, false);
+            break;
+          case 'tasks.events.list':
+            result = work!.listTaskEvents(r.value.taskId, r.value.cursor, r.value.limit);
+            break;
+          case 'navigation.get':
+            result = work!.getNavigation();
+            break;
+          case 'navigation.set':
+            result = work!.setNavigation(r.value);
             break;
           case 'runs.list':
             result = manager!.listRuns(r.value.limit);
@@ -202,6 +301,7 @@ try {
               r.value.permissionMode,
               r.value.elevatedConfirmed,
               r.value.operationId,
+              r.value.chatId,
             );
             break;
           case 'terminal.attach': {
@@ -253,7 +353,7 @@ try {
       } catch (error) {
         const known = error instanceof Error ? error.message : 'Falha na operação';
         const safe =
-          /^(Transição de execução|Retomada exige|Pausa disponível|Operação de|Chave de operação|Modo de permissão|Acesso total exige|Pedido de aprovação|Dot não autorizado|Projeto não encontrado|Execução não encontrada|Execução não está ativa|Terminal não está ativo|Worktree desta execução|Conflitos detectados|Não há alterações|Worktree de execução ativa|Conflito de caminho|Caminho fora da worktree|Caminho Git inválido)/.test(
+          /^(Transição de execução|Retomada exige|Pausa disponível|Operação de|Chave de operação|Modo de permissão|Acesso total exige|Pedido de aprovação|Dot não autorizado|Dot da concessão|Dot não está|Projeto não encontrado|Projeto Git|Diretório inválido|Workspace não encontrado|Nome do |Título da |Descrição |Responsáveis |Tarefa |Mensagem |Mensagem vazia|Mensagem não |Rascunho |Conversa |Execução |Terminal |Cursor |Entrega incerta|Movimentação|Navegação |Somente conversas|Projeto não pertence|Conversa de origem|Mensagem de origem|Execução precisa|Histórico de tarefa|Repositório|Conflitos detectados|Não há alterações|Worktree desta execução|Worktree de execução ativa|Conflito de caminho|Caminho fora da worktree|Caminho Git inválido)/.test(
             known,
           )
             ? known

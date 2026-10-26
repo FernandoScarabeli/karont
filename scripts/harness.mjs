@@ -20,14 +20,20 @@ export async function until(fn) {
 }
 export function environment() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-bench-'));
+  const env = {
+    ...process.env,
+    EROS_RUNTIME_DIR: path.join(root, 'run'),
+    EROS_DATA_DIR: path.join(root, 'data'),
+    EROS_DESKTOP_DATA: path.join(root, 'desktop'),
+  };
+  if (!env.XDG_RUNTIME_DIR && process.getuid) env.XDG_RUNTIME_DIR = `/run/user/${process.getuid()}`;
+  if (!env.XAUTHORITY && env.DISPLAY && env.XDG_RUNTIME_DIR && fs.existsSync(env.XDG_RUNTIME_DIR)) {
+    const xauthority = fs.readdirSync(env.XDG_RUNTIME_DIR).find((name) => name.startsWith('.mutter-Xwaylandauth.'));
+    if (xauthority) env.XAUTHORITY = path.join(env.XDG_RUNTIME_DIR, xauthority);
+  }
   return {
     root,
-    env: {
-      ...process.env,
-      EROS_RUNTIME_DIR: path.join(root, 'run'),
-      EROS_DATA_DIR: path.join(root, 'data'),
-      EROS_DESKTOP_DATA: path.join(root, 'desktop'),
-    },
+    env,
   };
 }
 export async function daemon(env) {

@@ -4,9 +4,24 @@ import type { Layout, Snapshot } from '../../../packages/contracts/src';
 import './api';
 import { Attention } from './Attention';
 import { RunDesk } from './RunDesk';
+import { WorkspaceDesk, type WorkspaceView } from './WorkspaceDesk';
+import { TaskDesk } from './TaskDesk';
+import './tokens.css';
 import './style.css';
+import './karont.css';
 const Editor = lazy(() => import('./Editor'));
-function App() {
+type AppRoute = WorkspaceView | 'tasks' | 'previous' | 'lab';
+const routeLabels: Record<AppRoute, string> = {
+  workspaces: 'Workspaces',
+  tasks: 'Tarefas',
+  favorites: 'Favoritos',
+  recent: 'Recentes',
+  free: 'Conversas livres',
+  previous: 'Execuções anteriores',
+  lab: 'Laboratório',
+};
+function LegacyWorkbench() {
+  const [route, setRoute] = useState<AppRoute>('lab');
   const [data, setData] = useState<Snapshot>();
   const [layout, setLayout] = useState<Layout>();
   const [error, setError] = useState('');
@@ -74,44 +89,47 @@ function App() {
   }
   return (
     <div className="shell">
-      <aside className="rail">
+      <aside className="rail" aria-label="Navegação principal">
         <div className="brand">
           e<span>eros</span>
         </div>
-        <div className="rail-section">DESENVOLVIMENTO</div>
-        <div className="nav-active">
-          ◫ <span>Laboratório</span>
-          <small>00</small>
-        </div>
-        <p className="rail-note">
-          Um renderer.
-          <br />
-          Oito painéis.
-          <br />
-          Núcleo independente.
-        </p>
+        <div className="rail-section">TRABALHO</div>
+        <nav className="rail-nav" aria-label="Áreas de trabalho">
+          {(['workspaces', 'tasks', 'favorites', 'recent', 'free'] as AppRoute[]).map((item) => (
+            <button key={item} className={route === item ? 'nav-active' : 'nav-link'} aria-current={route === item ? 'page' : undefined} onClick={() => setRoute(item)}>
+              <span aria-hidden="true">{item === 'workspaces' ? '▦' : item === 'tasks' ? '▤' : item === 'favorites' ? '☆' : item === 'recent' ? '◷' : '☰'}</span>{routeLabels[item]}
+            </button>
+          ))}
+        </nav>
+        <div className="rail-section rail-section-secondary">SISTEMA</div>
+        <nav className="rail-nav" aria-label="Ferramentas do sistema">
+          {(['previous', 'lab'] as AppRoute[]).map((item) => (
+            <button key={item} className={route === item ? 'nav-active' : 'nav-link'} aria-current={route === item ? 'page' : undefined} onClick={() => setRoute(item)}>
+              <span aria-hidden="true">{item === 'previous' ? '↺' : '◫'}</span>{routeLabels[item]}
+            </button>
+          ))}
+        </nav>
         <div className="rail-bottom">
-          <span className="phase">FASE 3</span>
+          <span className="phase">FASE 4A</span>
           <p>
-            Validação da arquitetura
+            Organização do trabalho
             <br />
             Linux · local primeiro
           </p>
         </div>
       </aside>
-      <main>
-        <header>
+      <main className="app-main">
+        <header className="app-header">
           <div>
             <div className="eyebrow">EROS / AMBIENTE LOCAL</div>
-            <h1>Execuções independentes</h1>
-            <p>Terminais conectados ao daemon, revisão por execução e worktrees Git isoladas.</p>
+            <h1>{routeLabels[route]}</h1>
+            <p>{route === 'workspaces' ? 'Organize projetos e retome conversas persistentes.' : route === 'tasks' ? 'Acompanhe trabalho por projeto, com vínculos explícitos a conversas e Runs.' : route === 'favorites' ? 'Conversas marcadas para voltar com rapidez.' : route === 'recent' ? 'Conversas ordenadas pela última abertura.' : route === 'free' ? 'Histórico local sem execução de agente nesta fase.' : route === 'previous' ? 'Runs antigas sem conversa vinculada.' : 'Terminais, revisão por execução e laboratório de regressão.'}</p>
           </div>
           <button className="quiet" onClick={() => void close()} disabled={saving}>
             Fechar janela ↗
           </button>
         </header>
-        <Attention />
-        <RunDesk />
+        <nav className="k-tools-nav" aria-label="Ferramentas locais"><button className="quiet" onClick={() => setRoute('lab')}>Diagnóstico e laboratório</button><button className="quiet" onClick={() => setRoute('previous')}>Execuções anteriores</button></nav><Attention />
         <section className="health" aria-label="Diagnóstico do daemon">
           <div>
             <span className={'dot ' + (error ? 'bad' : '')} />
@@ -148,6 +166,11 @@ function App() {
               : saveError || error}
           </p>
         )}
+        {(['workspaces', 'favorites', 'recent', 'free'] as string[]).includes(route) && <WorkspaceDesk view={route as WorkspaceView} />}
+        {route === 'tasks' && <TaskDesk onOpenConversation={(chatId) => { void window.eros.openChat(chatId).then(() => setRoute('workspaces')); }} />}
+        {route === 'previous' && <RunDesk previousOnly />}
+        {route === 'lab' && <>
+        <RunDesk />
         <section className="workload">
           <div>
             <h2>
@@ -252,8 +275,9 @@ function App() {
           </span>
           <span>Fechar a janela mantém o daemon ativo. Reabra pelo tray ou execute npm start.</span>
         </footer>
+        </>}
       </main>
     </div>
   );
 }
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(<WorkspaceDesk view="workspaces" tools={<LegacyWorkbench />} />);

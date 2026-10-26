@@ -1,0 +1,58 @@
+{
+  "runId": "2026-10-25T19-49-56-752Z",
+  "status": "failed",
+  "stage": "responsive-and-restart",
+  "checks": [
+    "shell Workspaces inicia sem criar Run; referência ociosa omitida na execução de diagnóstico",
+    "workspace criado, renomeado e persistido no daemon",
+    "cancelamento não grava; raiz inválida recusada; diretório com espaços confirmado; concessão explícita validada",
+    "repositório duplicado reconhecido e não reassociado ao workspace novo",
+    "criar chat não iniciou Run; Run vinculada; mensagem salva e enviada só ao PTY ativo, sem stdout persistido",
+    "duas conversas do mesmo Dot têm Runs separadas; não terminal por conversa e teto de dois PTYs; envio cruzado recusado",
+    "troca entre conversas reanexa as mesmas sessões, sem iniciar nem cancelar Runs",
+    "favoritos/recentes globais; conversa livre sem agente; rascunho persistente; mover com confirmação e cancelamento preserva ID, favorito e mensagem antiga",
+    "histórico de 105 mensagens permanece paginado e completo no renderer e no daemon",
+    "layouts de 900px e 1440px sem overflow horizontal",
+    "fechar janela mantém daemon e dois PTYs com os mesmos PIDs ativos"
+  ],
+  "artifacts": [
+    "benchmarks/spec005/2026-10-25T19-49-56-752Z/spec005-1440.png",
+    "benchmarks/spec005/2026-10-25T19-49-56-752Z/spec005-900.png"
+  ],
+  "metrics": {
+    "twoRuns": {
+      "skipped": true,
+      "reason": "diagnostic execution"
+    },
+    "conversationSwitching": {
+      "skipped": true,
+      "reason": "diagnostic execution"
+    },
+    "historyPageResponseMs": 0.6713090000048396,
+    "historyPageBatchMs": [
+      2.2471460000015213,
+      2.918422999995528,
+      2.651499999999942,
+      3.56690399999934,
+      2.554776999997557
+    ],
+    "paginatedHistory": {
+      "skipped": true,
+      "reason": "diagnostic execution"
+    },
+    "windowClosed": {
+      "skipped": true,
+      "reason": "diagnostic execution"
+    }
+  },
+  "error": "locator.waitFor: Error: strict mode violation: locator('#run-dc816d47-d5d6-42aa-809f-a35e164d5c2d .terminal-shell').getByText(/SPEC005_READY fixture-dot/) resolved to 2 elements:\n    1) <div tabindex=\"-1\" role=\"listitem\" aria-posinset=\"1\" aria-setsize=\"15\">SPEC005_READY fixture-dot 47998</div> aka getByText('SPEC005_READY fixture-dot 47998', { exact: true })\n    2) <div class=\"live-region\" aria-live=\"assertive\">SPEC005_READY fixture-dot 47998↵^[[200~SPEC005_PR…</div> aka getByText('SPEC005_READY fixture-dot 47998 ^[[200~SPEC005_PRIVATE_TEST_MESSAGE^[[201~')\n\nCall log:\n\u001b[2m  - waiting for locator('#run-dc816d47-d5d6-42aa-809f-a35e164d5c2d .terminal-shell').getByText(/SPEC005_READY fixture-dot/) to be visible\u001b[22m\n\n    at /home/scarabeli/Área de trabalho/Pessoal/karont/karont/scripts/spec005-e2e.mjs:433:102",
+  "daemonErrors": [],
+  "daemonExit": {
+    "code": null,
+    "signal": null
+  },
+  "harnessSocket": {
+    "destroyed": false,
+    "connected": true
+  }
+}

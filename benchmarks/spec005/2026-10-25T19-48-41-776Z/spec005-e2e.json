@@ -1,0 +1,24 @@
+{
+  "runId": "2026-10-25T19-48-41-776Z",
+  "status": "failed",
+  "stage": "chats-runs-and-delivery",
+  "checks": [
+    "shell Workspaces inicia sem criar Run; referência ociosa omitida na execução de diagnóstico",
+    "workspace criado, renomeado e persistido no daemon",
+    "cancelamento não grava; raiz inválida recusada; diretório com espaços confirmado; concessão explícita validada",
+    "repositório duplicado reconhecido e não reassociado ao workspace novo",
+    "criar chat não iniciou Run; Run vinculada; mensagem salva e enviada só ao PTY ativo, sem stdout persistido"
+  ],
+  "artifacts": [],
+  "metrics": {},
+  "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n0 !== 1\n\n    at file:///home/scarabeli/%C3%81rea%20de%20trabalho/Pessoal/karont/karont/scripts/spec005-e2e.mjs:272:10\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+  "daemonErrors": [],
+  "daemonExit": {
+    "code": null,
+    "signal": null
+  },
+  "harnessSocket": {
+    "destroyed": false,
+    "connected": true
+  }
+}

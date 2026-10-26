@@ -1,0 +1,17 @@
+[
+  {
+    "file": "benchmarks/runs/2026-10-25T21-44-35-699Z/phase1-e2e.json",
+    "status": "passed",
+    "stage": "complete"
+  },
+  {
+    "file": "benchmarks/spec005/2026-10-25T21-45-05-955Z/spec005-e2e.json",
+    "status": "passed",
+    "stage": "complete"
+  },
+  {
+    "file": "benchmarks/spec006/2026-10-25T21-46-35-461Z/spec006-e2e.json",
+    "status": "passed",
+    "stage": "complete"
+  }
+]

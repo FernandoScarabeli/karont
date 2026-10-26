@@ -1,0 +1,331 @@
+{
+  "runId": "2026-10-25T19-44-48-777Z",
+  "status": "failed",
+  "stage": "favorites-recent-free-move",
+  "checks": [
+    "shell Workspaces inicia sem criar Run; amostras de referência ociosa: 5",
+    "workspace criado, renomeado e persistido no daemon",
+    "cancelamento não grava; raiz inválida recusada; diretório com espaços confirmado; concessão explícita validada",
+    "repositório duplicado reconhecido e não reassociado ao workspace novo",
+    "criar chat não iniciou Run; Run vinculada; mensagem salva e enviada só ao PTY ativo, sem stdout persistido",
+    "duas conversas do mesmo Dot têm Runs separadas; não terminal por conversa e teto de dois PTYs; envio cruzado recusado",
+    "troca entre conversas reanexa as mesmas sessões, sem iniciar nem cancelar Runs"
+  ],
+  "artifacts": [],
+  "metrics": {
+    "twoRuns": {
+      "rounds": [
+        {
+          "round": 1,
+          "electron": {
+            "durationMs": 2516.4539870000003,
+            "processCount": 7,
+            "rssMiB": 743.12890625,
+            "pssMiB": 318.3525390625,
+            "cpuPercentOneCore": 1.589538302970768
+          },
+          "daemonTree": {
+            "durationMs": 2515.309937,
+            "processCount": 3,
+            "rssMiB": 189.2890625,
+            "pssMiB": 77.0869140625,
+            "cpuPercentOneCore": 0.3975653199989727
+          },
+          "combined": {
+            "rssMiB": 932.41796875,
+            "pssMiB": 395.439453125,
+            "cpuPercentOneCore": 1.9871036229697405
+          }
+        },
+        {
+          "round": 2,
+          "electron": {
+            "durationMs": 2517.533343,
+            "processCount": 7,
+            "rssMiB": 744.875,
+            "pssMiB": 319.7373046875,
+            "cpuPercentOneCore": 1.5888568114190031
+          },
+          "daemonTree": {
+            "durationMs": 2518.49223,
+            "processCount": 3,
+            "rssMiB": 189.29296875,
+            "pssMiB": 77.0908203125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 934.16796875,
+            "pssMiB": 396.828125,
+            "cpuPercentOneCore": 1.5888568114190031
+          }
+        },
+        {
+          "round": 3,
+          "electron": {
+            "durationMs": 2517.21469,
+            "processCount": 7,
+            "rssMiB": 744.703125,
+            "pssMiB": 319.5654296875,
+            "cpuPercentOneCore": 0.39726448601013087
+          },
+          "daemonTree": {
+            "durationMs": 2517.214094,
+            "processCount": 3,
+            "rssMiB": 189.36328125,
+            "pssMiB": 77.1611328125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 934.06640625,
+            "pssMiB": 396.7265625,
+            "cpuPercentOneCore": 0.39726448601013087
+          }
+        },
+        {
+          "round": 4,
+          "electron": {
+            "durationMs": 2519.065761,
+            "processCount": 7,
+            "rssMiB": 745.09765625,
+            "pssMiB": 319.7451171875,
+            "cpuPercentOneCore": 0.7939451327408208
+          },
+          "daemonTree": {
+            "durationMs": 2519.248646,
+            "processCount": 3,
+            "rssMiB": 189.40625,
+            "pssMiB": 77.2041015625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 934.50390625,
+            "pssMiB": 396.94921875,
+            "cpuPercentOneCore": 0.7939451327408208
+          }
+        },
+        {
+          "round": 5,
+          "electron": {
+            "durationMs": 2518.9999289999996,
+            "processCount": 7,
+            "rssMiB": 745.30859375,
+            "pssMiB": 319.9560546875,
+            "cpuPercentOneCore": 1.1909488227698968
+          },
+          "daemonTree": {
+            "durationMs": 2519.1878609999985,
+            "processCount": 3,
+            "rssMiB": 189.42578125,
+            "pssMiB": 77.2236328125,
+            "cpuPercentOneCore": 0.39695332590362775
+          },
+          "combined": {
+            "rssMiB": 934.734375,
+            "pssMiB": 397.1796875,
+            "cpuPercentOneCore": 1.5879021486735245
+          }
+        }
+      ],
+      "median": {
+        "electronRssMiB": {
+          "median": 744.875,
+          "p95": 745.30859375
+        },
+        "electronPssMiB": {
+          "median": 319.7373046875,
+          "p95": 319.9560546875
+        },
+        "electronCpuPercentOneCore": {
+          "median": 1.1909488227698968,
+          "p95": 1.589538302970768
+        },
+        "daemonTreeRssMiB": {
+          "median": 189.36328125,
+          "p95": 189.42578125
+        },
+        "daemonTreePssMiB": {
+          "median": 77.1611328125,
+          "p95": 77.2236328125
+        },
+        "daemonTreeCpuPercentOneCore": {
+          "median": 0,
+          "p95": 0.3975653199989727
+        },
+        "combinedRssMiB": {
+          "median": 934.16796875,
+          "p95": 934.734375
+        },
+        "combinedPssMiB": {
+          "median": 396.828125,
+          "p95": 397.1796875
+        },
+        "combinedCpuPercentOneCore": {
+          "median": 1.5879021486735245,
+          "p95": 1.9871036229697405
+        }
+      }
+    },
+    "conversationSwitching": {
+      "rounds": [
+        {
+          "round": 1,
+          "electron": {
+            "durationMs": 2516.3254180000004,
+            "processCount": 7,
+            "rssMiB": 745.84375,
+            "pssMiB": 320.4912109375,
+            "cpuPercentOneCore": 0.7948097593790634
+          },
+          "daemonTree": {
+            "durationMs": 2515.5460860000003,
+            "processCount": 3,
+            "rssMiB": 189.4296875,
+            "pssMiB": 77.2275390625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 935.2734375,
+            "pssMiB": 397.71875,
+            "cpuPercentOneCore": 0.7948097593790634
+          }
+        },
+        {
+          "round": 2,
+          "electron": {
+            "durationMs": 2516.5451189999985,
+            "processCount": 7,
+            "rssMiB": 750.328125,
+            "pssMiB": 324.9716796875,
+            "cpuPercentOneCore": 1.589480740798117
+          },
+          "daemonTree": {
+            "durationMs": 2517.074464000001,
+            "processCount": 3,
+            "rssMiB": 189.44921875,
+            "pssMiB": 77.2470703125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 939.77734375,
+            "pssMiB": 402.21875,
+            "cpuPercentOneCore": 1.589480740798117
+          }
+        },
+        {
+          "round": 3,
+          "electron": {
+            "durationMs": 2516.7766330000013,
+            "processCount": 7,
+            "rssMiB": 755.42578125,
+            "pssMiB": 329.95703125,
+            "cpuPercentOneCore": 1.1920008953770356
+          },
+          "daemonTree": {
+            "durationMs": 2517.226036,
+            "processCount": 3,
+            "rssMiB": 189.4609375,
+            "pssMiB": 77.2587890625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 944.88671875,
+            "pssMiB": 407.2158203125,
+            "cpuPercentOneCore": 1.1920008953770356
+          }
+        },
+        {
+          "round": 4,
+          "electron": {
+            "durationMs": 2515.195538,
+            "processCount": 7,
+            "rssMiB": 760.7265625,
+            "pssMiB": 335.25390625,
+            "cpuPercentOneCore": 1.5903336100781535
+          },
+          "daemonTree": {
+            "durationMs": 2515.3354930000023,
+            "processCount": 3,
+            "rssMiB": 189.5078125,
+            "pssMiB": 77.3056640625,
+            "cpuPercentOneCore": 0.39756128070507
+          },
+          "combined": {
+            "rssMiB": 950.234375,
+            "pssMiB": 412.5595703125,
+            "cpuPercentOneCore": 1.9878948907832235
+          }
+        },
+        {
+          "round": 5,
+          "electron": {
+            "durationMs": 2517.580007999997,
+            "processCount": 7,
+            "rssMiB": 765.61328125,
+            "pssMiB": 340.09765625,
+            "cpuPercentOneCore": 3.177654721827619
+          },
+          "daemonTree": {
+            "durationMs": 2517.961230000001,
+            "processCount": 3,
+            "rssMiB": 189.64453125,
+            "pssMiB": 77.4423828125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 955.2578125,
+            "pssMiB": 417.5400390625,
+            "cpuPercentOneCore": 3.177654721827619
+          }
+        }
+      ],
+      "median": {
+        "electronRssMiB": {
+          "median": 755.42578125,
+          "p95": 765.61328125
+        },
+        "electronPssMiB": {
+          "median": 329.95703125,
+          "p95": 340.09765625
+        },
+        "electronCpuPercentOneCore": {
+          "median": 1.589480740798117,
+          "p95": 3.177654721827619
+        },
+        "daemonTreeRssMiB": {
+          "median": 189.4609375,
+          "p95": 189.64453125
+        },
+        "daemonTreePssMiB": {
+          "median": 77.2587890625,
+          "p95": 77.4423828125
+        },
+        "daemonTreeCpuPercentOneCore": {
+          "median": 0,
+          "p95": 0.39756128070507
+        },
+        "combinedRssMiB": {
+          "median": 944.88671875,
+          "p95": 955.2578125
+        },
+        "combinedPssMiB": {
+          "median": 407.2158203125,
+          "p95": 417.5400390625
+        },
+        "combinedCpuPercentOneCore": {
+          "median": 1.589480740798117,
+          "p95": 3.177654721827619
+        }
+      }
+    }
+  },
+  "error": "locator.click: Timeout 12000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.chat-heading-actions').getByRole('button', { name: /Favorito/ })\u001b[22m\n\n    at /home/scarabeli/Área de trabalho/Pessoal/karont/karont/scripts/spec005-e2e.mjs:295:89",
+  "daemonErrors": [],
+  "daemonExit": {
+    "code": null,
+    "signal": null
+  },
+  "harnessSocket": {
+    "destroyed": false,
+    "connected": true
+  }
+}

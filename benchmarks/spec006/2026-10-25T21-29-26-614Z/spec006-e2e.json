@@ -1,0 +1,39 @@
+{
+  "runId": "2026-10-25T21-29-26-614Z",
+  "status": "failed",
+  "stage": "pagination-and-filtering",
+  "checks": [
+    "Ajuste 01 / B17: filtros de estado e responsável não restringem as quatro colunas do quadro; mudança de estado move o cartão; filtros são restaurados na visão agregada e projeto diferente permanece excluído",
+    "B1/B2/B3: tarefa manual com responsável, cancelamento sem efeitos e /kanban com prévia editável/cancelável; comando não foi salvo nem enviado a Run",
+    "B11: replay com a mesma chave retorna a tarefa original; payload diferente e revisão obsoleta são recusados",
+    "B6/B9: título, descrição e estado persistem; histórico registra alterações; tarefa concluída reabre sem alterar Run",
+    "B7/B8/B9: Dot não inicia execução; Run do mesmo projeto associa; Run de outro projeto recusa; estados Task/Run continuam independentes"
+  ],
+  "artifacts": [
+    "benchmarks/spec006/2026-10-25T21-29-26-614Z/kanban-residual-filter-1440.png",
+    "benchmarks/spec006/2026-10-25T21-29-26-614Z/kanban-project-1440.png"
+  ],
+  "metrics": {
+    "boardOpenMs": 62.32439000000022,
+    "idleBaseline": [
+      {
+        "durationMs": 1221.7893510000004,
+        "processCount": 7,
+        "rssMiB": 758.04296875,
+        "pssMiB": 333.9453125,
+        "cpuPercentOneCore": 1.636943388287871
+      },
+      {
+        "durationMs": 1222.6427859999994,
+        "processCount": 1,
+        "rssMiB": 84.56640625,
+        "pssMiB": 45.087890625,
+        "cpuPercentOneCore": 0
+      }
+    ],
+    "pageResponseMs": 2.334233000000495
+  },
+  "evidence": {},
+  "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n7 !== 3\n\n    at file:///home/scarabeli/%C3%81rea%20de%20trabalho/Pessoal/karont/karont/scripts/spec006-e2e.mjs:353:10\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+  "daemonErrors": []
+}

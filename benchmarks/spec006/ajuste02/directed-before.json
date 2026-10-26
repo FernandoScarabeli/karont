@@ -1,0 +1,22 @@
+{
+  "stage": "before production fix",
+  "command": "node --test --test-name-pattern=entrega: ordem tests/workspaces.test.mjs",
+  "cases": [
+    {
+      "clockChangeMs": 0,
+      "oldOperationIdSortsAfterRetry": true,
+      "writeOutcome": "sent",
+      "latestDelivery": "uncertain",
+      "assertion": "tests/workspaces.test.mjs:467:14",
+      "exitCode": 1
+    },
+    {
+      "clockChangeMs": -1000,
+      "oldOperationIdSortsAfterRetry": true,
+      "writeOutcome": "sent",
+      "latestDelivery": "uncertain",
+      "assertion": "tests/workspaces.test.mjs:467:14",
+      "exitCode": 1
+    }
+  ]
+}

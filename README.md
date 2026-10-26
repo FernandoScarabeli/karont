@@ -48,6 +48,11 @@ Desempenho mensurável e microinterações bem acabadas; dados locais primeiro; 
 
 # Status do projeto
 
+**Atualização de 25/10/2026:** o ciclo básico com Codex autenticado passou:
+alteração controlada, fechamento/reabertura com a mesma sessão, diff e rollback
+pela interface. [Evidências e limites da validação real](docs/VALIDACAO_CLI_REAL.md).
+Auto Resume e aprovação nativa de comando sensível permanecem pendentes.
+
 Continuidade da Fase 3 implementada, preservando as fases anteriores, com validação em Debian 13/KVM e sandbox efetivo. Aceite funcional com CLI real e Auto Resume permanece pendente. Revisão formal do protocolo IPC, desktops Linux físicos e embalagem continuam pendentes; RAM segue monitorada sem limite rígido. Stack: Electron \+ React \+ TypeScript \+ Vite; SQLite/FTS5; daemon independente TypeScript/Node. Ao fechar a janela, daemon e CLIs continuam ativos; as sessões reconectam ao reabrir. Rust fica reservado caso medições justifiquem.
 
 # Como contribuir
@@ -110,7 +115,7 @@ npm run benchmark:report
 
 [Matriz de aceite](docs/ACEITE_FASE_0.md) · [Como repetir benchmarks](docs/BENCHMARKS.md) · [Resultados locais](benchmarks/RESULTADOS.md) · [Protocolo e segurança](docs/PROTOCOLO_LOCAL.md).
 
-**Validação atual:** `npm run check` e `npm test` passam localmente (27 testes; os 16 anteriores preservados e 11 novos casos de continuidade). `test:desktop` e `test:e2e` passaram em Debian 13/KVM com sandbox real; evidências e medições estão em [resultados](benchmarks/RESULTADOS.md) e [SPEC-002](docs/SPEC_002_IMPLEMENTACAO.md). O host Ubuntu continua sem exceções de sandbox. A revisão formal do IPC continua pendente.
+**Validação histórica das fases anteriores:** a base de 27 testes e as evidências Debian 13/KVM continuam registradas em [resultados](benchmarks/RESULTADOS.md) e [SPEC-002](docs/SPEC_002_IMPLEMENTACAO.md). Para a Fase 4A, consulte o [relatório SPEC-005](docs/SPEC_005_IMPLEMENTACAO.md). Para o estado atual de Kanban, migração e validação local, consulte o [relatório SPEC-006](docs/SPEC_006_IMPLEMENTACAO.md). A revisão formal do IPC continua pendente.
 
 A licença open source definitiva continua pendente do mantenedor. `UNLICENSED`/`private` no package.json evita indicar uma licença que não foi escolhida.
 
@@ -131,3 +136,29 @@ Ao atualizar o código/build, conclua as Runs antes de atualizar o daemon (`npm 
 Fila e pausa de agendamento persistentes, checkpoints automáticos/manuais, recuperação conservadora após crash do daemon e operações com proteção contra replay. Uma Run interrompida passa a `recovery_needed`; o PTY perdido não é restaurado. **Retomar** oferece nova sessão na mesma worktree somente após revisão e confirmação explícita, sem reenviar a tarefa. Processos sobreviventes e operações incertas bloqueiam repetição, rollback e remoção automática.
 
 Auto Resume aparece **indisponível** para os perfis atuais. A infraestrutura de capacidades/agendamento foi testada com fixtures; Codex 0.164.0 foi investigado, mas a validação autenticada permanece bloqueada. `autoResume: false` no Dot e o controle por Run preservam o veto do usuário. [Relatório da fase](docs/SPEC_004_IMPLEMENTACAO.md) · [Recuperação e limites](docs/RECUPERACAO_E_CHECKPOINTS.md) · [Capacidades reais](docs/AUTO_RESUME_CAPACIDADES.md). Não foi iniciada a Fase 4.
+
+## Fase 4A — organização do trabalho (SPEC-005)
+
+O shell abre em Workspaces. Cadastre repositórios existentes pelo seletor de
+pasta nativo, escolha explicitamente os Dots autorizados e crie conversas de
+projeto ou livres. Conversas persistem rascunhos e mensagens digitadas pelo
+usuário; Runs são iniciadas por ação explícita e vinculadas à conversa. Favoritos,
+recentes e navegação persistem entre janelas. Uma conversa livre guarda histórico
+local, mas não inicia agentes até ser vinculada a projeto. Saída do terminal
+continua no terminal e não vira mensagem de chat.
+
+O banco migra para v5, associa projetos existentes ao workspace “Meus projetos”
+e mantém Runs antigas em Execuções anteriores. Para detalhes de migração, uso,
+validações, métricas e limites, consulte o [relatório SPEC-005](docs/SPEC_005_IMPLEMENTACAO.md).
+Kanban e `/kanban` permanecem na Fase 4B; Auto Resume continua pendente.
+
+## Fase 4B — tarefas por projeto (SPEC-006)
+
+Tarefas são registros independentes de Chats e Runs, com responsáveis, origem,
+vínculos explícitos a execuções e histórico append-only. O quadro por projeto
+tem quatro estados; a visão agregada filtra por Workspace, Projeto, estado e
+responsável, com paginação. Criação manual e `/kanban` pedem confirmação; o
+comando só é reconhecido no compositor estruturado e nunca é enviado à CLI.
+SQLite migra para v6. Veja a [implementação, matriz B0–B16, medições locais e
+pendências](docs/SPEC_006_IMPLEMENTACAO.md). O frontend segue provisório; Auto
+Resume continua independente.

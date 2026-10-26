@@ -1,0 +1,183 @@
+{
+  "status": "passed",
+  "stage": "complete",
+  "checks": [
+    "sandbox runtime, Seccomp=2 e NoNewPrivs=1",
+    "Diagnóstico, prévia de relatório sanitizado e IPC inválido recusado",
+    "dois dots iniciados em PTYs independentes",
+    "BrowserWindow destruída; daemon e dois processos PTY permaneceram ativos",
+    "janela reaberta recuperou os mesmos PIDs, saída PTY e entrada interativa",
+    "diff exibido, prévia confirmada, rollback auditado na Central de Aprovações",
+    "Run falhou sem BrowserWindow; entrega nativa não verificada sem fixture",
+    "Layout 900px sem overflow horizontal; mensagens de reconexão removidas após recuperar a conexão",
+    "Falha de conexão, reconexão ao mesmo daemon e preferência de notificações",
+    "Checkpoint manual na UI; SIGKILL real do daemon com duas Runs; reconexão; aviso de risco e nova sessão explicitamente confirmada"
+  ],
+  "artifacts": [
+    "benchmarks/runs/2026-10-25T21-08-32-425Z/phase2-diagnostics.png",
+    "benchmarks/runs/2026-10-25T21-08-32-425Z/phase2-report.md",
+    "benchmarks/runs/2026-10-25T21-08-32-425Z/phase1-two-terminals.png",
+    "benchmarks/runs/2026-10-25T21-08-32-425Z/phase1-reconnected.png",
+    "benchmarks/runs/2026-10-25T21-08-32-425Z/phase2-approvals.png",
+    "benchmarks/runs/2026-10-25T21-08-32-425Z/phase2-diagnostics-after-events.png",
+    "benchmarks/runs/2026-10-25T21-08-32-425Z/phase2-compact.png",
+    "benchmarks/runs/2026-10-25T21-08-32-425Z/phase3-recovery.png",
+    "benchmarks/runs/2026-10-25T21-08-32-425Z/phase3-compact.png"
+  ],
+  "runId": "2026-10-25T21-08-32-425Z",
+  "metrics": {
+    "idle": {
+      "electron": {
+        "durationMs": 2517.6914620000002,
+        "processCount": 8,
+        "rssMiB": 784.375,
+        "pssMiB": 325.236328125,
+        "cpuPercentOneCore": 3.574703308899732
+      },
+      "daemon": {
+        "durationMs": 2500,
+        "processCount": 1,
+        "rssMiB": 78.0078125,
+        "pssMiB": 39.8447265625,
+        "cpuPercentOneCore": 0
+      },
+      "clis": [],
+      "total": {
+        "rssMiB": 862.3828125,
+        "pssMiB": 365.0810546875,
+        "cpuPercentOneCore": 3.574703308899732
+      }
+    },
+    "twoTerminals": {
+      "electron": {
+        "durationMs": 2521.546246,
+        "processCount": 10,
+        "rssMiB": 930.109375,
+        "pssMiB": 384.5322265625,
+        "cpuPercentOneCore": 2.776074407163583
+      },
+      "daemon": {
+        "durationMs": 2500,
+        "processCount": 1,
+        "rssMiB": 81.40234375,
+        "pssMiB": 40.830078125,
+        "cpuPercentOneCore": 0
+      },
+      "clis": [
+        {
+          "durationMs": 2521.485176,
+          "processCount": 1,
+          "rssMiB": 53.9140625,
+          "pssMiB": 14.9521484375,
+          "cpuPercentOneCore": 0
+        },
+        {
+          "durationMs": 2520.2146470000007,
+          "processCount": 1,
+          "rssMiB": 53.93359375,
+          "pssMiB": 14.9609375,
+          "cpuPercentOneCore": 0
+        }
+      ],
+      "total": {
+        "rssMiB": 1119.359375,
+        "pssMiB": 455.275390625,
+        "cpuPercentOneCore": 2.776074407163583
+      }
+    },
+    "windowClosed": {
+      "electron": {
+        "durationMs": 2517.496407999999,
+        "processCount": 9,
+        "rssMiB": 766.1796875,
+        "pssMiB": 312.900390625,
+        "cpuPercentOneCore": 0.39722003051215526
+      },
+      "daemon": {
+        "durationMs": 2500,
+        "processCount": 1,
+        "rssMiB": 81.421875,
+        "pssMiB": 40.8505859375,
+        "cpuPercentOneCore": 0.40000000000000036
+      },
+      "clis": [
+        {
+          "durationMs": 2511.645650999999,
+          "processCount": 1,
+          "rssMiB": 53.9140625,
+          "pssMiB": 14.953125,
+          "cpuPercentOneCore": 0
+        },
+        {
+          "durationMs": 2505.506958,
+          "processCount": 1,
+          "rssMiB": 53.93359375,
+          "pssMiB": 14.9619140625,
+          "cpuPercentOneCore": 0
+        }
+      ],
+      "total": {
+        "rssMiB": 955.44921875,
+        "pssMiB": 383.666015625,
+        "cpuPercentOneCore": 0.7972200305121556
+      }
+    }
+  },
+  "runs": [
+    {
+      "id": "0aea4d16-0f5b-4492-94ba-e02d91ea2ca2",
+      "dotId": "beta",
+      "pid": 97113,
+      "branch": "eros/run-0aea4d16-0f5b-4492-94ba-e02d91ea2ca2"
+    },
+    {
+      "id": "4566691b-4d4b-42ec-bb8e-7cdc6fa6d8dd",
+      "dotId": "alpha",
+      "pid": 97078,
+      "branch": "eros/run-4566691b-4d4b-42ec-bb8e-7cdc6fa6d8dd"
+    }
+  ],
+  "initialTerminalOutput": [
+    "PTY_READY beta 97113",
+    "PTY_READY alpha 97078"
+  ],
+  "backendReadyCounts": [
+    1,
+    1
+  ],
+  "nativeNotificationState": {
+    "enabled": false,
+    "history": [
+      {
+        "event": "run",
+        "status": "submitted",
+        "at": 1792962523943
+      },
+      {
+        "event": "run",
+        "status": "submitted",
+        "at": 1792962523995
+      },
+      {
+        "event": "rollback",
+        "status": "submitted",
+        "at": 1792962524484
+      },
+      {
+        "event": "run",
+        "status": "submitted",
+        "at": 1792962525466
+      },
+      {
+        "event": "daemon",
+        "status": "submitted",
+        "at": 1792962529831
+      },
+      {
+        "event": "run",
+        "status": "disabled",
+        "at": 1792962532228
+      }
+    ]
+  }
+}

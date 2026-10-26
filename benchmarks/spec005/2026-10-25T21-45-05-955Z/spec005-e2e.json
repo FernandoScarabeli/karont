@@ -1,0 +1,948 @@
+{
+  "runId": "2026-10-25T21-45-05-955Z",
+  "status": "passed",
+  "stage": "complete",
+  "checks": [
+    "shell Workspaces inicia sem criar Run; amostras de referência ociosa: 5",
+    "Escape cancela sem gravar; formulário de workspace opera por teclado; workspace criado, renomeado e persistido no daemon",
+    "cancelamento não grava; raiz Git inválida e raiz indisponível recusadas; diretório com espaços confirmado; concessão explícita validada",
+    "repositório duplicado reconhecido e não reassociado ao workspace novo",
+    "criar chat não iniciou Run; Run vinculada; mensagem salva e enviada só ao PTY ativo, sem stdout persistido",
+    "duas conversas do mesmo Dot têm Runs separadas; não terminal por conversa e teto de dois PTYs; envio cruzado recusado",
+    "troca entre conversas reanexa as mesmas sessões, sem iniciar nem cancelar Runs",
+    "conversa global aberta por Conversas livres, Favoritos e Recentes mantém o mesmo ID e escopo null/null após reload e reabertura; mensagem/rascunho intactos e nenhuma Run criada",
+    "favoritos/recentes globais; conversa livre sem agente; rascunho persistente; mover com confirmação e cancelamento preserva ID, favorito e mensagem antiga",
+    "histórico de 105 mensagens permanece paginado e completo no renderer e no daemon",
+    "layouts de 900px e 1440px sem overflow horizontal",
+    "fechar janela mantém daemon e dois PTYs com os mesmos PIDs ativos",
+    "reabertura restaura conversa selecionada e reanexa ao mesmo PID e scrollback",
+    "runs antigas aparecem em área separada; relatório e notificações não incluem mensagens",
+    "nenhum erro de renderer; fixtures encerradas sem processo de CLI pago"
+  ],
+  "artifacts": [
+    "benchmarks/spec005/2026-10-25T21-45-05-955Z/spec005-1440.png",
+    "benchmarks/spec005/2026-10-25T21-45-05-955Z/spec005-900.png"
+  ],
+  "metrics": {
+    "idle": {
+      "rounds": [
+        {
+          "round": 1,
+          "electron": {
+            "durationMs": 2529.6966890000003,
+            "processCount": 7,
+            "rssMiB": 689.16015625,
+            "pssMiB": 274.3486328125,
+            "cpuPercentOneCore": 2.371825850146417
+          },
+          "daemonTree": {
+            "durationMs": 2524.837245,
+            "processCount": 1,
+            "rssMiB": 77.265625,
+            "pssMiB": 34.8564453125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 766.42578125,
+            "pssMiB": 309.205078125,
+            "cpuPercentOneCore": 2.371825850146417
+          }
+        },
+        {
+          "round": 2,
+          "electron": {
+            "durationMs": 2518.6483900000003,
+            "processCount": 7,
+            "rssMiB": 689.4609375,
+            "pssMiB": 274.615234375,
+            "cpuPercentOneCore": 0.3970383496046468
+          },
+          "daemonTree": {
+            "durationMs": 2518.8939620000006,
+            "processCount": 1,
+            "rssMiB": 77.31640625,
+            "pssMiB": 38.0166015625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 766.77734375,
+            "pssMiB": 312.6318359375,
+            "cpuPercentOneCore": 0.3970383496046468
+          }
+        },
+        {
+          "round": 3,
+          "electron": {
+            "durationMs": 2514.7689760000003,
+            "processCount": 7,
+            "rssMiB": 689.94140625,
+            "pssMiB": 275.1337890625,
+            "cpuPercentOneCore": 0.795301683409984
+          },
+          "daemonTree": {
+            "durationMs": 2513.7837419999996,
+            "processCount": 1,
+            "rssMiB": 77.34375,
+            "pssMiB": 38.0439453125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 767.28515625,
+            "pssMiB": 313.177734375,
+            "cpuPercentOneCore": 0.795301683409984
+          }
+        },
+        {
+          "round": 4,
+          "electron": {
+            "durationMs": 2518.053297999999,
+            "processCount": 7,
+            "rssMiB": 690.5390625,
+            "pssMiB": 275.5224609375,
+            "cpuPercentOneCore": 1.1913965452529505
+          },
+          "daemonTree": {
+            "durationMs": 2518.076135000001,
+            "processCount": 1,
+            "rssMiB": 77.38671875,
+            "pssMiB": 38.0869140625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 767.92578125,
+            "pssMiB": 313.609375,
+            "cpuPercentOneCore": 1.1913965452529505
+          }
+        },
+        {
+          "round": 5,
+          "electron": {
+            "durationMs": 2517.370024,
+            "processCount": 7,
+            "rssMiB": 690.53515625,
+            "pssMiB": 275.3310546875,
+            "cpuPercentOneCore": 0
+          },
+          "daemonTree": {
+            "durationMs": 2517.963699,
+            "processCount": 1,
+            "rssMiB": 77.4140625,
+            "pssMiB": 38.1142578125,
+            "cpuPercentOneCore": 0.3971463132677993
+          },
+          "combined": {
+            "rssMiB": 767.94921875,
+            "pssMiB": 313.4453125,
+            "cpuPercentOneCore": 0.3971463132677993
+          }
+        }
+      ],
+      "median": {
+        "electronRssMiB": {
+          "median": 689.94140625,
+          "p95": 690.5390625
+        },
+        "electronPssMiB": {
+          "median": 275.1337890625,
+          "p95": 275.5224609375
+        },
+        "electronCpuPercentOneCore": {
+          "median": 0.795301683409984,
+          "p95": 2.371825850146417
+        },
+        "daemonTreeRssMiB": {
+          "median": 77.34375,
+          "p95": 77.4140625
+        },
+        "daemonTreePssMiB": {
+          "median": 38.0439453125,
+          "p95": 38.1142578125
+        },
+        "daemonTreeCpuPercentOneCore": {
+          "median": 0,
+          "p95": 0.3971463132677993
+        },
+        "combinedRssMiB": {
+          "median": 767.28515625,
+          "p95": 767.94921875
+        },
+        "combinedPssMiB": {
+          "median": 313.177734375,
+          "p95": 313.609375
+        },
+        "combinedCpuPercentOneCore": {
+          "median": 0.795301683409984,
+          "p95": 2.371825850146417
+        }
+      }
+    },
+    "twoRuns": {
+      "rounds": [
+        {
+          "round": 1,
+          "electron": {
+            "durationMs": 2521.0723690000013,
+            "processCount": 7,
+            "rssMiB": 742.24609375,
+            "pssMiB": 317.9638671875,
+            "cpuPercentOneCore": 1.189969806852459
+          },
+          "daemonTree": {
+            "durationMs": 2521.791314000002,
+            "processCount": 3,
+            "rssMiB": 189.41796875,
+            "pssMiB": 69.05859375,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 931.6640625,
+            "pssMiB": 387.0224609375,
+            "cpuPercentOneCore": 1.189969806852459
+          }
+        },
+        {
+          "round": 2,
+          "electron": {
+            "durationMs": 2519.0038380000005,
+            "processCount": 7,
+            "rssMiB": 742.4609375,
+            "pssMiB": 318.1787109375,
+            "cpuPercentOneCore": 0.7939646497672391
+          },
+          "daemonTree": {
+            "durationMs": 2519.5620769999987,
+            "processCount": 3,
+            "rssMiB": 189.43359375,
+            "pssMiB": 69.07421875,
+            "cpuPercentOneCore": 0.3968943687192992
+          },
+          "combined": {
+            "rssMiB": 931.89453125,
+            "pssMiB": 387.2529296875,
+            "cpuPercentOneCore": 1.1908590184865382
+          }
+        },
+        {
+          "round": 3,
+          "electron": {
+            "durationMs": 2517.1295640000026,
+            "processCount": 7,
+            "rssMiB": 742.5703125,
+            "pssMiB": 318.2880859375,
+            "cpuPercentOneCore": 0.39727792097077763
+          },
+          "daemonTree": {
+            "durationMs": 2516.8387599999987,
+            "processCount": 3,
+            "rssMiB": 189.4921875,
+            "pssMiB": 69.1328125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 932.0625,
+            "pssMiB": 387.4208984375,
+            "cpuPercentOneCore": 0.39727792097077763
+          }
+        },
+        {
+          "round": 4,
+          "electron": {
+            "durationMs": 2520.780881999999,
+            "processCount": 7,
+            "rssMiB": 742.70703125,
+            "pssMiB": 318.4248046875,
+            "cpuPercentOneCore": 0.3967024691200436
+          },
+          "daemonTree": {
+            "durationMs": 2521.7542890000004,
+            "processCount": 3,
+            "rssMiB": 189.5390625,
+            "pssMiB": 69.1796875,
+            "cpuPercentOneCore": 0.39654934041831225
+          },
+          "combined": {
+            "rssMiB": 932.24609375,
+            "pssMiB": 387.6044921875,
+            "cpuPercentOneCore": 0.7932518095383558
+          }
+        },
+        {
+          "round": 5,
+          "electron": {
+            "durationMs": 2519.0063609999997,
+            "processCount": 7,
+            "rssMiB": 742.8515625,
+            "pssMiB": 318.5185546875,
+            "cpuPercentOneCore": 1.5879277090876633
+          },
+          "daemonTree": {
+            "durationMs": 2518.828561000002,
+            "processCount": 3,
+            "rssMiB": 189.5390625,
+            "pssMiB": 69.1796875,
+            "cpuPercentOneCore": 0.3970099495787002
+          },
+          "combined": {
+            "rssMiB": 932.390625,
+            "pssMiB": 387.6982421875,
+            "cpuPercentOneCore": 1.9849376586663636
+          }
+        }
+      ],
+      "median": {
+        "electronRssMiB": {
+          "median": 742.5703125,
+          "p95": 742.8515625
+        },
+        "electronPssMiB": {
+          "median": 318.2880859375,
+          "p95": 318.5185546875
+        },
+        "electronCpuPercentOneCore": {
+          "median": 0.7939646497672391,
+          "p95": 1.5879277090876633
+        },
+        "daemonTreeRssMiB": {
+          "median": 189.4921875,
+          "p95": 189.5390625
+        },
+        "daemonTreePssMiB": {
+          "median": 69.1328125,
+          "p95": 69.1796875
+        },
+        "daemonTreeCpuPercentOneCore": {
+          "median": 0.39654934041831225,
+          "p95": 0.3970099495787002
+        },
+        "combinedRssMiB": {
+          "median": 932.0625,
+          "p95": 932.390625
+        },
+        "combinedPssMiB": {
+          "median": 387.4208984375,
+          "p95": 387.6982421875
+        },
+        "combinedCpuPercentOneCore": {
+          "median": 1.189969806852459,
+          "p95": 1.9849376586663636
+        }
+      }
+    },
+    "conversationSwitching": {
+      "rounds": [
+        {
+          "round": 1,
+          "electron": {
+            "durationMs": 2516.3692889999984,
+            "processCount": 7,
+            "rssMiB": 722.55078125,
+            "pssMiB": 297.515625,
+            "cpuPercentOneCore": 7.153163122235208
+          },
+          "daemonTree": {
+            "durationMs": 2512.2628540000005,
+            "processCount": 3,
+            "rssMiB": 189.55859375,
+            "pssMiB": 69.19921875,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 912.109375,
+            "pssMiB": 366.71484375,
+            "cpuPercentOneCore": 7.153163122235208
+          }
+        },
+        {
+          "round": 2,
+          "electron": {
+            "durationMs": 2519.9290330000003,
+            "processCount": 7,
+            "rssMiB": 728.65234375,
+            "pssMiB": 303.6640625,
+            "cpuPercentOneCore": 1.5873462893667145
+          },
+          "daemonTree": {
+            "durationMs": 2519.862519999995,
+            "processCount": 3,
+            "rssMiB": 189.58984375,
+            "pssMiB": 69.23046875,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 918.2421875,
+            "pssMiB": 372.89453125,
+            "cpuPercentOneCore": 1.5873462893667145
+          }
+        },
+        {
+          "round": 3,
+          "electron": {
+            "durationMs": 2518.200076000001,
+            "processCount": 7,
+            "rssMiB": 734.15625,
+            "pssMiB": 309.1640625,
+            "cpuPercentOneCore": 3.1768722732736525
+          },
+          "daemonTree": {
+            "durationMs": 2518.940896,
+            "processCount": 3,
+            "rssMiB": 189.6015625,
+            "pssMiB": 69.2421875,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 923.7578125,
+            "pssMiB": 378.40625,
+            "cpuPercentOneCore": 3.1768722732736525
+          }
+        },
+        {
+          "round": 4,
+          "electron": {
+            "durationMs": 2529.3741200000004,
+            "processCount": 7,
+            "rssMiB": 735.1875,
+            "pssMiB": 310.125,
+            "cpuPercentOneCore": 1.5814188847634778
+          },
+          "daemonTree": {
+            "durationMs": 2530.8527590000012,
+            "processCount": 3,
+            "rssMiB": 189.65234375,
+            "pssMiB": 69.29296875,
+            "cpuPercentOneCore": 0.7902474740530727
+          },
+          "combined": {
+            "rssMiB": 924.83984375,
+            "pssMiB": 379.41796875,
+            "cpuPercentOneCore": 2.3716663588165505
+          }
+        },
+        {
+          "round": 5,
+          "electron": {
+            "durationMs": 2517.4380640000018,
+            "processCount": 7,
+            "rssMiB": 736.6640625,
+            "pssMiB": 311.59765625,
+            "cpuPercentOneCore": 1.5889169458430819
+          },
+          "daemonTree": {
+            "durationMs": 2514.653779,
+            "processCount": 3,
+            "rssMiB": 189.66015625,
+            "pssMiB": 69.30078125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 926.32421875,
+            "pssMiB": 380.8984375,
+            "cpuPercentOneCore": 1.5889169458430819
+          }
+        }
+      ],
+      "median": {
+        "electronRssMiB": {
+          "median": 734.15625,
+          "p95": 736.6640625
+        },
+        "electronPssMiB": {
+          "median": 309.1640625,
+          "p95": 311.59765625
+        },
+        "electronCpuPercentOneCore": {
+          "median": 1.5889169458430819,
+          "p95": 7.153163122235208
+        },
+        "daemonTreeRssMiB": {
+          "median": 189.6015625,
+          "p95": 189.66015625
+        },
+        "daemonTreePssMiB": {
+          "median": 69.2421875,
+          "p95": 69.30078125
+        },
+        "daemonTreeCpuPercentOneCore": {
+          "median": 0,
+          "p95": 0.7902474740530727
+        },
+        "combinedRssMiB": {
+          "median": 923.7578125,
+          "p95": 926.32421875
+        },
+        "combinedPssMiB": {
+          "median": 378.40625,
+          "p95": 380.8984375
+        },
+        "combinedCpuPercentOneCore": {
+          "median": 2.3716663588165505,
+          "p95": 7.153163122235208
+        }
+      }
+    },
+    "historyPageResponseMs": 0.8532599999962258,
+    "historyPageBatchMs": [
+      3.4543420000045444,
+      3.578880000000936,
+      3.4591749999963213,
+      4.010207999999693,
+      3.9188930000018445
+    ],
+    "paginatedHistory": {
+      "rounds": [
+        {
+          "round": 1,
+          "electron": {
+            "durationMs": 2518.9681250000067,
+            "processCount": 7,
+            "rssMiB": 724.35546875,
+            "pssMiB": 300.30078125,
+            "cpuPercentOneCore": 1.1909638594573302
+          },
+          "daemonTree": {
+            "durationMs": 2519.2048549999963,
+            "processCount": 3,
+            "rssMiB": 196.8515625,
+            "pssMiB": 72.908203125,
+            "cpuPercentOneCore": 0.3969506481440956
+          },
+          "combined": {
+            "rssMiB": 921.20703125,
+            "pssMiB": 373.208984375,
+            "cpuPercentOneCore": 1.5879145076014258
+          }
+        },
+        {
+          "round": 2,
+          "electron": {
+            "durationMs": 2518.977128000006,
+            "processCount": 7,
+            "rssMiB": 724.47265625,
+            "pssMiB": 300.41796875,
+            "cpuPercentOneCore": 0.39698653428980185
+          },
+          "daemonTree": {
+            "durationMs": 2519.355163,
+            "processCount": 3,
+            "rssMiB": 196.87890625,
+            "pssMiB": 72.935546875,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 921.3515625,
+            "pssMiB": 373.353515625,
+            "cpuPercentOneCore": 0.39698653428980185
+          }
+        },
+        {
+          "round": 3,
+          "electron": {
+            "durationMs": 2520.6632000000027,
+            "processCount": 7,
+            "rssMiB": 726.0546875,
+            "pssMiB": 301.5859375,
+            "cpuPercentOneCore": 1.5868839597451883
+          },
+          "daemonTree": {
+            "durationMs": 2521.2506850000063,
+            "processCount": 3,
+            "rssMiB": 196.89453125,
+            "pssMiB": 72.951171875,
+            "cpuPercentOneCore": 0.793257097320331
+          },
+          "combined": {
+            "rssMiB": 922.94921875,
+            "pssMiB": 374.537109375,
+            "cpuPercentOneCore": 2.3801410570655195
+          }
+        },
+        {
+          "round": 4,
+          "electron": {
+            "durationMs": 2515.947,
+            "processCount": 7,
+            "rssMiB": 726.17578125,
+            "pssMiB": 301.73828125,
+            "cpuPercentOneCore": 1.1923939574243692
+          },
+          "daemonTree": {
+            "durationMs": 2515.4640350000045,
+            "processCount": 3,
+            "rssMiB": 196.8984375,
+            "pssMiB": 72.955078125,
+            "cpuPercentOneCore": 0.3975409650410681
+          },
+          "combined": {
+            "rssMiB": 923.07421875,
+            "pssMiB": 374.693359375,
+            "cpuPercentOneCore": 1.5899349224654373
+          }
+        },
+        {
+          "round": 5,
+          "electron": {
+            "durationMs": 2517.323599000003,
+            "processCount": 7,
+            "rssMiB": 726.578125,
+            "pssMiB": 302.140625,
+            "cpuPercentOneCore": 1.5889891953457982
+          },
+          "daemonTree": {
+            "durationMs": 2517.0970579999994,
+            "processCount": 3,
+            "rssMiB": 196.91015625,
+            "pssMiB": 72.966796875,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 923.48828125,
+            "pssMiB": 375.107421875,
+            "cpuPercentOneCore": 1.5889891953457982
+          }
+        }
+      ],
+      "median": {
+        "electronRssMiB": {
+          "median": 726.0546875,
+          "p95": 726.578125
+        },
+        "electronPssMiB": {
+          "median": 301.5859375,
+          "p95": 302.140625
+        },
+        "electronCpuPercentOneCore": {
+          "median": 1.1923939574243692,
+          "p95": 1.5889891953457982
+        },
+        "daemonTreeRssMiB": {
+          "median": 196.89453125,
+          "p95": 196.91015625
+        },
+        "daemonTreePssMiB": {
+          "median": 72.951171875,
+          "p95": 72.966796875
+        },
+        "daemonTreeCpuPercentOneCore": {
+          "median": 0.3969506481440956,
+          "p95": 0.793257097320331
+        },
+        "combinedRssMiB": {
+          "median": 922.94921875,
+          "p95": 923.48828125
+        },
+        "combinedPssMiB": {
+          "median": 374.537109375,
+          "p95": 375.107421875
+        },
+        "combinedCpuPercentOneCore": {
+          "median": 1.5889891953457982,
+          "p95": 2.3801410570655195
+        }
+      }
+    },
+    "windowClosed": {
+      "rounds": [
+        {
+          "round": 1,
+          "electron": {
+            "durationMs": 2515.483855000006,
+            "processCount": 6,
+            "rssMiB": 575.16015625,
+            "pssMiB": 239.9208984375,
+            "cpuPercentOneCore": 0
+          },
+          "daemonTree": {
+            "durationMs": 2514.355540999997,
+            "processCount": 3,
+            "rssMiB": 196.93359375,
+            "pssMiB": 72.9921875,
+            "cpuPercentOneCore": 0.3977162273567269
+          },
+          "combined": {
+            "rssMiB": 772.09375,
+            "pssMiB": 312.9130859375,
+            "cpuPercentOneCore": 0.3977162273567269
+          }
+        },
+        {
+          "round": 2,
+          "electron": {
+            "durationMs": 2514.903688999999,
+            "processCount": 6,
+            "rssMiB": 572.31640625,
+            "pssMiB": 237.0888671875,
+            "cpuPercentOneCore": 0
+          },
+          "daemonTree": {
+            "durationMs": 2514.8112189999956,
+            "processCount": 3,
+            "rssMiB": 196.9375,
+            "pssMiB": 72.99609375,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 769.25390625,
+            "pssMiB": 310.0849609375,
+            "cpuPercentOneCore": 0
+          }
+        },
+        {
+          "round": 3,
+          "electron": {
+            "durationMs": 2516.427297000002,
+            "processCount": 6,
+            "rssMiB": 572.35546875,
+            "pssMiB": 237.1279296875,
+            "cpuPercentOneCore": 0
+          },
+          "daemonTree": {
+            "durationMs": 2513.036368000001,
+            "processCount": 3,
+            "rssMiB": 196.94140625,
+            "pssMiB": 73,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 769.296875,
+            "pssMiB": 310.1279296875,
+            "cpuPercentOneCore": 0
+          }
+        },
+        {
+          "round": 4,
+          "electron": {
+            "durationMs": 2519.3484600000083,
+            "processCount": 6,
+            "rssMiB": 572.3828125,
+            "pssMiB": 237.1552734375,
+            "cpuPercentOneCore": 0.39692802162032786
+          },
+          "daemonTree": {
+            "durationMs": 2520.0828880000045,
+            "processCount": 3,
+            "rssMiB": 196.94140625,
+            "pssMiB": 73,
+            "cpuPercentOneCore": 0.3968123448485553
+          },
+          "combined": {
+            "rssMiB": 769.32421875,
+            "pssMiB": 310.1552734375,
+            "cpuPercentOneCore": 0.7937403664688831
+          }
+        },
+        {
+          "round": 5,
+          "electron": {
+            "durationMs": 2515.8640900000028,
+            "processCount": 6,
+            "rssMiB": 572.40625,
+            "pssMiB": 237.1787109375,
+            "cpuPercentOneCore": 0
+          },
+          "daemonTree": {
+            "durationMs": 2515.161189999999,
+            "processCount": 3,
+            "rssMiB": 196.94140625,
+            "pssMiB": 73,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 769.34765625,
+            "pssMiB": 310.1787109375,
+            "cpuPercentOneCore": 0
+          }
+        }
+      ],
+      "median": {
+        "electronRssMiB": {
+          "median": 572.3828125,
+          "p95": 575.16015625
+        },
+        "electronPssMiB": {
+          "median": 237.1552734375,
+          "p95": 239.9208984375
+        },
+        "electronCpuPercentOneCore": {
+          "median": 0,
+          "p95": 0.39692802162032786
+        },
+        "daemonTreeRssMiB": {
+          "median": 196.94140625,
+          "p95": 196.94140625
+        },
+        "daemonTreePssMiB": {
+          "median": 73,
+          "p95": 73
+        },
+        "daemonTreeCpuPercentOneCore": {
+          "median": 0,
+          "p95": 0.3977162273567269
+        },
+        "combinedRssMiB": {
+          "median": 769.32421875,
+          "p95": 772.09375
+        },
+        "combinedPssMiB": {
+          "median": 310.1552734375,
+          "p95": 312.9130859375
+        },
+        "combinedCpuPercentOneCore": {
+          "median": 0,
+          "p95": 0.7937403664688831
+        }
+      }
+    },
+    "windowReopened": {
+      "rounds": [
+        {
+          "round": 1,
+          "electron": {
+            "durationMs": 2520.838373999999,
+            "processCount": 7,
+            "rssMiB": 724.58203125,
+            "pssMiB": 298.5458984375,
+            "cpuPercentOneCore": 1.5867736865862163
+          },
+          "daemonTree": {
+            "durationMs": 2520.558831000002,
+            "processCount": 3,
+            "rssMiB": 196.98046875,
+            "pssMiB": 73.037109375,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 921.5625,
+            "pssMiB": 371.5830078125,
+            "cpuPercentOneCore": 1.5867736865862163
+          }
+        },
+        {
+          "round": 2,
+          "electron": {
+            "durationMs": 2518.885027000011,
+            "processCount": 7,
+            "rssMiB": 731.0625,
+            "pssMiB": 304.5439453125,
+            "cpuPercentOneCore": 1.191003149346999
+          },
+          "daemonTree": {
+            "durationMs": 2518.7934099999984,
+            "processCount": 3,
+            "rssMiB": 197,
+            "pssMiB": 73.056640625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 928.0625,
+            "pssMiB": 377.6005859375,
+            "cpuPercentOneCore": 1.191003149346999
+          }
+        },
+        {
+          "round": 3,
+          "electron": {
+            "durationMs": 2517.5852869999944,
+            "processCount": 7,
+            "rssMiB": 735.94921875,
+            "pssMiB": 309.4267578125,
+            "cpuPercentOneCore": 1.588824029380345
+          },
+          "daemonTree": {
+            "durationMs": 2517.3701599999913,
+            "processCount": 3,
+            "rssMiB": 197,
+            "pssMiB": 73.056640625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 932.94921875,
+            "pssMiB": 382.4833984375,
+            "cpuPercentOneCore": 1.588824029380345
+          }
+        },
+        {
+          "round": 4,
+          "electron": {
+            "durationMs": 2519.4080079999985,
+            "processCount": 7,
+            "rssMiB": 740.015625,
+            "pssMiB": 313.4931640625,
+            "cpuPercentOneCore": 1.1907559198327373
+          },
+          "daemonTree": {
+            "durationMs": 2521.1039440000022,
+            "processCount": 3,
+            "rssMiB": 197,
+            "pssMiB": 73.056640625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 937.015625,
+            "pssMiB": 386.5498046875,
+            "cpuPercentOneCore": 1.1907559198327373
+          }
+        },
+        {
+          "round": 5,
+          "electron": {
+            "durationMs": 2519.5976519999967,
+            "processCount": 7,
+            "rssMiB": 744.328125,
+            "pssMiB": 317.8017578125,
+            "cpuPercentOneCore": 1.1906662945247126
+          },
+          "daemonTree": {
+            "durationMs": 2517.4689100000105,
+            "processCount": 3,
+            "rssMiB": 197.00390625,
+            "pssMiB": 73.060546875,
+            "cpuPercentOneCore": 0.3972243692971662
+          },
+          "combined": {
+            "rssMiB": 941.33203125,
+            "pssMiB": 390.8623046875,
+            "cpuPercentOneCore": 1.5878906638218788
+          }
+        }
+      ],
+      "median": {
+        "electronRssMiB": {
+          "median": 735.94921875,
+          "p95": 744.328125
+        },
+        "electronPssMiB": {
+          "median": 309.4267578125,
+          "p95": 317.8017578125
+        },
+        "electronCpuPercentOneCore": {
+          "median": 1.191003149346999,
+          "p95": 1.588824029380345
+        },
+        "daemonTreeRssMiB": {
+          "median": 197,
+          "p95": 197.00390625
+        },
+        "daemonTreePssMiB": {
+          "median": 73.056640625,
+          "p95": 73.060546875
+        },
+        "daemonTreeCpuPercentOneCore": {
+          "median": 0,
+          "p95": 0.3972243692971662
+        },
+        "combinedRssMiB": {
+          "median": 932.94921875,
+          "p95": 941.33203125
+        },
+        "combinedPssMiB": {
+          "median": 382.4833984375,
+          "p95": 390.8623046875
+        },
+        "combinedCpuPercentOneCore": {
+          "median": 1.5867736865862163,
+          "p95": 1.588824029380345
+        }
+      }
+    }
+  }
+}

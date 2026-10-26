@@ -1,0 +1,35 @@
+{
+  "status": "failed",
+  "stage": "launch",
+  "checks": [
+    "sandbox runtime, Seccomp=2 e NoNewPrivs=1"
+  ],
+  "artifacts": [],
+  "runId": "2026-10-25T19-54-20-083Z",
+  "metrics": {
+    "idle": {
+      "electron": {
+        "durationMs": 2520.7133219999996,
+        "processCount": 8,
+        "rssMiB": 784.83984375,
+        "pssMiB": 327.619140625,
+        "cpuPercentOneCore": 3.570417913632149
+      },
+      "daemon": {
+        "durationMs": 2500,
+        "processCount": 1,
+        "rssMiB": 76.82421875,
+        "pssMiB": 40.80078125,
+        "cpuPercentOneCore": 0
+      },
+      "clis": [],
+      "total": {
+        "rssMiB": 861.6640625,
+        "pssMiB": 368.419921875,
+        "cpuPercentOneCore": 3.570417913632149
+      }
+    }
+  },
+  "notificationFixtureErrors": "",
+  "error": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert.ok((await page.locator('.diagnostic-list dt').count()) > 5)\n"
+}

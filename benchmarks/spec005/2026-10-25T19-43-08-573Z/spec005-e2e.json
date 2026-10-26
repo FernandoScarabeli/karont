@@ -1,0 +1,21 @@
+{
+  "runId": "2026-10-25T19-43-08-573Z",
+  "status": "failed",
+  "stage": "project-read-after-add",
+  "checks": [
+    "shell Workspaces inicia sem criar Run; amostras de referência ociosa: 5",
+    "workspace criado, renomeado e persistido no daemon"
+  ],
+  "artifacts": [],
+  "metrics": {},
+  "error": "Error: Daemon desconectado\n    at Socket.<anonymous> (/home/scarabeli/Área de trabalho/Pessoal/karont/karont/dist/local/client.cjs:20304:14)\n    at Socket.emit (node:events:526:24)\n    at Pipe.<anonymous> (node:net:362:12)",
+  "daemonErrors": [],
+  "daemonExit": {
+    "code": null,
+    "signal": null
+  },
+  "harnessSocket": {
+    "connected": false
+  },
+  "harnessSocketErrors": []
+}

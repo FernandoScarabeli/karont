@@ -164,6 +164,8 @@ test('recusa diretório público e symlink no lock', async () => {
   };
   try {
     fs.mkdirSync(env.EROS_RUNTIME_DIR, { mode: 0o755 });
+    // mkdir's mode is filtered by the caller's umask; make the insecure fixture exact.
+    fs.chmodSync(env.EROS_RUNTIME_DIR, 0o755);
     let p = launch(env);
     assert.equal((await once(p, 'exit'))[0], 1);
     fs.chmodSync(env.EROS_RUNTIME_DIR, 0o700);

@@ -1,0 +1,165 @@
+{
+  "runId": "2026-10-25T19-37-06-061Z",
+  "status": "failed",
+  "stage": "workspace-and-project",
+  "checks": [
+    "shell Workspaces inicia sem criar Run; amostras de referência ociosa: 5",
+    "workspace criado, renomeado e persistido no daemon"
+  ],
+  "artifacts": [],
+  "metrics": {
+    "idle": {
+      "rounds": [
+        {
+          "round": 1,
+          "electron": {
+            "durationMs": 2516.742147,
+            "processCount": 7,
+            "rssMiB": 692.3359375,
+            "pssMiB": 276.52734375,
+            "cpuPercentOneCore": 3.178712610481824
+          },
+          "daemonTree": {
+            "durationMs": 2511.851092,
+            "processCount": 1,
+            "rssMiB": 76.8828125,
+            "pssMiB": 44.24609375,
+            "cpuPercentOneCore": 0.3981127715671137
+          },
+          "combined": {
+            "rssMiB": 769.21875,
+            "pssMiB": 320.7734375,
+            "cpuPercentOneCore": 3.5768253820489377
+          }
+        },
+        {
+          "round": 2,
+          "electron": {
+            "durationMs": 2514.7518010000003,
+            "processCount": 7,
+            "rssMiB": 692.67578125,
+            "pssMiB": 276.84375,
+            "cpuPercentOneCore": 1.1929606726226554
+          },
+          "daemonTree": {
+            "durationMs": 2514.671357,
+            "processCount": 1,
+            "rssMiB": 76.890625,
+            "pssMiB": 44.25390625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 769.56640625,
+            "pssMiB": 321.09765625,
+            "cpuPercentOneCore": 1.1929606726226554
+          }
+        },
+        {
+          "round": 3,
+          "electron": {
+            "durationMs": 2515.3595219999997,
+            "processCount": 7,
+            "rssMiB": 693.1328125,
+            "pssMiB": 277.30078125,
+            "cpuPercentOneCore": 0
+          },
+          "daemonTree": {
+            "durationMs": 2515.8507249999993,
+            "processCount": 1,
+            "rssMiB": 76.890625,
+            "pssMiB": 44.25390625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 770.0234375,
+            "pssMiB": 321.5546875,
+            "cpuPercentOneCore": 0
+          }
+        },
+        {
+          "round": 4,
+          "electron": {
+            "durationMs": 2517.329019999999,
+            "processCount": 7,
+            "rssMiB": 693.6015625,
+            "pssMiB": 277.70703125,
+            "cpuPercentOneCore": 1.1917393301253887
+          },
+          "daemonTree": {
+            "durationMs": 2516.821835999999,
+            "processCount": 1,
+            "rssMiB": 76.90625,
+            "pssMiB": 44.26953125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 770.5078125,
+            "pssMiB": 321.9765625,
+            "cpuPercentOneCore": 1.1917393301253887
+          }
+        },
+        {
+          "round": 5,
+          "electron": {
+            "durationMs": 2516.1681549999994,
+            "processCount": 7,
+            "rssMiB": 693.37109375,
+            "pssMiB": 277.4765625,
+            "cpuPercentOneCore": 0
+          },
+          "daemonTree": {
+            "durationMs": 2516.079995,
+            "processCount": 1,
+            "rssMiB": 76.90625,
+            "pssMiB": 44.26953125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 770.27734375,
+            "pssMiB": 321.74609375,
+            "cpuPercentOneCore": 0
+          }
+        }
+      ],
+      "median": {
+        "electronRssMiB": {
+          "median": 693.1328125,
+          "p95": 693.6015625
+        },
+        "electronPssMiB": {
+          "median": 277.30078125,
+          "p95": 277.70703125
+        },
+        "electronCpuPercentOneCore": {
+          "median": 1.1917393301253887,
+          "p95": 3.178712610481824
+        },
+        "daemonTreeRssMiB": {
+          "median": 76.890625,
+          "p95": 76.90625
+        },
+        "daemonTreePssMiB": {
+          "median": 44.25390625,
+          "p95": 44.26953125
+        },
+        "daemonTreeCpuPercentOneCore": {
+          "median": 0,
+          "p95": 0.3981127715671137
+        },
+        "combinedRssMiB": {
+          "median": 770.0234375,
+          "p95": 770.5078125
+        },
+        "combinedPssMiB": {
+          "median": 321.5546875,
+          "p95": 321.9765625
+        },
+        "combinedCpuPercentOneCore": {
+          "median": 1.1917393301253887,
+          "p95": 3.5768253820489377
+        }
+      }
+    }
+  },
+  "error": "Error: Daemon desconectado\n    at Socket.<anonymous> (/home/scarabeli/Área de trabalho/Pessoal/karont/karont/dist/local/client.cjs:20304:14)\n    at Socket.emit (node:events:514:28)\n    at Pipe.<anonymous> (node:net:362:12)"
+}

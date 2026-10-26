@@ -1,0 +1,478 @@
+[
+  {
+    "stage": "regressions",
+    "iteration": 1,
+    "exitCode": 0,
+    "seconds": 0.587,
+    "summary": [
+      "\u2139 tests 6",
+      "\u2139 pass 6",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 1,
+    "exitCode": 0,
+    "seconds": 0.271,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 2,
+    "exitCode": 0,
+    "seconds": 0.283,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 3,
+    "exitCode": 0,
+    "seconds": 0.275,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 4,
+    "exitCode": 0,
+    "seconds": 0.258,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 5,
+    "exitCode": 0,
+    "seconds": 0.258,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 6,
+    "exitCode": 0,
+    "seconds": 0.274,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 7,
+    "exitCode": 0,
+    "seconds": 0.268,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 8,
+    "exitCode": 0,
+    "seconds": 0.262,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 9,
+    "exitCode": 0,
+    "seconds": 0.267,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 10,
+    "exitCode": 0,
+    "seconds": 0.276,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 11,
+    "exitCode": 0,
+    "seconds": 0.285,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 12,
+    "exitCode": 0,
+    "seconds": 0.268,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 13,
+    "exitCode": 0,
+    "seconds": 0.278,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 14,
+    "exitCode": 0,
+    "seconds": 0.275,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 15,
+    "exitCode": 0,
+    "seconds": 0.285,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 16,
+    "exitCode": 0,
+    "seconds": 0.266,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 17,
+    "exitCode": 0,
+    "seconds": 0.275,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 18,
+    "exitCode": 0,
+    "seconds": 0.273,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 19,
+    "exitCode": 0,
+    "seconds": 0.271,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 20,
+    "exitCode": 0,
+    "seconds": 0.276,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 21,
+    "exitCode": 0,
+    "seconds": 0.291,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 22,
+    "exitCode": 0,
+    "seconds": 0.28,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 23,
+    "exitCode": 0,
+    "seconds": 0.288,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 24,
+    "exitCode": 0,
+    "seconds": 0.27,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 25,
+    "exitCode": 0,
+    "seconds": 0.269,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 26,
+    "exitCode": 0,
+    "seconds": 0.286,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 27,
+    "exitCode": 0,
+    "seconds": 0.284,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 28,
+    "exitCode": 0,
+    "seconds": 0.268,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 29,
+    "exitCode": 0,
+    "seconds": 0.297,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "isolated",
+    "iteration": 30,
+    "exitCode": 0,
+    "seconds": 0.276,
+    "summary": [
+      "\u2139 tests 1",
+      "\u2139 pass 1",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "suite",
+    "iteration": 1,
+    "exitCode": 0,
+    "seconds": 14.007,
+    "summary": [
+      "\u2139 tests 41",
+      "\u2139 pass 41",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "suite",
+    "iteration": 2,
+    "exitCode": 0,
+    "seconds": 14.046,
+    "summary": [
+      "\u2139 tests 41",
+      "\u2139 pass 41",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  },
+  {
+    "stage": "suite",
+    "iteration": 3,
+    "exitCode": 0,
+    "seconds": 14.038,
+    "summary": [
+      "\u2139 tests 41",
+      "\u2139 pass 41",
+      "\u2139 fail 0"
+    ],
+    "assertions": [],
+    "remainingFixtureDirectories": [],
+    "remainingDaemonPids": []
+  }
+]

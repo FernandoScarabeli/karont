@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "checks": [
+    "Fechar/reabrir Electron preservou PID e sessão do Codex real",
+    "Codex real alterou somente probe.txt e diff foi registrado",
+    "Diff e rollback confirmados na interface; arquivo restaurado e aprovação auditada"
+  ],
+  "timestamp": "2026-10-25T18:53:18.406Z"
+}

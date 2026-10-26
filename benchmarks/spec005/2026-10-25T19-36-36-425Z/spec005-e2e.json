@@ -1,0 +1,165 @@
+{
+  "runId": "2026-10-25T19-36-36-425Z",
+  "status": "failed",
+  "stage": "workspace-and-project",
+  "checks": [
+    "shell Workspaces inicia sem criar Run; amostras de referência ociosa: 5",
+    "workspace criado, renomeado e persistido no daemon"
+  ],
+  "artifacts": [],
+  "metrics": {
+    "idle": {
+      "rounds": [
+        {
+          "round": 1,
+          "electron": {
+            "durationMs": 2515.977,
+            "processCount": 7,
+            "rssMiB": 698.28515625,
+            "pssMiB": 279.1044921875,
+            "cpuPercentOneCore": 3.5771392186812516
+          },
+          "daemonTree": {
+            "durationMs": 2508.449764,
+            "processCount": 1,
+            "rssMiB": 76.953125,
+            "pssMiB": 44.322265625,
+            "cpuPercentOneCore": 0.39865259187227675
+          },
+          "combined": {
+            "rssMiB": 775.23828125,
+            "pssMiB": 323.4267578125,
+            "cpuPercentOneCore": 3.9757918105535284
+          }
+        },
+        {
+          "round": 2,
+          "electron": {
+            "durationMs": 2515.081537,
+            "processCount": 7,
+            "rssMiB": 698.65625,
+            "pssMiB": 279.349609375,
+            "cpuPercentOneCore": 0.39760142376648555
+          },
+          "daemonTree": {
+            "durationMs": 2515.5923980000002,
+            "processCount": 1,
+            "rssMiB": 76.96875,
+            "pssMiB": 44.337890625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 775.625,
+            "pssMiB": 323.6875,
+            "cpuPercentOneCore": 0.39760142376648555
+          }
+        },
+        {
+          "round": 3,
+          "electron": {
+            "durationMs": 2514.861409000001,
+            "processCount": 7,
+            "rssMiB": 699.05859375,
+            "pssMiB": 279.751953125,
+            "cpuPercentOneCore": 0.7952724523278075
+          },
+          "daemonTree": {
+            "durationMs": 2513.628816999999,
+            "processCount": 1,
+            "rssMiB": 76.96875,
+            "pssMiB": 44.337890625,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 776.02734375,
+            "pssMiB": 324.08984375,
+            "cpuPercentOneCore": 0.7952724523278075
+          }
+        },
+        {
+          "round": 4,
+          "electron": {
+            "durationMs": 2516.342177999999,
+            "processCount": 7,
+            "rssMiB": 699.47265625,
+            "pssMiB": 280.1474609375,
+            "cpuPercentOneCore": 0.7948044655793243
+          },
+          "daemonTree": {
+            "durationMs": 2516.706601,
+            "processCount": 1,
+            "rssMiB": 76.9765625,
+            "pssMiB": 44.345703125,
+            "cpuPercentOneCore": 0
+          },
+          "combined": {
+            "rssMiB": 776.44921875,
+            "pssMiB": 324.4931640625,
+            "cpuPercentOneCore": 0.7948044655793243
+          }
+        },
+        {
+          "round": 5,
+          "electron": {
+            "durationMs": 2516.6339289999996,
+            "processCount": 7,
+            "rssMiB": 699.2734375,
+            "pssMiB": 279.9482421875,
+            "cpuPercentOneCore": 0
+          },
+          "daemonTree": {
+            "durationMs": 2517.2176739999995,
+            "processCount": 1,
+            "rssMiB": 76.9765625,
+            "pssMiB": 44.345703125,
+            "cpuPercentOneCore": 0.3972640150785788
+          },
+          "combined": {
+            "rssMiB": 776.25,
+            "pssMiB": 324.2939453125,
+            "cpuPercentOneCore": 0.3972640150785788
+          }
+        }
+      ],
+      "median": {
+        "electronRssMiB": {
+          "median": 699.05859375,
+          "p95": 699.47265625
+        },
+        "electronPssMiB": {
+          "median": 279.751953125,
+          "p95": 280.1474609375
+        },
+        "electronCpuPercentOneCore": {
+          "median": 0.7948044655793243,
+          "p95": 3.5771392186812516
+        },
+        "daemonTreeRssMiB": {
+          "median": 76.96875,
+          "p95": 76.9765625
+        },
+        "daemonTreePssMiB": {
+          "median": 44.337890625,
+          "p95": 44.345703125
+        },
+        "daemonTreeCpuPercentOneCore": {
+          "median": 0,
+          "p95": 0.39865259187227675
+        },
+        "combinedRssMiB": {
+          "median": 776.02734375,
+          "p95": 776.44921875
+        },
+        "combinedPssMiB": {
+          "median": 324.08984375,
+          "p95": 324.4931640625
+        },
+        "combinedCpuPercentOneCore": {
+          "median": 0.7948044655793243,
+          "p95": 3.9757918105535284
+        }
+      }
+    }
+  },
+  "error": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Fixture Dot/. Input:\n\n'Pasta escolhida:\\n' +\n  '/tmp/eros-bench-JchMOm/fixture project with spaces\\n' +\n  '\\n' +\n  'Dots autorizados: fixture-dot. Esta confirmação não amplia as permissões-base dos Dots.'\n\n    at file:///home/scarabeli/%C3%81rea%20de%20trabalho/Pessoal/karont/karont/scripts/spec005-e2e.mjs:183:10"
+}

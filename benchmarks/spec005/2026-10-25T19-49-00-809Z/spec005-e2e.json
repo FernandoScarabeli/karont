@@ -1,0 +1,35 @@
+{
+  "runId": "2026-10-25T19-49-00-809Z",
+  "status": "failed",
+  "stage": "history-pagination",
+  "checks": [
+    "shell Workspaces inicia sem criar Run; referência ociosa omitida na execução de diagnóstico",
+    "workspace criado, renomeado e persistido no daemon",
+    "cancelamento não grava; raiz inválida recusada; diretório com espaços confirmado; concessão explícita validada",
+    "repositório duplicado reconhecido e não reassociado ao workspace novo",
+    "criar chat não iniciou Run; Run vinculada; mensagem salva e enviada só ao PTY ativo, sem stdout persistido",
+    "duas conversas do mesmo Dot têm Runs separadas; não terminal por conversa e teto de dois PTYs; envio cruzado recusado",
+    "troca entre conversas reanexa as mesmas sessões, sem iniciar nem cancelar Runs",
+    "favoritos/recentes globais; conversa livre sem agente; rascunho persistente; mover com confirmação e cancelamento preserva ID, favorito e mensagem antiga"
+  ],
+  "artifacts": [],
+  "metrics": {
+    "twoRuns": {
+      "skipped": true,
+      "reason": "diagnostic execution"
+    },
+    "conversationSwitching": {
+      "skipped": true,
+      "reason": "diagnostic execution"
+    }
+  },
+  "error": "Error: Daemon desconectado\n    at Socket.<anonymous> (/home/scarabeli/Área de trabalho/Pessoal/karont/karont/dist/local/client.cjs:20304:14)\n    at Socket.emit (node:events:514:28)\n    at Pipe.<anonymous> (node:net:362:12)",
+  "daemonErrors": [],
+  "daemonExit": {
+    "code": null,
+    "signal": null
+  },
+  "harnessSocket": {
+    "connected": false
+  }
+}
