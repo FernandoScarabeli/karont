@@ -25,7 +25,7 @@ function makeRepo(parent, name) {
 }
 
 function fixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-spec005-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-spec005-'));
   const repo = makeRepo(root, 'config repo with spaces');
   const dbFile = path.join(root, 'eros.sqlite');
   let db = openDatabase(dbFile);

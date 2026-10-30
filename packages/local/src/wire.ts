@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Socket } from 'node:net';
 export const LIMIT = 65536;
 export function proof(secret: string, role: string, nonce: string) {
-  return createHmac('sha256', secret).update(`eros:1:${role}:${nonce}`).digest('hex');
+  return createHmac('sha256', secret).update(`karont:1:${role}:${nonce}`).digest('hex');
 }
 export function equal(a: unknown, b: string) {
   return (

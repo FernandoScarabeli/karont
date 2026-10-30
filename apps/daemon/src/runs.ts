@@ -349,7 +349,7 @@ export class RunManager {
     const runDir = path.join(this.worktreeRoot, row.project_id);
     fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
     const worktreePath = path.join(runDir, id);
-    const branch = `eros/run-${id}`;
+    const branch = `karont/run-${id}`;
     const existing = this.db
       .prepare('SELECT path FROM worktrees WHERE run_id=? AND removed_at IS NULL')
       .get(id) as { path: string } | undefined;

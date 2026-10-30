@@ -21,7 +21,7 @@ await build({
     'contracts/index': 'packages/contracts/src/index.ts',
   },
   define: {
-    EROS_APP_VERSION: JSON.stringify(JSON.parse(readFileSync('package.json', 'utf8')).version),
+    KARONT_APP_VERSION: JSON.stringify(JSON.parse(readFileSync('package.json', 'utf8')).version),
   },
   outdir: 'dist',
   outExtension: { '.js': '.cjs' },

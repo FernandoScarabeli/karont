@@ -13,7 +13,8 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 | T2 — docs históricos | Feito (`d9a355e`). Codex luna xhigh, 1 tentativa. Um `git mv` rodou fora do sandbox por aprovação automática da config do Codex; corrigido no comando (ver abaixo) |
 | T3 — artefatos gerados fora do git | Feito (`1856094`). Codex luna xhigh, 1 tentativa, sem pedidos fora do sandbox. 492 arquivos saíram do índice. Atenção: o merge apagou esses arquivos da pasta principal; o orquestrador restaurou a partir da worktree. Em outro clone, um `pull` faz o mesmo |
 | Reescrita do histórico | Feita em 2026-10-30 com `git filter-branch` (mesmo filtro da T3) em `main` e `refactor/fase-1-faxina`, push forçado com lease. Repositório: 115 MB → 7 MB. Conteúdo final idêntico (mesmo hash de árvore). Backup completo antes: `~/karont-backup-2026-10-30.bundle`. Os hashes de commit mudaram; os citados aqui já são os novos. CI verde depois (commit `1856094`) |
-| T4 a T11 | Pendentes |
+| T4 — renomeação: pacotes e daemon | Feito. Codex luna xhigh, 1 tentativa (não rodou `npm test` no sandbox dele: `listen EPERM`/`getconf EPERM`, como DIVIDAS #12). Orquestrador: `check` OK, `test` 49/49. Decisão do orquestrador: a cópia de `~/.local/share/eros` **não** leva `worktrees/` (copiar worktrees do git as quebra; o banco aponta para o caminho antigo, que é mantido). `test:desktop`/E2E ainda não rodados neste PC (falta o helper do sandbox) |
+| T5 a T11 | Pendentes |
 
 Verificação ao fim da T1b (local, pelo orquestrador): `check` OK, `test` 42/42, `test:desktop` OK, `test:e2e` OK (phase1, spec005, spec006). CI verde no push seguinte (run `41098654702`).
 

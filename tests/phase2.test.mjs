@@ -11,7 +11,7 @@ const { sanitize, issueReport } = require('../dist/local/report.cjs');
 const { daemonDiagnostics } = require('../dist/daemon/diagnostics.cjs');
 const { requestSchema } = require('../dist/contracts/index.cjs');
 test('modos por capacidade nativa; sem flags conflitantes nem elevação implícita', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-caps-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-caps-'));
   const executable = path.join(dir, 'cli');
   fs.writeFileSync(
     executable,

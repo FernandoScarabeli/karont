@@ -1,6 +1,6 @@
 import { z } from 'zod';
-declare const EROS_APP_VERSION: string;
-export const APP_VERSION = EROS_APP_VERSION;
+declare const KARONT_APP_VERSION: string;
+export const APP_VERSION = KARONT_APP_VERSION;
 export const VERSION = 1;
 export const permissionModeSchema = z.enum(['ask', 'auto', 'full', 'readOnly']);
 export type PermissionMode = z.infer<typeof permissionModeSchema>;
@@ -61,7 +61,7 @@ export const layoutSchema = z
 export const defaultLayout = {
   columns: 4 as const,
   editor:
-    '// eros · Fase 0\n// Editor local de teste. Nenhum agente conectado.\n\nconst mensagem = "Olá, eros";\n',
+    '// Karont · Fase 0\n// Editor local de teste. Nenhum agente conectado.\n\nconst mensagem = "Olá, Karont";\n',
   editorOpen: false,
 };
 export const snapshotSchema = z

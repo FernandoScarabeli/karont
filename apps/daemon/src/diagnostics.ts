@@ -66,7 +66,7 @@ export function daemonDiagnostics(dots: DotConfig[]): DiagnosticItem[] {
     'Segurança',
     'Keyring',
     'unverified',
-    'Eros não armazena credenciais de agentes; serviço não sondado.',
+    'Karont não armazena credenciais de agentes; serviço não sondado.',
   );
   add(
     'Falhas',

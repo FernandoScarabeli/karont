@@ -43,7 +43,7 @@ export function issueReport(items: DiagnosticItem[]) {
     'Última falha',
   ]);
   return (
-    `# eros — relatório local\n\nVersão: ${APP_VERSION}\n\nNenhum envio automático. Conteúdo de chats, terminais, projetos e ambiente não incluído.\n\n| Componente | Estado | Diagnóstico |\n|---|---|---|\n` +
+    `# Karont — relatório local\n\nVersão: ${APP_VERSION}\n\nNenhum envio automático. Conteúdo de chats, terminais, projetos e ambiente não incluído.\n\n| Componente | Estado | Diagnóstico |\n|---|---|---|\n` +
     items
       .filter((item) => allowed.has(item.label))
       .map((item) => `| ${sanitize(item.label)} | ${item.status} | ${sanitize(item.value)} |`)

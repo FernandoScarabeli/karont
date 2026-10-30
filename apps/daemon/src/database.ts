@@ -49,7 +49,7 @@ export function openDatabase(file: string) {
   const version = Number(
     (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
   );
-  if (version > 7) throw Error('Banco de dados criado por uma versão mais nova do eros');
+  if (version > 7) throw Error('Banco de dados criado por uma versão mais nova do Karont');
   if (version < 1) {
     db.exec(
       'BEGIN; CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE VIRTUAL TABLE IF NOT EXISTS phase0_search USING fts5(content); PRAGMA user_version=1; COMMIT;',
