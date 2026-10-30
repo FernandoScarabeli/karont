@@ -673,7 +673,7 @@ details[open] > .k-context-action {
   color: var(--text-secondary);
   background: var(--bg-composer);
 }
-.k-icon-options button[aria-pressed='true'] {
+.k-icon-options button[aria-pressed="true"] {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   color: var(--text-primary);
@@ -775,7 +775,7 @@ details[open] > .k-context-action {
   font-weight: 400;
 }
 .saved-message pre {
-  font: 400 var(--chat-body-size)/var(--chat-line-height) var(--font-ui);
+  font: 400 var(--chat-body-size) / var(--chat-line-height) var(--font-ui);
   color: var(--text-primary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;

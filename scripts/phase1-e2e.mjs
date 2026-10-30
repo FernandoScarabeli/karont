@@ -8,7 +8,14 @@ import { once } from 'node:events';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { Client } = require('../dist/local/client.cjs');
-const { environment, wait, until, sample, openDiagnostics, require: harnessRequire } = await import('./harness.mjs');
+const {
+  environment,
+  wait,
+  until,
+  sample,
+  openDiagnostics,
+  require: harnessRequire,
+} = await import('./harness.mjs');
 const ctx = environment();
 const repo = path.join(ctx.root, 'repo');
 fs.mkdirSync(repo);
@@ -564,8 +571,9 @@ try {
   await optOut.check();
   await until(async () =>
     assert.equal(
-      (await restored.evaluate(() => window.karont.runs())).find((run) => run.id === crashRuns[0].id)
-        .autoResumeEnabled,
+      (await restored.evaluate(() => window.karont.runs())).find(
+        (run) => run.id === crashRuns[0].id,
+      ).autoResumeEnabled,
       false,
     ),
   );

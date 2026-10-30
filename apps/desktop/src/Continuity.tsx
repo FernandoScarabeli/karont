@@ -128,7 +128,9 @@ export function ContinuityControls({
               void act(async () => {
                 try {
                   await window.karont.autoResume(run.id, enabled);
-                  const current = (await window.karont.runs(100)).find((item) => item.id === run.id);
+                  const current = (await window.karont.runs(100)).find(
+                    (item) => item.id === run.id,
+                  );
                   if (current) refresh(current);
                 } catch (error) {
                   setResumeAllowed(run.autoResumeEnabled);
@@ -208,7 +210,11 @@ export function ContinuityControls({
                 disabled={busy}
                 onClick={() =>
                   void act(async () => {
-                    const resumed = await window.karont.resumeRun(run.id, crypto.randomUUID(), true);
+                    const resumed = await window.karont.resumeRun(
+                      run.id,
+                      crypto.randomUUID(),
+                      true,
+                    );
                     setInfo(undefined);
                     refresh(resumed);
                   })

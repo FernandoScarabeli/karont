@@ -67,7 +67,10 @@ test('daemon: singleton concorrente, socket, handshake, limites, heartbeat, reco
     assert.equal(first.pid, children[0].pid);
     assert.equal(fs.statSync(path.join(env.KARONT_RUNTIME_DIR, 'daemon.sock')).mode & 0o777, 0o600);
     assert.equal(fs.statSync(env.KARONT_RUNTIME_DIR).mode & 0o777, 0o700);
-    assert.equal(fs.statSync(path.join(env.KARONT_RUNTIME_DIR, 'session.json')).mode & 0o777, 0o600);
+    assert.equal(
+      fs.statSync(path.join(env.KARONT_RUNTIME_DIR, 'session.json')).mode & 0o777,
+      0o600,
+    );
     const duplicates = Array.from({ length: 5 }, () => launch(env));
     children.push(...duplicates);
     const codes = await Promise.all(duplicates.map((p) => once(p, 'exit').then(([code]) => code)));

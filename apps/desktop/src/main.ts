@@ -69,14 +69,33 @@ const notifications = new NotificationCenter((title, click, fail) => {
   notification.show();
   return true;
 });
-const projectAddUiSchema = z.object({
-  workspaceId: z.string().uuid(),
-  name: z.string().trim().min(1).max(120),
-  root: z.string().min(1).max(4096),
-  icon: z.enum(['folder', 'code-xml', 'globe', 'terminal', 'layers', 'briefcase', 'book-open', 'rocket']),
-  dotIds: z.array(z.string().min(1).max(80).regex(/^[a-zA-Z0-9._-]+$/)).max(8)
-    .refine((ids) => new Set(ids).size === ids.length),
-}).strict();
+const projectAddUiSchema = z
+  .object({
+    workspaceId: z.string().uuid(),
+    name: z.string().trim().min(1).max(120),
+    root: z.string().min(1).max(4096),
+    icon: z.enum([
+      'folder',
+      'code-xml',
+      'globe',
+      'terminal',
+      'layers',
+      'briefcase',
+      'book-open',
+      'rocket',
+    ]),
+    dotIds: z
+      .array(
+        z
+          .string()
+          .min(1)
+          .max(80)
+          .regex(/^[a-zA-Z0-9._-]+$/),
+      )
+      .max(8)
+      .refine((ids) => new Set(ids).size === ids.length),
+  })
+  .strict();
 try {
   notifications.enabled = JSON.parse(fs.readFileSync(preferencesPath, 'utf8')).enabled !== false;
 } catch {}
@@ -234,15 +253,23 @@ if (!app.requestSingleInstanceLock()) {
       });
       ipcMain.handle('karont:projects:choose-folder', async (event) => {
         authorize(event);
-        const selected = await dialog.showOpenDialog(win!, { title: 'Escolher pasta raiz', buttonLabel: 'Selecionar pasta', properties: ['openDirectory'] });
+        const selected = await dialog.showOpenDialog(win!, {
+          title: 'Escolher pasta raiz',
+          buttonLabel: 'Selecionar pasta',
+          properties: ['openDirectory'],
+        });
         authorize(event);
-        return selected.canceled ? null : selected.filePaths[0] ?? null;
+        return selected.canceled ? null : (selected.filePaths[0] ?? null);
       });
       ipcMain.handle('karont:projects:add', async (event, value: unknown) => {
         authorize(event);
         const input = projectAddUiSchema.parse(value);
-        if (input.dotIds.length) throw Error('Concessões são configuradas separadamente do cadastro de projeto');
-        return client.request({ method: 'projects.add', value: { ...input, operationId: randomUUID() } });
+        if (input.dotIds.length)
+          throw Error('Concessões são configuradas separadamente do cadastro de projeto');
+        return client.request({
+          method: 'projects.add',
+          value: { ...input, operationId: randomUUID() },
+        });
       });
       const handlers: [string, Command['method'], (value: any) => object][] = [
         ['karont:workspaces:list', 'workspaces.list', (value) => ({ value })],
@@ -251,7 +278,11 @@ if (!app.requestSingleInstanceLock()) {
         ['karont:approvals:list', 'approvals.list', noValue],
         ['karont:approvals:decide', 'approvals.decide', (value) => ({ value })],
         ['karont:dots:list', 'dots.list', noValue],
-        ['karont:projects:list', 'projects.list', (value) => value === undefined ? {} : ({ value })],
+        [
+          'karont:projects:list',
+          'projects.list',
+          (value) => (value === undefined ? {} : { value }),
+        ],
         ['karont:projects:update', 'projects.update', (value) => ({ value })],
         ['karont:chats:list', 'chats.list', (value) => ({ value })],
         ['karont:chats:create', 'chats.create', (value) => ({ value })],

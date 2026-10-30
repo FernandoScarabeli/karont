@@ -6,7 +6,10 @@ import { execFileSync } from 'node:child_process';
 import { environment, daemon, until } from './harness.mjs';
 const ctx = environment();
 ctx.env.KARONT_DOTS_CONFIG = path.join(ctx.root, 'dots.json');
-fs.writeFileSync(ctx.env.KARONT_DOTS_CONFIG, JSON.stringify({ version: 1, dots: [], projects: [] }));
+fs.writeFileSync(
+  ctx.env.KARONT_DOTS_CONFIG,
+  JSON.stringify({ version: 1, dots: [], projects: [] }),
+);
 fs.chmodSync(ctx.env.KARONT_DOTS_CONFIG, 0o600);
 ctx.env.KARONT_CONFIG_DIR = path.join(ctx.root, 'config');
 const output = path.resolve('.impeccable/review');
@@ -36,7 +39,10 @@ try {
       [width, height],
     );
     await page.setViewportSize({ width, height });
-    assert.deepEqual(await page.evaluate(() => ({ width: innerWidth, height: innerHeight })), { width, height });
+    assert.deepEqual(await page.evaluate(() => ({ width: innerWidth, height: innerHeight })), {
+      width,
+      height,
+    });
     await page.screenshot({ scale: 'css', path: path.join(output, `${name}.png`) });
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),

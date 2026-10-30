@@ -31,7 +31,10 @@ function snapshotFiles(root) {
     .flatMap((entry) => {
       const full = path.join(root, entry.name);
       if (entry.isDirectory())
-        return snapshotFiles(full).map(([relative, value]) => [path.join(entry.name, relative), value]);
+        return snapshotFiles(full).map(([relative, value]) => [
+          path.join(entry.name, relative),
+          value,
+        ]);
       if (entry.isSymbolicLink()) return [[entry.name, `symlink:${fs.readlinkSync(full)}`]];
       return [[entry.name, fs.readFileSync(full, 'utf8')]];
     });
@@ -78,8 +81,14 @@ test('paths usa pastas Karont seguras, migra dados antigos e mantém EROS_* comp
 
       const result = paths();
 
-      assert.equal(fs.readFileSync(path.join(result.config, 'dots.json'), 'utf8'), '{"versao":1}\n');
-      assert.equal(fs.readFileSync(path.join(result.data, 'phase0.sqlite'), 'utf8'), 'fixture sqlite\n');
+      assert.equal(
+        fs.readFileSync(path.join(result.config, 'dots.json'), 'utf8'),
+        '{"versao":1}\n',
+      );
+      assert.equal(
+        fs.readFileSync(path.join(result.data, 'phase0.sqlite'), 'utf8'),
+        'fixture sqlite\n',
+      );
       assert.equal(fs.existsSync(path.join(result.data, 'worktrees', 'x')), false);
       assert.deepEqual(snapshotFiles(oldConfig), configSnapshot);
       assert.deepEqual(snapshotFiles(oldData), dataSnapshot);

@@ -40,7 +40,8 @@ try {
   fs.rmSync(p.session, { force: true });
   db = openDatabase(p.db);
   const row = db.prepare("SELECT value FROM settings WHERE key='layout'").get() as
-    { value: string } | undefined;
+    | { value: string }
+    | undefined;
   let layout = row ? layoutSchema.parse(JSON.parse(row.value)) : defaultLayout;
   if (!row)
     db.prepare("INSERT INTO settings(key,value) VALUES('layout',?)").run(JSON.stringify(layout));
@@ -193,16 +194,31 @@ try {
             result = work!.getChat(r.value.chatId);
             break;
           case 'chats.rename':
-            result = work!.renameChat(r.value.chatId, r.value.title, r.value.expectedRevision, r.value.operationId);
+            result = work!.renameChat(
+              r.value.chatId,
+              r.value.title,
+              r.value.expectedRevision,
+              r.value.operationId,
+            );
             break;
           case 'chats.open':
             result = work!.openChat(r.value.chatId, r.value.operationId);
             break;
           case 'chats.favorite':
-            result = work!.favoriteChat(r.value.chatId, r.value.favorite, r.value.expectedRevision, r.value.operationId);
+            result = work!.favoriteChat(
+              r.value.chatId,
+              r.value.favorite,
+              r.value.expectedRevision,
+              r.value.operationId,
+            );
             break;
           case 'chats.draft':
-            result = work!.setDraft(r.value.chatId, r.value.draft, r.value.expectedRevision, r.value.operationId);
+            result = work!.setDraft(
+              r.value.chatId,
+              r.value.draft,
+              r.value.expectedRevision,
+              r.value.operationId,
+            );
             break;
           case 'chats.move.preview':
             result = work!.previewMove(r.value.chatId, r.value.projectId, r.value.dotId);
@@ -214,7 +230,12 @@ try {
             result = work!.listMessages(r.value.chatId, r.value.cursor, r.value.limit);
             break;
           case 'messages.save':
-            result = work!.saveMessage(r.value.chatId, r.value.body, r.value.expectedRevision, r.value.operationId);
+            result = work!.saveMessage(
+              r.value.chatId,
+              r.value.body,
+              r.value.expectedRevision,
+              r.value.operationId,
+            );
             break;
           case 'messages.send':
             result = work!.sendMessage(

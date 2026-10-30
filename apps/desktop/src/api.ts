@@ -117,30 +117,94 @@ export type KarontBridge = {
     (workspaceId: string, cursor?: string, limit?: number): Promise<UiPage<UiWorkspaceProject>>;
   };
   projectIndex(cursor?: string, limit?: number): Promise<UiPage<UiWorkspaceProject>>;
-  updateProject(input: { projectId: string; name: string; root: string; icon: UiWorkspaceProject['icon'] }): Promise<UiWorkspaceProject>;
+  updateProject(input: {
+    projectId: string;
+    name: string;
+    root: string;
+    icon: UiWorkspaceProject['icon'];
+  }): Promise<UiWorkspaceProject>;
   chooseProjectFolder(): Promise<string | null>;
-  addProject(input: { workspaceId: string; name: string; root: string; icon: UiWorkspaceProject['icon']; dotIds: string[] }): Promise<{ cancelled: true } | { project: UiWorkspaceProject; duplicate: boolean }>;
-  chats(input: { scope?: 'all' | 'favorites' | 'recent' | 'free'; workspaceId?: string; projectId?: string; cursor?: string; limit?: number }): Promise<UiPage<UiChatSummary>>;
-  createChat(input: { workspaceId?: string | null; projectId?: string | null; dotId?: string | null; title: string }): Promise<UiChatDetails>;
+  addProject(input: {
+    workspaceId: string;
+    name: string;
+    root: string;
+    icon: UiWorkspaceProject['icon'];
+    dotIds: string[];
+  }): Promise<{ cancelled: true } | { project: UiWorkspaceProject; duplicate: boolean }>;
+  chats(input: {
+    scope?: 'all' | 'favorites' | 'recent' | 'free';
+    workspaceId?: string;
+    projectId?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<UiPage<UiChatSummary>>;
+  createChat(input: {
+    workspaceId?: string | null;
+    projectId?: string | null;
+    dotId?: string | null;
+    title: string;
+  }): Promise<UiChatDetails>;
   chat(chatId: string): Promise<UiChatDetails>;
   renameChat(chatId: string, title: string, expectedRevision: number): Promise<UiChatDetails>;
   openChat(chatId: string): Promise<UiChatDetails>;
   favoriteChat(chatId: string, favorite: boolean, expectedRevision: number): Promise<UiChatDetails>;
   saveDraft(chatId: string, draft: string, expectedRevision: number): Promise<UiChatDetails>;
   previewMoveChat(chatId: string, projectId: string, dotId?: string): Promise<UiMovePreview>;
-  moveChat(chatId: string, projectId: string, dotId: string, expectedRevision: number): Promise<UiChatDetails>;
+  moveChat(
+    chatId: string,
+    projectId: string,
+    dotId: string,
+    expectedRevision: number,
+  ): Promise<UiChatDetails>;
   messages(chatId: string, cursor?: string, limit?: number): Promise<UiMessagePage>;
   saveMessage(chatId: string, body: string, expectedRevision: number): Promise<UiMessageSave>;
-  sendMessage(input: { chatId: string; messageId: string; runId: string; reviewedUncertain?: boolean }): Promise<UiDelivery>;
+  sendMessage(input: {
+    chatId: string;
+    messageId: string;
+    runId: string;
+    reviewedUncertain?: boolean;
+  }): Promise<UiDelivery>;
   messageDeliveries(chatId: string, messageId: string): Promise<UiDelivery[]>;
   chatRuns(chatId: string, cursor?: string, limit?: number): Promise<UiPage<UiRun>>;
-  tasks(input: { workspaceId?: string; projectId?: string; state?: UiTaskState; assignee?: UiTaskAssignee; cursor?: string; limit?: number }): Promise<UiPage<UiTaskSummary>>;
+  tasks(input: {
+    workspaceId?: string;
+    projectId?: string;
+    state?: UiTaskState;
+    assignee?: UiTaskAssignee;
+    cursor?: string;
+    limit?: number;
+  }): Promise<UiPage<UiTaskSummary>>;
   task(taskId: string): Promise<UiTask>;
-  createTask(input: { projectId: string; title: string; description?: string; state?: UiTaskState; assignees?: UiTaskAssignee[]; originChatId?: string | null; originMessageId?: string | null }, operationId?: string): Promise<UiTask>;
-  updateTask(input: { taskId: string; title?: string; description?: string; state?: UiTaskState; expectedRevision: number }): Promise<UiTask>;
-  setTaskAssignees(input: { taskId: string; assignees: UiTaskAssignee[]; expectedRevision: number }): Promise<UiTask>;
+  createTask(
+    input: {
+      projectId: string;
+      title: string;
+      description?: string;
+      state?: UiTaskState;
+      assignees?: UiTaskAssignee[];
+      originChatId?: string | null;
+      originMessageId?: string | null;
+    },
+    operationId?: string,
+  ): Promise<UiTask>;
+  updateTask(input: {
+    taskId: string;
+    title?: string;
+    description?: string;
+    state?: UiTaskState;
+    expectedRevision: number;
+  }): Promise<UiTask>;
+  setTaskAssignees(input: {
+    taskId: string;
+    assignees: UiTaskAssignee[];
+    expectedRevision: number;
+  }): Promise<UiTask>;
   linkTaskRun(input: { taskId: string; runId: string; expectedRevision: number }): Promise<UiTask>;
-  unlinkTaskRun(input: { taskId: string; runId: string; expectedRevision: number }): Promise<UiTask>;
+  unlinkTaskRun(input: {
+    taskId: string;
+    runId: string;
+    expectedRevision: number;
+  }): Promise<UiTask>;
   taskEvents(taskId: string, cursor?: string, limit?: number): Promise<UiPage<UiTaskEvent>>;
   navigation(): Promise<UiNavigation>;
   setNavigation(input: UiNavigation): Promise<UiNavigation>;

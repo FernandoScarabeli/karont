@@ -273,7 +273,9 @@ export function openDatabase(file: string) {
       throw Error('Migração v6 com referências inválidas');
   }
   if ((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version < 7) {
-    db.exec("BEGIN; ALTER TABLE projects ADD COLUMN icon TEXT NOT NULL DEFAULT 'folder'; PRAGMA user_version=7; COMMIT;");
+    db.exec(
+      "BEGIN; ALTER TABLE projects ADD COLUMN icon TEXT NOT NULL DEFAULT 'folder'; PRAGMA user_version=7; COMMIT;",
+    );
   }
   return db;
 }
@@ -348,12 +350,16 @@ export function syncConfig(db: DatabaseSync, dots: DotConfig[], projects: Projec
         now,
       );
     for (const project of projects) {
-      const existing = db
-        .prepare('SELECT root,origin FROM projects WHERE id=?')
-        .get(project.id) as { root: string; origin: 'config' | 'ui' } | undefined;
+      const existing = db.prepare('SELECT root,origin FROM projects WHERE id=?').get(project.id) as
+        | { root: string; origin: 'config' | 'ui' }
+        | undefined;
       if (!existing) {
-        const sameRoot = (db.prepare('SELECT id,root FROM projects WHERE id<>?').all(project.id) as { id: string; root: string }[])
-          .find((candidate) => comparable(candidate.root) === comparable(project.root));
+        const sameRoot = (
+          db.prepare('SELECT id,root FROM projects WHERE id<>?').all(project.id) as {
+            id: string;
+            root: string;
+          }[]
+        ).find((candidate) => comparable(candidate.root) === comparable(project.root));
         if (sameRoot)
           throw Error(`Repositório já cadastrado com ID diferente: ${sameRoot.id} / ${project.id}`);
         insertProject.run(

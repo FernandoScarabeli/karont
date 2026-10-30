@@ -1,7 +1,7 @@
-@import '@fontsource/inter/400.css';
-@import '@fontsource/inter/500.css';
-@import '@fontsource/inter/600.css';
-@import '@fontsource/jetbrains-mono/400.css';
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
 :root {
   --bg-canvas: #141414;
   --bg-sidebar: #191919;
@@ -18,8 +18,8 @@
   --text-success: #8bd5a3;
   --text-warning: #e5c07b;
   --dot-identity: #b7adeb;
-  --font-ui: 'Inter', system-ui, sans-serif;
-  --font-code: 'JetBrains Mono', monospace;
+  --font-ui: "Inter", system-ui, sans-serif;
+  --font-code: "JetBrains Mono", monospace;
   --space-unit: 4px;
   --sidebar-width: 272px;
   --nav-row-height: 36px;

@@ -118,13 +118,23 @@ test('duas execuções PTY, fila, reconexão, worktrees, diff, rollback e confli
           }),
         /indisponível/,
       );
-    const blankChat = await client.request({ method: 'chats.create', value: { projectId: 'repo', title: 'Nova conversa sem Dot', operationId: crypto.randomUUID() } });
+    const blankChat = await client.request({
+      method: 'chats.create',
+      value: {
+        projectId: 'repo',
+        title: 'Nova conversa sem Dot',
+        operationId: crypto.randomUUID(),
+      },
+    });
     assert.equal(blankChat.chat.dotId, null);
     const first = await client.request({
       method: 'runs.start',
       value: { dotId: 'alpha', projectId: 'repo', chatId: blankChat.chat.id },
     });
-    const boundChat = await client.request({ method: 'chats.get', value: { chatId: blankChat.chat.id } });
+    const boundChat = await client.request({
+      method: 'chats.get',
+      value: { chatId: blankChat.chat.id },
+    });
     assert.equal(boundChat.chat.dotId, 'alpha');
     const second = await client.request({
       method: 'runs.start',

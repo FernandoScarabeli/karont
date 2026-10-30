@@ -43,7 +43,9 @@ export function environment() {
   };
   if (!env.XDG_RUNTIME_DIR && process.getuid) env.XDG_RUNTIME_DIR = `/run/user/${process.getuid()}`;
   if (!env.XAUTHORITY && env.DISPLAY && env.XDG_RUNTIME_DIR && fs.existsSync(env.XDG_RUNTIME_DIR)) {
-    const xauthority = fs.readdirSync(env.XDG_RUNTIME_DIR).find((name) => name.startsWith('.mutter-Xwaylandauth.'));
+    const xauthority = fs
+      .readdirSync(env.XDG_RUNTIME_DIR)
+      .find((name) => name.startsWith('.mutter-Xwaylandauth.'));
     if (xauthority) env.XAUTHORITY = path.join(env.XDG_RUNTIME_DIR, xauthority);
   }
   return {
