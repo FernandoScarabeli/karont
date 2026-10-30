@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,7 +13,12 @@ export async function openDiagnostics(page) {
   await page.getByRole('button', { name: 'Diagnóstico e laboratório', exact: true }).click();
 }
 export async function openConversation(page, title, origin) {
-  await page.getByRole('textbox', { name: 'Buscar projetos e conversas', exact: true }).fill(title);
+  // Com um <dialog> modal aberto, o fill na busca não falha, mas o texto não chega ao campo
+  // (DIVIDAS #15). Espera não haver modal e confere o valor digitado.
+  await page.locator('dialog[open]').first().waitFor({ state: 'detached' });
+  const search = page.getByRole('textbox', { name: 'Buscar projetos e conversas', exact: true });
+  await search.fill(title);
+  assert.equal(await search.inputValue(), title, 'o texto da busca não chegou ao campo');
   // O resultado acessível inclui o título e a origem, mesmo fora do workspace atual.
   const name = origin ? `${title} ${origin}` : new RegExp(`^${RegExp.escape(title)} .+ / .+$`);
   await page.getByRole('button', { name, exact: true }).click();

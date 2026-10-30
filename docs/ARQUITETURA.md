@@ -226,8 +226,8 @@ Organização de `apps/desktop/src/` depois da Refatoração – Fase 2. Nenhum 
 
 ```
 main/        processo principal do Electron
-  index.ts       fluxo de inicialização; importa bootstrap.ts primeiro
-  bootstrap.ts   recusa flags sem sandbox, nome do app, migração de pastas e userData
+  index.ts       fluxo de inicialização; a primeira instrução é bootstrap()
+  bootstrap.ts   bootstrap(): recusa flags sem sandbox, nome do app, migração de pastas e userData
   state.ts       cliente do daemon e estado compartilhado (janela, Runs, bandeja)
   window.ts      janela, URL confiável e autorização de origem do IPC
   ipc.ts         registro e validação de todos os canais karont:*
@@ -236,7 +236,7 @@ main/        processo principal do Electron
 preload/     preload.ts: implementa o tipo KarontBridge (satisfies)
 shared/      bridge.ts: tipo do window.karont e tipos Ui*, só tipos
 renderer/
-  main.tsx       monta o app e importa os estilos (a ordem dos imports define a cascata)
+  main.tsx       monta o app; único arquivo que importa CSS (xterm.css e depois os do app)
   app/           LegacyWorkbench (laboratório e diagnóstico legados)
   features/      workspace, chat, tasks, runs, editor, attention, continuity
                  cada uma com componentes de apresentação e hooks use* por assunto
@@ -245,4 +245,4 @@ renderer/
   styles/        tokens.css, style.css, karont.css (consolidação na Fase 3)
 ```
 
-Regras: o estado da UI fica em hooks por feature, sem store global (decisão 18 em PROGRESSO); nenhum módulo do main chama `app.getPath` no topo; o `xterm.css` é importado pelo `RunDesk` e precisa entrar antes dos estilos do app.
+Regras: o estado da UI fica em hooks por feature, sem store global (decisão 18 em PROGRESSO). No main, nenhum módulo faz no carregamento algo que dependa do `bootstrap()`; o userData só é lido por `userDataPath()`, que falha se for chamado antes dele. No renderer, todo CSS global é importado em `renderer/main.tsx`, na ordem da cascata. `tests/desktop-structure.test.mjs` verifica as duas regras.

@@ -1,12 +1,15 @@
-// Primeiro import: recusa flags sem sandbox e define userData antes de qualquer outro módulo.
-import './bootstrap';
+import { bootstrap } from './bootstrap';
 import { app, Menu, session } from 'electron';
 import { client, state } from './state';
 import { openWindow } from './window';
 import { createTray } from './tray';
-import { notify } from './notify';
+import { loadNotificationPreference, notify } from './notify';
 import { ensureDaemon, startHeartbeat, stopHeartbeat } from './daemon';
 import { registerIpc } from './ipc';
+
+// Nenhum módulo importado acima faz algo no carregamento que dependa disto; a ordem fica aqui.
+bootstrap();
+loadNotificationPreference();
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();

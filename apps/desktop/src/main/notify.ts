@@ -1,14 +1,15 @@
-import { app, Notification } from 'electron';
+import { Notification } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { TerminalEvent } from '../../../../packages/contracts/src';
+import { userDataPath } from './bootstrap';
 import { NotificationCenter } from './notifications';
 import { client, pendingResumes, runStates, state } from './state';
 import { openWindow } from './window';
 import { updateTray } from './tray';
 
 export function preferencesPath() {
-  return path.join(app.getPath('userData'), 'attention.json');
+  return path.join(userDataPath(), 'attention.json');
 }
 
 export const notifications = new NotificationCenter((title, click, fail) => {
@@ -24,10 +25,13 @@ export const notifications = new NotificationCenter((title, click, fail) => {
   return true;
 });
 
-try {
-  notifications.enabled = JSON.parse(fs.readFileSync(preferencesPath(), 'utf8')).enabled !== false;
-} catch {
-  // Sem preferência salva (ou arquivo inválido): mantém o padrão do NotificationCenter.
+export function loadNotificationPreference() {
+  const file = preferencesPath();
+  try {
+    notifications.enabled = JSON.parse(fs.readFileSync(file, 'utf8')).enabled !== false;
+  } catch {
+    // Sem preferência salva (ou arquivo inválido): mantém o padrão do NotificationCenter.
+  }
 }
 
 export function notify(key: string, title: string, runId?: string) {

@@ -1,4 +1,3 @@
-import '@xterm/xterm/css/xterm.css';
 import type { UiChatDetails } from '../../lib/api';
 import { DiffView } from './DiffView';
 import { DotLauncher } from './DotLauncher';
