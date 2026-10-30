@@ -37,7 +37,7 @@ function LegacyWorkbench() {
     const poll = async () => {
       const t = performance.now();
       try {
-        const result = await window.eros.snapshot();
+        const result = await window.karont.snapshot();
         streaming = result.streaming;
         if (active) {
           setData(result);
@@ -68,7 +68,7 @@ function LegacyWorkbench() {
       .catch(() => {})
       .then(async () => {
         try {
-          await window.eros.layout(next);
+          await window.karont.layout(next);
           setError('');
         } catch {
           setSaveError('Falha ao salvar. Tente novamente antes de fechar.');
@@ -82,7 +82,7 @@ function LegacyWorkbench() {
   async function close() {
     try {
       await queue.current;
-      await window.eros.close();
+      await window.karont.close();
     } catch {
       setError('Não foi possível salvar o layout.');
     }
@@ -91,7 +91,7 @@ function LegacyWorkbench() {
     <div className="shell">
       <aside className="rail" aria-label="Navegação principal">
         <div className="brand">
-          e<span>eros</span>
+          k<span>karont</span>
         </div>
         <div className="rail-section">TRABALHO</div>
         <nav className="rail-nav" aria-label="Áreas de trabalho">
@@ -121,7 +121,7 @@ function LegacyWorkbench() {
       <main className="app-main">
         <header className="app-header">
           <div>
-            <div className="eyebrow">EROS / AMBIENTE LOCAL</div>
+            <div className="eyebrow">KARONT / AMBIENTE LOCAL</div>
             <h1>{routeLabels[route]}</h1>
             <p>{route === 'workspaces' ? 'Organize projetos e retome conversas persistentes.' : route === 'tasks' ? 'Acompanhe trabalho por projeto, com vínculos explícitos a conversas e Runs.' : route === 'favorites' ? 'Conversas marcadas para voltar com rapidez.' : route === 'recent' ? 'Conversas ordenadas pela última abertura.' : route === 'free' ? 'Histórico local sem execução de agente nesta fase.' : route === 'previous' ? 'Runs antigas sem conversa vinculada.' : 'Terminais, revisão por execução e laboratório de regressão.'}</p>
           </div>
@@ -167,7 +167,7 @@ function LegacyWorkbench() {
           </p>
         )}
         {(['workspaces', 'favorites', 'recent', 'free'] as string[]).includes(route) && <WorkspaceDesk view={route as WorkspaceView} />}
-        {route === 'tasks' && <TaskDesk onOpenConversation={(chatId) => { void window.eros.openChat(chatId).then(() => setRoute('workspaces')); }} />}
+        {route === 'tasks' && <TaskDesk onOpenConversation={(chatId) => { void window.karont.openChat(chatId).then(() => setRoute('workspaces')); }} />}
         {route === 'previous' && <RunDesk previousOnly />}
         {route === 'lab' && <>
         <RunDesk />
@@ -197,7 +197,7 @@ function LegacyWorkbench() {
               disabled={!data}
               className={data?.streaming ? 'quiet' : 'primary'}
               onClick={() =>
-                void window.eros
+                void window.karont
                   .stream(!data?.streaming)
                   .then(setData)
                   .catch(() => setError('Falha ao alterar streaming.'))

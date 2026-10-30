@@ -91,7 +91,7 @@ export type UiRollback = {
   applied: boolean;
 };
 export type UiSession = { run: UiRun; cols: number; rows: number };
-export type ErosBridge = {
+export type KarontBridge = {
   readonly runtime: { readonly sandboxed: boolean; readonly contextIsolated: boolean };
   snapshot(): Promise<Snapshot>;
   layout(value: Layout): Promise<Snapshot>;
@@ -171,7 +171,7 @@ export type ErosBridge = {
 };
 declare global {
   interface Window {
-    eros: ErosBridge;
+    karont: KarontBridge;
   }
 }
 

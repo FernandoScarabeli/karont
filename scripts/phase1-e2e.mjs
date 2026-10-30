@@ -168,7 +168,7 @@ try {
   const electronPid = electronProcess.pid;
   daemonPid = (await client.request({ method: 'ping' })).pid;
   result.metrics = { idle: await measure(electronPid, daemonPid) };
-  assert.equal(await page.evaluate(() => window.eros.runtime.sandboxed), true);
+  assert.equal(await page.evaluate(() => window.karont.runtime.sandboxed), true);
   const rendererPid = await app.evaluate(({ webContents }) =>
     webContents
       .getAllWebContents()
@@ -214,9 +214,9 @@ try {
   const reportFile = path.join(evidence, 'phase2-report.md');
   fs.writeFileSync(reportFile, report);
   result.artifacts.push(reportFile);
-  await assert.rejects(() => page.evaluate(() => window.eros.decideApproval('invalid', true)));
+  await assert.rejects(() => page.evaluate(() => window.karont.decideApproval('invalid', true)));
   await assert.rejects(() =>
-    page.evaluate(() => window.eros.startRun('alpha', 'fixture', 'readOnly')),
+    page.evaluate(() => window.karont.startRun('alpha', 'fixture', 'readOnly')),
   );
   await app.evaluate(({ dialog }) => {
     globalThis.__erosOriginalConfirm = dialog.showMessageBox;
@@ -227,7 +227,7 @@ try {
     };
   });
   await assert.rejects(() =>
-    page.evaluate(() => window.eros.startRun('alpha', 'fixture', 'full', true)),
+    page.evaluate(() => window.karont.startRun('alpha', 'fixture', 'full', true)),
   );
   assert.equal(
     await app.evaluate(() => globalThis.__erosConfirms),
@@ -335,7 +335,7 @@ try {
   );
   assert.ok(scrollback.every((session) => session.scrollback.includes('PTY_READY')));
   for (const run of runs)
-    await restored.evaluate((id) => window.eros.writeTerminal(id, 'write\r'), run.id);
+    await restored.evaluate((id) => window.karont.writeTerminal(id, 'write\r'), run.id);
   await until(async () => {
     const sessions = await Promise.all(runs.map((run) => attach(run.id)));
     assert.ok(sessions.every((session) => session.scrollback.includes('PTY_WROTE')));
@@ -346,7 +346,7 @@ try {
   result.artifacts.push(restoredShot);
   result.checks.push('janela reaberta recuperou os mesmos PIDs, saída PTY e entrada interativa');
   for (const run of runs)
-    await restored.evaluate((id) => window.eros.writeTerminal(id, 'finish\r'), run.id);
+    await restored.evaluate((id) => window.karont.writeTerminal(id, 'finish\r'), run.id);
   await until(async () => {
     const all = await client.request({ method: 'runs.list', value: { limit: 10 } });
     assert.ok(runs.every((run) => all.find((item) => item.id === run.id).state === 'completed'));
@@ -389,7 +389,7 @@ try {
   result.artifacts.push(approvalShot);
   result.checks.push('diff exibido, prévia confirmada, rollback auditado na Central de Aprovações');
   if (notificationService) {
-    result.nativeNotificationState = await restored.evaluate(() => window.eros.notifications());
+    result.nativeNotificationState = await restored.evaluate(() => window.karont.notifications());
     await until(() => {
       const records = fs
         .readFileSync(notificationLog, 'utf8')
@@ -480,7 +480,7 @@ try {
   process.kill(daemonPid, 'SIGCONT');
   await restored.getByText('Daemon conectado', { exact: true }).waitFor();
   assert.equal((await client.request({ method: 'ping' })).pid, daemonPid);
-  await restored.evaluate((id) => window.eros.writeTerminal(id, 'write\r'), reconnectRun.id);
+  await restored.evaluate((id) => window.karont.writeTerminal(id, 'write\r'), reconnectRun.id);
   await until(async () => {
     const text = await restored.locator(`#run-${reconnectRun.id} .terminal-shell`).innerText();
     assert.ok(text.includes('PTY_WROTE'));
@@ -516,11 +516,11 @@ try {
   await restored.screenshot({ path: attentionShot, fullPage: true });
   result.artifacts.push(attentionShot);
   await restored.getByRole('checkbox', { name: 'Notificações nativas' }).uncheck();
-  assert.equal((await restored.evaluate(() => window.eros.notifications())).enabled, false);
+  assert.equal((await restored.evaluate(() => window.karont.notifications())).enabled, false);
   await restored.getByRole('button', { name: 'Fechar painel', exact: true }).click();
-  await restored.evaluate((id) => window.eros.writeTerminal(id, 'finish\r'), reconnectRun.id);
+  await restored.evaluate((id) => window.karont.writeTerminal(id, 'finish\r'), reconnectRun.id);
   await until(async () => {
-    const n = await restored.evaluate(() => window.eros.notifications());
+    const n = await restored.evaluate(() => window.karont.notifications());
     assert.equal(n.history.at(-1).status, 'disabled');
     result.nativeNotificationState = n;
     return true;
@@ -541,12 +541,12 @@ try {
   await restored.setViewportSize({ width: 1440, height: 1000 });
   const crashRuns = [];
   for (const dotId of ['alpha', 'beta']) {
-    const run = await restored.evaluate((dotId) => window.eros.startRun(dotId, 'fixture'), dotId);
+    const run = await restored.evaluate((dotId) => window.karont.startRun(dotId, 'fixture'), dotId);
     crashRuns.push(run);
     startedRuns.push(run);
   }
   await until(async () => {
-    const runs = await restored.evaluate(() => window.eros.runs());
+    const runs = await restored.evaluate(() => window.karont.runs());
     for (const run of crashRuns) assert.equal(runs.find((r) => r.id === run.id).state, 'running');
   });
   const entry = restored
@@ -555,7 +555,7 @@ try {
     .first();
   await entry.getByRole('button', { name: 'Criar checkpoint', exact: true }).click();
   await until(async () => {
-    const cps = await restored.evaluate((id) => window.eros.checkpoints(id), crashRuns[0].id);
+    const cps = await restored.evaluate((id) => window.karont.checkpoints(id), crashRuns[0].id);
     assert.ok(cps.some((c) => c.origin === 'manual'));
   });
   const optOut = restored
@@ -564,12 +564,12 @@ try {
   await optOut.check();
   await until(async () =>
     assert.equal(
-      (await restored.evaluate(() => window.eros.runs())).find((run) => run.id === crashRuns[0].id)
+      (await restored.evaluate(() => window.karont.runs())).find((run) => run.id === crashRuns[0].id)
         .autoResumeEnabled,
       false,
     ),
   );
-  await restored.evaluate(() => window.eros.notifications(true));
+  await restored.evaluate(() => window.karont.notifications(true));
   process.kill(daemonPid, 'SIGKILL');
   client.close();
   await wait(500);
@@ -580,7 +580,7 @@ try {
   daemonPid = replacement.pid;
   await until(() => client.request({ method: 'ping' }));
   await until(async () => {
-    const runs = await restored.evaluate(() => window.eros.runs());
+    const runs = await restored.evaluate(() => window.karont.runs());
     for (const run of crashRuns)
       assert.equal(runs.find((r) => r.id === run.id).state, 'recovery_needed');
   });
@@ -596,7 +596,7 @@ try {
   result.artifacts.push(recoveryShot);
   await recovery.getByRole('button', { name: 'Confirmar nova sessão', exact: true }).click();
   await until(async () => {
-    const runs = await restored.evaluate(() => window.eros.runs());
+    const runs = await restored.evaluate(() => window.karont.runs());
     assert.ok(crashRuns.some((run) => runs.find((r) => r.id === run.id).state === 'running'));
   });
   result.checks.push(

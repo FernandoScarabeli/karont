@@ -123,10 +123,10 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: React.Re
   useEffect(() => {
     let active = true;
     void Promise.all([
-      allPages((cursor) => window.eros.workspaces(cursor)),
-      window.eros.dots(),
-      window.eros.navigation(),
-      allPages((cursor) => window.eros.projectIndex(cursor)),
+      allPages((cursor) => window.karont.workspaces(cursor)),
+      window.karont.dots(),
+      window.karont.navigation(),
+      allPages((cursor) => window.karont.projectIndex(cursor)),
     ])
       .then(async ([spaces, ds, nav, index]) => {
         if (!active) return;
@@ -139,7 +139,7 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: React.Re
             : { ...emptyNavigation, workspaceId: spaces[0]?.id ?? null };
         setNavigation(next);
         if (next.chatId) {
-          const chat = await window.eros.chat(next.chatId);
+          const chat = await window.karont.chat(next.chatId);
           if (active) {
             setSelectedChat(chat);
             setPage('chat');
@@ -165,11 +165,11 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: React.Re
       return;
     }
     void Promise.all([
-      allPages((cursor) => window.eros.projects(navigation.workspaceId!, cursor)),
+      allPages((cursor) => window.karont.projects(navigation.workspaceId!, cursor)),
       allPages((cursor) =>
-        window.eros.chats({ scope: 'all', workspaceId: navigation.workspaceId!, cursor }),
+        window.karont.chats({ scope: 'all', workspaceId: navigation.workspaceId!, cursor }),
       ),
-      allPages((cursor) => window.eros.projectIndex(cursor)),
+      allPages((cursor) => window.karont.projectIndex(cursor)),
     ])
       .then(([ps, cs, index]) => {
         if (active) {
@@ -190,7 +190,7 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: React.Re
   }, [navigation.workspaceId, refresh]);
   useEffect(() => {
     let active = true;
-    void allPages((cursor) => window.eros.chats({ scope: 'recent', cursor }))
+    void allPages((cursor) => window.karont.chats({ scope: 'recent', cursor }))
       .then((items) => {
         if (active) setRecentChats(items);
       })
@@ -203,7 +203,7 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: React.Re
   }, [refresh]);
   useEffect(
     () =>
-      window.eros.onEvent((event: TerminalEvent) => {
+      window.karont.onEvent((event: TerminalEvent) => {
         if (['project.updated', 'workspace.updated', 'chat.updated'].includes(event.type))
           setRefresh((n) => n + 1);
       }),
@@ -211,7 +211,7 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: React.Re
   );
   const workspace = workspaces.find((w) => w.id === navigation.workspaceId);
   async function context(next: UiNavigation) {
-    await window.eros.setNavigation(next);
+    await window.karont.setNavigation(next);
     setNavigation(next);
   }
   async function home(workspaceId = navigation.workspaceId) {
@@ -228,7 +228,7 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: React.Re
   async function openChat(id: string) {
     const ticket = ++selection.current;
     try {
-      const chat = await window.eros.openChat(id);
+      const chat = await window.karont.openChat(id);
       if (ticket !== selection.current) return;
       setSelectedChat(chat);
       setNavigation({
@@ -255,16 +255,16 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: React.Re
     setBusy(true);
     setError('');
     try {
-      let chat = await window.eros.createChat({
+      let chat = await window.karont.createChat({
         workspaceId: navigation.workspaceId,
         projectId,
         dotId: null,
         title: 'Nova conversa',
       });
-      if (seed) chat = await window.eros.saveDraft(chat.chat.id, seed, chat.chat.revision);
+      if (seed) chat = await window.karont.saveDraft(chat.chat.id, seed, chat.chat.revision);
       setSelectedChat(chat);
       setNavigation({ workspaceId: chat.chat.workspaceId, projectId, chatId: chat.chat.id });
-      await window.eros.openChat(chat.chat.id);
+      await window.karont.openChat(chat.chat.id);
       setPage('chat');
       setRefresh((n) => n + 1);
       if (projectId) setExpanded((old) => ({ ...old, [projectId]: true }));
@@ -283,7 +283,7 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: React.Re
     setFormError('');
     try {
       if (editingProject) {
-        await window.eros.updateProject({
+        await window.karont.updateProject({
           projectId: editingProject.id,
           name: projectName,
           root: projectRoot,
@@ -298,7 +298,7 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: React.Re
         setNotice('Projeto atualizado.');
         return;
       }
-      const result = await window.eros.addProject({
+      const result = await window.karont.addProject({
         workspaceId: navigation.workspaceId,
         name: projectName,
         icon: projectIcon,
@@ -335,8 +335,8 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: React.Re
     try {
       const result =
         workspaceDialog === 'rename' && navigation.workspaceId
-          ? await window.eros.renameWorkspace(navigation.workspaceId, workspaceName)
-          : await window.eros.createWorkspace(workspaceName);
+          ? await window.karont.renameWorkspace(navigation.workspaceId, workspaceName)
+          : await window.karont.createWorkspace(workspaceName);
       setWorkspaces((old) => [...old.filter((w) => w.id !== result.id), result]);
       setWorkspaceDialog(undefined);
       await home(result.id);
@@ -945,7 +945,7 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: React.Re
                 type="button"
                 className="quiet"
                 onClick={() => {
-                  void window.eros
+                  void window.karont
                     .chooseProjectFolder()
                     .then((root) => {
                       if (root) setProjectRoot(root);
@@ -1073,14 +1073,14 @@ function ChatView(props: {
   );
 
   const loadMessages = useCallback(async () => {
-    const page = await window.eros.messages(chat.chat.id);
+    const page = await window.karont.messages(chat.chat.id);
     setMessages(page.items);
     setNextCursor(page.nextCursor);
     setDeliveries(deliveriesByMessage(page.items, page.deliveries));
   }, [chat.chat.id]);
 
   const loadRuns = useCallback(async () => {
-    const page = await window.eros.chatRuns(chat.chat.id);
+    const page = await window.karont.chatRuns(chat.chat.id);
     setRuns(page.items);
   }, [chat.chat.id]);
 
@@ -1094,8 +1094,8 @@ function ChatView(props: {
     draftRef.current = props.initial.chat.draft;
     revisionRef.current = props.initial.chat.revision;
     void Promise.all([
-      window.eros.messages(props.initial.chat.id),
-      window.eros.chatRuns(props.initial.chat.id),
+      window.karont.messages(props.initial.chat.id),
+      window.karont.chatRuns(props.initial.chat.id),
     ])
       .then(async ([messagePage, runPage]) => {
         if (!mounted) return;
@@ -1107,11 +1107,11 @@ function ChatView(props: {
       .catch(() => {
         if (mounted) setMessageError('Não foi possível carregar o histórico local da conversa.');
       });
-    const dispose = window.eros.onEvent((event: TerminalEvent) => {
+    const dispose = window.karont.onEvent((event: TerminalEvent) => {
       if (event.type === 'message.created' && event.chatId === props.initial.chat.id)
         void loadMessages().catch(() => {});
       if (event.type === 'message.delivery.updated' && event.chatId === props.initial.chat.id)
-        void window.eros
+        void window.karont
           .messageDeliveries(event.chatId, event.messageId)
           .then((items) => setDeliveries((current) => ({ ...current, [event.messageId]: items })))
           .catch(() => {});
@@ -1119,7 +1119,7 @@ function ChatView(props: {
         void loadRuns().catch(() => {});
         void draftQueue.current
           .catch(() => {})
-          .then(() => window.eros.chat(props.initial.chat.id))
+          .then(() => window.karont.chat(props.initial.chat.id))
           .then((value) => {
             if (mounted && value.chat.revision > revisionRef.current) {
               revisionRef.current = value.chat.revision;
@@ -1144,7 +1144,7 @@ function ChatView(props: {
         .catch(() => {})
         .then(async () => {
           if (value === chat.chat.draft && revisionRef.current === chat.chat.revision) return;
-          const updated = await window.eros.saveDraft(chat.chat.id, value, revisionRef.current);
+          const updated = await window.karont.saveDraft(chat.chat.id, value, revisionRef.current);
           setChat(updated);
           revisionRef.current = updated.chat.revision;
           props.onChatChange(updated);
@@ -1205,7 +1205,7 @@ function ChatView(props: {
     setMessageError('');
     try {
       await persistDraft(submittedDraft);
-      const result = await window.eros.saveMessage(
+      const result = await window.karont.saveMessage(
         chat.chat.id,
         submittedDraft,
         revisionRef.current,
@@ -1229,7 +1229,7 @@ function ChatView(props: {
   async function loadNextMessages() {
     if (!nextCursor) return;
     try {
-      const page = await window.eros.messages(chat.chat.id, nextCursor);
+      const page = await window.karont.messages(chat.chat.id, nextCursor);
       setMessages((current) => [
         ...current,
         ...page.items.filter((item) => !current.some((old) => old.id === item.id)),
@@ -1278,7 +1278,7 @@ function ChatView(props: {
     setSaving(true);
     setMessageError('');
     try {
-      const delivery = await window.eros.sendMessage({
+      const delivery = await window.karont.sendMessage({
         chatId: chat.chat.id,
         messageId: message.id,
         runId: run.id,
@@ -1305,7 +1305,7 @@ function ChatView(props: {
   async function toggleFavorite() {
     try {
       acceptChat(
-        await window.eros.favoriteChat(chat.chat.id, !chat.chat.favorite, revisionRef.current),
+        await window.karont.favoriteChat(chat.chat.id, !chat.chat.favorite, revisionRef.current),
       );
     } catch {
       setMessageError('A conversa mudou em outro cliente. Reabra-a antes de continuar.');
@@ -1316,7 +1316,7 @@ function ChatView(props: {
     event.preventDefault();
     try {
       await persistDraft(draftRef.current);
-      acceptChat(await window.eros.renameChat(chat.chat.id, renameTitle, revisionRef.current));
+      acceptChat(await window.karont.renameChat(chat.chat.id, renameTitle, revisionRef.current));
       setRenaming(false);
     } catch {
       setMessageError('Não foi possível renomear. Atualize a conversa e tente novamente.');
@@ -1326,7 +1326,7 @@ function ChatView(props: {
   async function openMove() {
     setMoveError('');
     try {
-      const page = await window.eros.projectIndex();
+      const page = await window.karont.projectIndex();
       const destinations = page.items.filter((project) => project.id !== chat.chat.projectId);
       setMoveProjects(destinations);
       setMoveProjectId(destinations[0]?.id ?? '');
@@ -1346,7 +1346,7 @@ function ChatView(props: {
       return;
     }
     let mounted = true;
-    void window.eros
+    void window.karont
       .previewMoveChat(chat.chat.id, moveProjectId, dotId)
       .then((preview) => {
         if (mounted) setMovePreview(preview);
@@ -1364,7 +1364,7 @@ function ChatView(props: {
     setMoveError('');
     try {
       await persistDraft(draftRef.current);
-      const moved = await window.eros.moveChat(
+      const moved = await window.karont.moveChat(
         chat.chat.id,
         movePreview.destinationProjectId,
         movePreview.dotId,

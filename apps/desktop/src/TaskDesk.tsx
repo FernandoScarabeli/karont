@@ -63,7 +63,7 @@ export function TaskCreationDialog(props: {
     setSaving(true);
     setError('');
     try {
-      const created = await window.eros.createTask({
+      const created = await window.karont.createTask({
         projectId,
         title: title.trim(),
         description: descriptionValue,
@@ -129,7 +129,7 @@ export function TaskDesk(props: { onOpenConversation(chatId: string): void }) {
 
   useEffect(() => {
     let mounted = true;
-    void Promise.all([window.eros.workspaces(), window.eros.projectIndex(), window.eros.dots(), window.eros.runs(100)])
+    void Promise.all([window.karont.workspaces(), window.karont.projectIndex(), window.karont.dots(), window.karont.runs(100)])
       .then(([workspacePage, projectPage, configuredDots, runList]) => {
         if (!mounted) return;
         setWorkspaces(workspacePage.items);
@@ -138,7 +138,7 @@ export function TaskDesk(props: { onOpenConversation(chatId: string): void }) {
         setRuns(runList);
       })
       .catch(() => { if (mounted) setError('Não foi possível carregar projetos e responsáveis disponíveis.'); });
-    const dispose = window.eros.onEvent((event) => {
+    const dispose = window.karont.onEvent((event) => {
       if (event.type === 'task.updated') setRefresh((value) => value + 1);
     });
     return () => { mounted = false; dispose(); };
@@ -155,7 +155,7 @@ export function TaskDesk(props: { onOpenConversation(chatId: string): void }) {
     setLoading(true);
     setError('');
     try {
-      const page = await window.eros.tasks({
+      const page = await window.karont.tasks({
         ...(workspaceId ? { workspaceId } : {}),
         ...(projectId ? { projectId } : {}),
         ...(mode === 'aggregate' && stateFilter ? { state: stateFilter } : {}),
@@ -181,7 +181,7 @@ export function TaskDesk(props: { onOpenConversation(chatId: string): void }) {
   async function openTask(taskId: string) {
     setError('');
     try {
-      const detail = await window.eros.task(taskId);
+      const detail = await window.karont.task(taskId);
       setSelected(detail);
       setTitleDraft(detail.title);
       setDescriptionDraft(detail.description);
@@ -190,7 +190,7 @@ export function TaskDesk(props: { onOpenConversation(chatId: string): void }) {
       setEvents([]);
       setEventsCursor(null);
       setEventMore(true);
-      const page = await window.eros.taskEvents(taskId);
+      const page = await window.karont.taskEvents(taskId);
       setEvents(page.items);
       setEventsCursor(page.nextCursor);
       setEventMore(page.nextCursor !== null);
@@ -201,7 +201,7 @@ export function TaskDesk(props: { onOpenConversation(chatId: string): void }) {
     if (task.state === nextState) return;
     setError('');
     try {
-      const updated = await window.eros.updateTask({ taskId: task.id, state: nextState, expectedRevision: task.revision });
+      const updated = await window.karont.updateTask({ taskId: task.id, state: nextState, expectedRevision: task.revision });
       setTasks((current) => current.map((item) => item.id === task.id ? { ...item, state: updated.state, revision: updated.revision, updatedAt: updated.updatedAt } : item));
     } catch { setError(`A tarefa “${task.title}” mudou em outro cliente. O texto local foi preservado; reabra os detalhes para revisar.`); }
   }
@@ -212,7 +212,7 @@ export function TaskDesk(props: { onOpenConversation(chatId: string): void }) {
     setSaving(true);
     setError('');
     try {
-      const updated = await window.eros.updateTask({
+      const updated = await window.karont.updateTask({
         taskId: selected.id,
         title: titleDraft,
         description: descriptionDraft,
@@ -228,11 +228,11 @@ export function TaskDesk(props: { onOpenConversation(chatId: string): void }) {
           const split = key.indexOf(':');
           return { kind: key.slice(0, split) as 'local' | 'dot', id: key.slice(split + 1) };
         });
-        const withAssignees = await window.eros.setTaskAssignees({ taskId: updated.id, assignees: nextAssignees, expectedRevision: updated.revision });
+        const withAssignees = await window.karont.setTaskAssignees({ taskId: updated.id, assignees: nextAssignees, expectedRevision: updated.revision });
         setSelected(withAssignees);
         setTasks((current) => current.map((item) => item.id === withAssignees.id ? { ...item, assignees: withAssignees.assignees, revision: withAssignees.revision, updatedAt: withAssignees.updatedAt } : item));
       }
-      const history = await window.eros.taskEvents(selected.id);
+      const history = await window.karont.taskEvents(selected.id);
       setEvents(history.items);
       setEventsCursor(history.nextCursor);
       setEventMore(history.nextCursor !== null);
@@ -247,11 +247,11 @@ export function TaskDesk(props: { onOpenConversation(chatId: string): void }) {
     setError('');
     try {
       const updated = link
-        ? await window.eros.linkTaskRun({ taskId: selected.id, runId, expectedRevision: selected.revision })
-        : await window.eros.unlinkTaskRun({ taskId: selected.id, runId, expectedRevision: selected.revision });
+        ? await window.karont.linkTaskRun({ taskId: selected.id, runId, expectedRevision: selected.revision })
+        : await window.karont.unlinkTaskRun({ taskId: selected.id, runId, expectedRevision: selected.revision });
       setSelected(updated);
       setTasks((current) => current.map((item) => item.id === updated.id ? { ...item, runCount: updated.runCount, revision: updated.revision, updatedAt: updated.updatedAt } : item));
-      const history = await window.eros.taskEvents(selected.id);
+      const history = await window.karont.taskEvents(selected.id);
       setEvents(history.items);
       setEventsCursor(history.nextCursor);
       setEventMore(history.nextCursor !== null);
@@ -262,7 +262,7 @@ export function TaskDesk(props: { onOpenConversation(chatId: string): void }) {
   async function loadNextEvents() {
     if (!selected || !eventsCursor) return;
     try {
-      const page = await window.eros.taskEvents(selected.id, eventsCursor);
+      const page = await window.karont.taskEvents(selected.id, eventsCursor);
       setEvents((current) => [...current, ...page.items]);
       setEventsCursor(page.nextCursor);
       setEventMore(page.nextCursor !== null);
@@ -289,7 +289,7 @@ export function TaskDesk(props: { onOpenConversation(chatId: string): void }) {
 
   return <section className="task-desk" aria-label="Tarefas Kanban">
     <header className="task-desk-heading">
-      <div><div className="eyebrow">EROS / ORGANIZAÇÃO DO TRABALHO</div><h2>Tarefas</h2><p>Tarefas são acompanhamentos explícitos. Atribuir ou mover uma tarefa não inicia uma execução.</p></div>
+      <div><div className="eyebrow">KARONT / ORGANIZAÇÃO DO TRABALHO</div><h2>Tarefas</h2><p>Tarefas são acompanhamentos explícitos. Atribuir ou mover uma tarefa não inicia uma execução.</p></div>
       <div className="task-mode-actions">
         <button className={mode === 'aggregate' ? 'primary' : 'quiet'} aria-pressed={mode === 'aggregate'} onClick={() => setMode('aggregate')}>Visão agregada</button>
         <button className={mode === 'project' ? 'primary' : 'quiet'} aria-pressed={mode === 'project'} disabled={!projectId} onClick={() => setMode('project')}>Quadro do projeto</button>

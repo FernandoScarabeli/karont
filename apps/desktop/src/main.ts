@@ -20,6 +20,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Client } from '../../../packages/local/src/client';
+import { migrateLegacyDirs } from '../../../packages/local/src/paths';
 import {
   layoutSchema,
   requestSchema,
@@ -36,10 +37,16 @@ for (const flag of [
   'single-process',
 ]) {
   if (app.commandLine.hasSwitch(flag))
-    throw Error(`eros exige sandbox Chromium ativo; flag recusada: ${flag}`);
+    throw Error(`Karont exige sandbox Chromium ativo; flag recusada: ${flag}`);
 }
-app.setName('eros');
-app.setPath('userData', process.env.EROS_DESKTOP_DATA || path.join(app.getPath('appData'), 'eros'));
+app.setName('karont');
+migrateLegacyDirs();
+app.setPath(
+  'userData',
+  process.env.KARONT_DESKTOP_DATA ||
+    process.env.EROS_DESKTOP_DATA ||
+    path.join(app.getPath('appData'), 'karont'),
+);
 const client = new Client();
 let win: BrowserWindow | null = null;
 let connected = true,
@@ -54,7 +61,7 @@ const notifications = new NotificationCenter((title, click, fail) => {
   if (!Notification.isSupported()) return false;
   const notification = new Notification({
     title,
-    body: 'Abra o eros para consultar os detalhes.',
+    body: 'Abra o Karont para consultar os detalhes.',
     silent: false,
   });
   notification.on('click', click);
@@ -77,22 +84,22 @@ function notify(key: string, title: string, runId?: string) {
   notifications.notify(key, title, () => {
     targetRun = runId;
     void openWindow().then(() => {
-      if (runId) win?.webContents.send('eros:focus-run', runId);
+      if (runId) win?.webContents.send('karont:focus-run', runId);
     });
   });
 }
 function updateTray() {
   if (!trayAvailable) return;
   const active = [...runStates].filter(([, state]) => ['running', 'queued'].includes(state));
-  tray.setToolTip(`eros · ${active.length} execuções ativas`);
+  tray.setToolTip(`Karont · ${active.length} execuções ativas`);
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: `Abrir eros · ${active.length} ativas`, click: () => void openWindow() },
+      { label: `Abrir Karont · ${active.length} ativas`, click: () => void openWindow() },
       ...active.slice(0, 10).map(([id]) => ({
         label: `Execução ${id.slice(0, 8)}`,
         click: () => {
           targetRun = id;
-          void openWindow().then(() => win?.webContents.send('eros:focus-run', id));
+          void openWindow().then(() => win?.webContents.send('karont:focus-run', id));
         },
       })),
       { label: 'Encerrar aplicativo (daemon e CLIs continuam)', click: () => app.quit() },
@@ -137,7 +144,7 @@ client.onEvent((event: TerminalEvent) => {
       event.approval.status === 'applied' ? 'Rollback concluído' : 'Rollback falhou',
       event.approval.runId,
     );
-  if (win && !win.isDestroyed()) win.webContents.send('eros:event', event);
+  if (win && !win.isDestroyed()) win.webContents.send('karont:event', event);
 });
 let tray: Tray;
 let opening: Promise<void> | undefined;
@@ -163,7 +170,7 @@ if (!app.requestSingleInstanceLock()) {
     .then(async () => {
       session.defaultSession.setPermissionRequestHandler((_w, _p, cb) => cb(false));
       session.defaultSession.setPermissionCheckHandler(() => false);
-      ipcMain.handle('eros:command', async (event, command: unknown) => {
+      ipcMain.handle('karont:command', async (event, command: unknown) => {
         authorize(event);
         if (!command || typeof command !== 'object') throw Error('Mensagem inválida');
         const c = command as Record<string, unknown>;
@@ -179,36 +186,36 @@ if (!app.requestSingleInstanceLock()) {
         }
         throw Error('Comando IPC recusado');
       });
-      ipcMain.handle('eros:diagnostics', async (event, value: unknown) => {
+      ipcMain.handle('karont:diagnostics', async (event, value: unknown) => {
         authorize(event);
         noValue(value);
         return diagnostics();
       });
-      ipcMain.handle('eros:report', async (event, value: unknown) => {
+      ipcMain.handle('karont:report', async (event, value: unknown) => {
         authorize(event);
         noValue(value);
         return issueReport(await diagnostics());
       });
-      ipcMain.handle('eros:report:save', async (event, value: unknown) => {
+      ipcMain.handle('karont:report:save', async (event, value: unknown) => {
         authorize(event);
         noValue(value);
         const report = issueReport(await diagnostics());
         const result = await dialog.showSaveDialog(win!, {
           title: 'Salvar relatório local',
-          defaultPath: 'eros-problema.md',
+          defaultPath: 'karont-problema.md',
           filters: [{ name: 'Markdown', extensions: ['md'] }],
         });
         if (result.canceled || !result.filePath) return false;
         fs.writeFileSync(result.filePath, report, { mode: 0o600 });
         return true;
       });
-      ipcMain.handle('eros:report:copy', async (event, value: unknown) => {
+      ipcMain.handle('karont:report:copy', async (event, value: unknown) => {
         authorize(event);
         noValue(value);
         clipboard.writeText(issueReport(await diagnostics()));
         return true;
       });
-      ipcMain.handle('eros:notifications', (event, value: unknown) => {
+      ipcMain.handle('karont:notifications', (event, value: unknown) => {
         authorize(event);
         if (value !== undefined && typeof value !== 'boolean') throw Error('Preferência inválida');
         if (typeof value === 'boolean') {
@@ -218,75 +225,75 @@ if (!app.requestSingleInstanceLock()) {
         }
         return { enabled: notifications.enabled, history: notifications.history };
       });
-      ipcMain.handle('eros:focus-target', (event, value: unknown) => {
+      ipcMain.handle('karont:focus-target', (event, value: unknown) => {
         authorize(event);
         noValue(value);
         const id = targetRun;
         targetRun = undefined;
         return id;
       });
-      ipcMain.handle('eros:projects:choose-folder', async (event) => {
+      ipcMain.handle('karont:projects:choose-folder', async (event) => {
         authorize(event);
         const selected = await dialog.showOpenDialog(win!, { title: 'Escolher pasta raiz', buttonLabel: 'Selecionar pasta', properties: ['openDirectory'] });
         authorize(event);
         return selected.canceled ? null : selected.filePaths[0] ?? null;
       });
-      ipcMain.handle('eros:projects:add', async (event, value: unknown) => {
+      ipcMain.handle('karont:projects:add', async (event, value: unknown) => {
         authorize(event);
         const input = projectAddUiSchema.parse(value);
         if (input.dotIds.length) throw Error('Concessões são configuradas separadamente do cadastro de projeto');
         return client.request({ method: 'projects.add', value: { ...input, operationId: randomUUID() } });
       });
       const handlers: [string, Command['method'], (value: any) => object][] = [
-        ['eros:workspaces:list', 'workspaces.list', (value) => ({ value })],
-        ['eros:workspaces:create', 'workspaces.create', (value) => ({ value })],
-        ['eros:workspaces:rename', 'workspaces.rename', (value) => ({ value })],
-        ['eros:approvals:list', 'approvals.list', noValue],
-        ['eros:approvals:decide', 'approvals.decide', (value) => ({ value })],
-        ['eros:dots:list', 'dots.list', noValue],
-        ['eros:projects:list', 'projects.list', (value) => value === undefined ? {} : ({ value })],
-        ['eros:projects:update', 'projects.update', (value) => ({ value })],
-        ['eros:chats:list', 'chats.list', (value) => ({ value })],
-        ['eros:chats:create', 'chats.create', (value) => ({ value })],
-        ['eros:chats:get', 'chats.get', (value) => ({ value })],
-        ['eros:chats:rename', 'chats.rename', (value) => ({ value })],
-        ['eros:chats:open', 'chats.open', (value) => ({ value })],
-        ['eros:chats:favorite', 'chats.favorite', (value) => ({ value })],
-        ['eros:chats:draft', 'chats.draft', (value) => ({ value })],
-        ['eros:chats:move-preview', 'chats.move.preview', (value) => ({ value })],
-        ['eros:chats:move', 'chats.move', (value) => ({ value })],
-        ['eros:messages:list', 'messages.list', (value) => ({ value })],
-        ['eros:messages:save', 'messages.save', (value) => ({ value })],
-        ['eros:messages:send', 'messages.send', (value) => ({ value })],
-        ['eros:messages:deliveries', 'messages.deliveries', (value) => ({ value })],
-        ['eros:chats:runs', 'chats.runs.list', (value) => ({ value })],
-        ['eros:tasks:list', 'tasks.list', (value) => ({ value })],
-        ['eros:tasks:get', 'tasks.get', (value) => ({ value })],
-        ['eros:tasks:create', 'tasks.create', (value) => ({ value })],
-        ['eros:tasks:update', 'tasks.update', (value) => ({ value })],
-        ['eros:tasks:assignees:set', 'tasks.assignees.set', (value) => ({ value })],
-        ['eros:tasks:runs:link', 'tasks.runs.link', (value) => ({ value })],
-        ['eros:tasks:runs:unlink', 'tasks.runs.unlink', (value) => ({ value })],
-        ['eros:tasks:events:list', 'tasks.events.list', (value) => ({ value })],
-        ['eros:navigation:get', 'navigation.get', noValue],
-        ['eros:navigation:set', 'navigation.set', (value) => ({ value })],
-        ['eros:runs:list', 'runs.list', (value) => ({ value })],
-        ['eros:checkpoints:list', 'checkpoints.list', (value) => ({ value })],
-        ['eros:checkpoints:create', 'checkpoints.create', (value) => ({ value })],
-        ['eros:recovery:inspect', 'recovery.inspect', (value) => ({ value })],
-        ['eros:runs:pause', 'runs.pause', (value) => ({ value })],
-        ['eros:runs:resume', 'runs.resume', (value) => ({ value })],
-        ['eros:runs:autoResume', 'runs.autoResume', (value) => ({ value })],
-        ['eros:runs:start', 'runs.start', (value) => ({ value })],
-        ['eros:terminal:attach', 'terminal.attach', (value) => ({ value })],
-        ['eros:terminal:detach-all', 'terminal.detachAll', noValue],
-        ['eros:terminal:write', 'terminal.write', (value) => ({ value })],
-        ['eros:terminal:resize', 'terminal.resize', (value) => ({ value })],
-        ['eros:runs:cancel', 'runs.cancel', (value) => ({ value })],
-        ['eros:worktree:remove', 'worktree.remove', (value) => ({ value })],
-        ['eros:runs:diff', 'runs.diff', (value) => ({ value })],
-        ['eros:rollback:preview', 'rollback.preview', (value) => ({ value })],
-        ['eros:rollback:apply', 'rollback.apply', (value) => ({ value })],
+        ['karont:workspaces:list', 'workspaces.list', (value) => ({ value })],
+        ['karont:workspaces:create', 'workspaces.create', (value) => ({ value })],
+        ['karont:workspaces:rename', 'workspaces.rename', (value) => ({ value })],
+        ['karont:approvals:list', 'approvals.list', noValue],
+        ['karont:approvals:decide', 'approvals.decide', (value) => ({ value })],
+        ['karont:dots:list', 'dots.list', noValue],
+        ['karont:projects:list', 'projects.list', (value) => value === undefined ? {} : ({ value })],
+        ['karont:projects:update', 'projects.update', (value) => ({ value })],
+        ['karont:chats:list', 'chats.list', (value) => ({ value })],
+        ['karont:chats:create', 'chats.create', (value) => ({ value })],
+        ['karont:chats:get', 'chats.get', (value) => ({ value })],
+        ['karont:chats:rename', 'chats.rename', (value) => ({ value })],
+        ['karont:chats:open', 'chats.open', (value) => ({ value })],
+        ['karont:chats:favorite', 'chats.favorite', (value) => ({ value })],
+        ['karont:chats:draft', 'chats.draft', (value) => ({ value })],
+        ['karont:chats:move-preview', 'chats.move.preview', (value) => ({ value })],
+        ['karont:chats:move', 'chats.move', (value) => ({ value })],
+        ['karont:messages:list', 'messages.list', (value) => ({ value })],
+        ['karont:messages:save', 'messages.save', (value) => ({ value })],
+        ['karont:messages:send', 'messages.send', (value) => ({ value })],
+        ['karont:messages:deliveries', 'messages.deliveries', (value) => ({ value })],
+        ['karont:chats:runs', 'chats.runs.list', (value) => ({ value })],
+        ['karont:tasks:list', 'tasks.list', (value) => ({ value })],
+        ['karont:tasks:get', 'tasks.get', (value) => ({ value })],
+        ['karont:tasks:create', 'tasks.create', (value) => ({ value })],
+        ['karont:tasks:update', 'tasks.update', (value) => ({ value })],
+        ['karont:tasks:assignees:set', 'tasks.assignees.set', (value) => ({ value })],
+        ['karont:tasks:runs:link', 'tasks.runs.link', (value) => ({ value })],
+        ['karont:tasks:runs:unlink', 'tasks.runs.unlink', (value) => ({ value })],
+        ['karont:tasks:events:list', 'tasks.events.list', (value) => ({ value })],
+        ['karont:navigation:get', 'navigation.get', noValue],
+        ['karont:navigation:set', 'navigation.set', (value) => ({ value })],
+        ['karont:runs:list', 'runs.list', (value) => ({ value })],
+        ['karont:checkpoints:list', 'checkpoints.list', (value) => ({ value })],
+        ['karont:checkpoints:create', 'checkpoints.create', (value) => ({ value })],
+        ['karont:recovery:inspect', 'recovery.inspect', (value) => ({ value })],
+        ['karont:runs:pause', 'runs.pause', (value) => ({ value })],
+        ['karont:runs:resume', 'runs.resume', (value) => ({ value })],
+        ['karont:runs:autoResume', 'runs.autoResume', (value) => ({ value })],
+        ['karont:runs:start', 'runs.start', (value) => ({ value })],
+        ['karont:terminal:attach', 'terminal.attach', (value) => ({ value })],
+        ['karont:terminal:detach-all', 'terminal.detachAll', noValue],
+        ['karont:terminal:write', 'terminal.write', (value) => ({ value })],
+        ['karont:terminal:resize', 'terminal.resize', (value) => ({ value })],
+        ['karont:runs:cancel', 'runs.cancel', (value) => ({ value })],
+        ['karont:worktree:remove', 'worktree.remove', (value) => ({ value })],
+        ['karont:runs:diff', 'runs.diff', (value) => ({ value })],
+        ['karont:rollback:preview', 'rollback.preview', (value) => ({ value })],
+        ['karont:rollback:apply', 'rollback.apply', (value) => ({ value })],
       ];
       for (const [channel, method, payload] of handlers) {
         ipcMain.handle(channel, async (event, value: unknown) => {

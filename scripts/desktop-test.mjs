@@ -127,7 +127,7 @@ try {
     '--single-process',
   ])
     assert.ok(!args.some((a) => a === flag || a.startsWith(flag + '=')), `Flag insegura: ${flag}`);
-  const runtime = await page.evaluate(() => window.eros.runtime);
+  const runtime = await page.evaluate(() => window.karont.runtime);
   assert.deepEqual(runtime, { sandboxed: true, contextIsolated: true });
   const rendererPid = await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].webContents.getOSProcessId(),
@@ -139,7 +139,7 @@ try {
   result.checks.push('sandbox efetivo: runtime isolado, filtro seccomp e NoNewPrivs no renderer');
   assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
   result.checks.push('sandbox, contextIsolation e ausência de Node no renderer');
-  await assert.rejects(() => page.evaluate(() => window.eros.layout({ columns: 99 })));
+  await assert.rejects(() => page.evaluate(() => window.karont.layout({ columns: 99 })));
   result.checks.push('IPC inválido rejeitado');
   result.stage = 'workload-and-persistence';
   await wait(1000);

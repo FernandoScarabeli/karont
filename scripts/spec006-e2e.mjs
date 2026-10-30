@@ -94,7 +94,7 @@ try {
   page.setDefaultTimeout(12000);
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await openDiagnostics(page);
-  assert.equal(await page.evaluate(() => window.eros.runtime.sandboxed && window.eros.runtime.contextIsolated), true);
+  assert.equal(await page.evaluate(() => window.karont.runtime.sandboxed && window.karont.runtime.contextIsolated), true);
   const workspace = (await request('workspaces.list', { limit: 100 })).items[0];
   assert.ok(workspace);
   const isolatedWorkspace = await request('workspaces.create', { name: 'Workspace SPEC-006 isolado', operationId: randomUUID() });
@@ -404,7 +404,7 @@ try {
   page.setDefaultTimeout(12000);
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await page.getByRole('heading', { name: 'Conversa global SPEC-006', exact: true }).waitFor();
-  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), { workspaceId: null, projectId: null, chatId: globalChat.chat.id });
+  assert.deepEqual(await page.evaluate(() => window.karont.navigation()), { workspaceId: null, projectId: null, chatId: globalChat.chat.id });
   assert.equal(await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).inputValue(), 'Rascunho global sintético.');
   await page.getByText('Histórico global sintético.', { exact: true }).waitFor();
   await openDiagnostics(page);
@@ -485,9 +485,9 @@ try {
   };
   await page.setViewportSize({ width: 1440, height: 1000 });
   await recordScreenshot('global-restored-1440.png');
-  const report = await page.evaluate(() => window.eros.report());
+  const report = await page.evaluate(() => window.karont.report());
   assert.ok(!report.includes('Tarefa manual revisada') && !report.includes('Mensagem salva usada como descrição inicial'));
-  const notifications = await page.evaluate(() => window.eros.notifications());
+  const notifications = await page.evaluate(() => window.karont.notifications());
   assert.ok(!JSON.stringify(notifications).includes('Tarefa manual revisada'));
   assert.deepEqual(pageErrors, []);
   result.checks.push('B15: conteúdo de tarefas não é incluído em notificações/relatórios; checagem no E2E usa somente dados sintéticos locais');

@@ -70,7 +70,20 @@ export function privateDir(dir: string) {
   return dir;
 }
 
+export function migrateLegacyDirs() {
+  const dataOverride = env('DATA_DIR');
+  const dataBase = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local/share');
+  const dataDir = dataOverride || path.join(dataBase, 'karont');
+  if (!dataOverride) migrateLegacyDir(path.join(dataBase, 'eros'), dataDir, true);
+
+  const configOverride = env('CONFIG_DIR');
+  const configBase = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+  const configDir = configOverride || path.join(configBase, 'karont');
+  if (!configOverride) migrateLegacyDir(path.join(configBase, 'eros'), configDir);
+}
+
 export function paths() {
+  migrateLegacyDirs();
   const runtimeOverride = env('RUNTIME_DIR');
   const dataOverride = env('DATA_DIR');
   const configOverride = env('CONFIG_DIR');
@@ -79,10 +92,8 @@ export function paths() {
     path.join(process.env.XDG_RUNTIME_DIR || os.tmpdir(), `karont-${process.getuid!()}`);
   const dataBase = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local/share');
   const dataDir = dataOverride || path.join(dataBase, 'karont');
-  if (!dataOverride) migrateLegacyDir(path.join(dataBase, 'eros'), dataDir, true);
   const configBase = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
   const configDir = configOverride || path.join(configBase, 'karont');
-  if (!configOverride) migrateLegacyDir(path.join(configBase, 'eros'), configDir);
 
   const runtime = privateDir(runtimeDir);
   const data = privateDir(dataDir);

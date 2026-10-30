@@ -27,7 +27,7 @@ export function ContinuityControls({
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     let current = true;
-    void window.eros
+    void window.karont
       .checkpoints(run.id)
       .then((items) => {
         if (current) setLatest(items[0]);
@@ -69,7 +69,7 @@ export function ContinuityControls({
           disabled={busy}
           onClick={() =>
             void act(async () => {
-              const items = await window.eros.checkpoint(run.id, crypto.randomUUID());
+              const items = await window.karont.checkpoint(run.id, crypto.randomUUID());
               setLatest(items[0]);
             })
           }
@@ -80,7 +80,7 @@ export function ContinuityControls({
           <button
             className="quiet"
             disabled={busy}
-            onClick={() => void act(async () => refresh(await window.eros.pauseRun(run.id)))}
+            onClick={() => void act(async () => refresh(await window.karont.pauseRun(run.id)))}
           >
             Pausar agendamento
           </button>
@@ -91,7 +91,7 @@ export function ContinuityControls({
             disabled={busy}
             onClick={() =>
               void act(async () =>
-                refresh(await window.eros.resumeRun(run.id, crypto.randomUUID())),
+                refresh(await window.karont.resumeRun(run.id, crypto.randomUUID())),
               )
             }
           >
@@ -102,7 +102,7 @@ export function ContinuityControls({
           <button
             className="quiet"
             disabled={busy}
-            onClick={() => void act(async () => setInfo(await window.eros.recovery(run.id)))}
+            onClick={() => void act(async () => setInfo(await window.karont.recovery(run.id)))}
           >
             Retomar
           </button>
@@ -111,7 +111,7 @@ export function ContinuityControls({
           <button
             className="danger-quiet"
             disabled={busy}
-            onClick={() => void act(async () => refresh(await window.eros.cancelRun(run.id)))}
+            onClick={() => void act(async () => refresh(await window.karont.cancelRun(run.id)))}
           >
             Cancelar
           </button>
@@ -127,8 +127,8 @@ export function ContinuityControls({
               setResumeAllowed(enabled);
               void act(async () => {
                 try {
-                  await window.eros.autoResume(run.id, enabled);
-                  const current = (await window.eros.runs(100)).find((item) => item.id === run.id);
+                  await window.karont.autoResume(run.id, enabled);
+                  const current = (await window.karont.runs(100)).find((item) => item.id === run.id);
                   if (current) refresh(current);
                 } catch (error) {
                   setResumeAllowed(run.autoResumeEnabled);
@@ -185,7 +185,7 @@ export function ContinuityControls({
           <p className="conflict-note">{info.risk}</p>
           {!info.canStartNewSession && (
             <p>
-              Não há retomada segura disponível pelo eros. Preserve e inspecione a worktree e o
+              Não há retomada segura disponível pelo Karont. Preserve e inspecione a worktree e o
               histórico; nenhuma tarefa será reenviada.
             </p>
           )}
@@ -208,7 +208,7 @@ export function ContinuityControls({
                 disabled={busy}
                 onClick={() =>
                   void act(async () => {
-                    const resumed = await window.eros.resumeRun(run.id, crypto.randomUUID(), true);
+                    const resumed = await window.karont.resumeRun(run.id, crypto.randomUUID(), true);
                     setInfo(undefined);
                     refresh(resumed);
                   })

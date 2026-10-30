@@ -120,7 +120,7 @@ try {
   const listenForPageErrors = (target) => target.on('pageerror', (error) => pageErrors.push(error.message));
   listenForPageErrors(page);
   await openDiagnostics(page);
-  assert.equal(await page.evaluate(() => window.eros.runtime.sandboxed && window.eros.runtime.contextIsolated), true);
+  assert.equal(await page.evaluate(() => window.karont.runtime.sandboxed && window.karont.runtime.contextIsolated), true);
   await page.getByRole('button', { name: 'Início', exact: true }).click();
   await page.getByRole('heading', { name: /^(Bom dia|Boa tarde|Boa noite)\.$/, exact: true }).waitFor();
   if (process.env.EROS_TEST_SKIP_SPEC005_METRICS !== '1') await recordSeries('idle');
@@ -158,7 +158,7 @@ try {
   const workspace = workspaces.find((item) => item.name === 'Workspace Produtos');
   assert.ok(workspace);
   assert.equal((await client.request({ method: 'dots.list' }))[0].name, 'Fixture Dot');
-  assert.equal((await page.evaluate(() => window.eros.dots()))[0].name, 'Fixture Dot');
+  assert.equal((await page.evaluate(() => window.karont.dots()))[0].name, 'Fixture Dot');
   result.checks.push('Escape cancela sem gravar; formulário de workspace opera por teclado; workspace criado, renomeado e persistido no daemon');
 
   await app.evaluate(({ dialog }, invalid) => {
@@ -277,7 +277,7 @@ try {
   const primary = primaryChat.items.find((item) => item.title === 'Conversa principal');
   assert.ok(primary);
   assert.equal((await client.request({ method: 'chats.runs.list', value: { chatId: primary.id, limit: 100 } })).items.length, 0);
-  await assert.rejects(() => page.evaluate(({ projectId, chatId }) => window.eros.startRun('unauthorized-dot', projectId, 'ask', false, chatId), { projectId: project.id, chatId: primary.id }), /Dot não autorizado para este projeto/);
+  await assert.rejects(() => page.evaluate(({ projectId, chatId }) => window.karont.startRun('unauthorized-dot', projectId, 'ask', false, chatId), { projectId: project.id, chatId: primary.id }), /Dot não autorizado para este projeto/);
   await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).fill('SPEC005_PRIVATE_TEST_MESSAGE');
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
   await page.getByText('SPEC005_PRIVATE_TEST_MESSAGE', { exact: true }).waitFor();
@@ -323,7 +323,7 @@ try {
   });
   startedRuns.push(secondRun);
   assert.notEqual(secondRun.id, primaryRun.id);
-  await assert.rejects(() => page.evaluate(({ dot, projectId, chatId }) => window.eros.startRun(dot, projectId, 'ask', false, chatId), { dot: 'fixture-dot', projectId: project.id, chatId: primary.id }));
+  await assert.rejects(() => page.evaluate(({ dot, projectId, chatId }) => window.karont.startRun(dot, projectId, 'ask', false, chatId), { dot: 'fixture-dot', projectId: project.id, chatId: primary.id }));
   await assert.rejects(() => client.request({ method: 'messages.send', value: { chatId: secondChat.id, messageId: secondMessages.items[0].id, runId: primaryRun.id, operationId: randomUUID() } }));
   const twoRuns = (await client.request({ method: 'runs.list', value: { limit: 100 } })).filter((run) => run.state === 'running');
   assert.equal(twoRuns.length, 2);
@@ -373,21 +373,21 @@ try {
   const freeNavigation = { workspaceId: runWorkspace.id, projectId: null, chatId: freeChat.id };
   await freeConversations().getByRole('button', { name: 'Conversa livre de teste', exact: true }).click();
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
-  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), freeNavigation);
+  assert.deepEqual(await page.evaluate(() => window.karont.navigation()), freeNavigation);
   await favorites().getByRole('button', { name: 'Conversa principal', exact: true }).waitFor();
   await favorites().getByRole('button', { name: 'Conversa livre de teste', exact: true }).click();
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
-  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), freeNavigation);
+  assert.deepEqual(await page.evaluate(() => window.karont.navigation()), freeNavigation);
   await page.getByRole('textbox', { name: 'Buscar projetos e conversas', exact: true }).focus();
   await page.getByRole('heading', { name: 'Recentes · todos os workspaces', exact: true }).waitFor();
   await page.getByRole('button', { name: `Conversa livre de teste ${runWorkspace.name} / Conversa livre`, exact: true }).click();
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
   assert.equal((await client.request({ method: 'chats.get', value: { chatId: freeChat.id } })).chat.draft, draftText);
-  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), freeNavigation);
+  assert.deepEqual(await page.evaluate(() => window.karont.navigation()), freeNavigation);
   await page.reload();
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
   await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).waitFor();
-  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), freeNavigation);
+  assert.deepEqual(await page.evaluate(() => window.karont.navigation()), freeNavigation);
   assert.equal(await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).inputValue(), draftText);
   await page.getByText('histórico local antes do vínculo', { exact: true }).waitFor();
   assert.equal((await client.request({ method: 'chats.runs.list', value: { chatId: freeChat.id, limit: 100 } })).items.length, 0);
@@ -405,7 +405,7 @@ try {
   page.setDefaultTimeout(12000);
   listenForPageErrors(page);
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
-  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), freeNavigation);
+  assert.deepEqual(await page.evaluate(() => window.karont.navigation()), freeNavigation);
   assert.equal(await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).inputValue(), draftText);
   await page.getByText('histórico local antes do vínculo', { exact: true }).waitFor();
   assert.equal((await client.request({ method: 'chats.runs.list', value: { chatId: freeChat.id, limit: 100 } })).items.length, 0);
@@ -538,9 +538,9 @@ try {
   await page.getByRole('textbox', { name: 'Buscar projetos e conversas', exact: true }).focus();
   await page.getByRole('heading', { name: 'Recentes · todos os workspaces', exact: true }).waitFor();
   await page.getByRole('button', { name: `Conversa principal ${runWorkspace.name} / ${project.name}`, exact: true }).waitFor();
-  const report = await page.evaluate(() => window.eros.report());
+  const report = await page.evaluate(() => window.karont.report());
   assert.ok(!report.includes('SPEC005_PRIVATE_TEST_MESSAGE'));
-  const notificationState = await page.evaluate(() => window.eros.notifications());
+  const notificationState = await page.evaluate(() => window.karont.notifications());
   assert.ok(!JSON.stringify(notificationState).includes('SPEC005_PRIVATE_TEST_MESSAGE'));
   result.checks.push('runs antigas aparecem em área separada; relatório e notificações não incluem mensagens');
 

@@ -19,11 +19,11 @@ class Notifications(dbus.service.Object):
         return ('eros-test', 'eros', '1.0', '1.2')
     @dbus.service.method('org.freedesktop.Notifications', in_signature='susssasa{sv}i', out_signature='u')
     def Notify(self, app, replaces, icon, summary, body, actions, hints, timeout):
-        assert str(app) == 'eros', 'unexpected application identity'
+        assert str(app) == 'karont', 'unexpected application identity'
         self.count += 1
         allowed = ['Execução concluída','Execução com erro','Rollback concluído','Rollback falhou','Conexão com daemon interrompida','Daemon indisponível','Recuperação necessária','Execução retomada em nova sessão','Limite temporário confirmado','Auto Resume agendado','Execução retomada','Retomada falhou']
         assert str(summary) in allowed, 'private or unexpected title'
-        assert str(body) == 'Abra o eros para consultar os detalhes.', 'private or unexpected body'
+        assert str(body) == 'Abra o Karont para consultar os detalhes.', 'private or unexpected body'
         with open(sys.argv[1], 'a') as output:
             output.write(json.dumps({'id': self.count, 'title':str(summary), 'bodySafe':True})+'\n')
         return self.count

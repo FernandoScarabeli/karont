@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { paths } = require('../dist/local/paths.cjs');
+const { migrateLegacyDirs, paths } = require('../dist/local/paths.cjs');
 
 function resetEnvironment(root) {
   for (const name of Object.keys(process.env))
@@ -85,6 +85,18 @@ test('paths usa pastas Karont seguras, migra dados antigos e mantém EROS_* comp
       assert.deepEqual(snapshotFiles(oldData), dataSnapshot);
       assert.equal(mode(result.config), 0o700);
       assert.equal(mode(result.data), 0o700);
+    });
+
+    await t.test('migra dots.json antigo sem chamar paths()', () => {
+      const xdg = resetEnvironment(path.join(root, 'migra-config-sozinha'));
+      const oldConfig = path.join(xdg.configBase, 'eros');
+      const newConfig = path.join(xdg.configBase, 'karont');
+      fs.mkdirSync(oldConfig, { mode: 0o700 });
+      fs.writeFileSync(path.join(oldConfig, 'dots.json'), '{"version":1}\n');
+
+      migrateLegacyDirs();
+
+      assert.equal(fs.readFileSync(path.join(newConfig, 'dots.json'), 'utf8'), '{"version":1}\n');
     });
 
     await t.test('não substitui uma pasta Karont que já existe', () => {
