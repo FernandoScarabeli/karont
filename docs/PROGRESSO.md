@@ -8,10 +8,12 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 
 | Tarefa | Estado |
 |---|---|
-| T1 — CI e testes de desktop | Feito (`43b7291`). Codex (gpt-6.1-sol high), 2 tentativas |
-| T1b — spec005 para os fluxos vigentes | Feito (`9cd79bf`). Codex: 1ª com sol high, 2ª com luna xhigh; o orquestrador terminou os últimos ajustes (seletor de `<summary>` e corrida de rascunho, DIVIDAS #14), porque o Codex não roda E2E no sandbox dele |
-| T2 — docs históricos | Feito (`a2d0c09`). Codex luna xhigh, 1 tentativa. Um `git mv` rodou fora do sandbox por aprovação automática da config do Codex; corrigido no comando (ver abaixo) |
-| T3 a T11 | Pendentes |
+| T1 — CI e testes de desktop | Feito (`885b454`). Codex (gpt-6.1-sol high), 2 tentativas |
+| T1b — spec005 para os fluxos vigentes | Feito (`7263df1`). Codex: 1ª com sol high, 2ª com luna xhigh; o orquestrador terminou os últimos ajustes (seletor de `<summary>` e corrida de rascunho, DIVIDAS #14), porque o Codex não roda E2E no sandbox dele |
+| T2 — docs históricos | Feito (`d9a355e`). Codex luna xhigh, 1 tentativa. Um `git mv` rodou fora do sandbox por aprovação automática da config do Codex; corrigido no comando (ver abaixo) |
+| T3 — artefatos gerados fora do git | Feito (`1856094`). Codex luna xhigh, 1 tentativa, sem pedidos fora do sandbox. 492 arquivos saíram do índice. Atenção: o merge apagou esses arquivos da pasta principal; o orquestrador restaurou a partir da worktree. Em outro clone, um `pull` faz o mesmo |
+| Reescrita do histórico | Feita em 2026-10-30 com `git filter-branch` (mesmo filtro da T3) em `main` e `refactor/fase-1-faxina`, push forçado com lease. Repositório: 115 MB → 7 MB. Conteúdo final idêntico (mesmo hash de árvore). Backup completo antes: `~/karont-backup-2026-10-30.bundle`. Os hashes de commit mudaram; os citados aqui já são os novos. CI verde depois (commit `1856094`) |
+| T4 a T11 | Pendentes |
 
 Verificação ao fim da T1b (local, pelo orquestrador): `check` OK, `test` 42/42, `test:desktop` OK, `test:e2e` OK (phase1, spec005, spec006). CI verde no push seguinte (run `41098654702`).
 
