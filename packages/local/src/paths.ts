@@ -23,10 +23,12 @@ function migrateLegacyDir(oldDir: string, newDir: string, excludeWorktrees = fal
   if (!oldStat?.isDirectory() || oldStat.isSymbolicLink()) return;
 
   const temporary = `${newDir}.migrando-${process.pid}-${randomBytes(8).toString('hex')}`;
+  // A cópia vai para uma subpasta de uma pasta 0700: o cpSync exige destino inexistente.
+  const copy = path.join(temporary, 'copia');
   fs.mkdirSync(temporary, { mode: 0o700 });
   try {
     fs.chmodSync(temporary, 0o700);
-    fs.cpSync(oldDir, temporary, {
+    fs.cpSync(oldDir, copy, {
       recursive: true,
       errorOnExist: true,
       force: false,
@@ -44,7 +46,9 @@ function migrateLegacyDir(oldDir: string, newDir: string, excludeWorktrees = fal
   }
 
   try {
-    fs.renameSync(temporary, newDir);
+    fs.chmodSync(copy, 0o700);
+    fs.renameSync(copy, newDir);
+    fs.rmSync(temporary, { recursive: true, force: true });
   } catch (error) {
     const current = lstatOrUndefined(newDir);
     fs.rmSync(temporary, { recursive: true, force: true });
