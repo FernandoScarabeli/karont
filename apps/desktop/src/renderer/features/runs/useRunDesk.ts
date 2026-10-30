@@ -1,13 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PermissionMode } from '../../../../../../packages/contracts/src';
-import type {
-  UiChatDetails,
-  UiDiff,
-  UiDot,
-  UiProject,
-  UiRollback,
-  UiRun,
-} from '../../lib/api';
+import type { UiChatDetails, UiDiff, UiDot, UiProject, UiRollback, UiRun } from '../../lib/api';
 
 export function useRunDesk(chat: UiChatDetails['chat'] | undefined, previousOnly: boolean) {
   const [dots, setDots] = useState<UiDot[]>([]),
