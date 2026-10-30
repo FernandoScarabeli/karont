@@ -29,6 +29,17 @@ Registradas em 2026-10-30.
 7. **`karont.pen`:** o usuário vai procurar; só é necessário na Fase 3.
 8. **Benchmark:** no mínimo 3 rodadas, com o PC ocioso; reportar a mediana. Resultados brutos ficam fora do git (`~/karont-baseline/`); só o `BASELINE.md` entra no repositório.
 
+Registradas em 2026-10-30, para a Fase 1 (o usuário aceitou todas as recomendações):
+
+9. **Dados e config antigos:** na primeira abertura, copiar `~/.config/eros` e `~/.local/share/eros` para as pastas `karont`, sem apagar as antigas.
+10. **Handshake (mudança de protocolo aprovada):** o rótulo `eros:1` em `packages/local/src/wire.ts` passa a usar `karont`. Depois de atualizar, o daemon antigo precisa ser reiniciado uma vez.
+11. **Branches de Runs:** Runs novas usam `karont/run-*`; as existentes ficam como estão.
+12. **Arquivos de ideias:** os 4 (são documentos diferentes, não cópias) vão para `docs/produto/` com nomes simples.
+13. **`.impeccable/review/*.png`:** saem do git, ficam no disco.
+14. **Licença:** continua `UNLICENSED` por enquanto; decidir depois.
+15. **Histórico do git:** aprovada a reescrita para remover os artefatos gerados. Feita pelo orquestrador depois da tarefa T3, antes do PR da Fase 1, com backup do repositório.
+16. **PR da Fase 0:** merge aprovado mesmo com o CI vermelho, porque a falha é anterior e o PR só tem documentação.
+
 ## Ambiente local
 
 - Node 24 via fnm em `~/.local/share/fnm` (shell do usuário não foi alterado).
