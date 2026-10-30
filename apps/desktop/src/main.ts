@@ -98,7 +98,9 @@ const projectAddUiSchema = z
   .strict();
 try {
   notifications.enabled = JSON.parse(fs.readFileSync(preferencesPath, 'utf8')).enabled !== false;
-} catch {}
+} catch {
+  // Sem preferência salva (ou arquivo inválido): mantém o padrão do NotificationCenter.
+}
 function notify(key: string, title: string, runId?: string) {
   notifications.notify(key, title, () => {
     targetRun = runId;
@@ -428,7 +430,9 @@ async function ensureDaemon() {
   try {
     await client.request({ method: 'ping' });
     return;
-  } catch {}
+  } catch {
+    // Daemon ainda não está rodando: inicia um abaixo.
+  }
   const child = spawn(
     process.env.EROS_NODE_BINARY || 'node',
     [path.join(__dirname, '../daemon/entry.cjs')],
@@ -441,7 +445,9 @@ async function ensureDaemon() {
     try {
       await client.request({ method: 'ping' });
       return;
-    } catch {}
+    } catch {
+      // Ainda subindo: tenta de novo (até 40 × 100 ms).
+    }
   }
   throw Error('Daemon indisponível. Verifique Node >=24 e os diretórios privados.');
 }

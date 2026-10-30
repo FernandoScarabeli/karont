@@ -620,7 +620,9 @@ export class RunManager {
     if (wt && !wt.removed_at)
       try {
         fingerprint = worktreeFingerprint(wt.path);
-      } catch {}
+      } catch {
+        // Worktree ilegível: segue sem fingerprint (null).
+      }
     const latest = this.db
       .prepare(
         'SELECT snapshot_json FROM checkpoints WHERE run_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1',
@@ -714,7 +716,9 @@ export class RunManager {
     for (const active of this.active.values())
       try {
         active.process.kill();
-      } catch {}
+      } catch {
+        // Processo já encerrado: nada a fazer no desligamento.
+      }
   }
   attach(runId: string, listener: (event: unknown) => void) {
     const { run } = this.getRun(runId);
@@ -801,7 +805,9 @@ export class RunManager {
       } else if (afterHash !== null) {
         try {
           additions = fs.readFileSync(full, 'utf8').split('\n').length;
-        } catch {}
+        } catch {
+          // Arquivo novo ilegível (ex.: removido durante a leitura): conta 0 linhas.
+        }
       }
       insert.run(runId, file, kind, beforeHash, afterHash, additions, deletions);
     }

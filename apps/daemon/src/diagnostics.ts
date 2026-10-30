@@ -54,7 +54,9 @@ export function daemonDiagnostics(dots: DotConfig[]): DiagnosticItem[] {
     try {
       fs.accessSync(dot.executable, fs.constants.X_OK);
       found++;
-    } catch {}
+    } catch {
+      // Executável ausente ou sem permissão: só não entra na contagem de acessíveis.
+    }
   }
   add(
     'Ferramentas',

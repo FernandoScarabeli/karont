@@ -46,7 +46,9 @@ export function capabilities(dot: DotConfig) {
         if (probes.size >= 16) probes.delete(probes.keys().next().value!);
         probes.set(key, { native, auto });
       }
-    } catch {}
+    } catch {
+      // CLI ausente, lenta ou sem --help: nenhuma capacidade é marcada como validada.
+    }
   }
   return (['ask', 'auto', 'full', 'readOnly'] as PermissionMode[]).map((mode) => ({
     mode,

@@ -111,7 +111,9 @@ function TerminalPane({
           () => void window.karont.resizeTerminal(run.id, terminal.cols, terminal.rows),
           100,
         );
-      } catch {}
+      } catch {
+        // fit() falha se o terminal já foi desmontado ou está oculto; o próximo resize ajusta.
+      }
     });
     observer.observe(host.current);
     let retry: ReturnType<typeof setTimeout> | undefined,

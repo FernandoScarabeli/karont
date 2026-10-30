@@ -153,7 +153,9 @@ export class Continuity {
     if (worktree && !worktree.removed_at)
       try {
         fingerprint = worktreeFingerprint(worktree.path);
-      } catch {}
+      } catch {
+        // Worktree ilegível: o checkpoint é gravado sem fingerprint (null), como se não existisse.
+      }
     const lastEvent = this.db
       .prepare('SELECT max(id) AS id FROM run_events WHERE run_id=?')
       .get(runId)?.id;
