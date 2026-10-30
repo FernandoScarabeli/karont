@@ -497,6 +497,11 @@ try {
   result.status = 'failed';
   result.error = error.stack ?? String(error);
   result.daemonErrors = daemonErrors;
+  // Evidência para diagnosticar falhas no CI; a captura pode falhar se a janela já fechou.
+  if (page) {
+    await recordScreenshot('falha.png').catch((captureError) => { result.screenshotError = String(captureError); });
+    result.failureText = await page.innerText('body').catch((captureError) => String(captureError));
+  }
   process.exitCode = 1;
 } finally {
   for (const run of startedRuns) {

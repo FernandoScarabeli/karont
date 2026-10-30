@@ -40,4 +40,5 @@ jobs:
           path: |
             benchmarks/runs/
             benchmarks/spec005/
+            benchmarks/spec006/
           if-no-files-found: ignore
