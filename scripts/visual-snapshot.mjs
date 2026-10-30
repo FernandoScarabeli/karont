@@ -129,6 +129,10 @@ const masks = [];
 async function capture(page, name) {
   await page.evaluate(() => document.fonts.ready);
   // O ponteiro real do sistema deixaria um item da sidebar em hover; fixamos num canto vazio.
+  // A posição do polegar da barra de rolagem varia entre execuções; o conteúdo rolado não.
+  await page.addStyleTag({
+    content: '* { scrollbar-color: transparent transparent !important; }',
+  });
   const viewport = page.viewportSize();
   await page.mouse.move(viewport.width - 2, viewport.height - 2);
   await wait(300);
@@ -237,6 +241,10 @@ try {
   });
   const page = await app.firstWindow();
   page.setDefaultTimeout(12000);
+  // A janela ignora o mouse do sistema; o Playwright controla o ponteiro por fora dele.
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setIgnoreMouseEvents(true),
+  );
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.getByRole('button', { name: 'Nova conversa', exact: true }).first().waitFor();
