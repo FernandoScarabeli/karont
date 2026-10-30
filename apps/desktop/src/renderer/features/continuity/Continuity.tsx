@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { Checkpoint, Recovery, UiRun } from './api';
+import type { Checkpoint, Recovery, UiRun } from '../../lib/api';
 const labels: Record<UiRun['state'], string> = {
   queued: 'Na fila',
   running: 'Em execução',

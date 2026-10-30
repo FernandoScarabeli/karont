@@ -1,4 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { TerminalEvent } from '../../../../packages/contracts/src';
+import type { KarontBridge } from '../shared/bridge';
+
 contextBridge.exposeInMainWorld('karont', {
   runtime: {
     sandboxed: process.sandboxed === true,
@@ -207,9 +210,9 @@ contextBridge.exposeInMainWorld('karont', {
   rollbackPreview: (runId: string) => ipcRenderer.invoke('karont:rollback:preview', { runId }),
   rollbackApply: (runId: string) =>
     ipcRenderer.invoke('karont:rollback:apply', { runId, confirmed: true }),
-  onEvent: (listener: (event: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, value: unknown) => listener(value);
+  onEvent: (listener: (event: TerminalEvent) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, value: TerminalEvent) => listener(value);
     ipcRenderer.on('karont:event', handler);
     return () => ipcRenderer.removeListener('karont:event', handler);
   },
-});
+} satisfies KarontBridge);

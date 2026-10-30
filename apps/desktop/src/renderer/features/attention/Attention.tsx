@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { Approval, DiagnosticItem } from '../../../packages/contracts/src';
+import type { Approval, DiagnosticItem } from '../../../../../../packages/contracts/src';
 
 export function Attention() {
   const [panel, setPanel] = useState<'approvals' | 'diagnostics' | 'report'>();

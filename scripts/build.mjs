@@ -5,8 +5,8 @@ await build({
   entryPoints: {
     'daemon/entry': 'apps/daemon/src/entry.ts',
     'daemon/server': 'apps/daemon/src/server.ts',
-    'desktop/main': 'apps/desktop/src/main.ts',
-    'desktop/preload': 'apps/desktop/src/preload.ts',
+    'desktop/main': 'apps/desktop/src/main/index.ts',
+    'desktop/preload': 'apps/desktop/src/preload/preload.ts',
     'local/client': 'packages/local/src/client.ts',
     'local/paths': 'packages/local/src/paths.ts',
     'local/report': 'packages/local/src/report.ts',
@@ -17,7 +17,7 @@ await build({
     'daemon/workspaces': 'apps/daemon/src/workspaces.ts',
     'daemon/permissions': 'apps/daemon/src/permissions.ts',
     'daemon/diagnostics': 'apps/daemon/src/diagnostics.ts',
-    'desktop/notifications': 'apps/desktop/src/notifications.ts',
+    'desktop/notifications': 'apps/desktop/src/main/notifications.ts',
     'contracts/index': 'packages/contracts/src/index.ts',
   },
   define: {

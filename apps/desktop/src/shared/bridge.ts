@@ -21,7 +21,10 @@ import type {
   taskEventSchema,
   taskStateSchema,
   taskSummarySchema,
-} from '../../../packages/contracts/src';
+  runStateSchema,
+  checkpointSchema,
+  recoverySchema,
+} from '../../../../packages/contracts/src';
 export type UiDot = {
   id: string;
   name: string;
@@ -53,7 +56,7 @@ export type UiRun = {
   chatId: string | null;
   dotId: string;
   projectId: string;
-  state: import('zod').infer<typeof import('../../../packages/contracts/src').runStateSchema>;
+  state: import('zod').infer<typeof runStateSchema>;
   createdAt: number;
   startedAt: number | null;
   finishedAt: number | null;
@@ -233,15 +236,5 @@ export type KarontBridge = {
   removeWorktree(runId: string): Promise<{ ok: boolean }>;
   onEvent(listener: (event: TerminalEvent) => void): () => void;
 };
-declare global {
-  interface Window {
-    karont: KarontBridge;
-  }
-}
-
-export type Checkpoint = import('zod').infer<
-  typeof import('../../../packages/contracts/src').checkpointSchema
->;
-export type Recovery = import('zod').infer<
-  typeof import('../../../packages/contracts/src').recoverySchema
->;
+export type Checkpoint = import('zod').infer<typeof checkpointSchema>;
+export type Recovery = import('zod').infer<typeof recoverySchema>;

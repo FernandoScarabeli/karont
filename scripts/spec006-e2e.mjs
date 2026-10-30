@@ -403,6 +403,8 @@ try {
   await createDialog.getByRole('checkbox', { name: 'Você', exact: true }).check();
   await createDialog.getByRole('checkbox', { name: 'Dot autorizado', exact: true }).check();
   await createDialog.getByRole('button', { name: 'Criar tarefa', exact: true }).click();
+  // O diálogo é modal: até ele fechar, o resto da tela não recebe digitação (DIVIDAS #15).
+  await createDialog.waitFor({ state: 'hidden' });
   const manualTask = await until(async () => {
     const task = (await request('tasks.list', { projectId: 'project-a', limit: 100 })).items.find(
       (item) => item.title === 'Tarefa manual SPEC-006',
@@ -497,6 +499,7 @@ try {
     'Descrição revisada antes de confirmar.',
   );
   await taskPreview.getByRole('button', { name: 'Confirmar e criar tarefa', exact: true }).click();
+  await taskPreview.waitFor({ state: 'hidden' });
   const commandTask = await until(async () => {
     const task = (await request('tasks.list', { projectId: 'project-a', limit: 100 })).items.find(
       (item) => item.title === 'Tarefa pelo comando',
@@ -877,6 +880,7 @@ try {
     '',
   );
   await taskPreview.getByRole('button', { name: 'Confirmar e criar tarefa', exact: true }).click();
+  await taskPreview.waitFor({ state: 'hidden' });
   const linkedFreeTask = await until(async () => {
     const task = (await request('tasks.list', { projectId: 'project-a', limit: 100 })).items.find(
       (item) => item.title === 'Tarefa global vinculada',
@@ -924,6 +928,7 @@ try {
     sourceText,
   );
   await taskPreview.getByRole('button', { name: 'Confirmar e criar tarefa', exact: true }).click();
+  await taskPreview.waitFor({ state: 'hidden' });
   const fromMessage = await until(async () => {
     const pageOfTasks = await request('tasks.list', { projectId: 'project-a', limit: 100 });
     const summary = pageOfTasks.items.find((item) => item.origin.messageId === sourceMessage.id);

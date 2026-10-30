@@ -4,7 +4,26 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 
 ## Fase atual
 
-**Refatoração – Fase 1 (faxina e identidade): concluída.** Todas as tarefas feitas; PR #2 (`refactor/fase-1-faxina` → `main`) com merge em 2026-10-30, CI verde. Plano em [PLANO_FASE_1.md](PLANO_FASE_1.md). Próximo passo: planejar a Refatoração – Fase 2 (ver SPEC_REFATORACAO.md, seção 6).
+**Refatoração – Fase 2 (estrutura de pastas e quebra dos arquivos grandes): concluída na branch, PR aberto para `main`.** Branch `refactor/fase-2-estrutura`. Plano em [PLANO_FASE_2.md](PLANO_FASE_2.md).
+
+| Tarefa | Estado |
+|---|---|
+| T1 — comparação visual (orquestrador) | Feito. `scripts/visual-snapshot.mjs` (`npm run visual -- <nome>` grava em `artifacts/visual/<nome>/`; `node scripts/visual-snapshot.mjs --compare <a> <b>` compara). 15 telas, PNG + DOM. Dados fixos em `/tmp/karont-visual`, relógio fixo no renderer, ponteiro fixo num canto (senão o mouse real deixa itens em hover) e máscara de ids, horários, PIDs e medições. 3 capturas seguidas em `main`: zero diferenças; 1 px de CSS a mais: 15 diferenças. Linha de base em `artifacts/visual/main/` (só local; recapturar a partir de `main` em outro PC). **Não mexer o mouse sobre a janela durante a captura** |
+| T2 — mover arquivos | Feito (`c5cb3a2`). Codex luna xhigh, 1 tentativa (não rodou `npm test` no sandbox: `getconf EPERM`). Orquestrador: `check` OK, `test` 50/50, comparação visual zero (30 arquivos), `test:desktop` e os 3 E2E OK. Os docs ainda citam caminhos antigos (DIVIDAS, DESIGN_SYSTEM): fica para a T11 |
+| T3 — tipar o bridge | Feito (`688f7a8`). Codex luna xhigh, 1 tentativa. `shared/bridge.ts` com os tipos; preload com `satisfies KarontBridge` (só o `onEvent` divergia, e só na anotação: `unknown` → `TerminalEvent`; o orquestrador simplificou a anotação); `any` do main → `unknown`. JS de `preload.cjs` e `main.cjs` idêntico. Orquestrador: `check`, `test` 50/50, visual zero, `test:desktop` e 3 E2E OK. A 1ª comparação acusou `chat-diff` por hover do mouse real e posição da barra de rolagem; o script passou a ignorar os dois (`f4b3b66`) e a linha de base foi recapturada |
+| T4 — dividir `main.ts` | Feito. Codex luna xhigh, 1 tentativa. `main/` em `bootstrap`, `state`, `notify`, `tray`, `window`, `daemon`, `diagnostics`, `ipc` e `index` (47 linhas; maior: `ipc.ts`, 207). Mesmos 59 canais; no bundle, a recusa de flags e a migração vêm antes de `attention.json`. O orquestrador tirou um import sem uso, um `setStarted` desnecessário e dois `!` novos na bandeja. `check`, `test` 50/50, visual zero, `test:desktop` e 3 E2E OK |
+| T5 — componentes compartilhados | Junta à T6: só o `FormDialog` é genérico; os diálogos das Tarefas têm markup próprio, e unificá-los mudaria a tela |
+| T6 — ChatView (com a T5) | Feito. Codex luna xhigh, 1 tentativa. `components/FormDialog.tsx`; `features/chat/` com `ChatView` (300 linhas), hooks `useChatDraft` (o rascunho inteiro, sem mudança de lógica), `useChatHistory` e `useChatMove`, e 5 componentes de apresentação. `WorkspaceDesk` 1.790 → 1.022 linhas. Mesmas chamadas ao bridge, classes e `aria-label`. `check`, `test` 50/50, visual zero, `test:desktop`, phase1, spec005 e spec006 3× OK |
+| T7 — WorkspaceDesk | Feito. Codex luna xhigh, 1 tentativa. `Sidebar`, `SidebarFooter`, `HomeView`, `WorkspacePages`, `ProjectDialog`, `WorkspaceDialog`, `workspaceShared` e hooks `useWorkspaceData` (os 5 efeitos de carregamento juntos, corpo idêntico), `useProjectForm`, `useWorkspaceForm`, `useSidebarState`. `WorkspaceDesk` 1.022 → 135 linhas; maior arquivo, `Sidebar` (344). `check`, `test` 50/50, visual zero, `test:desktop`, phase1, spec005 e spec006 2× OK |
+| T8 — TaskDesk | Feito. Codex luna xhigh, 1 tentativa. `TaskCreationDialog`, `TaskCard`, `TaskDetailsDialog`, `taskShared` e hooks `useTaskCatalog`/`useTaskList`/`useTaskEditor` (mesma ordem de efeitos). `TaskDesk` 1.031 → 293 linhas e reexporta o que os outros usam. `check`, `test` 50/50, visual zero, `test:desktop`, phase1, spec005 e spec006 2× OK |
+| T9 — RunDesk | Feito. Codex luna xhigh, 1 tentativa. `TerminalPane`, `DotLauncher`, `RunTerminals`, `RunHistory`, `DiffView`, `RollbackDialog`, `runShared` e `useRunDesk` (estado e efeitos juntos, na ordem original). `RunDesk` 817 → 143 linhas. Polling (DIVIDAS #5) e posição do `xterm.css` iguais; CSS gerado idêntico (md5). O orquestrador tirou imports sem uso e, depois, formatou `useRunDesk.ts`, que a limpeza tinha deixado fora do padrão (`3646f72`). `check`, `test` 50/50, visual zero, `test:desktop` e 3 E2E OK |
+| T10 — renderer/app | Feito pelo orquestrador (só mover; escrever a tarefa daria o mesmo trabalho). `renderer/main.tsx` com 11 linhas; `LegacyWorkbench` em `app/` (334 linhas, sem dividir: é o laboratório legado, que a Fase 3 deve rever). CSS gerado idêntico (md5). `check`, `test` 50/50, visual zero, `test:desktop` e 3 E2E OK |
+| T11 — docs e verificação final (orquestrador) | Feito. `ARQUITETURA.md` com a nova estrutura; caminhos atualizados em `DESIGN_SYSTEM.md` e `DIVIDAS.md`. Roteiro da seção 7 na branch: `check`, `format:check`, `test` 50/50, `test:desktop`, `test:e2e` e `benchmark` OK. Nenhum arquivo do desktop passa de 344 linhas (antes: 1.790). Comparação visual contra a `main` original, recapturada com o script atual: zero diferenças nos 30 arquivos. Desempenho, neste PC, `main` × branch: `test:desktop` 7 rodadas alternadas, memória e CPU iguais (ex.: ocioso 1.044 × 1.044 MiB; editor 86 × 87% CPU); o tempo até o diagnóstico deu 795 × 884 ms, mas uma medição isolada (7 rodadas em 4 pontos: `main`, T4, T7 e final) não confirmou: 776/746 ms na `main` e 779/714 ms no final, ruído. O `npm run benchmark` mede só o daemon, que esta fase não tocou |
+| Riscos do PR (orquestrador, a pedido do usuário) | Feito. (1) Intermitência #15: causa encontrada e reproduzida (digitar na busca com um modal aberto não falha, mas o texto se perde); corrigido no `spec006` e no `openConversation`. (2) Ordem dos imports: `bootstrap()` passou a ser chamada explícita, e `userDataPath()` falha se for usado antes dela; todo CSS global vai em `renderer/main.tsx`; `tests/desktop-structure.test.mjs` garante as duas regras (conferido com uma violação proposital). CSS gerado idêntico. `check`, `test` 52/52, visual zero contra a `main` original, `test:desktop` OK, spec006 10/10 (5 com e 5 sem a correção, alternados), phase1 OK. Duas falhas locais vieram do uso do PC durante o teste (DIVIDAS #23) |
+
+## Fase 1 (concluída, PR #2)
+
+**Refatoração – Fase 1 (faxina e identidade): concluída.** Todas as tarefas feitas; PR #2 (`refactor/fase-1-faxina` → `main`) com merge em 2026-10-30, CI verde. Plano em [PLANO_FASE_1.md](PLANO_FASE_1.md).
 
 | Tarefa | Estado |
 |---|---|
@@ -30,10 +49,10 @@ Verificação ao fim da T1b (local, pelo orquestrador): `check` OK, `test` 42/42
 O `~/.codex/config.toml` do usuário tem `approvals_reviewer = "auto_review"`, que aprova sozinho pedidos de execução fora do sandbox. Por isso o comando sempre força `approval_policy="never"` (pedidos fora do sandbox são recusados) e libera só a pasta git da própria worktree, para `git mv`/`git add` funcionarem:
 
 ```bash
-W=~/karont-worktrees/fase-1-tarefa-N
+W=~/karont-worktrees/fase-N-tarefa-M
 cd "$W" && PATH="$HOME/.local/share/fnm/node-versions/v24.22.2/installation/bin:$PATH" \
 codex exec -m gpt-6-luna -c model_reasoning_effort="xhigh" -c approval_policy="never" \
-  -C "$W" -s workspace-write --add-dir "<repo>/.git/worktrees/fase-1-tarefa-N" \
+  -C "$W" -s workspace-write --add-dir "<repo>/.git/worktrees/fase-N-tarefa-M" \
   -o <resposta.md> - < <tarefa.md>
 ```
 
@@ -76,9 +95,15 @@ Registradas em 2026-10-30, para a Fase 1 (o usuário aceitou todas as recomenda�
 16. **PR da Fase 0:** merge aprovado mesmo com o CI vermelho, porque a falha é anterior e o PR só tem documentação.
 17. **Modelo do Codex:** a partir da tarefa T2, usar `-m gpt-6-luna -c model_reasoning_effort="xhigh"` (mais barato). As tarefas são escritas em blocos pequenos, passo a passo, cada um com o seu critério de pronto.
 
+Registradas em 2026-10-30, para a Fase 2:
+
+18. **Estado da UI:** só hooks por feature (`useChat`, `useProjects`...), sem store global nem dependência nova (usuário aceitou a recomendação).
+19. **Pasta `apps/desktop/src/shared/`** para o tipo do `window.karont`, usado pelo preload e pelo renderer (orquestrador; desvio da estrutura da spec, justificado em PLANO_FASE_2).
+20. **Diff visual nulo** medido pelo script da T1 (PNG byte a byte + DOM). Se o PNG não estabilizar, vale DOM idêntico + conferência a olho, registrado no plano (orquestrador).
+
 ## Ambiente local
 
-- Node 24 via fnm em `~/.local/share/fnm` (shell do usuário não foi alterado).
+- Node 24 via fnm em `~/.local/share/fnm` (shell do usuário não foi alterado). No PC `scarabeliDesktop` (a partir da Fase 2), Node 24.21 via nvm, já no `PATH`.
 - Helper do sandbox instalado pelo usuário em `/usr/local/lib/karont-dev/chrome-sandbox` (root, `4755`). Rodar os testes de desktop com `CHROME_DEVEL_SANDBOX=/usr/local/lib/karont-dev/chrome-sandbox`. Depois de cada `npm ci`, renomear `node_modules/electron/dist/chrome-sandbox` (o Chromium ignora a variável se esse arquivo existir) e, se a versão do Electron mudar, reinstalar o helper.
 
 ## Bloqueios

@@ -1,15 +1,11 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { createRoot } from 'react-dom/client';
-import type { Layout, Snapshot } from '../../../packages/contracts/src';
-import './api';
-import { Attention } from './Attention';
-import { RunDesk } from './RunDesk';
-import { WorkspaceDesk, type WorkspaceView } from './WorkspaceDesk';
-import { TaskDesk } from './TaskDesk';
-import './tokens.css';
-import './style.css';
-import './karont.css';
-const Editor = lazy(() => import('./Editor'));
+import type { Layout, Snapshot } from '../../../../../packages/contracts/src';
+import '../lib/api';
+import { Attention } from '../features/attention/Attention';
+import { RunDesk } from '../features/runs/RunDesk';
+import { WorkspaceDesk, type WorkspaceView } from '../features/workspace/WorkspaceDesk';
+import { TaskDesk } from '../features/tasks/TaskDesk';
+const Editor = lazy(() => import('../features/editor/Editor'));
 type AppRoute = WorkspaceView | 'tasks' | 'previous' | 'lab';
 const routeLabels: Record<AppRoute, string> = {
   workspaces: 'Workspaces',
@@ -20,7 +16,7 @@ const routeLabels: Record<AppRoute, string> = {
   previous: 'Execuções anteriores',
   lab: 'Laboratório',
 };
-function LegacyWorkbench() {
+export function LegacyWorkbench() {
   const [route, setRoute] = useState<AppRoute>('lab');
   const [data, setData] = useState<Snapshot>();
   const [layout, setLayout] = useState<Layout>();
@@ -336,6 +332,3 @@ function LegacyWorkbench() {
     </div>
   );
 }
-createRoot(document.getElementById('root')!).render(
-  <WorkspaceDesk view="workspaces" tools={<LegacyWorkbench />} />,
-);

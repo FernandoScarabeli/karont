@@ -27,7 +27,8 @@
     "format:check": "biome format",
     "benchmark:report": "node scripts/report.mjs",
     "sandbox:diagnose": "node scripts/sandbox-diagnose.mjs",
-    "benchmark:series": "npm run build && node scripts/benchmark-series.mjs"
+    "benchmark:series": "npm run build && node scripts/benchmark-series.mjs",
+    "visual": "npm run build && node scripts/visual-snapshot.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
