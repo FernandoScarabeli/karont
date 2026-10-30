@@ -8,7 +8,7 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 
 | Tarefa | Estado |
 |---|---|
-| T1 — comparação visual (orquestrador) | A fazer |
+| T1 — comparação visual (orquestrador) | Feito. `scripts/visual-snapshot.mjs` (`npm run visual -- <nome>` grava em `artifacts/visual/<nome>/`; `node scripts/visual-snapshot.mjs --compare <a> <b>` compara). 15 telas, PNG + DOM. Dados fixos em `/tmp/karont-visual`, relógio fixo no renderer, ponteiro fixo num canto (senão o mouse real deixa itens em hover) e máscara de ids, horários, PIDs e medições. 3 capturas seguidas em `main`: zero diferenças; 1 px de CSS a mais: 15 diferenças. Linha de base em `artifacts/visual/main/` (só local; recapturar a partir de `main` em outro PC). **Não mexer o mouse sobre a janela durante a captura** |
 | T2 — mover arquivos | A fazer |
 | T3 — tipar o bridge | A fazer |
 | T4 — dividir `main.ts` | A fazer |
@@ -102,7 +102,7 @@ Registradas em 2026-10-30, para a Fase 2:
 
 ## Ambiente local
 
-- Node 24 via fnm em `~/.local/share/fnm` (shell do usuário não foi alterado).
+- Node 24 via fnm em `~/.local/share/fnm` (shell do usuário não foi alterado). No PC `scarabeliDesktop` (a partir da Fase 2), Node 24.21 via nvm, já no `PATH`.
 - Helper do sandbox instalado pelo usuário em `/usr/local/lib/karont-dev/chrome-sandbox` (root, `4755`). Rodar os testes de desktop com `CHROME_DEVEL_SANDBOX=/usr/local/lib/karont-dev/chrome-sandbox`. Depois de cada `npm ci`, renomear `node_modules/electron/dist/chrome-sandbox` (o Chromium ignora a variável se esse arquivo existir) e, se a versão do Electron mudar, reinstalar o helper.
 
 ## Bloqueios
