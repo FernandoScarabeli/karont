@@ -53,15 +53,6 @@ chmod 600 ~/.config/karont/dots.json
 
 Edite `~/.config/karont/dots.json`: informe a pasta absoluta do repositório em `root`, o caminho absoluto da CLI em `executable` e os projetos permitidos em `projectIds`. Para encontrar o executável, use `command -v codex` ou `command -v claude`. O arquivo deve ser acessível somente pelo seu usuário. **Não coloque credenciais nele**; autentique-se na CLI pelo próprio terminal.
 
-## Vindo do nome antigo (eros)
-
-Na primeira abertura, as pastas antigas de configuração e dados (por padrão, `~/.config/eros` e `~/.local/share/eros`) são copiadas para `karont` se o destino ainda não existir.
-A configuração é copiada inteira; nos dados, `worktrees/` fica de fora. As pastas antigas não são apagadas.
-O aplicativo também aceita `EROS_RUNTIME_DIR`, `EROS_DATA_DIR`, `EROS_CONFIG_DIR`, `EROS_DOTS_CONFIG`, `EROS_DESKTOP_DATA` e `EROS_NODE_BINARY` como alternativas aos nomes `KARONT_*` correspondentes.
-Variáveis só de desenvolvimento (`KARONT_REAL_CLI`, `KARONT_BENCH_ROUNDS`, `KARONT_QEMU_PREFIX` e `KARONT_TEST_*`) não têm alternativa antiga.
-Depois de atualizar, feche o daemon antigo uma vez para que o handshake use o novo rótulo.
-Runs antigas mantêm as worktrees no local antigo e a branch `eros/run-*`; Runs novas usam `karont/run-*`.
-
 Depois compile e inicie o desktop:
 
 ```bash
@@ -77,10 +68,22 @@ npm run daemon:stop
 
 Em **Workspaces**, adicione um repositório Git existente e selecione explicitamente os Dots permitidos. Criar um Chat não inicia uma Run; iniciar e enviar ao terminal são ações separadas.
 
+## Vindo do nome antigo (eros)
+
+Na primeira abertura, as pastas antigas de configuração e dados (por padrão, `~/.config/eros` e `~/.local/share/eros`) são copiadas para `karont` se o destino ainda não existir.
+A configuração é copiada inteira; nos dados, `worktrees/` fica de fora. As pastas antigas não são apagadas.
+O aplicativo também aceita `EROS_RUNTIME_DIR`, `EROS_DATA_DIR`, `EROS_CONFIG_DIR`, `EROS_DOTS_CONFIG`, `EROS_DESKTOP_DATA` e `EROS_NODE_BINARY` como alternativas aos nomes `KARONT_*` correspondentes.
+Variáveis só de desenvolvimento (`KARONT_REAL_CLI`, `KARONT_BENCH_ROUNDS`, `KARONT_QEMU_PREFIX` e `KARONT_TEST_*`) não têm alternativa antiga.
+**Antes de atualizar**, encerre o daemon antigo com `npm run daemon:stop`, ainda na versão antiga. A versão nova não conversa com ele (o handshake mudou) e, se os dois ficarem rodando, podem atuar sobre as mesmas Runs. Se esqueceu, encontre o processo com `pgrep -af daemon/entry.cjs` e encerre o antigo com `kill <PID>`.
+Runs antigas mantêm as worktrees no local antigo e a branch `eros/run-*`; Runs novas usam `karont/run-*`.
+
 ## Desenvolvimento e validação
 
 ```bash
 npm run check          # checagem TypeScript
+npm run lint           # lint (Biome); ainda aponta problemas antigos
+npm run format:check   # confere a formatação (Biome); o CI bloqueia se falhar
+npm run format         # aplica a formatação
 npm test               # build e testes do daemon
 npm run test:e2e       # fluxos Electron com CLIs de teste
 npm run test:desktop   # Electron real; requer sessão gráfica e sandbox
@@ -101,4 +104,4 @@ Os E2Es usam fixtures locais e não substituem validações com um provedor real
 
 ## Contribuições e licença
 
-O repositório ainda está marcado como privado e sem licença (`UNLICENSED`). A licença e as orientações para contribuições externas ainda serão definidas.
+O repositório é público, mas **ainda não tem licença** (`UNLICENSED` no `package.json`). Isso quer dizer que o código pode ser lido, mas não há permissão para usar, copiar, modificar ou redistribuir. A licença e as orientações para contribuições externas ainda serão definidas.
