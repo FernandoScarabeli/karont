@@ -5,7 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { Client, daemon, environment, require as harnessRequire, sample, until, wait } from './harness.mjs';
+import { Client, daemon, environment, openConversation, openDiagnostics, require as harnessRequire, sample, until, wait } from './harness.mjs';
 
 function makeRepo(root, name) {
   const repo = path.join(root, name);
@@ -93,7 +93,7 @@ try {
   page = await app.firstWindow();
   page.setDefaultTimeout(12000);
   page.on('pageerror', (error) => pageErrors.push(error.message));
-  await page.getByText('Daemon conectado', { exact: true }).waitFor();
+  await openDiagnostics(page);
   assert.equal(await page.evaluate(() => window.eros.runtime.sandboxed && window.eros.runtime.contextIsolated), true);
   const workspace = (await request('workspaces.list', { limit: 100 })).items[0];
   assert.ok(workspace);
@@ -108,7 +108,7 @@ try {
   });
   await request('navigation.set', { workspaceId: workspace.id, projectId: 'project-a', chatId: projectChat.chat.id, operationId: randomUUID() });
   await page.reload();
-  await page.locator('.app-header h1').getByText('Workspaces', { exact: true }).waitFor();
+  await page.getByRole('navigation', { name: 'Áreas do workspace', exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Conversa de origem SPEC-006', exact: true }).waitFor();
 
   result.stage = 'kanban-residual-filter';
@@ -120,10 +120,10 @@ try {
   ];
   for (const task of residualFilterTasks) await createTask({ projectId: 'project-a', ...task });
   const otherProjectFilterTask = await createTask({ projectId: 'project-b', title: 'SPEC-006 filtro residual — Outro projeto', state: 'review' });
-  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
-  const taskFilters = page.locator('.task-filters select');
-  await taskFilters.nth(1).selectOption('project-a');
-  await taskFilters.nth(2).selectOption('todo');
+  await page.getByRole('button', { name: 'ToDo', exact: true }).click();
+  const taskFilters = page.locator('.task-filters');
+  await taskFilters.getByRole('combobox', { name: 'Projeto', exact: true }).selectOption('project-a');
+  await taskFilters.getByRole('combobox', { name: 'Estado', exact: true }).selectOption('todo');
   const residualTodoTitle = residualFilterTasks[0].title;
   const cardButton = (title) => page.getByRole('button', { name: `Abrir tarefa ${title}`, exact: true });
   await until(async () => {
@@ -143,10 +143,10 @@ try {
     assert.equal(await cardButton(otherProjectFilterTask.title).count(), 0, 'o quadro não inclui tarefas de outro projeto');
     return true;
   });
-  assert.equal(await taskFilters.nth(2).isDisabled(), true, 'filtro de estado fica desabilitado no quadro');
-  assert.equal(await taskFilters.nth(3).isDisabled(), true, 'filtro de responsável fica desabilitado no quadro');
+  assert.equal(await taskFilters.getByRole('combobox', { name: 'Estado', exact: true }).isDisabled(), true, 'filtro de estado fica desabilitado no quadro');
+  assert.equal(await taskFilters.getByRole('combobox', { name: 'Responsável', exact: true }).isDisabled(), true, 'filtro de responsável fica desabilitado no quadro');
   const residualReviewTitle = residualFilterTasks[2].title;
-  await board.getByLabel(`Mover ${residualReviewTitle}`).selectOption('done');
+  await board.getByRole('combobox', { name: `Mover ${residualReviewTitle}`, exact: true }).selectOption('done');
   await until(async () => {
     assert.equal(await columns.nth(2).getByRole('button', { name: `Abrir tarefa ${residualReviewTitle}`, exact: true }).count(), 0);
     assert.equal(await columns.nth(3).getByRole('button', { name: `Abrir tarefa ${residualReviewTitle}`, exact: true }).count(), 1);
@@ -155,7 +155,7 @@ try {
   await recordScreenshot('kanban-residual-filter-1440.png');
   await page.getByRole('button', { name: 'Visão agregada', exact: true }).click();
   await until(async () => {
-    assert.equal(await taskFilters.nth(2).inputValue(), 'todo', 'o filtro A fazer é preservado');
+    assert.equal(await taskFilters.getByRole('combobox', { name: 'Estado', exact: true }).inputValue(), 'todo', 'o filtro A fazer é preservado');
     assert.equal(await cardButton(residualTodoTitle).count(), 1, 'a visão agregada mantém tarefas A fazer');
     assert.equal(await cardButton(residualFilterTasks[1].title).count(), 0);
     assert.equal(await cardButton(residualReviewTitle).count(), 0, 'a visão agregada A fazer não inclui a tarefa movida');
@@ -163,8 +163,8 @@ try {
     return true;
   });
 
-  await taskFilters.nth(2).selectOption('');
-  await taskFilters.nth(3).selectOption('local:local-user');
+  await taskFilters.getByRole('combobox', { name: 'Estado', exact: true }).selectOption('');
+  await taskFilters.getByRole('combobox', { name: 'Responsável', exact: true }).selectOption('local:local-user');
   const assignedFilterTitle = residualFilterTasks[0].title;
   const unassignedFilterTitles = residualFilterTasks.slice(1).map((task) => task.title);
   await until(async () => {
@@ -181,10 +181,10 @@ try {
     assert.equal(await cardButton(otherProjectFilterTask.title).count(), 0, 'o filtro de projeto continua limitando o quadro');
     return true;
   });
-  assert.equal(await taskFilters.nth(3).isDisabled(), true);
+  assert.equal(await taskFilters.getByRole('combobox', { name: 'Responsável', exact: true }).isDisabled(), true);
   await page.getByRole('button', { name: 'Visão agregada', exact: true }).click();
   await until(async () => {
-    assert.equal(await taskFilters.nth(3).inputValue(), 'local:local-user', 'o filtro de responsável é preservado');
+    assert.equal(await taskFilters.getByRole('combobox', { name: 'Responsável', exact: true }).inputValue(), 'local:local-user', 'o filtro de responsável é preservado');
     assert.equal(await cardButton(assignedFilterTitle).count(), 1);
     for (const title of unassignedFilterTitles) assert.equal(await cardButton(title).count(), 0);
     return true;
@@ -193,8 +193,8 @@ try {
 
   result.stage = 'kanban-manual-command';
   const beforeAutomaticRunCount = (await request('runs.list', { limit: 100 })).length;
-  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
-  const filterProject = page.locator('.task-filters select').nth(1);
+  await page.getByRole('button', { name: 'ToDo', exact: true }).click();
+  const filterProject = taskFilters.getByRole('combobox', { name: 'Projeto', exact: true });
   await filterProject.selectOption('project-a');
   const boardStartedAt = performance.now();
   await page.getByRole('button', { name: 'Quadro do projeto', exact: true }).click();
@@ -204,21 +204,21 @@ try {
 
   const initialCount = await taskCount('project-a');
   await page.getByRole('button', { name: 'Nova tarefa', exact: true }).click();
-  let createDialog = page.getByRole('dialog', { name: 'Nova tarefa' });
-  await createDialog.getByLabel('Título').fill('Rascunho cancelado');
-  await createDialog.getByRole('button', { name: 'Cancelar' }).click();
+  let createDialog = page.getByRole('dialog', { name: 'Nova tarefa', exact: true });
+  await createDialog.getByRole('textbox', { name: 'Título', exact: true }).fill('Rascunho cancelado');
+  await createDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
   await createDialog.waitFor({ state: 'hidden' });
   assert.equal(await taskCount('project-a'), initialCount, 'cancelamento não deve gravar tarefa');
 
   await page.getByRole('button', { name: 'Visão agregada', exact: true }).click();
   await page.getByRole('button', { name: 'Nova tarefa', exact: true }).click();
-  createDialog = page.getByRole('dialog', { name: 'Nova tarefa' });
-  await createDialog.getByLabel('Projeto').selectOption('project-a');
-  await createDialog.getByLabel('Título').fill('Tarefa manual SPEC-006');
-  await createDialog.getByLabel('Descrição').fill('Descrição sintética para validação manual.');
-  await createDialog.getByLabel('Você').check();
-  await createDialog.getByLabel('Dot autorizado').check();
-  await createDialog.getByRole('button', { name: 'Criar tarefa' }).click();
+  createDialog = page.getByRole('dialog', { name: 'Nova tarefa', exact: true });
+  await createDialog.getByRole('combobox', { name: 'Projeto', exact: true }).selectOption('project-a');
+  await createDialog.getByRole('textbox', { name: 'Título', exact: true }).fill('Tarefa manual SPEC-006');
+  await createDialog.getByRole('textbox', { name: 'Descrição', exact: true }).fill('Descrição sintética para validação manual.');
+  await createDialog.getByRole('checkbox', { name: 'Você', exact: true }).check();
+  await createDialog.getByRole('checkbox', { name: 'Dot autorizado', exact: true }).check();
+  await createDialog.getByRole('button', { name: 'Criar tarefa', exact: true }).click();
   const manualTask = await until(async () => {
     const task = (await request('tasks.list', { projectId: 'project-a', limit: 100 })).items.find((item) => item.title === 'Tarefa manual SPEC-006');
     assert.ok(task);
@@ -229,37 +229,36 @@ try {
   assert.ok(manualTask.assignees.some((item) => item.kind === 'dot' && item.id === 'dot-a' && item.available));
   assert.equal((await request('runs.list', { limit: 100 })).length, beforeAutomaticRunCount, 'criar tarefa não inicia Run');
   await assert.rejects(() => createTask({ projectId: 'project-a', title: 'Dot sem autorização', assignees: [{ kind: 'dot', id: 'dot-no-project' }] }), /Dot não autorizado/);
-  await page.getByRole('button', { name: 'Workspaces', exact: true }).click();
-  await page.getByRole('heading', { name: 'Conversa de origem SPEC-006', exact: true }).waitFor();
+  await openConversation(page, 'Conversa de origem SPEC-006');
   const middleMention = 'A menção no meio: /kanban não é um comando.';
-  await page.getByLabel('Nova mensagem').fill(middleMention);
+  await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).fill(middleMention);
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
   await until(async () => {
     assert.ok((await request('messages.list', { chatId: projectChat.chat.id, limit: 100 })).items.some((item) => item.body === middleMention));
     return true;
   });
-  await page.getByRole('dialog', { name: 'Prévia da nova tarefa' }).waitFor({ state: 'hidden' });
+  await page.getByRole('dialog', { name: 'Prévia da nova tarefa', exact: true }).waitFor({ state: 'hidden' });
   const createPreviewCount = await taskCount('project-a');
-  await page.getByLabel('Nova mensagem').fill('/kanban Tarefa pelo comando');
+  await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).fill('/kanban Tarefa pelo comando');
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
-  let taskPreview = page.getByRole('dialog', { name: 'Prévia da nova tarefa' });
+  let taskPreview = page.getByRole('dialog', { name: 'Prévia da nova tarefa', exact: true });
   await taskPreview.waitFor();
-  assert.equal(await taskPreview.getByLabel('Título').inputValue(), 'Tarefa pelo comando');
-  assert.equal(await taskPreview.getByLabel('Descrição').inputValue(), '');
-  await taskPreview.getByLabel('Descrição').fill('Descrição revisada antes de confirmar.');
-  await taskPreview.getByLabel('Estado inicial').selectOption('review');
-  await taskPreview.getByRole('button', { name: 'Cancelar' }).click();
+  assert.equal(await taskPreview.getByRole('textbox', { name: 'Título', exact: true }).inputValue(), 'Tarefa pelo comando');
+  assert.equal(await taskPreview.getByRole('textbox', { name: 'Descrição', exact: true }).inputValue(), '');
+  await taskPreview.getByRole('textbox', { name: 'Descrição', exact: true }).fill('Descrição revisada antes de confirmar.');
+  await taskPreview.getByRole('combobox', { name: 'Estado inicial', exact: true }).selectOption('review');
+  await taskPreview.getByRole('button', { name: 'Cancelar', exact: true }).click();
   assert.equal(await taskCount('project-a'), createPreviewCount, 'cancelar prévia não cria evento ou vínculo');
-  assert.equal(await page.getByLabel('Nova mensagem').inputValue(), '/kanban Tarefa pelo comando');
+  assert.equal(await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).inputValue(), '/kanban Tarefa pelo comando');
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
-  taskPreview = page.getByRole('dialog', { name: 'Prévia da nova tarefa' });
+  taskPreview = page.getByRole('dialog', { name: 'Prévia da nova tarefa', exact: true });
   await taskPreview.waitFor();
-  await taskPreview.getByLabel('Descrição').fill('Descrição revisada antes de confirmar.');
-  assert.equal(await taskPreview.getByLabel('Descrição').inputValue(), 'Descrição revisada antes de confirmar.', 'a prévia deve manter o texto digitado');
-  await taskPreview.getByLabel('Estado inicial').selectOption('review');
-  await taskPreview.getByLabel('Você').check();
-  assert.equal(await taskPreview.getByLabel('Descrição').inputValue(), 'Descrição revisada antes de confirmar.');
-  await taskPreview.getByRole('button', { name: 'Confirmar e criar tarefa' }).click();
+  await taskPreview.getByRole('textbox', { name: 'Descrição', exact: true }).fill('Descrição revisada antes de confirmar.');
+  assert.equal(await taskPreview.getByRole('textbox', { name: 'Descrição', exact: true }).inputValue(), 'Descrição revisada antes de confirmar.', 'a prévia deve manter o texto digitado');
+  await taskPreview.getByRole('combobox', { name: 'Estado inicial', exact: true }).selectOption('review');
+  await taskPreview.getByRole('checkbox', { name: 'Você', exact: true }).check();
+  assert.equal(await taskPreview.getByRole('textbox', { name: 'Descrição', exact: true }).inputValue(), 'Descrição revisada antes de confirmar.');
+  await taskPreview.getByRole('button', { name: 'Confirmar e criar tarefa', exact: true }).click();
   const commandTask = await until(async () => {
     const task = (await request('tasks.list', { projectId: 'project-a', limit: 100 })).items.find((item) => item.title === 'Tarefa pelo comando');
     assert.ok(task);
@@ -284,20 +283,20 @@ try {
   result.checks.push('B11: replay com a mesma chave retorna a tarefa original; payload diferente e revisão obsoleta são recusados');
 
   result.stage = 'task-update-history';
-  await page.getByRole('button', { name: 'Workspaces', exact: true }).click();
-  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
+  await page.getByRole('button', { name: 'Início', exact: true }).click();
+  await page.getByRole('button', { name: 'ToDo', exact: true }).click();
   await page.getByRole('button', { name: 'Visão agregada', exact: true }).click();
-  await page.locator('.task-filters select').nth(1).selectOption('project-a');
+  await taskFilters.getByRole('combobox', { name: 'Projeto', exact: true }).selectOption('project-a');
   await page.getByRole('button', { name: 'Quadro do projeto', exact: true }).click();
   const openManual = page.getByRole('button', { name: 'Abrir tarefa Tarefa manual SPEC-006', exact: true });
   await openManual.click();
-  const detailDialog = page.getByRole('dialog', { name: 'Detalhes da tarefa' });
-  await detailDialog.getByLabel('Título').fill('Tarefa manual revisada');
-  const stateControl = detailDialog.getByLabel('Estado da tarefa');
+  const detailDialog = page.getByRole('dialog', { name: 'Detalhes da tarefa', exact: true });
+  await detailDialog.getByRole('textbox', { name: 'Título', exact: true }).fill('Tarefa manual revisada');
+  const stateControl = detailDialog.getByRole('combobox', { name: 'Estado da tarefa', exact: true });
   await stateControl.focus();
   await stateControl.press('End');
   await stateControl.press('Enter');
-  const saveTaskChanges = detailDialog.getByRole('button', { name: 'Salvar alterações' });
+  const saveTaskChanges = detailDialog.getByRole('button', { name: 'Salvar alterações', exact: true });
   await saveTaskChanges.focus();
   await saveTaskChanges.press('Enter');
   const editedManual = await request('tasks.get', { taskId: manualTask.id });
@@ -325,13 +324,13 @@ try {
     return active;
   });
   assert.equal(activeRuns.length, 2);
-  await page.getByRole('button', { name: 'Workspaces', exact: true }).click();
-  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
-  await page.locator('.task-filters select').nth(1).selectOption('project-a');
+  await page.getByRole('button', { name: 'Início', exact: true }).click();
+  await page.getByRole('button', { name: 'ToDo', exact: true }).click();
+  await taskFilters.getByRole('combobox', { name: 'Projeto', exact: true }).selectOption('project-a');
   await page.getByRole('button', { name: 'Quadro do projeto', exact: true }).click();
   await page.getByRole('button', { name: 'Abrir tarefa Tarefa manual revisada', exact: true }).click();
-  const linkDialog = page.getByRole('dialog', { name: 'Detalhes da tarefa' });
-  await linkDialog.getByLabel('Associar Run existente deste projeto').selectOption(runA.id);
+  const linkDialog = page.getByRole('dialog', { name: 'Detalhes da tarefa', exact: true });
+  await linkDialog.getByRole('combobox', { name: 'Associar Run existente deste projeto', exact: true }).selectOption(runA.id);
   await linkDialog.getByRole('button', { name: 'Associar Run', exact: true }).click();
   const linkedTask = await request('tasks.get', { taskId: manualTask.id });
   assert.equal(linkedTask.runs.length, 1);
@@ -365,22 +364,22 @@ try {
   assert.ok(allPageOne.nextCursor);
   const expectedProjectTaskCount = projectTaskCountBeforeMass + 102;
   assert.equal(allPageOne.items.length + allPageTwo.items.length, expectedProjectTaskCount);
-  await page.getByRole('button', { name: 'Workspaces', exact: true }).click();
-  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
+  await page.getByRole('button', { name: 'Início', exact: true }).click();
+  await page.getByRole('button', { name: 'ToDo', exact: true }).click();
   await page.getByRole('button', { name: 'Visão agregada', exact: true }).click();
-  await page.locator('.task-filters select').nth(2).selectOption('');
-  await page.locator('.task-filters select').nth(3).selectOption('');
-  const workspaceFilter = page.locator('.task-filters select').nth(0);
+  await taskFilters.getByRole('combobox', { name: 'Estado', exact: true }).selectOption('');
+  await taskFilters.getByRole('combobox', { name: 'Responsável', exact: true }).selectOption('');
+  const workspaceFilter = taskFilters.getByRole('combobox', { name: 'Workspace', exact: true });
   await workspaceFilter.selectOption(workspace.id);
   await until(async () => assert.equal(await page.locator('.task-list .task-card').count(), 100));
   assert.equal(await page.getByRole('button', { name: 'Abrir tarefa Tarefa de outro workspace', exact: true }).count(), 0, 'filtro de workspace exclui tarefas de outros contextos');
   await workspaceFilter.selectOption('');
-  await page.locator('.task-filters select').nth(1).selectOption('project-a');
+  await taskFilters.getByRole('combobox', { name: 'Projeto', exact: true }).selectOption('project-a');
   await until(async () => assert.equal(await page.locator('.task-list .task-card').count(), 100));
-  assert.ok(await page.getByRole('button', { name: 'Carregar próxima página' }).count());
+  assert.ok(await page.getByRole('button', { name: 'Carregar próxima página', exact: true }).count());
   const paginationStartedAt = performance.now();
-  await page.getByRole('button', { name: 'Carregar próxima página' }).click();
-  await page.getByRole('button', { name: `Abrir tarefa ${allPageTwo.items[0].title}` }).waitFor();
+  await page.getByRole('button', { name: 'Carregar próxima página', exact: true }).click();
+  await page.getByRole('button', { name: `Abrir tarefa ${allPageTwo.items[0].title}`, exact: true }).waitFor();
   result.metrics.uiPaginationMs = performance.now() - paginationStartedAt;
   assert.equal(await page.locator('.task-list .task-card').count(), expectedProjectTaskCount);
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -404,37 +403,38 @@ try {
   page = await reopenedWindow;
   page.setDefaultTimeout(12000);
   page.on('pageerror', (error) => pageErrors.push(error.message));
-  await page.getByText('Daemon conectado', { exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Conversa global SPEC-006', exact: true }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.eros.navigation()), { workspaceId: null, projectId: null, chatId: globalChat.chat.id });
-  assert.equal(await page.getByLabel('Nova mensagem').inputValue(), 'Rascunho global sintético.');
+  assert.equal(await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).inputValue(), 'Rascunho global sintético.');
   await page.getByText('Histórico global sintético.', { exact: true }).waitFor();
+  await openDiagnostics(page);
+  await openConversation(page, 'Conversa global SPEC-006');
   const [secondExitCode] = await secondExit;
   assert.equal(secondExitCode, 0);
   result.checks.push('B0: fechar e recriar a janela restaura conversa global null/null com histórico, rascunho e ID originais');
 
   result.stage = 'free-chat-link-and-message-origin';
   const taskCountBeforeFree = await taskCount('project-a');
-  await page.getByLabel('Nova mensagem').fill('/kanban Tarefa global vinculada');
+  await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).fill('/kanban Tarefa global vinculada');
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
-  let linkChatDialog = page.getByRole('dialog', { name: 'Vincular conversa a projeto' });
+  let linkChatDialog = page.getByRole('dialog', { name: 'Vincular conversa a projeto', exact: true });
   await linkChatDialog.waitFor();
-  await linkChatDialog.getByRole('button', { name: 'Cancelar' }).click();
+  await linkChatDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
   assert.equal(await taskCount('project-a'), taskCountBeforeFree, 'cancelar vínculo de conversa livre não cria tarefa');
-  assert.equal(await page.getByLabel('Nova mensagem').inputValue(), '/kanban Tarefa global vinculada');
-  await page.getByRole('button', { name: 'Vincular a projeto…', exact: true }).click();
-  linkChatDialog = page.getByRole('dialog', { name: 'Vincular conversa a projeto' });
-  await linkChatDialog.getByLabel('Projeto de destino').selectOption('project-a');
-  await linkChatDialog.getByLabel('Dot para esta conversa').selectOption('dot-a');
-  await linkChatDialog.getByRole('button', { name: 'Confirmar movimentação' }).click();
+  assert.equal(await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).inputValue(), '/kanban Tarefa global vinculada');
+  await page.getByRole('button', { name: 'Vincular a projeto', exact: true }).click();
+  linkChatDialog = page.getByRole('dialog', { name: 'Vincular conversa a projeto', exact: true });
+  await linkChatDialog.getByRole('combobox', { name: 'Projeto de destino', exact: true }).selectOption('project-a');
+  await linkChatDialog.getByRole('combobox', { name: 'Dot para esta conversa', exact: true }).selectOption('dot-a');
+  await linkChatDialog.getByRole('button', { name: 'Confirmar movimentação', exact: true }).click();
   await page.getByRole('heading', { name: 'Conversa global SPEC-006', exact: true }).waitFor();
-  assert.equal(await page.getByLabel('Nova mensagem').inputValue(), '/kanban Tarefa global vinculada');
+  assert.equal(await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).inputValue(), '/kanban Tarefa global vinculada');
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
-  taskPreview = page.getByRole('dialog', { name: 'Prévia da nova tarefa' });
+  taskPreview = page.getByRole('dialog', { name: 'Prévia da nova tarefa', exact: true });
   await taskPreview.waitFor();
-  assert.equal(await taskPreview.getByLabel('Título').inputValue(), 'Tarefa global vinculada');
-  assert.equal(await taskPreview.getByLabel('Descrição').inputValue(), '');
-  await taskPreview.getByRole('button', { name: 'Confirmar e criar tarefa' }).click();
+  assert.equal(await taskPreview.getByRole('textbox', { name: 'Título', exact: true }).inputValue(), 'Tarefa global vinculada');
+  assert.equal(await taskPreview.getByRole('textbox', { name: 'Descrição', exact: true }).inputValue(), '');
+  await taskPreview.getByRole('button', { name: 'Confirmar e criar tarefa', exact: true }).click();
   const linkedFreeTask = await until(async () => {
     const task = (await request('tasks.list', { projectId: 'project-a', limit: 100 })).items.find((item) => item.title === 'Tarefa global vinculada');
     assert.ok(task);
@@ -444,7 +444,7 @@ try {
   assert.equal((await request('messages.list', { chatId: globalChat.chat.id, limit: 100 })).items.length, 1, '/kanban não criou mensagem de comando');
 
   const sourceText = 'Mensagem salva usada como descrição inicial.';
-  await page.getByLabel('Nova mensagem').fill(sourceText);
+  await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).fill(sourceText);
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
   const sourceMessage = await until(async () => {
     const messages = await request('messages.list', { chatId: globalChat.chat.id, limit: 100 });
@@ -452,13 +452,13 @@ try {
     assert.ok(message);
     return message;
   });
-  const sourceMessageCard = page.locator('.saved-message').filter({ hasText: sourceText });
+  const sourceMessageCard = page.locator('.saved-message').filter({ has: page.getByText(sourceText, { exact: true }) });
   await sourceMessageCard.getByRole('button', { name: 'Criar tarefa a partir desta mensagem', exact: true }).waitFor();
   await sourceMessageCard.getByRole('button', { name: 'Criar tarefa a partir desta mensagem', exact: true }).click();
-  taskPreview = page.getByRole('dialog', { name: 'Prévia da nova tarefa' });
+  taskPreview = page.getByRole('dialog', { name: 'Prévia da nova tarefa', exact: true });
   await taskPreview.waitFor();
-  assert.equal(await taskPreview.getByLabel('Descrição').inputValue(), sourceText);
-  await taskPreview.getByRole('button', { name: 'Confirmar e criar tarefa' }).click();
+  assert.equal(await taskPreview.getByRole('textbox', { name: 'Descrição', exact: true }).inputValue(), sourceText);
+  await taskPreview.getByRole('button', { name: 'Confirmar e criar tarefa', exact: true }).click();
   const fromMessage = await until(async () => {
     const pageOfTasks = await request('tasks.list', { projectId: 'project-a', limit: 100 });
     const summary = pageOfTasks.items.find((item) => item.origin.messageId === sourceMessage.id);

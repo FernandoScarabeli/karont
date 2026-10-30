@@ -5,7 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { Client, daemon, environment, require as harnessRequire, sample, until, wait } from './harness.mjs';
+import { Client, daemon, environment, openConversation, openDiagnostics, require as harnessRequire, sample, until, wait } from './harness.mjs';
 
 function makeRepo(root, name) {
   const repo = path.join(root, name);
@@ -115,9 +115,10 @@ try {
   const pageErrors = [];
   const listenForPageErrors = (target) => target.on('pageerror', (error) => pageErrors.push(error.message));
   listenForPageErrors(page);
-  await page.getByText('Daemon conectado', { exact: true }).waitFor();
+  await openDiagnostics(page);
   assert.equal(await page.evaluate(() => window.eros.runtime.sandboxed && window.eros.runtime.contextIsolated), true);
-  await page.locator('.app-header').getByRole('heading', { name: 'Workspaces', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Início', exact: true }).click();
+  await page.getByRole('heading', { name: /^(Bom dia|Boa tarde|Boa noite)\.$/ }).waitFor();
   if (process.env.EROS_TEST_SKIP_SPEC005_METRICS !== '1') await recordSeries('idle');
   result.checks.push(process.env.EROS_TEST_SKIP_SPEC005_METRICS === '1'
     ? 'shell Workspaces inicia sem criar Run; referência ociosa omitida na execução de diagnóstico'
@@ -125,6 +126,7 @@ try {
 
   result.stage = 'workspace-and-project';
   const workspacesBeforeCancel = (await client.request({ method: 'workspaces.list', value: { limit: 100 } })).items.length;
+  await page.locator('.k-workspace-select').getByRole('button', { expanded: false }).click();
   await page.getByRole('button', { name: 'Criar workspace', exact: true }).click();
   let workspaceDialog = page.getByRole('dialog', { name: 'Criar workspace' });
   await workspaceDialog.getByLabel('Nome do workspace').fill('Workspace cancelado');
@@ -132,17 +134,19 @@ try {
   await workspaceDialog.waitFor({ state: 'hidden' });
   assert.equal((await client.request({ method: 'workspaces.list', value: { limit: 100 } })).items.length, workspacesBeforeCancel);
   result.stage = 'workspace-create';
+  await page.locator('.k-workspace-select').getByRole('button', { expanded: false }).click();
   await page.getByRole('button', { name: 'Criar workspace', exact: true }).click();
   workspaceDialog = page.getByRole('dialog', { name: 'Criar workspace' });
   await workspaceDialog.getByLabel('Nome do workspace').fill('Workspace SPEC-005');
   await workspaceDialog.getByLabel('Nome do workspace').press('Enter');
-  await page.locator('.workspace-picker-list').getByRole('button', { name: 'Workspace SPEC-005', exact: true }).waitFor();
-  await page.locator('.workspace-sidebar').getByRole('button', { name: 'Renomear', exact: true }).click();
+  await page.getByRole('button', { name: 'Workspace SPEC-005', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Workspace SPEC-005', exact: true }).click();
+  await page.getByRole('button', { name: 'Renomear workspace', exact: true }).click();
   result.stage = 'workspace-rename';
   const renameDialog = page.getByRole('dialog', { name: 'Renomear workspace' });
-  await renameDialog.getByLabel('Novo nome').fill('Workspace Produtos');
-  await renameDialog.getByRole('button', { name: 'Salvar nome' }).click();
-  await page.locator('.workspace-picker-list').getByRole('button', { name: 'Workspace Produtos', exact: true }).waitFor();
+  await renameDialog.getByLabel('Nome do workspace').fill('Workspace Produtos');
+  await renameDialog.getByRole('button', { name: 'Salvar', exact: true }).click();
+  await page.getByRole('button', { name: 'Workspace Produtos', exact: true }).waitFor();
   const workspaces = (await client.request({ method: 'workspaces.list', value: { limit: 100 } })).items;
   const workspace = workspaces.find((item) => item.name === 'Workspace Produtos');
   assert.ok(workspace);
@@ -168,52 +172,57 @@ try {
   result.stage = 'project-before';
   const projectsBefore = (await client.request({ method: 'projects.list', value: { workspaceId: workspace.id, limit: 100 } })).items;
   result.stage = 'project-cancel';
-  await page.locator('.workspace-sidebar').getByRole('button', { name: /Adicionar/ }).click();
-  let projectDialog = page.getByRole('dialog', { name: 'Adicionar projeto existente' });
-  await projectDialog.getByLabel('Nome do projeto').fill('Projeto de teste');
+  await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
+  let projectDialog = page.getByRole('dialog', { name: 'Criar projeto' });
+  await projectDialog.getByLabel('Nome', { exact: true }).fill('Projeto de teste');
+  // Concessão sem equivalente no cadastro atual; ver DIVIDAS #11.
   await projectDialog.getByLabel('Fixture Dot').check();
-  await projectDialog.getByRole('button', { name: 'Escolher pasta…' }).click();
+  await projectDialog.getByRole('button', { name: 'Escolher…', exact: true }).click();
+  await projectDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
   await projectDialog.waitFor({ state: 'hidden' });
   assert.equal((await client.request({ method: 'projects.list', value: { workspaceId: workspace.id, limit: 100 } })).items.length, projectsBefore.length);
   assert.equal(await app.evaluate(() => globalThis.__spec005ConfirmOptions.length), 0);
 
-  await page.locator('.workspace-sidebar').getByRole('button', { name: /Adicionar/ }).click();
+  await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
   result.stage = 'project-invalid';
-  projectDialog = page.getByRole('dialog', { name: 'Adicionar projeto existente' });
-  await projectDialog.getByLabel('Nome do projeto').fill('Invalid project');
+  projectDialog = page.getByRole('dialog', { name: 'Criar projeto' });
+  await projectDialog.getByLabel('Nome', { exact: true }).fill('Invalid project');
   await projectDialog.getByLabel('Fixture Dot').check();
   await app.evaluate(({ dialog }) => { globalThis.__spec005Cancel = false; });
-  await projectDialog.getByRole('button', { name: 'Escolher pasta…' }).click();
-  await page.getByText(/Não foi possível cadastrar/).waitFor();
+  await projectDialog.getByRole('button', { name: 'Escolher…', exact: true }).click();
+  await projectDialog.getByRole('button', { name: 'Criar projeto', exact: true }).click();
+  await projectDialog.getByRole('alert').getByText(/Não foi possível criar o projeto/).waitFor();
   await projectDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
   result.stage = 'project-invalid-verify';
   const afterInvalid = await client.request({ method: 'projects.list', value: { workspaceId: workspace.id, limit: 100 } });
   assert.equal(afterInvalid.items.length, projectsBefore.length);
 
-  await page.locator('.workspace-sidebar').getByRole('button', { name: /Adicionar/ }).click();
-  projectDialog = page.getByRole('dialog', { name: 'Adicionar projeto existente' });
-  await projectDialog.getByLabel('Nome do projeto').fill('Unavailable project');
+  await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
+  projectDialog = page.getByRole('dialog', { name: 'Criar projeto' });
+  await projectDialog.getByLabel('Nome', { exact: true }).fill('Unavailable project');
   await projectDialog.getByLabel('Fixture Dot').check();
   await app.evaluate(({ dialog }, root) => {
     globalThis.__spec005Folder = root;
     globalThis.__spec005ConfirmResponse = 1;
   }, unavailableFolder);
-  await projectDialog.getByRole('button', { name: 'Escolher pasta…' }).click();
-  await page.getByText(/Não foi possível cadastrar/).waitFor();
+  await projectDialog.getByRole('button', { name: 'Escolher…', exact: true }).click();
+  await projectDialog.getByRole('button', { name: 'Criar projeto', exact: true }).click();
+  await projectDialog.getByRole('alert').getByText(/Não foi possível criar o projeto/).waitFor();
   await projectDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
   const afterUnavailable = await client.request({ method: 'projects.list', value: { workspaceId: workspace.id, limit: 100 } });
   assert.equal(afterUnavailable.items.length, projectsBefore.length);
 
-  await page.locator('.workspace-sidebar').getByRole('button', { name: /Adicionar/ }).click();
-  projectDialog = page.getByRole('dialog', { name: 'Adicionar projeto existente' });
-  await projectDialog.getByLabel('Nome do projeto').fill('Projeto com espaços');
+  await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
+  projectDialog = page.getByRole('dialog', { name: 'Criar projeto' });
+  await projectDialog.getByLabel('Nome', { exact: true }).fill('Projeto com espaços');
   await projectDialog.getByLabel('Fixture Dot').check();
   result.stage = 'project-add-valid';
   await app.evaluate(({ dialog }, root) => {
     globalThis.__spec005Folder = root;
     globalThis.__spec005ConfirmResponse = 1;
   }, repo);
-  await projectDialog.getByRole('button', { name: 'Escolher pasta…' }).click();
+  await projectDialog.getByRole('button', { name: 'Escolher…', exact: true }).click();
+  await projectDialog.getByRole('button', { name: 'Criar projeto', exact: true }).click();
   await projectDialog.waitFor({ state: 'hidden' });
   result.stage = 'project-read-after-add';
   const projectPage = await client.request({ method: 'projects.list', value: { workspaceId: workspace.id, limit: 100 } });
@@ -226,21 +235,23 @@ try {
   assert.ok((await client.request({ method: 'projects.list' })).some((item) => item.id === project.id));
   result.checks.push('cancelamento não grava; raiz Git inválida e raiz indisponível recusadas; diretório com espaços confirmado; concessão explícita validada');
 
+  await page.locator('.k-workspace-select').getByRole('button', { expanded: false }).click();
   await page.getByRole('button', { name: 'Criar workspace', exact: true }).click();
   workspaceDialog = page.getByRole('dialog', { name: 'Criar workspace' });
   await workspaceDialog.getByLabel('Nome do workspace').fill('Workspace duplicata');
-  await workspaceDialog.getByRole('button', { name: 'Criar workspace' }).click();
+  await workspaceDialog.getByRole('button', { name: 'Salvar', exact: true }).click();
   const secondWorkspace = (await client.request({ method: 'workspaces.list', value: { limit: 100 } })).items.find((item) => item.name === 'Workspace duplicata');
   assert.ok(secondWorkspace);
   result.stage = 'project-duplicate';
-  await page.locator('.workspace-sidebar').getByRole('button', { name: '＋ Adicionar' }).click();
-  projectDialog = page.getByRole('dialog', { name: 'Adicionar projeto existente' });
-  await projectDialog.getByLabel('Nome do projeto').fill('Mesmo repositório');
+  await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
+  projectDialog = page.getByRole('dialog', { name: 'Criar projeto' });
+  await projectDialog.getByLabel('Nome', { exact: true }).fill('Mesmo repositório');
   await projectDialog.getByLabel('Fixture Dot').check();
   await app.evaluate(({ dialog }, root) => { globalThis.__spec005Folder = root; }, repo);
-  await projectDialog.getByRole('button', { name: 'Escolher pasta…' }).click();
+  await projectDialog.getByRole('button', { name: 'Escolher…', exact: true }).click();
+  await projectDialog.getByRole('button', { name: 'Criar projeto', exact: true }).click();
   await projectDialog.waitFor({ state: 'hidden' });
-  await page.getByText(/já está cadastrado/).waitFor();
+  await page.getByText(/Pasta já vinculada ao projeto/).waitFor();
   assert.equal((await client.request({ method: 'projects.list', value: { workspaceId: secondWorkspace.id, limit: 100 } })).items.length, 0);
   assert.equal((await client.request({ method: 'projects.list', value: { workspaceId: workspace.id, limit: 100 } })).items[0].id, project.id);
   await app.evaluate(({ dialog }) => {
@@ -250,11 +261,10 @@ try {
   result.checks.push('repositório duplicado reconhecido e não reassociado ao workspace novo');
 
   result.stage = 'chats-runs-and-delivery';
-  await page.getByRole('button', { name: 'Nova conversa de projeto', exact: true }).click();
-  let chatDialog = page.getByRole('dialog', { name: 'Nova conversa de projeto' });
-  await chatDialog.getByLabel('Título').fill('Conversa principal');
-  await chatDialog.getByLabel('Dot').selectOption('fixture-dot');
-  await chatDialog.getByRole('button', { name: 'Criar conversa' }).click();
+  await page.getByRole('button', { name: 'Nova conversa em Projeto com espaços', exact: true }).click();
+  await page.getByRole('button', { name: 'Renomear conversa', exact: true }).click();
+  await page.getByLabel('Título da conversa', { exact: true }).fill('Conversa principal');
+  await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();
   let primaryChat = await client.request({ method: 'chats.list', value: { workspaceId: workspace.id, projectId: project.id, limit: 100 } });
   const primary = primaryChat.items.find((item) => item.title === 'Conversa principal');
@@ -263,6 +273,7 @@ try {
   await page.getByLabel('Nova mensagem').fill('SPEC005_PRIVATE_TEST_MESSAGE');
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
   await page.getByText('SPEC005_PRIVATE_TEST_MESSAGE', { exact: true }).waitFor();
+  await page.getByRole('button', { name: /^Terminal e execuções/ }).click();
   await page.getByRole('button', { name: 'Iniciar execução', exact: true }).click();
   let primaryRuns = await until(async () => {
     const pageOfRuns = await client.request({ method: 'chats.runs.list', value: { chatId: primary.id, limit: 100 } });
@@ -280,11 +291,10 @@ try {
   assert.equal(await page.locator('.saved-message').count(), 1);
   result.checks.push('criar chat não iniciou Run; Run vinculada; mensagem salva e enviada só ao PTY ativo, sem stdout persistido');
 
-  await page.locator('.workspace-sidebar .chat-create-actions').getByRole('button').click();
-  chatDialog = page.getByRole('dialog', { name: 'Nova conversa de projeto' });
-  await chatDialog.getByLabel('Título').fill('Segunda conversa');
-  await chatDialog.getByLabel('Dot').selectOption('fixture-dot');
-  await chatDialog.getByRole('button', { name: 'Criar conversa' }).click();
+  await page.getByRole('button', { name: 'Nova conversa em Projeto com espaços', exact: true }).click();
+  await page.getByRole('button', { name: 'Renomear conversa', exact: true }).click();
+  await page.getByLabel('Título da conversa', { exact: true }).fill('Segunda conversa');
+  await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await page.getByRole('heading', { name: 'Segunda conversa', exact: true }).waitFor();
   const secondChat = (await client.request({ method: 'chats.list', value: { workspaceId: workspace.id, projectId: project.id, limit: 100 } })).items.find((item) => item.title === 'Segunda conversa');
   assert.ok(secondChat);
@@ -296,6 +306,7 @@ try {
     return page;
   });
   assert.equal(secondMessages.items.length, 1);
+  await page.getByRole('button', { name: /^Terminal e execuções/ }).click();
   await page.getByRole('button', { name: 'Iniciar execução', exact: true }).click();
   const secondRun = await until(async () => {
     const runs = (await client.request({ method: 'chats.runs.list', value: { chatId: secondChat.id, limit: 100 } })).items;
@@ -313,7 +324,7 @@ try {
 
   await recordSeries('conversationSwitching', async (round) => {
     const title = round % 2 ? 'Conversa principal' : 'Segunda conversa';
-    await page.locator('.workspace-sidebar .chat-row-open').filter({ hasText: title }).first().click();
+    await openConversation(page, title);
     await page.getByRole('heading', { name: title, exact: true }).waitFor();
     const selectedRun = title === 'Conversa principal' ? primaryRun : secondRun;
     await page.locator(`#run-${selectedRun.id}`).waitFor();
@@ -323,14 +334,15 @@ try {
   result.checks.push('troca entre conversas reanexa as mesmas sessões, sem iniciar nem cancelar Runs');
 
   result.stage = 'favorites-recent-free-move';
-  await page.locator('.workspace-sidebar .chat-row-open').filter({ hasText: 'Conversa principal' }).first().click();
+  await openConversation(page, 'Conversa principal');
   await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();
   await page.locator('.chat-heading-actions').getByRole('button', { name: /Favoritar/ }).click();
+  // Sem navegação global equivalente; preservar a checagem de escopo (DIVIDAS #11).
   await page.getByRole('button', { name: 'Conversas livres', exact: true }).click();
-  await page.getByRole('button', { name: 'Criar conversa livre', exact: true }).click();
-  const freeDialog = page.getByRole('dialog', { name: 'Nova conversa livre' });
-  await freeDialog.getByLabel('Título').fill('Conversa livre de teste');
-  await freeDialog.getByRole('button', { name: 'Criar conversa' }).click();
+  await page.getByRole('button', { name: 'Nova conversa livre', exact: true }).click();
+  await page.getByRole('button', { name: 'Renomear conversa', exact: true }).click();
+  await page.getByLabel('Título da conversa', { exact: true }).fill('Conversa livre de teste');
+  await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
   await page.getByText('Conversa local — vincule um projeto para executar um agente.', { exact: true }).waitFor();
   assert.equal(await page.locator('.run-desk').count(), 0);
@@ -383,23 +395,24 @@ try {
   page = await globalWindowOpened;
   page.setDefaultTimeout(12000);
   listenForPageErrors(page);
-  await page.getByText('Daemon conectado', { exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.eros.navigation()), globalNavigation);
   assert.equal(await page.getByLabel('Nova mensagem').inputValue(), draftText);
   await page.getByText('histórico local antes do vínculo', { exact: true }).waitFor();
   assert.equal((await client.request({ method: 'chats.runs.list', value: { chatId: freeChat.id, limit: 100 } })).items.length, 0);
+  await openDiagnostics(page);
+  await openConversation(page, 'Conversa livre de teste');
   const [globalInstanceCode] = await globalInstanceExit;
   assert.equal(globalInstanceCode, 0);
   result.checks.push('conversa global aberta por Conversas livres, Favoritos e Recentes mantém o mesmo ID e escopo null/null após reload e reabertura; mensagem/rascunho intactos e nenhuma Run criada');
 
-  await page.getByRole('button', { name: 'Vincular a projeto…', exact: true }).click();
+  await page.getByRole('button', { name: 'Vincular a projeto', exact: true }).click();
   let moveDialog = page.getByRole('dialog', { name: 'Vincular conversa a projeto' });
   await moveDialog.getByLabel('Projeto de destino').selectOption(project.id);
   await moveDialog.getByLabel('Dot para esta conversa').selectOption('fixture-dot');
   await moveDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
   assert.equal((await client.request({ method: 'chats.get', value: { chatId: freeChat.id } })).chat.projectId, null);
-  await page.getByRole('button', { name: 'Vincular a projeto…', exact: true }).click();
+  await page.getByRole('button', { name: 'Vincular a projeto', exact: true }).click();
   moveDialog = page.getByRole('dialog', { name: 'Vincular conversa a projeto' });
   await moveDialog.getByLabel('Projeto de destino').selectOption(project.id);
   await moveDialog.getByLabel('Dot para esta conversa').selectOption('fixture-dot');
@@ -413,6 +426,7 @@ try {
   });
   assert.equal(moved.chat.favorite, true);
   assert.equal((await client.request({ method: 'messages.list', value: { chatId: freeChat.id, limit: 100 } })).items.length, 1);
+  // Sem navegação global equivalente; preservar a checagem de escopo (DIVIDAS #11).
   await page.getByRole('button', { name: 'Conversas livres', exact: true }).click();
   await until(async () => assert.equal(await page.locator('.global-chat-sidebar .chat-row-open').filter({ hasText: 'Conversa livre de teste' }).count(), 0));
   result.checks.push('favoritos/recentes globais; conversa livre sem agente; rascunho persistente; mover com confirmação e cancelamento preserva ID, favorito e mensagem antiga');
@@ -425,8 +439,8 @@ try {
     historyDetails = saved.chat;
     if (index % 15 === 14) await wait(250);
   }
-  await page.getByRole('button', { name: 'Workspaces', exact: true }).click();
-  await page.locator('.workspace-sidebar .chat-row-open').filter({ hasText: 'Histórico paginado' }).click();
+  await page.getByRole('button', { name: 'Início', exact: true }).click();
+  await openConversation(page, 'Histórico paginado');
   await page.getByRole('heading', { name: 'Histórico paginado', exact: true }).waitFor();
   await until(async () => assert.equal(await page.locator('.saved-message').count(), 100));
   await page.getByRole('button', { name: 'Carregar próxima página do histórico', exact: true }).click();
@@ -463,7 +477,7 @@ try {
   result.artifacts.push(compactShot);
   result.checks.push('layouts de 900px e 1440px sem overflow horizontal');
 
-  await page.locator('.workspace-sidebar .chat-row-open').filter({ hasText: 'Conversa principal' }).click();
+  await openConversation(page, 'Conversa principal');
   await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();
   await page.locator(`#run-${primaryRun.id}`).waitFor();
   await recordSeries('windowClosed', async (round) => {
@@ -483,7 +497,6 @@ try {
   page = await newWindow;
   page.setDefaultTimeout(12000);
   listenForPageErrors(page);
-  await page.getByText('Daemon conectado', { exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();
   await page.locator(`#run-${primaryRun.id}`).waitFor();
   const [secondCode] = await secondExit;
@@ -492,25 +505,28 @@ try {
   assert.equal(restoredRun.pid, primaryRun.pid);
   assert.equal(restoredRun.state, 'running');
   await page.locator(`#run-${primaryRun.id} .terminal-shell [role="listitem"]`).getByText(/SPEC005_READY fixture-dot/).waitFor();
+  await openDiagnostics(page);
+  await openConversation(page, 'Conversa principal');
   await recordSeries('windowReopened', async (round) => {
     if (round % 2 === 0) {
-      await page.locator('.workspace-sidebar .chat-row-open').filter({ hasText: 'Segunda conversa' }).click();
+      await openConversation(page, 'Segunda conversa');
       await page.getByRole('heading', { name: 'Segunda conversa', exact: true }).waitFor();
       await page.locator(`#run-${secondRun.id}`).waitFor();
     } else {
-      await page.locator('.workspace-sidebar .chat-row-open').filter({ hasText: 'Conversa principal' }).click();
+      await openConversation(page, 'Conversa principal');
       await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();
       await page.locator(`#run-${primaryRun.id}`).waitFor();
     }
   });
   result.checks.push('reabertura restaura conversa selecionada e reanexa ao mesmo PID e scrollback');
 
+  await openDiagnostics(page);
   await page.getByRole('button', { name: 'Execuções anteriores', exact: true }).click();
   await page.locator('.app-header').getByRole('heading', { name: 'Execuções anteriores', exact: true }).waitFor();
   assert.equal(await page.locator('.history-row').count(), 0);
   assert.ok((await client.request({ method: 'runs.list', value: { limit: 100 } })).some((run) => run.id === primaryRun.id));
-  await page.getByRole('button', { name: 'Workspaces', exact: true }).click();
-  await page.locator('.workspace-sidebar .chat-row-open').filter({ hasText: 'Conversa principal' }).click();
+  await page.getByRole('button', { name: 'Início', exact: true }).click();
+  await openConversation(page, 'Conversa principal');
   await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Recentes', exact: true }).click();
   await page.locator('.global-chat-sidebar .chat-row-open').filter({ hasText: 'Conversa principal' }).waitFor();

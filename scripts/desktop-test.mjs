@@ -13,6 +13,7 @@ import {
   host,
   require,
   rendererSandbox,
+  openDiagnostics,
   processes,
   Client,
 } from './harness.mjs';
@@ -102,8 +103,7 @@ try {
   page.setDefaultTimeout(10000);
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.getByText('Daemon conectado', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Laboratório', exact: true }).click();
+  await openDiagnostics(page);
   result.metrics.electronStartupMs = performance.now() - t;
   assert.equal(await page.locator('.panel').count(), 8);
   result.checks.push('oito painéis em um renderer');
@@ -271,8 +271,7 @@ try {
   });
   const secondExit = once(second, 'exit');
   const restored = await nextWindow;
-  await restored.getByText('Daemon conectado', { exact: true }).waitFor();
-  await restored.getByRole('button', { name: 'Laboratório', exact: true }).click();
+  await openDiagnostics(restored);
   result.metrics.reopenMs = performance.now() - reopen;
   await restored.locator('.cm-content').waitFor();
   assert.ok((await restored.locator('.cm-content').innerText()).includes('restauração confirmada'));

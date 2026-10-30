@@ -6,6 +6,17 @@ import { createRequire } from 'node:module';
 export const require = createRequire(import.meta.url);
 export const { Client } = require('../dist/local/client.cjs');
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+export async function openDiagnostics(page) {
+  await page.getByRole('button', { name: 'Configurações e ferramentas', exact: true }).click();
+  await page.getByText('Daemon conectado', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Diagnóstico e laboratório', exact: true }).click();
+}
+export async function openConversation(page, title) {
+  await page.getByRole('textbox', { name: 'Buscar projetos e conversas', exact: true }).fill(title);
+  // O resultado acessível inclui o título e a origem, mesmo fora do workspace atual.
+  await page.getByRole('button', { name: new RegExp(`^${RegExp.escape(title)} .+ / .+$`) }).click();
+  await page.getByRole('heading', { name: title, exact: true }).waitFor();
+}
 export async function until(fn) {
   let last;
   for (let n = 0; n < 100; n++) {

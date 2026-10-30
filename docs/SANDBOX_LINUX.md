@@ -1,5 +1,9 @@
 # Sandbox Linux — investigação P0
 
+## Refatoração – Fase 1: CI e contorno local
+
+No runner Ubuntu 24.04, o workflow executa `node node_modules/electron/install.js` logo após `npm ci` para garantir o binário e, em seguida, `sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox`. O preparo é específico do runner descartável e mantém o sandbox ativo. Localmente, o helper aprovado fica em `/usr/local/lib/karont-dev/chrome-sandbox`: `CHROME_DEVEL_SANDBOX` só é respeitado quando **não existe** `chrome-sandbox` ao lado do executável do Electron. Após `npm ci`, renomeie essa cópia local antes de usar a variável e confira a compatibilidade do helper quando a versão do Electron mudar. Os registros abaixo são históricos; o passo do CI ainda depende da execução pelo orquestrador.
+
 ## SPEC-001 — desbloqueio em ambiente separado
 
 **Sandbox validado em VM Debian 13/KVM.** O host Ubuntu descrito abaixo permanece protegido e bloqueado; não foi alterado. A rota usada foi uma VM com kernel próprio e política padrão Debian, sem exceções, SUID ou mudanças em sysctls. AppArmor está carregado no guest (`Y`, contexto `unconfined`), `unprivileged_userns_clone=1`; a sonda `unshare` passou. Os knobs específicos do Ubuntu não são inferidos como desligados: um está ausente e outro inacessível ao usuário do guest, conforme diagnóstico.

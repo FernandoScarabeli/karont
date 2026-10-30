@@ -8,7 +8,7 @@ import { once } from 'node:events';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { Client } = require('../dist/local/client.cjs');
-const { environment, wait, until, sample, require: harnessRequire } = await import('./harness.mjs');
+const { environment, wait, until, sample, openDiagnostics, require: harnessRequire } = await import('./harness.mjs');
 const ctx = environment();
 const repo = path.join(ctx.root, 'repo');
 fs.mkdirSync(repo);
@@ -163,8 +163,7 @@ try {
   });
   const page = await app.firstWindow();
   page.setDefaultTimeout(12000);
-  await page.getByText('Daemon conectado', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Laboratório', exact: true }).click();
+  await openDiagnostics(page);
   electronProcess = app.process();
   const electronPid = electronProcess.pid;
   daemonPid = (await client.request({ method: 'ping' })).pid;
@@ -320,8 +319,7 @@ try {
     stdio: 'ignore',
   });
   let restored = await nextWindow;
-  await restored.getByText('Daemon conectado', { exact: true }).waitFor();
-  await restored.getByRole('button', { name: 'Laboratório', exact: true }).click();
+  await openDiagnostics(restored);
   assert.equal(
     (await client.request({ method: 'ping' })).pid,
     daemonPid,
@@ -465,8 +463,7 @@ try {
     stdio: 'ignore',
   });
   restored = await nextAgain;
-  await restored.getByText('Daemon conectado', { exact: true }).waitFor();
-  await restored.getByRole('button', { name: 'Laboratório', exact: true }).click();
+  await openDiagnostics(restored);
   if (second.exitCode === null && second.signalCode === null) await once(second, 'exit');
   const reconnectRun = await client.request({
     method: 'runs.start',
