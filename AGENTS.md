@@ -1,5 +1,26 @@
 # Orientações para agentes
 
+## Refatoração em andamento
+
+O trabalho atual segue [docs/SPEC_REFATORACAO.md](docs/SPEC_REFATORACAO.md). Leia a spec antes de qualquer tarefa. O estado e as decisões do usuário ficam em [docs/PROGRESSO.md](docs/PROGRESSO.md); problemas encontrados fora do escopo vão para [docs/DIVIDAS.md](docs/DIVIDAS.md).
+
+Papéis: o Claude Code orquestra (planeja, revisa, roda os testes e faz merge); o Codex executa **uma tarefa por vez**, em branch/worktree própria, e implementa somente o que a tarefa pede.
+
+Regras invariantes (resumo da seção 5 da spec; não quebrar sem aprovação do usuário):
+
+1. Electron com `contextIsolation: true`, `nodeIntegration: false` e `sandbox: true`. Nunca usar `--no-sandbox`. Toda mensagem IPC é validada; a UI não acessa recursos do sistema diretamente.
+2. O daemon continua um processo Node/TypeScript separado. Não alterar protocolo/handshake (`packages/local/src/wire.ts`), schema do SQLite ou contratos zod (`packages/contracts`). Se for inevitável, pare e explique.
+3. O app nunca captura, armazena ou reutiliza credenciais/tokens das CLIs.
+4. A UI só mostra capacidades reais; dados demonstrativos e explorações ficam marcados. Sem métricas inventadas.
+5. Vocabulário fixo: Workspace, Projeto, Dot, Chat, Run, Tarefa.
+6. As regras de design abaixo valem integralmente.
+7. Worktree não é sandbox; não prometa isolamento que não existe.
+8. Auto Resume permanece desligado.
+9. Foco em Linux; evite novas dependências específicas de Linux quando houver alternativa igualmente simples.
+10. Nenhuma dependência nova sem justificativa e aprovação do usuário.
+
+Para o executor: não refatore "de passagem", não renomeie fora do escopo, não mexa em arquivos fora da lista permitida da tarefa. Texto de UI, docs e commits em português do Brasil; identificadores em inglês. Ao terminar, responda no formato de relatório da seção 5.1 da spec, dizendo o que rodou de verdade.
+
 ## Design do produto
 
 - O trabalho visual é desenvolvido no pen.dev, com o agente nesse ambiente. Use o arquivo `karont.pen` e seu painel de referências e briefing como contexto da direção visual.
