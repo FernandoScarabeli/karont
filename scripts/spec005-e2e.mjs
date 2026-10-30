@@ -5,7 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { Client, daemon, environment, openConversation, openDiagnostics, require as harnessRequire, sample, until, wait } from './harness.mjs';
+import { chooseProjectFolder, Client, daemon, environment, openConversation, openDiagnostics, require as harnessRequire, sample, until, wait } from './harness.mjs';
 
 function makeRepo(root, name) {
   const repo = path.join(root, name);
@@ -26,6 +26,7 @@ const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const evidenceDir = path.join('benchmarks', 'spec005', stamp);
 fs.mkdirSync(evidenceDir, { recursive: true });
 const repo = makeRepo(ctx.root, 'fixture project with spaces');
+const runRepo = makeRepo(ctx.root, 'fixture runs with spaces');
 const invalidFolder = path.join(ctx.root, 'not-a-repository');
 fs.mkdirSync(invalidFolder);
 const unavailableFolder = path.join(ctx.root, 'unavailable-after-selection');
@@ -33,8 +34,11 @@ const cli = `const readline=require('node:readline');const name=process.argv[1];
 const config = path.join(ctx.root, 'dots.json');
 fs.writeFileSync(config, JSON.stringify({
   version: 1,
-  projects: [],
-  dots: [{ id: 'fixture-dot', name: 'Fixture Dot', role: 'Automated local E2E fixture', executable: process.execPath, adapter: 'generic', autoResume: false, args: ['-e', cli, 'fixture-dot'], projectIds: [] }],
+  projects: [{ id: 'fixture-project', name: 'Projeto de Runs', root: runRepo }],
+  dots: [
+    { id: 'fixture-dot', name: 'Fixture Dot', role: 'Fixture local E2E', executable: process.execPath, adapter: 'generic', autoResume: false, args: ['-e', cli, 'fixture-dot'], projectIds: ['fixture-project'] },
+    { id: 'unauthorized-dot', name: 'Dot sem autorização', role: 'Fixture local sem concessão', executable: process.execPath, adapter: 'generic', autoResume: false, args: ['-e', cli, 'unauthorized-dot'], projectIds: [] },
+  ],
 }), { mode: 0o600 });
 ctx.env.EROS_DOTS_CONFIG = config;
 Object.assign(process.env, { EROS_RUNTIME_DIR: ctx.env.EROS_RUNTIME_DIR, EROS_DATA_DIR: ctx.env.EROS_DATA_DIR, EROS_DOTS_CONFIG: config });
@@ -118,33 +122,36 @@ try {
   await openDiagnostics(page);
   assert.equal(await page.evaluate(() => window.eros.runtime.sandboxed && window.eros.runtime.contextIsolated), true);
   await page.getByRole('button', { name: 'Início', exact: true }).click();
-  await page.getByRole('heading', { name: /^(Bom dia|Boa tarde|Boa noite)\.$/ }).waitFor();
+  await page.getByRole('heading', { name: /^(Bom dia|Boa tarde|Boa noite)\.$/, exact: true }).waitFor();
   if (process.env.EROS_TEST_SKIP_SPEC005_METRICS !== '1') await recordSeries('idle');
   result.checks.push(process.env.EROS_TEST_SKIP_SPEC005_METRICS === '1'
     ? 'shell Workspaces inicia sem criar Run; referência ociosa omitida na execução de diagnóstico'
     : 'shell Workspaces inicia sem criar Run; amostras de referência ociosa: 5');
 
   result.stage = 'workspace-and-project';
-  const workspacesBeforeCancel = (await client.request({ method: 'workspaces.list', value: { limit: 100 } })).items.length;
-  await page.locator('.k-workspace-select').getByRole('button', { expanded: false }).click();
+  const initialWorkspaces = await client.request({ method: 'workspaces.list', value: { limit: 100 } });
+  const initialWorkspace = initialWorkspaces.items[0];
+  assert.ok(initialWorkspace);
+  const workspacesBeforeCancel = initialWorkspaces.items.length;
+  await page.getByRole('button', { name: initialWorkspace.name, exact: true, expanded: false }).click();
   await page.getByRole('button', { name: 'Criar workspace', exact: true }).click();
-  let workspaceDialog = page.getByRole('dialog', { name: 'Criar workspace' });
-  await workspaceDialog.getByLabel('Nome do workspace').fill('Workspace cancelado');
+  let workspaceDialog = page.getByRole('dialog', { name: 'Criar workspace', exact: true });
+  await workspaceDialog.getByRole('textbox', { name: 'Nome do workspace', exact: true }).fill('Workspace cancelado');
   await page.keyboard.press('Escape');
   await workspaceDialog.waitFor({ state: 'hidden' });
   assert.equal((await client.request({ method: 'workspaces.list', value: { limit: 100 } })).items.length, workspacesBeforeCancel);
   result.stage = 'workspace-create';
-  await page.locator('.k-workspace-select').getByRole('button', { expanded: false }).click();
+  await page.getByRole('button', { name: initialWorkspace.name, exact: true, expanded: false }).click();
   await page.getByRole('button', { name: 'Criar workspace', exact: true }).click();
-  workspaceDialog = page.getByRole('dialog', { name: 'Criar workspace' });
-  await workspaceDialog.getByLabel('Nome do workspace').fill('Workspace SPEC-005');
-  await workspaceDialog.getByLabel('Nome do workspace').press('Enter');
+  workspaceDialog = page.getByRole('dialog', { name: 'Criar workspace', exact: true });
+  await workspaceDialog.getByRole('textbox', { name: 'Nome do workspace', exact: true }).fill('Workspace SPEC-005');
+  await workspaceDialog.getByRole('textbox', { name: 'Nome do workspace', exact: true }).press('Enter');
   await page.getByRole('button', { name: 'Workspace SPEC-005', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Workspace SPEC-005', exact: true }).click();
   await page.getByRole('button', { name: 'Renomear workspace', exact: true }).click();
   result.stage = 'workspace-rename';
-  const renameDialog = page.getByRole('dialog', { name: 'Renomear workspace' });
-  await renameDialog.getByLabel('Nome do workspace').fill('Workspace Produtos');
+  const renameDialog = page.getByRole('dialog', { name: 'Renomear workspace', exact: true });
+  await renameDialog.getByRole('textbox', { name: 'Nome do workspace', exact: true }).fill('Workspace Produtos');
   await renameDialog.getByRole('button', { name: 'Salvar', exact: true }).click();
   await page.getByRole('button', { name: 'Workspace Produtos', exact: true }).waitFor();
   const workspaces = (await client.request({ method: 'workspaces.list', value: { limit: 100 } })).items;
@@ -157,7 +164,6 @@ try {
   await app.evaluate(({ dialog }, invalid) => {
     globalThis.__spec005Folder = invalid;
     globalThis.__spec005Cancel = true;
-    globalThis.__spec005ConfirmResponse = 1;
     globalThis.__spec005ConfirmOptions = [];
     globalThis.__spec005OriginalOpen = dialog.showOpenDialog;
     globalThis.__spec005OriginalMessage = dialog.showMessageBox;
@@ -166,18 +172,16 @@ try {
       : { canceled: false, filePaths: [globalThis.__spec005Folder] };
     dialog.showMessageBox = async (_window, options) => {
       globalThis.__spec005ConfirmOptions.push(options.detail);
-      return { response: globalThis.__spec005ConfirmResponse, checkboxChecked: false };
+      return { response: 1, checkboxChecked: false };
     };
   }, invalidFolder);
   result.stage = 'project-before';
   const projectsBefore = (await client.request({ method: 'projects.list', value: { workspaceId: workspace.id, limit: 100 } })).items;
   result.stage = 'project-cancel';
   await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
-  let projectDialog = page.getByRole('dialog', { name: 'Criar projeto' });
-  await projectDialog.getByLabel('Nome', { exact: true }).fill('Projeto de teste');
-  // Concessão sem equivalente no cadastro atual; ver DIVIDAS #11.
-  await projectDialog.getByLabel('Fixture Dot').check();
-  await projectDialog.getByRole('button', { name: 'Escolher…', exact: true }).click();
+  let projectDialog = page.getByRole('dialog', { name: 'Criar projeto', exact: true });
+  await projectDialog.getByRole('textbox', { name: 'Nome', exact: true }).fill('Projeto de teste');
+  await chooseProjectFolder(projectDialog);
   await projectDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
   await projectDialog.waitFor({ state: 'hidden' });
   assert.equal((await client.request({ method: 'projects.list', value: { workspaceId: workspace.id, limit: 100 } })).items.length, projectsBefore.length);
@@ -185,11 +189,10 @@ try {
 
   await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
   result.stage = 'project-invalid';
-  projectDialog = page.getByRole('dialog', { name: 'Criar projeto' });
-  await projectDialog.getByLabel('Nome', { exact: true }).fill('Invalid project');
-  await projectDialog.getByLabel('Fixture Dot').check();
+  projectDialog = page.getByRole('dialog', { name: 'Criar projeto', exact: true });
+  await projectDialog.getByRole('textbox', { name: 'Nome', exact: true }).fill('Projeto inválido');
   await app.evaluate(({ dialog }) => { globalThis.__spec005Cancel = false; });
-  await projectDialog.getByRole('button', { name: 'Escolher…', exact: true }).click();
+  await chooseProjectFolder(projectDialog);
   await projectDialog.getByRole('button', { name: 'Criar projeto', exact: true }).click();
   await projectDialog.getByRole('alert').getByText(/Não foi possível criar o projeto/).waitFor();
   await projectDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
@@ -198,14 +201,12 @@ try {
   assert.equal(afterInvalid.items.length, projectsBefore.length);
 
   await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
-  projectDialog = page.getByRole('dialog', { name: 'Criar projeto' });
-  await projectDialog.getByLabel('Nome', { exact: true }).fill('Unavailable project');
-  await projectDialog.getByLabel('Fixture Dot').check();
+  projectDialog = page.getByRole('dialog', { name: 'Criar projeto', exact: true });
+  await projectDialog.getByRole('textbox', { name: 'Nome', exact: true }).fill('Projeto indisponível');
   await app.evaluate(({ dialog }, root) => {
     globalThis.__spec005Folder = root;
-    globalThis.__spec005ConfirmResponse = 1;
   }, unavailableFolder);
-  await projectDialog.getByRole('button', { name: 'Escolher…', exact: true }).click();
+  await chooseProjectFolder(projectDialog);
   await projectDialog.getByRole('button', { name: 'Criar projeto', exact: true }).click();
   await projectDialog.getByRole('alert').getByText(/Não foi possível criar o projeto/).waitFor();
   await projectDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
@@ -213,47 +214,45 @@ try {
   assert.equal(afterUnavailable.items.length, projectsBefore.length);
 
   await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
-  projectDialog = page.getByRole('dialog', { name: 'Criar projeto' });
-  await projectDialog.getByLabel('Nome', { exact: true }).fill('Projeto com espaços');
-  await projectDialog.getByLabel('Fixture Dot').check();
+  projectDialog = page.getByRole('dialog', { name: 'Criar projeto', exact: true });
+  await projectDialog.getByRole('textbox', { name: 'Nome', exact: true }).fill('Projeto com espaços');
+  await projectDialog.getByRole('button', { name: 'Código', exact: true }).click();
   result.stage = 'project-add-valid';
   await app.evaluate(({ dialog }, root) => {
     globalThis.__spec005Folder = root;
-    globalThis.__spec005ConfirmResponse = 1;
   }, repo);
-  await projectDialog.getByRole('button', { name: 'Escolher…', exact: true }).click();
+  await chooseProjectFolder(projectDialog);
   await projectDialog.getByRole('button', { name: 'Criar projeto', exact: true }).click();
   await projectDialog.waitFor({ state: 'hidden' });
   result.stage = 'project-read-after-add';
   const projectPage = await client.request({ method: 'projects.list', value: { workspaceId: workspace.id, limit: 100 } });
-  const project = projectPage.items.find((item) => item.name === 'Projeto com espaços');
-  assert.ok(project);
-  assert.deepEqual(project.dotIds, ['fixture-dot']);
-  const confirmationDetails = await app.evaluate(() => globalThis.__spec005ConfirmOptions.at(-1));
-  assert.ok(confirmationDetails.includes(repo));
-  assert.match(confirmationDetails, /Fixture Dot/);
-  assert.ok((await client.request({ method: 'projects.list' })).some((item) => item.id === project.id));
-  result.checks.push('cancelamento não grava; raiz Git inválida e raiz indisponível recusadas; diretório com espaços confirmado; concessão explícita validada');
+  const createdProject = projectPage.items.find((item) => item.name === 'Projeto com espaços');
+  assert.ok(createdProject);
+  assert.deepEqual(createdProject.dotIds, []);
+  assert.equal(createdProject.root, repo);
+  assert.equal(createdProject.icon, 'code-xml');
+  assert.equal(await app.evaluate(() => globalThis.__spec005ConfirmOptions.length), 0);
+  assert.ok((await client.request({ method: 'projects.list' })).some((item) => item.id === createdProject.id));
+  result.checks.push('cancelamento não grava; raiz Git inválida e raiz indisponível recusadas; diretório com espaços e ícone persistidos; projeto criado sem Dot e sem confirmação nativa');
 
-  await page.locator('.k-workspace-select').getByRole('button', { expanded: false }).click();
+  await page.getByRole('button', { name: workspace.name, exact: true, expanded: false }).click();
   await page.getByRole('button', { name: 'Criar workspace', exact: true }).click();
-  workspaceDialog = page.getByRole('dialog', { name: 'Criar workspace' });
-  await workspaceDialog.getByLabel('Nome do workspace').fill('Workspace duplicata');
+  workspaceDialog = page.getByRole('dialog', { name: 'Criar workspace', exact: true });
+  await workspaceDialog.getByRole('textbox', { name: 'Nome do workspace', exact: true }).fill('Workspace duplicata');
   await workspaceDialog.getByRole('button', { name: 'Salvar', exact: true }).click();
   const secondWorkspace = (await client.request({ method: 'workspaces.list', value: { limit: 100 } })).items.find((item) => item.name === 'Workspace duplicata');
   assert.ok(secondWorkspace);
   result.stage = 'project-duplicate';
   await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
-  projectDialog = page.getByRole('dialog', { name: 'Criar projeto' });
-  await projectDialog.getByLabel('Nome', { exact: true }).fill('Mesmo repositório');
-  await projectDialog.getByLabel('Fixture Dot').check();
+  projectDialog = page.getByRole('dialog', { name: 'Criar projeto', exact: true });
+  await projectDialog.getByRole('textbox', { name: 'Nome', exact: true }).fill('Mesmo repositório');
   await app.evaluate(({ dialog }, root) => { globalThis.__spec005Folder = root; }, repo);
-  await projectDialog.getByRole('button', { name: 'Escolher…', exact: true }).click();
+  await chooseProjectFolder(projectDialog);
   await projectDialog.getByRole('button', { name: 'Criar projeto', exact: true }).click();
   await projectDialog.waitFor({ state: 'hidden' });
   await page.getByText(/Pasta já vinculada ao projeto/).waitFor();
   assert.equal((await client.request({ method: 'projects.list', value: { workspaceId: secondWorkspace.id, limit: 100 } })).items.length, 0);
-  assert.equal((await client.request({ method: 'projects.list', value: { workspaceId: workspace.id, limit: 100 } })).items[0].id, project.id);
+  assert.equal((await client.request({ method: 'projects.list', value: { workspaceId: workspace.id, limit: 100 } })).items[0].id, createdProject.id);
   await app.evaluate(({ dialog }) => {
     dialog.showOpenDialog = globalThis.__spec005OriginalOpen;
     dialog.showMessageBox = globalThis.__spec005OriginalMessage;
@@ -261,19 +260,28 @@ try {
   result.checks.push('repositório duplicado reconhecido e não reassociado ao workspace novo');
 
   result.stage = 'chats-runs-and-delivery';
-  await page.getByRole('button', { name: 'Nova conversa em Projeto com espaços', exact: true }).click();
+  // A autorização vem somente da fixture dots.json, separada do cadastro pela UI.
+  const project = (await client.request({ method: 'projects.list', value: { limit: 100 } })).items.find((item) => item.id === 'fixture-project');
+  assert.ok(project);
+  const runWorkspace = workspaces.find((item) => item.id === project.workspaceId);
+  assert.ok(runWorkspace);
+  await page.getByRole('button', { name: workspace.name, exact: true }).click();
+  await page.getByRole('button', { name: runWorkspace.name, exact: true }).click();
+  await page.getByRole('button', { name: runWorkspace.name, exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Nova conversa em Projeto de Runs', exact: true }).click();
   await page.getByRole('button', { name: 'Renomear conversa', exact: true }).click();
-  await page.getByLabel('Título da conversa', { exact: true }).fill('Conversa principal');
+  await page.getByRole('textbox', { name: 'Título da conversa', exact: true }).fill('Conversa principal');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();
-  let primaryChat = await client.request({ method: 'chats.list', value: { workspaceId: workspace.id, projectId: project.id, limit: 100 } });
+  let primaryChat = await client.request({ method: 'chats.list', value: { workspaceId: runWorkspace.id, projectId: project.id, limit: 100 } });
   const primary = primaryChat.items.find((item) => item.title === 'Conversa principal');
   assert.ok(primary);
   assert.equal((await client.request({ method: 'chats.runs.list', value: { chatId: primary.id, limit: 100 } })).items.length, 0);
-  await page.getByLabel('Nova mensagem').fill('SPEC005_PRIVATE_TEST_MESSAGE');
+  await assert.rejects(() => page.evaluate(({ projectId, chatId }) => window.eros.startRun('unauthorized-dot', projectId, 'ask', false, chatId), { projectId: project.id, chatId: primary.id }), /Dot não autorizado para este projeto/);
+  await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).fill('SPEC005_PRIVATE_TEST_MESSAGE');
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
   await page.getByText('SPEC005_PRIVATE_TEST_MESSAGE', { exact: true }).waitFor();
-  await page.getByRole('button', { name: /^Terminal e execuções/ }).click();
+  await page.locator('summary', { hasText: 'Terminal e execuções' }).click();
   await page.getByRole('button', { name: 'Iniciar execução', exact: true }).click();
   let primaryRuns = await until(async () => {
     const pageOfRuns = await client.request({ method: 'chats.runs.list', value: { chatId: primary.id, limit: 100 } });
@@ -289,16 +297,16 @@ try {
   await page.locator(`#run-${primaryRun.id} .terminal-shell [role="listitem"]`).getByText(/SPEC005_INPUT SPEC005_PRIVATE_TEST_MESSAGE/).waitFor();
   assert.equal((await client.request({ method: 'messages.list', value: { chatId: primary.id, limit: 100 } })).items.filter((message) => message.role === 'user').length, 1);
   assert.equal(await page.locator('.saved-message').count(), 1);
-  result.checks.push('criar chat não iniciou Run; Run vinculada; mensagem salva e enviada só ao PTY ativo, sem stdout persistido');
+  result.checks.push('criar chat não iniciou Run; Dot não autorizado recusado; Run vinculada; mensagem salva e enviada só ao PTY ativo, sem stdout persistido');
 
-  await page.getByRole('button', { name: 'Nova conversa em Projeto com espaços', exact: true }).click();
+  await page.getByRole('button', { name: 'Nova conversa em Projeto de Runs', exact: true }).click();
   await page.getByRole('button', { name: 'Renomear conversa', exact: true }).click();
-  await page.getByLabel('Título da conversa', { exact: true }).fill('Segunda conversa');
+  await page.getByRole('textbox', { name: 'Título da conversa', exact: true }).fill('Segunda conversa');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await page.getByRole('heading', { name: 'Segunda conversa', exact: true }).waitFor();
-  const secondChat = (await client.request({ method: 'chats.list', value: { workspaceId: workspace.id, projectId: project.id, limit: 100 } })).items.find((item) => item.title === 'Segunda conversa');
+  const secondChat = (await client.request({ method: 'chats.list', value: { workspaceId: runWorkspace.id, projectId: project.id, limit: 100 } })).items.find((item) => item.title === 'Segunda conversa');
   assert.ok(secondChat);
-  await page.getByLabel('Nova mensagem').fill('mensagem independente');
+  await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).fill('mensagem independente');
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
   const secondMessages = await until(async () => {
     const page = await client.request({ method: 'messages.list', value: { chatId: secondChat.id, limit: 100 } });
@@ -306,7 +314,7 @@ try {
     return page;
   });
   assert.equal(secondMessages.items.length, 1);
-  await page.getByRole('button', { name: /^Terminal e execuções/ }).click();
+  await page.locator('summary', { hasText: 'Terminal e execuções' }).click();
   await page.getByRole('button', { name: 'Iniciar execução', exact: true }).click();
   const secondRun = await until(async () => {
     const runs = (await client.request({ method: 'chats.runs.list', value: { chatId: secondChat.id, limit: 100 } })).items;
@@ -324,7 +332,7 @@ try {
 
   await recordSeries('conversationSwitching', async (round) => {
     const title = round % 2 ? 'Conversa principal' : 'Segunda conversa';
-    await openConversation(page, title);
+    await openConversation(page, title, `${runWorkspace.name} / ${project.name}`);
     await page.getByRole('heading', { name: title, exact: true }).waitFor();
     const selectedRun = title === 'Conversa principal' ? primaryRun : secondRun;
     await page.locator(`#run-${selectedRun.id}`).waitFor();
@@ -334,90 +342,91 @@ try {
   result.checks.push('troca entre conversas reanexa as mesmas sessões, sem iniciar nem cancelar Runs');
 
   result.stage = 'favorites-recent-free-move';
-  await openConversation(page, 'Conversa principal');
+  await openConversation(page, 'Conversa principal', `${runWorkspace.name} / ${project.name}`);
   await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();
-  await page.locator('.chat-heading-actions').getByRole('button', { name: /Favoritar/ }).click();
-  // Sem navegação global equivalente; preservar a checagem de escopo (DIVIDAS #11).
-  await page.getByRole('button', { name: 'Conversas livres', exact: true }).click();
+  await page.getByRole('button', { name: 'Favoritar conversa', exact: true }).click();
+  const favorites = () => page.locator('section.k-group').filter({ has: page.getByRole('heading', { name: 'Favoritos', exact: true }) });
+  const freeConversations = () => page.locator('section.k-group').filter({ has: page.getByRole('heading', { name: 'Conversas livres', exact: true }) });
   await page.getByRole('button', { name: 'Nova conversa livre', exact: true }).click();
   await page.getByRole('button', { name: 'Renomear conversa', exact: true }).click();
-  await page.getByLabel('Título da conversa', { exact: true }).fill('Conversa livre de teste');
+  await page.getByRole('textbox', { name: 'Título da conversa', exact: true }).fill('Conversa livre de teste');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
-  await page.getByText('Conversa local — vincule um projeto para executar um agente.', { exact: true }).waitFor();
+  await page.locator('.chat-heading').getByText(`${runWorkspace.name} / Conversa livre`, { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Vincular a projeto', exact: true }).waitFor();
   assert.equal(await page.locator('.run-desk').count(), 0);
-  await page.getByLabel('Nova mensagem').fill('histórico local antes do vínculo');
+  await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).fill('histórico local antes do vínculo');
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
-  const freeChat = (await client.request({ method: 'chats.list', value: { scope: 'free', limit: 100 } })).items.find((item) => item.title === 'Conversa livre de teste');
+  const freeChat = (await client.request({ method: 'chats.list', value: { workspaceId: runWorkspace.id, scope: 'free', limit: 100 } })).items.find((item) => item.title === 'Conversa livre de teste');
   assert.ok(freeChat);
   await until(async () => {
     const messages = await client.request({ method: 'messages.list', value: { chatId: freeChat.id, limit: 100 } });
     assert.equal(messages.items.length, 1);
   });
-  await page.locator('.chat-heading-actions').getByRole('button', { name: /Favoritar/ }).click();
+  await page.getByRole('button', { name: 'Favoritar conversa', exact: true }).click();
   const draftText = 'rascunho sobrevive à troca de contexto';
-  await page.getByLabel('Nova mensagem').fill(draftText);
+  await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).fill(draftText);
   await until(async () => {
     const current = await client.request({ method: 'chats.get', value: { chatId: freeChat.id } });
     assert.equal(current.chat.draft, draftText);
   });
-  const globalNavigation = { workspaceId: null, projectId: null, chatId: freeChat.id };
-  await page.locator('.global-chat-sidebar .chat-row-open').filter({ hasText: 'Conversa livre de teste' }).click();
+  const freeNavigation = { workspaceId: runWorkspace.id, projectId: null, chatId: freeChat.id };
+  await freeConversations().getByRole('button', { name: 'Conversa livre de teste', exact: true }).click();
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
-  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), globalNavigation);
-  await page.getByRole('button', { name: 'Favoritos', exact: true }).click();
-  await page.locator('.global-chat-sidebar .chat-row-open').filter({ hasText: 'Conversa principal' }).waitFor();
-  await page.locator('.global-chat-sidebar .chat-row-open').filter({ hasText: 'Conversa livre de teste' }).click();
+  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), freeNavigation);
+  await favorites().getByRole('button', { name: 'Conversa principal', exact: true }).waitFor();
+  await favorites().getByRole('button', { name: 'Conversa livre de teste', exact: true }).click();
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
-  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), globalNavigation);
-  await page.getByRole('button', { name: 'Recentes', exact: true }).click();
-  await page.locator('.global-chat-sidebar .chat-row-open').filter({ hasText: 'Conversa livre de teste' }).click();
+  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), freeNavigation);
+  await page.getByRole('textbox', { name: 'Buscar projetos e conversas', exact: true }).focus();
+  await page.getByRole('heading', { name: 'Recentes · todos os workspaces', exact: true }).waitFor();
+  await page.getByRole('button', { name: `Conversa livre de teste ${runWorkspace.name} / Conversa livre`, exact: true }).click();
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
   assert.equal((await client.request({ method: 'chats.get', value: { chatId: freeChat.id } })).chat.draft, draftText);
-  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), globalNavigation);
+  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), freeNavigation);
   await page.reload();
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
-  await page.getByLabel('Nova mensagem').waitFor();
-  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), globalNavigation);
-  assert.equal(await page.getByLabel('Nova mensagem').inputValue(), draftText);
+  await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).waitFor();
+  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), freeNavigation);
+  assert.equal(await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).inputValue(), draftText);
   await page.getByText('histórico local antes do vínculo', { exact: true }).waitFor();
   assert.equal((await client.request({ method: 'chats.runs.list', value: { chatId: freeChat.id, limit: 100 } })).items.length, 0);
 
-  const globalWindowClosed = page.waitForEvent('close');
+  const freeWindowClosed = page.waitForEvent('close');
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
-  await globalWindowClosed;
+  await freeWindowClosed;
   assert.equal((await client.request({ method: 'ping' })).pid, d.pid);
   assert.ok(process.kill(primaryRun.pid, 0));
   assert.ok(process.kill(secondRun.pid, 0));
-  const globalWindowOpened = app.waitForEvent('window');
+  const freeWindowOpened = app.waitForEvent('window');
   secondInstance = spawn(harnessRequire('electron'), ['dist/desktop/main.cjs'], { env: ctx.env, stdio: 'ignore' });
-  const globalInstanceExit = once(secondInstance, 'exit');
-  page = await globalWindowOpened;
+  const freeInstanceExit = once(secondInstance, 'exit');
+  page = await freeWindowOpened;
   page.setDefaultTimeout(12000);
   listenForPageErrors(page);
   await page.getByRole('heading', { name: 'Conversa livre de teste', exact: true }).waitFor();
-  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), globalNavigation);
-  assert.equal(await page.getByLabel('Nova mensagem').inputValue(), draftText);
+  assert.deepEqual(await page.evaluate(() => window.eros.navigation()), freeNavigation);
+  assert.equal(await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).inputValue(), draftText);
   await page.getByText('histórico local antes do vínculo', { exact: true }).waitFor();
   assert.equal((await client.request({ method: 'chats.runs.list', value: { chatId: freeChat.id, limit: 100 } })).items.length, 0);
   await openDiagnostics(page);
-  await openConversation(page, 'Conversa livre de teste');
-  const [globalInstanceCode] = await globalInstanceExit;
-  assert.equal(globalInstanceCode, 0);
-  result.checks.push('conversa global aberta por Conversas livres, Favoritos e Recentes mantém o mesmo ID e escopo null/null após reload e reabertura; mensagem/rascunho intactos e nenhuma Run criada');
+  await openConversation(page, 'Conversa livre de teste', `${runWorkspace.name} / Conversa livre`);
+  const [freeInstanceCode] = await freeInstanceExit;
+  assert.equal(freeInstanceCode, 0);
+  result.checks.push('conversa livre aberta pela sidebar e pelos Recentes da busca mantém o mesmo ID e workspace, sem projeto após reload e reabertura; mensagem/rascunho intactos e nenhuma Run criada');
 
   await page.getByRole('button', { name: 'Vincular a projeto', exact: true }).click();
-  let moveDialog = page.getByRole('dialog', { name: 'Vincular conversa a projeto' });
-  await moveDialog.getByLabel('Projeto de destino').selectOption(project.id);
-  await moveDialog.getByLabel('Dot para esta conversa').selectOption('fixture-dot');
+  let moveDialog = page.getByRole('dialog', { name: 'Vincular conversa a projeto', exact: true });
+  await moveDialog.getByRole('combobox', { name: 'Projeto de destino', exact: true }).selectOption(project.id);
+  await moveDialog.getByRole('combobox', { name: 'Dot para esta conversa', exact: true }).selectOption('fixture-dot');
   await moveDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
   assert.equal((await client.request({ method: 'chats.get', value: { chatId: freeChat.id } })).chat.projectId, null);
   await page.getByRole('button', { name: 'Vincular a projeto', exact: true }).click();
-  moveDialog = page.getByRole('dialog', { name: 'Vincular conversa a projeto' });
-  await moveDialog.getByLabel('Projeto de destino').selectOption(project.id);
-  await moveDialog.getByLabel('Dot para esta conversa').selectOption('fixture-dot');
+  moveDialog = page.getByRole('dialog', { name: 'Vincular conversa a projeto', exact: true });
+  await moveDialog.getByRole('combobox', { name: 'Projeto de destino', exact: true }).selectOption(project.id);
+  await moveDialog.getByRole('combobox', { name: 'Dot para esta conversa', exact: true }).selectOption('fixture-dot');
   await moveDialog.getByText(/O histórico, o ID e o favorito serão preservados/).waitFor();
-  await moveDialog.getByRole('button', { name: 'Confirmar movimentação' }).click();
+  await moveDialog.getByRole('button', { name: 'Confirmar movimentação', exact: true }).click();
   const moved = await until(async () => {
     const current = await client.request({ method: 'chats.get', value: { chatId: freeChat.id } });
     assert.equal(current.chat.projectId, project.id);
@@ -426,13 +435,11 @@ try {
   });
   assert.equal(moved.chat.favorite, true);
   assert.equal((await client.request({ method: 'messages.list', value: { chatId: freeChat.id, limit: 100 } })).items.length, 1);
-  // Sem navegação global equivalente; preservar a checagem de escopo (DIVIDAS #11).
-  await page.getByRole('button', { name: 'Conversas livres', exact: true }).click();
-  await until(async () => assert.equal(await page.locator('.global-chat-sidebar .chat-row-open').filter({ hasText: 'Conversa livre de teste' }).count(), 0));
-  result.checks.push('favoritos/recentes globais; conversa livre sem agente; rascunho persistente; mover com confirmação e cancelamento preserva ID, favorito e mensagem antiga');
+  await until(async () => assert.equal(await freeConversations().getByRole('button', { name: 'Conversa livre de teste', exact: true }).count(), 0));
+  result.checks.push('favoritos do workspace e recentes pela busca; conversa livre sem agente; rascunho persistente; mover com confirmação e cancelamento preserva ID, favorito e mensagem antiga');
 
   result.stage = 'history-pagination';
-  const history = await client.request({ method: 'chats.create', value: { workspaceId: workspace.id, projectId: project.id, dotId: 'fixture-dot', title: 'Histórico paginado', operationId: randomUUID() } });
+  const history = await client.request({ method: 'chats.create', value: { workspaceId: runWorkspace.id, projectId: project.id, dotId: 'fixture-dot', title: 'Histórico paginado', operationId: randomUUID() } });
   let historyDetails = history;
   for (let index = 0; index < 105; index++) {
     const saved = await client.request({ method: 'messages.save', value: { chatId: history.chat.id, body: `entrada ${String(index + 1).padStart(3, '0')} · ${'x'.repeat(140)}`, expectedRevision: historyDetails.chat.revision, operationId: randomUUID() } });
@@ -440,7 +447,7 @@ try {
     if (index % 15 === 14) await wait(250);
   }
   await page.getByRole('button', { name: 'Início', exact: true }).click();
-  await openConversation(page, 'Histórico paginado');
+  await openConversation(page, 'Histórico paginado', `${runWorkspace.name} / ${project.name}`);
   await page.getByRole('heading', { name: 'Histórico paginado', exact: true }).waitFor();
   await until(async () => assert.equal(await page.locator('.saved-message').count(), 100));
   await page.getByRole('button', { name: 'Carregar próxima página do histórico', exact: true }).click();
@@ -477,7 +484,7 @@ try {
   result.artifacts.push(compactShot);
   result.checks.push('layouts de 900px e 1440px sem overflow horizontal');
 
-  await openConversation(page, 'Conversa principal');
+  await openConversation(page, 'Conversa principal', `${runWorkspace.name} / ${project.name}`);
   await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();
   await page.locator(`#run-${primaryRun.id}`).waitFor();
   await recordSeries('windowClosed', async (round) => {
@@ -506,14 +513,14 @@ try {
   assert.equal(restoredRun.state, 'running');
   await page.locator(`#run-${primaryRun.id} .terminal-shell [role="listitem"]`).getByText(/SPEC005_READY fixture-dot/).waitFor();
   await openDiagnostics(page);
-  await openConversation(page, 'Conversa principal');
+  await openConversation(page, 'Conversa principal', `${runWorkspace.name} / ${project.name}`);
   await recordSeries('windowReopened', async (round) => {
     if (round % 2 === 0) {
-      await openConversation(page, 'Segunda conversa');
+      await openConversation(page, 'Segunda conversa', `${runWorkspace.name} / ${project.name}`);
       await page.getByRole('heading', { name: 'Segunda conversa', exact: true }).waitFor();
       await page.locator(`#run-${secondRun.id}`).waitFor();
     } else {
-      await openConversation(page, 'Conversa principal');
+      await openConversation(page, 'Conversa principal', `${runWorkspace.name} / ${project.name}`);
       await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();
       await page.locator(`#run-${primaryRun.id}`).waitFor();
     }
@@ -526,10 +533,11 @@ try {
   assert.equal(await page.locator('.history-row').count(), 0);
   assert.ok((await client.request({ method: 'runs.list', value: { limit: 100 } })).some((run) => run.id === primaryRun.id));
   await page.getByRole('button', { name: 'Início', exact: true }).click();
-  await openConversation(page, 'Conversa principal');
+  await openConversation(page, 'Conversa principal', `${runWorkspace.name} / ${project.name}`);
   await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Recentes', exact: true }).click();
-  await page.locator('.global-chat-sidebar .chat-row-open').filter({ hasText: 'Conversa principal' }).waitFor();
+  await page.getByRole('textbox', { name: 'Buscar projetos e conversas', exact: true }).focus();
+  await page.getByRole('heading', { name: 'Recentes · todos os workspaces', exact: true }).waitFor();
+  await page.getByRole('button', { name: `Conversa principal ${runWorkspace.name} / ${project.name}`, exact: true }).waitFor();
   const report = await page.evaluate(() => window.eros.report());
   assert.ok(!report.includes('SPEC005_PRIVATE_TEST_MESSAGE'));
   const notificationState = await page.evaluate(() => window.eros.notifications());

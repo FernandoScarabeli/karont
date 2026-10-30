@@ -443,6 +443,11 @@ try {
   assert.equal(linkedFreeTask.origin.chatId, globalChat.chat.id);
   assert.equal((await request('messages.list', { chatId: globalChat.chat.id, limit: 100 })).items.length, 1, '/kanban não criou mensagem de comando');
 
+  // O rascunho do /kanban é limpo de forma assíncrona; digitar antes disso perde o texto (DIVIDAS #14).
+  await until(async () => {
+    assert.equal((await request('chats.get', { chatId: globalChat.chat.id })).chat.draft, '');
+    assert.equal(await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).inputValue(), '');
+  });
   const sourceText = 'Mensagem salva usada como descrição inicial.';
   await page.getByRole('textbox', { name: 'Nova mensagem', exact: true }).fill(sourceText);
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();

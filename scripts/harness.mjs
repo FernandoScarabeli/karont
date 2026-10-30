@@ -11,11 +11,15 @@ export async function openDiagnostics(page) {
   await page.getByText('Daemon conectado', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Diagnóstico e laboratório', exact: true }).click();
 }
-export async function openConversation(page, title) {
+export async function openConversation(page, title, origin) {
   await page.getByRole('textbox', { name: 'Buscar projetos e conversas', exact: true }).fill(title);
   // O resultado acessível inclui o título e a origem, mesmo fora do workspace atual.
-  await page.getByRole('button', { name: new RegExp(`^${RegExp.escape(title)} .+ / .+$`) }).click();
+  const name = origin ? `${title} ${origin}` : new RegExp(`^${RegExp.escape(title)} .+ / .+$`);
+  await page.getByRole('button', { name, exact: true }).click();
   await page.getByRole('heading', { name: title, exact: true }).waitFor();
+}
+export async function chooseProjectFolder(dialog) {
+  await dialog.locator('button', { hasText: 'Escolher…' }).click();
 }
 export async function until(fn) {
   let last;
