@@ -13,7 +13,7 @@ function makeRepo(root, name) {
   const git = (...args) => require('node:child_process').execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
   git('init', '--quiet');
   git('config', 'user.email', 'spec005@local.invalid');
-  git('config', 'user.name', 'eros SPEC-005 E2E');
+  git('config', 'user.name', 'karont SPEC-005 E2E');
   fs.writeFileSync(path.join(repo, 'base.txt'), 'baseline\n');
   git('add', '.');
   git('commit', '--quiet', '-m', 'baseline');
@@ -40,8 +40,8 @@ fs.writeFileSync(config, JSON.stringify({
     { id: 'unauthorized-dot', name: 'Dot sem autorização', role: 'Fixture local sem concessão', executable: process.execPath, adapter: 'generic', autoResume: false, args: ['-e', cli, 'unauthorized-dot'], projectIds: [] },
   ],
 }), { mode: 0o600 });
-ctx.env.EROS_DOTS_CONFIG = config;
-Object.assign(process.env, { EROS_RUNTIME_DIR: ctx.env.EROS_RUNTIME_DIR, EROS_DATA_DIR: ctx.env.EROS_DATA_DIR, EROS_DOTS_CONFIG: config });
+ctx.env.KARONT_DOTS_CONFIG = config;
+Object.assign(process.env, { KARONT_RUNTIME_DIR: ctx.env.KARONT_RUNTIME_DIR, KARONT_DATA_DIR: ctx.env.KARONT_DATA_DIR, KARONT_DOTS_CONFIG: config });
 const result = { runId: stamp, status: 'running', stage: 'setup', checks: [], artifacts: [], metrics: {} };
 let app;
 let d;
@@ -84,7 +84,7 @@ async function sampleProcesses() {
 }
 async function recordSeries(name, action) {
   const samples = [];
-  const skipMeasurements = process.env.EROS_TEST_SKIP_SPEC005_METRICS === '1';
+  const skipMeasurements = process.env.KARONT_TEST_SKIP_SPEC005_METRICS === '1';
   for (let round = 0; round < 5; round++) {
     if (action) await action(round);
     if (!skipMeasurements) samples.push({ round: round + 1, ...(await sampleProcesses()) });
@@ -123,8 +123,8 @@ try {
   assert.equal(await page.evaluate(() => window.karont.runtime.sandboxed && window.karont.runtime.contextIsolated), true);
   await page.getByRole('button', { name: 'Início', exact: true }).click();
   await page.getByRole('heading', { name: /^(Bom dia|Boa tarde|Boa noite)\.$/, exact: true }).waitFor();
-  if (process.env.EROS_TEST_SKIP_SPEC005_METRICS !== '1') await recordSeries('idle');
-  result.checks.push(process.env.EROS_TEST_SKIP_SPEC005_METRICS === '1'
+  if (process.env.KARONT_TEST_SKIP_SPEC005_METRICS !== '1') await recordSeries('idle');
+  result.checks.push(process.env.KARONT_TEST_SKIP_SPEC005_METRICS === '1'
     ? 'shell Workspaces inicia sem criar Run; referência ociosa omitida na execução de diagnóstico'
     : 'shell Workspaces inicia sem criar Run; amostras de referência ociosa: 5');
 

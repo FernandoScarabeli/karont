@@ -39,8 +39,8 @@ try {
   // OS caches are intentionally NOT dropped; no privileged host changes.
   const cold = environment();
   Object.assign(process.env, {
-    EROS_RUNTIME_DIR: cold.env.EROS_RUNTIME_DIR,
-    EROS_DATA_DIR: cold.env.EROS_DATA_DIR,
+    KARONT_RUNTIME_DIR: cold.env.KARONT_RUNTIME_DIR,
+    KARONT_DATA_DIR: cold.env.KARONT_DATA_DIR,
   });
   const coldClient = new Client();
   const preflightStart = performance.now();

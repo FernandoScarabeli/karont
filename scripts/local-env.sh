@@ -8,5 +8,5 @@ if [[ ! -x "$karont_root/.tools/node-v24.22.1-linux-x64/bin/node" ]]; then
 fi
 export PATH="$karont_root/.tools/node-v24.22.1-linux-x64/bin:$PATH"
 export npm_config_cache="$karont_root/.tools/npm-cache"
-export EROS_DOTS_CONFIG="$karont_root/.tools/dots.json"
+export KARONT_DOTS_CONFIG="$karont_root/.tools/dots.json"
 unset karont_root

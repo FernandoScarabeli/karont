@@ -13,7 +13,7 @@ function makeRepo(root, name) {
   const git = (...args) => harnessRequire('node:child_process').execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
   git('init', '--quiet');
   git('config', 'user.email', 'spec006@local.invalid');
-  git('config', 'user.name', 'eros SPEC-006 E2E');
+  git('config', 'user.name', 'karont SPEC-006 E2E');
   fs.writeFileSync(path.join(repo, 'fixture.txt'), 'synthetic fixture\n');
   git('add', '.');
   git('commit', '--quiet', '-m', 'synthetic fixture');
@@ -46,8 +46,8 @@ fs.writeFileSync(config, JSON.stringify({
     { id: 'dot-no-project', name: 'Dot sem projeto', role: 'Fixture local sem grant', executable: process.execPath, adapter: 'generic', autoResume: false, args: ['-e', cli], projectIds: [] },
   ],
 }), { mode: 0o600 });
-ctx.env.EROS_DOTS_CONFIG = config;
-Object.assign(process.env, { EROS_RUNTIME_DIR: ctx.env.EROS_RUNTIME_DIR, EROS_DATA_DIR: ctx.env.EROS_DATA_DIR, EROS_DOTS_CONFIG: config });
+ctx.env.KARONT_DOTS_CONFIG = config;
+Object.assign(process.env, { KARONT_RUNTIME_DIR: ctx.env.KARONT_RUNTIME_DIR, KARONT_DATA_DIR: ctx.env.KARONT_DATA_DIR, KARONT_DOTS_CONFIG: config });
 
 const result = { runId: stamp, status: 'running', stage: 'setup', checks: [], artifacts: [], metrics: {}, evidence: {} };
 const client = new Client();

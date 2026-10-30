@@ -31,12 +31,12 @@ jobs:
       - name: Phase 0 Electron sandbox and lifecycle
         run: xvfb-run -a dbus-run-session -- npm run test:desktop
       - name: Fases 1–4A continuity, recovery, workspaces and PTY lifecycle
-        run: EROS_TEST_NOTIFICATIONS=1 xvfb-run -a dbus-run-session -- npm run test:e2e
+        run: KARONT_TEST_NOTIFICATIONS=1 xvfb-run -a dbus-run-session -- npm run test:e2e
       - name: Upload benchmark and E2E evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eros-linux-phase4a-evidence
+          name: karont-linux-phase4a-evidence
           path: |
             benchmarks/runs/
             benchmarks/spec005/

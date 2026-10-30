@@ -16,7 +16,7 @@ class Notifications(dbus.service.Object):
         return ['body', 'actions']
     @dbus.service.method('org.freedesktop.Notifications', in_signature='', out_signature='ssss')
     def GetServerInformation(self):
-        return ('eros-test', 'eros', '1.0', '1.2')
+        return ('karont-test', 'karont', '1.0', '1.2')
     @dbus.service.method('org.freedesktop.Notifications', in_signature='susssasa{sv}i', out_signature='u')
     def Notify(self, app, replaces, icon, summary, body, actions, hints, timeout):
         assert str(app) == 'karont', 'unexpected application identity'

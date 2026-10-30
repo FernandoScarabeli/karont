@@ -15,7 +15,7 @@ fs.mkdirSync(repo);
 const git = (...args) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
 git('init', '--quiet');
 git('config', 'user.email', 'e2e@local.invalid');
-git('config', 'user.name', 'eros e2e');
+git('config', 'user.name', 'karont e2e');
 fs.writeFileSync(path.join(repo, 'base.txt'), 'before\n');
 git('add', '.');
 git('commit', '--quiet', '-m', 'fixture');
@@ -37,11 +37,11 @@ fs.writeFileSync(
   }),
   { mode: 0o600 },
 );
-ctx.env.EROS_DOTS_CONFIG = config;
+ctx.env.KARONT_DOTS_CONFIG = config;
 Object.assign(process.env, {
-  EROS_RUNTIME_DIR: ctx.env.EROS_RUNTIME_DIR,
-  EROS_DATA_DIR: ctx.env.EROS_DATA_DIR,
-  EROS_DOTS_CONFIG: config,
+  KARONT_RUNTIME_DIR: ctx.env.KARONT_RUNTIME_DIR,
+  KARONT_DATA_DIR: ctx.env.KARONT_DATA_DIR,
+  KARONT_DOTS_CONFIG: config,
 });
 const notificationLog = path.join(ctx.root, 'notifications.jsonl');
 let notificationService;
@@ -134,7 +134,7 @@ async function measure(electronPid, daemon, cliPids = []) {
   };
 }
 try {
-  if (process.env.EROS_TEST_NOTIFICATIONS === '1') {
+  if (process.env.KARONT_TEST_NOTIFICATIONS === '1') {
     notificationService = spawn(
       '/usr/bin/python3',
       ['tests/fixtures/notification-service.py', notificationLog],
@@ -219,10 +219,10 @@ try {
     page.evaluate(() => window.karont.startRun('alpha', 'fixture', 'readOnly')),
   );
   await app.evaluate(({ dialog }) => {
-    globalThis.__erosOriginalConfirm = dialog.showMessageBox;
-    globalThis.__erosConfirms = 0;
+    globalThis.__karontOriginalConfirm = dialog.showMessageBox;
+    globalThis.__karontConfirms = 0;
     dialog.showMessageBox = async () => {
-      globalThis.__erosConfirms++;
+      globalThis.__karontConfirms++;
       return { response: 0, checkboxChecked: false };
     };
   });
@@ -230,12 +230,12 @@ try {
     page.evaluate(() => window.karont.startRun('alpha', 'fixture', 'full', true)),
   );
   assert.equal(
-    await app.evaluate(() => globalThis.__erosConfirms),
+    await app.evaluate(() => globalThis.__karontConfirms),
     1,
     'renderer não pode pular confirmação nativa de acesso total',
   );
   await app.evaluate(({ dialog }) => {
-    dialog.showMessageBox = globalThis.__erosOriginalConfirm;
+    dialog.showMessageBox = globalThis.__karontOriginalConfirm;
   });
   await page.getByRole('button', { name: 'Fechar painel', exact: true }).click();
   result.checks.push('Diagnóstico, prévia de relatório sanitizado e IPC inválido recusado');

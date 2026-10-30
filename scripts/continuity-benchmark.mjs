@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url),
   { openDatabase } = require('../dist/daemon/database.cjs'),
   { Continuity } = require('../dist/daemon/continuity.cjs'),
   { AutoResumeScheduler } = require('../dist/daemon/auto-resume.cjs');
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-checkpoint-bench-'));
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-checkpoint-bench-'));
 let db, scheduler;
 const result = {
   environment: host(),
@@ -137,7 +137,7 @@ try {
       }),
       { mode: 0o600 },
     );
-    context.env.EROS_DOTS_CONFIG = config;
+    context.env.KARONT_DOTS_CONFIG = config;
     managed = await daemon(context.env);
     for (let i = 0; i < 20; i++)
       await managed.client.request({

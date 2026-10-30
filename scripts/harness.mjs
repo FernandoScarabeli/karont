@@ -34,12 +34,12 @@ export async function until(fn) {
   throw last;
 }
 export function environment() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-bench-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-bench-'));
   const env = {
     ...process.env,
-    EROS_RUNTIME_DIR: path.join(root, 'run'),
-    EROS_DATA_DIR: path.join(root, 'data'),
-    EROS_DESKTOP_DATA: path.join(root, 'desktop'),
+    KARONT_RUNTIME_DIR: path.join(root, 'run'),
+    KARONT_DATA_DIR: path.join(root, 'data'),
+    KARONT_DESKTOP_DATA: path.join(root, 'desktop'),
   };
   if (!env.XDG_RUNTIME_DIR && process.getuid) env.XDG_RUNTIME_DIR = `/run/user/${process.getuid()}`;
   if (!env.XAUTHORITY && env.DISPLAY && env.XDG_RUNTIME_DIR && fs.existsSync(env.XDG_RUNTIME_DIR)) {
@@ -60,8 +60,8 @@ export async function daemon(env) {
   const errors = [];
   child.stderr.on('data', (v) => errors.push(v.toString()));
   Object.assign(process.env, {
-    EROS_RUNTIME_DIR: env.EROS_RUNTIME_DIR,
-    EROS_DATA_DIR: env.EROS_DATA_DIR,
+    KARONT_RUNTIME_DIR: env.KARONT_RUNTIME_DIR,
+    KARONT_DATA_DIR: env.KARONT_DATA_DIR,
   });
   const client = new Client();
   const state = await until(() => client.request({ method: 'snapshot' })).catch((e) => {
@@ -170,7 +170,7 @@ export function host() {
     node: process.version,
     electron: require('electron/package.json').version,
     testEnvironment:
-      process.env.EROS_TEST_ENVIRONMENT ?? 'local desktop; uncontrolled concurrent load',
+      process.env.KARONT_TEST_ENVIRONMENT ?? 'local desktop; uncontrolled concurrent load',
     display: process.env.WAYLAND_DISPLAY ? 'Wayland' : process.env.DISPLAY ? 'X11' : 'none',
     distribution: fs.readFileSync('/etc/os-release', 'utf8'),
     notes:

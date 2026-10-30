@@ -22,7 +22,7 @@ Problemas encontrados durante a refatoração ([SPEC_REFATORACAO.md](SPEC_REFATO
 | 16 | 31 links Markdown já quebrados no snapshot inicial: caminhos para `docs/BENCHMARKS.md` e `docs/SANDBOX_LINUX.md`, além de PNGs/JSONs ausentes em `benchmarks/history/`, `runs/` e `series/`. Nenhum aponta para os dez documentos movidos. | `benchmarks/history/{initial-phase0,pre-spec001,pre-spec003,pre-spec004}/RESULTADOS.md` | Fora de escopo; revisar ao recuperar as evidências históricas |
 | 17 | Seis referências a artefatos de validação ausentes já estavam quebradas no snapshot inicial: `benchmarks/spec003-validation/` e cinco logs em `benchmarks/spec004/`. Os caminhos relativos dos documentos foram ajustados, mas os artefatos não existem no repositório e não há destino equivalente confirmado. | `docs/historico/SPEC_003_IMPLEMENTACAO.md:79`, `docs/historico/SPEC_004_IMPLEMENTACAO.md:49-50` | Fora de escopo; recuperar os artefatos históricos |
 | 18 | Os relatórios históricos ainda apontam para PNGs e JSONs em `runs/` e `series/` que saíram do índice na T3. Os arquivos continuam no disco local, mas os links não terão destino em clones limpos. | `benchmarks/history/*/RESULTADOS.md` | Revisar referências ao recuperar ou publicar as evidências históricas |
-| 19 | O helper usado pelos testes ainda cria diretórios temporários com o prefixo `eros-bench-`; a T4 não pode alterar `scripts/harness.mjs`. | `scripts/harness.mjs:37` | Refatoração – Fase 1, tarefa 6 (scripts) |
+| 19 | ~~O helper usado pelos testes ainda cria diretórios temporários com o prefixo `eros-bench-`; a T4 não podia alterar `scripts/harness.mjs`.~~ **Resolvido na Fase 1 (T6).** | `scripts/harness.mjs:37` | Resolvido |
 
 ## Mapeamento dos testes de desktop/E2E — Refatoração – Fase 1, tarefa 1
 

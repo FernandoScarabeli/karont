@@ -6,10 +6,10 @@ npm ci
 npm run check
 npm test
 npm run sandbox:diagnose
-export EROS_TEST_ENVIRONMENT="Debian13 QEMU10 KVM 2vCPU 4GiB Xvfb1440x1000x24 DBus software-GPU; host workloads uncontrolled"
+export KARONT_TEST_ENVIRONMENT="Debian13 QEMU10 KVM 2vCPU 4GiB Xvfb1440x1000x24 DBus software-GPU; host workloads uncontrolled"
 xvfb-run -a -s '-screen 0 1440x1000x24' dbus-run-session -- bash -euc '
   npm run test:desktop
-  EROS_TEST_NOTIFICATIONS=1 npm run test:e2e
+  KARONT_TEST_NOTIFICATIONS=1 npm run test:e2e
   npm run benchmark:series
 '
 npm run benchmark

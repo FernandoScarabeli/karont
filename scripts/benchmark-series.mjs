@@ -49,9 +49,9 @@ export function summarize(runs) {
 }
 
 if (path.resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
-  const rounds = Number(process.env.EROS_BENCH_ROUNDS ?? 5);
+  const rounds = Number(process.env.KARONT_BENCH_ROUNDS ?? 5);
   if (!Number.isInteger(rounds) || rounds < 5 || rounds > 30)
-    throw Error('EROS_BENCH_ROUNDS: inteiro de 5 a 30');
+    throw Error('KARONT_BENCH_ROUNDS: inteiro de 5 a 30');
   const id = new Date().toISOString().replace(/[:.]/g, '-');
   const dir = path.join('benchmarks', 'series', id);
   fs.mkdirSync(dir, { recursive: true });

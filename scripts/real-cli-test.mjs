@@ -6,14 +6,14 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url),
   { Client } = require('../dist/local/client.cjs');
-if (!process.env.EROS_REAL_CLI) throw Error('Escolha explícita da CLI é obrigatória');
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-real-'));
+if (!process.env.KARONT_REAL_CLI) throw Error('Escolha explícita da CLI é obrigatória');
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-real-'));
 fs.chmodSync(root, 0o700);
 const repo = path.join(root, 'repo');
 fs.mkdirSync(repo);
 for (const args of [
   ['init', '--quiet'],
-  ['config', 'user.name', 'eros-test'],
+  ['config', 'user.name', 'karont-test'],
   ['config', 'user.email', 'test@local.invalid'],
 ])
   execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
@@ -31,7 +31,7 @@ fs.writeFileSync(
         id: 'codex',
         name: 'Codex',
         role: 'Teste controlado',
-        executable: process.env.EROS_REAL_CLI,
+        executable: process.env.KARONT_REAL_CLI,
         adapter: 'codex',
         args: [],
         projectIds: ['fixture'],
@@ -41,9 +41,9 @@ fs.writeFileSync(
   { mode: 0o600 },
 );
 Object.assign(process.env, {
-  EROS_RUNTIME_DIR: path.join(root, 'run'),
-  EROS_DATA_DIR: path.join(root, 'data'),
-  EROS_DOTS_CONFIG: config,
+  KARONT_RUNTIME_DIR: path.join(root, 'run'),
+  KARONT_DATA_DIR: path.join(root, 'data'),
+  KARONT_DOTS_CONFIG: config,
 });
 const daemon = spawn(process.execPath, ['dist/daemon/entry.cjs'], {
   env: process.env,
@@ -106,7 +106,7 @@ try {
       method: 'terminal.write',
       value: {
         runId: run.id,
-        data: 'Altere apenas probe.txt para conter a linha after. Não execute outros comandos além do necessário para essa alteração. Ao terminar responda EROS_PROBE_DONE.\r',
+        data: 'Altere apenas probe.txt para conter a linha after. Não execute outros comandos além do necessário para essa alteração. Ao terminar responda KARONT_PROBE_DONE.\r',
       },
     });
     for (let n = 0; n < 45; n++) {
@@ -114,7 +114,7 @@ try {
       const output = clean();
       if (/Yes, proceed|Allow once|Approve|Allow this/i.test(output))
         evidence.nativeApprovalSeen = true;
-      if (/EROS_PROBE_DONE/.test(output) && n > 8) break;
+      if (/KARONT_PROBE_DONE/.test(output) && n > 8) break;
     }
     await client.request({ method: 'runs.cancel', value: { runId: run.id } });
     await wait(1500);

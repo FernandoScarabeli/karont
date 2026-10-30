@@ -17,7 +17,7 @@ function makeRepo(parent, name) {
   const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
   git('init', '--quiet');
   git('config', 'user.email', 'spec005@local.invalid');
-  git('config', 'user.name', 'eros SPEC-005');
+  git('config', 'user.name', 'karont SPEC-005');
   fs.writeFileSync(path.join(root, 'initial.txt'), 'fixture\n');
   git('add', '.');
   git('commit', '--quiet', '-m', 'fixture');
@@ -27,7 +27,7 @@ function makeRepo(parent, name) {
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-spec005-'));
   const repo = makeRepo(root, 'config repo with spaces');
-  const dbFile = path.join(root, 'eros.sqlite');
+  const dbFile = path.join(root, 'karont.sqlite');
   let db = openDatabase(dbFile);
   fs.chmodSync(dbFile, 0o600);
   const workspaceId = db.prepare("SELECT value FROM settings WHERE key='default_workspace_id'").get().value;
