@@ -189,7 +189,7 @@ try {
   await until(async () => {
     assert.ok(
       (await page.getByRole('textbox', { name: 'Prévia do relatório' }).inputValue()).includes(
-        '# eros',
+        '# Karont',
       ),
     );
     return true;
@@ -200,14 +200,14 @@ try {
   assert.ok(!report.includes(repo));
   await page.getByRole('button', { name: 'Copiar relatório', exact: true }).click();
   await page.getByText('Relatório copiado.', { exact: true }).waitFor();
-  assert.match(await app.evaluate(({ clipboard }) => clipboard.readText()), /# eros/);
+  assert.match(await app.evaluate(({ clipboard }) => clipboard.readText()), /# Karont/);
   const savedReport = path.join(ctx.root, 'saved-report.md');
   await app.evaluate(({ dialog }, file) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: file });
   }, savedReport);
   await page.getByRole('button', { name: 'Salvar Markdown', exact: true }).click();
   await until(() => {
-    assert.ok(fs.readFileSync(savedReport, 'utf8').includes('# eros'));
+    assert.ok(fs.readFileSync(savedReport, 'utf8').includes('# Karont'));
     return true;
   });
   assert.ok(!fs.readFileSync(savedReport, 'utf8').includes(repo));
