@@ -59,10 +59,10 @@ Uma VM Linux de teste com sandbox de Chromium suportado é outra opção, sem al
 Quando um helper **já estiver instalado e aprovado** (exemplo de caminho dedicado), executar como usuário comum, sem sudo:
 
 ```bash
-stat -Lc '%U %G %a %n' /usr/local/lib/eros-phase0/chrome-sandbox
+stat -Lc '%U %G %a %n' /usr/local/lib/karont-dev/chrome-sandbox
 # Esperado: root root 4755, e diretórios pais não graváveis pelo usuário.
-CHROME_DEVEL_SANDBOX=/usr/local/lib/eros-phase0/chrome-sandbox npm run sandbox:diagnose
-CHROME_DEVEL_SANDBOX=/usr/local/lib/eros-phase0/chrome-sandbox npm run test:desktop
+CHROME_DEVEL_SANDBOX=/usr/local/lib/karont-dev/chrome-sandbox npm run sandbox:diagnose
+CHROME_DEVEL_SANDBOX=/usr/local/lib/karont-dev/chrome-sandbox npm run test:desktop
 npm run benchmark:report
 ```
 

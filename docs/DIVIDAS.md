@@ -4,7 +4,7 @@ Problemas encontrados durante a refatoração ([SPEC_REFATORACAO.md](SPEC_REFATO
 
 | # | Item | Onde | Quando tratar |
 |---|---|---|---|
-| 1 | Onboarding manual: o usuário precisa editar `~/.config/eros/dots.json` à mão, com caminhos absolutos. | daemon / config | Refatoração – Fase 4 (tela de Dots) |
+| 1 | Onboarding manual: o usuário precisa editar `~/.config/karont/dots.json` à mão, com caminhos absolutos. | daemon / config | Refatoração – Fase 4 (tela de Dots) |
 | 2 | O Chat só guarda as mensagens do usuário; a resposta do agente aparece apenas no terminal. | chat | Fora desta entrega |
 | 3 | CPU alta (~77%) do Electron no cenário "editor" com digitação sintética (medido na VM). | desktop / editor | Refatoração – Fase 4 (investigar) |
 | 4 | Electron com a janela fechada ocupa ~275 MB PSS (tray), contra ~38 MB do daemon sozinho. | desktop / main | Refatoração – Fase 4 (decisão do usuário) |

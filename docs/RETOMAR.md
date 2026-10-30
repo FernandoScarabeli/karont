@@ -1,6 +1,6 @@
 # Retomar o trabalho (outro computador ou nova sessão)
 
-Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto da conversa anterior. Leia este arquivo inteiro antes de agir. Última atualização: 2026-10-30, ao fim da tarefa T3 da Fase 1.
+Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto da conversa anterior. Leia este arquivo inteiro antes de agir. Última atualização: 2026-10-30, ao fim da tarefa T7 da Fase 1.
 
 ## 1. O que ler, nesta ordem
 
@@ -13,15 +13,11 @@ Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto 
 ## 2. Onde parou
 
 - Branch da fase: `refactor/fase-1-faxina` (já no GitHub). Ainda **não há PR** da Fase 1; ele será aberto ao fim da fase, para `main`.
-- Concluídas: T1, T1b, T2, T3 e a reescrita do histórico (o repositório tem ~7 MB).
-- **Próxima: T4**, a renomeação eros → Karont nos pacotes compartilhados e no daemon. Já decidido pelo usuário (PROGRESSO, decisões 9–11):
-  - copiar `~/.config/eros` e `~/.local/share/eros` para as pastas `karont` na primeira abertura, **sem apagar as antigas**;
-  - o rótulo do handshake em `packages/local/src/wire.ts` muda de `eros:1` para `karont` (mudança de protocolo **aprovada**; depois de atualizar, reiniciar o daemon antigo uma vez);
-  - as Runs novas usam branches `karont/run-*` e as existentes ficam como estão;
-  - variáveis `EROS_*` continuam aceitas como alternativa às `KARONT_*`.
-- Depois: T5 a T11, na ordem do plano. Lembretes:
+- Concluídas: T1, T1b, T2, T3, a reescrita do histórico e a renomeação eros → Karont (T4 a T7). Detalhes em PROGRESSO.
+- **Próxima: T8**, configurar o Biome sem formatar nada (dependência nova já aprovada, decisão 2). Depois T9 a T11, na ordem do plano. Lembretes:
   - T8 (Biome) e T9 (formatação em massa) são **commits separados**; a T9 não leva nenhuma outra mudança.
   - A licença continua `UNLICENSED` (decisão 14).
+- O CI tem duas falhas intermitentes nos E2E (DIVIDAS #15 e #20). Se falhar, veja o log e rode de novo só o job; se for outra etapa, investigue.
 
 ## 3. Preparar a máquina
 

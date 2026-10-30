@@ -16,22 +16,22 @@ curl -fLO https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericc
 curl -fLO https://cloud.debian.org/images/cloud/trixie/latest/SHA512SUMS
 grep '  debian-13-genericcloud-amd64.qcow2$' SHA512SUMS | sha512sum --check -
 cd ../../..
-EROS_QEMU_PREFIX="$PWD/benchmarks/tmp/vm-repro/tools/usr" \
+KARONT_QEMU_PREFIX="$PWD/benchmarks/tmp/vm-repro/tools/usr" \
   bash scripts/vm/start.sh benchmarks/tmp/vm-repro/debian-13-genericcloud-amd64.qcow2
 ```
 
 O checksum precisa ser conferido com sucesso **antes** de iniciar a imagem. A URL `latest` muda; preserve imagem, manifesto e digest para repetir a mesma versão. O ensaio atual verificou SHA512 publicado por HTTPS; não realizou verificação PGP independente. Os pacotes host foram apenas extraídos com `dpkg-deb -x`, sem instalação ou scripts administrativos. A lista de pacotes em [tool-packages.txt](../benchmarks/spec001/tool-packages.txt) identifica os usados; revisões futuras dos repositórios podem mudar dependências.
 
-O cloud-init cria o usuário `eros`, sem senha/SSH root, e provisiona dependências **dentro da VM**, inclusive Node 24.21.0, cujo tarball é conferido pelo SHASUMS256 oficial. Não execute `provision-guest.sh` no host. Espere existir `/var/lib/eros-guest-ready`; em outro terminal:
+O cloud-init cria o usuário `karont`, sem senha/SSH root, e provisiona dependências **dentro da VM**, inclusive Node 24.21.0, cujo tarball é conferido pelo SHASUMS256 oficial. Não execute `provision-guest.sh` no host. Espere existir `/var/lib/karont-guest-ready`; em outro terminal:
 
 ```bash
 ssh -i benchmarks/tmp/vm-repro/id_ed25519 \
   -o UserKnownHostsFile=benchmarks/tmp/vm-repro/known_hosts \
-  -o StrictHostKeyChecking=accept-new -p 22220 eros@127.0.0.1 \
-  'test -f /var/lib/eros-guest-ready'
+  -o StrictHostKeyChecking=accept-new -p 22220 karont@127.0.0.1 \
+  'test -f /var/lib/karont-guest-ready'
 ```
 
-Copie somente o checkout para `/home/eros/eros` usando tar/scp, excluindo `.git`, `node_modules`, `dist` e **todo** `benchmarks/tmp` (contém discos e chave privada). Não encaminhe o SSH agent nem credenciais. Mantenha `package-lock.json`. Na VM, como `eros`, na raiz do checkout:
+Copie somente o checkout para `/home/karont/karont` usando tar/scp, excluindo `.git`, `node_modules`, `dist` e **todo** `benchmarks/tmp` (contém discos e chave privada). Não encaminhe o SSH agent nem credenciais. Mantenha `package-lock.json`. Na VM, como `karont`, na raiz do checkout:
 
 ```bash
 bash scripts/vm/validate-guest.sh

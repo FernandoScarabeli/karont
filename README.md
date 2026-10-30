@@ -46,12 +46,21 @@ Na raiz do repositório:
 
 ```bash
 npm ci
-mkdir -p ~/.config/eros
-cp config/dots.example.json ~/.config/eros/dots.json
-chmod 600 ~/.config/eros/dots.json
+mkdir -p ~/.config/karont
+cp config/dots.example.json ~/.config/karont/dots.json
+chmod 600 ~/.config/karont/dots.json
 ```
 
-Edite `~/.config/eros/dots.json`: informe a pasta absoluta do repositório em `root`, o caminho absoluto da CLI em `executable` e os projetos permitidos em `projectIds`. Para encontrar o executável, use `command -v codex` ou `command -v claude`. O arquivo deve ser acessível somente pelo seu usuário. **Não coloque credenciais nele**; autentique-se na CLI pelo próprio terminal.
+Edite `~/.config/karont/dots.json`: informe a pasta absoluta do repositório em `root`, o caminho absoluto da CLI em `executable` e os projetos permitidos em `projectIds`. Para encontrar o executável, use `command -v codex` ou `command -v claude`. O arquivo deve ser acessível somente pelo seu usuário. **Não coloque credenciais nele**; autentique-se na CLI pelo próprio terminal.
+
+## Vindo do nome antigo (eros)
+
+Na primeira abertura, as pastas antigas de configuração e dados (por padrão, `~/.config/eros` e `~/.local/share/eros`) são copiadas para `karont` se o destino ainda não existir.
+A configuração é copiada inteira; nos dados, `worktrees/` fica de fora. As pastas antigas não são apagadas.
+O aplicativo também aceita `EROS_RUNTIME_DIR`, `EROS_DATA_DIR`, `EROS_CONFIG_DIR`, `EROS_DOTS_CONFIG`, `EROS_DESKTOP_DATA` e `EROS_NODE_BINARY` como alternativas aos nomes `KARONT_*` correspondentes.
+Variáveis só de desenvolvimento (`KARONT_REAL_CLI`, `KARONT_BENCH_ROUNDS`, `KARONT_QEMU_PREFIX` e `KARONT_TEST_*`) não têm alternativa antiga.
+Depois de atualizar, feche o daemon antigo uma vez para que o handshake use o novo rótulo.
+Runs antigas mantêm as worktrees no local antigo e a branch `eros/run-*`; Runs novas usam `karont/run-*`.
 
 Depois compile e inicie o desktop:
 

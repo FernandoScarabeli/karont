@@ -23,7 +23,7 @@ Implementador e Revisor. Ambos usam `/usr/local/bin/codex`, perfil `codex` e
 argumentos vazios. Auto Resume está desativado nessa configuração, pois ainda
 não há adaptador certificado. Não há credenciais nesse arquivo.
 
-O script exporta `EROS_DOTS_CONFIG` apontando para esse JSON. Os demais dados do
+O script exporta `KARONT_DOTS_CONFIG` apontando para esse JSON. Os demais dados do
 aplicativo continuam nos diretórios XDG padrão. Não foi iniciada tarefa de IA
 nem alterada a autenticação do Codex; login, se necessário, ocorre pela CLI.
 

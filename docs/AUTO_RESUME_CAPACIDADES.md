@@ -8,12 +8,12 @@ Consulta à documentação oficial e investigação funcional limitada foram rea
 
 - [Comandos oficiais, incluindo resume e exec resume](https://learn.chatgpt.com/docs/developer-commands?surface=cli): seleção de sessão por ID e prompt posterior opcional.
 - [Codex App Server oficial](https://learn.chatgpt.com/docs/app-server): thread/start e thread/resume; account/rateLimits/read e account/rateLimits/updated; resetsAt em segundos Unix. Retomar o thread não equivale a completar um turno interrompido ou provar ausência de repetição de ferramentas.
-- [Sonda real sanitizada](../benchmarks/spec004/codex-probe.json), reproduzível por `EROS_REAL_CLI=/caminho/absoluto/codex node scripts/codex-continuity-probe.mjs` **na VM descartável**.
+- [Sonda real sanitizada](../benchmarks/spec004/codex-probe.json), reproduzível por `KARONT_REAL_CLI=/caminho/absoluto/codex node scripts/codex-continuity-probe.mjs` **na VM descartável**.
 
-| Capacidade | Evidência | Uso no eros |
+| Capacidade | Evidência | Uso no Karont |
 |---|---|---|
 | Versão e CLI em PTY | --version e processo real; tela de autenticação nativa observada | Nível 1 |
-| Identificador e continuação | resume aceita ID; schema local contém thread/resume | Documentado; nenhum ID de sessão real recuperável fornecido ao eros |
+| Identificador e continuação | resume aceita ID; schema local contém thread/resume | Documentado; nenhum ID de sessão real recuperável fornecido ao Karont |
 | Estados estruturados | Geração local do JSON schema e initialize JSON-RPC real | Investigação, sem trocar arquitetura do adaptador PTY |
 | Conta/autenticação | account/read respondeu sem conta no HOME isolado | Teste funcional bloqueado |
 | Limite de uso | schema contém account/rateLimits/read, rateLimitReachedType e usageLimitExceeded | Não demonstrado com conta/provedor real |
@@ -34,7 +34,7 @@ Limite confirmado sem reset fica em espera manual; não há tentativa automátic
 
 `autoResume: false` no JSON privado do Dot veta retomada automática. A Run mantém sua própria preferência persistente; a interface permite impedir Auto Resume por Run e sempre indica **indisponível** nesta entrega. Preferência true não supera falta de suporte nem veto do Dot. Não há concessão automática de nova permissão.
 
-As fixtures comprovam a lógica do eros para limite/reset conhecidos e desconhecidos, falhas, backoff, persistência e cancelamento. Não comprovam um provedor. Integração de produção com App Server exigirá validação autenticada de sessões, retomada, política, erros e efeitos antes de habilitar a capacidade verified.
+As fixtures comprovam a lógica do Karont para limite/reset conhecidos e desconhecidos, falhas, backoff, persistência e cancelamento. Não comprovam um provedor. Integração de produção com App Server exigirá validação autenticada de sessões, retomada, política, erros e efeitos antes de habilitar a capacidade verified.
 
 **Aceite funcional do Auto Resume: PENDENTE/BLOQUEADO.**
 

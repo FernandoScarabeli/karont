@@ -14,7 +14,7 @@ O daemon continua sendo o único escritor SQLite. A migração v4 amplia o CHECK
 | failed | queued |
 | completed / cancelled | nenhum |
 
-`paused` significa exclusivamente pausa do agendamento ainda não iniciado. Suspensão de processo e pausa interna de CLI não são oferecidas. `waiting_approval` é reservado ao ciclo de execução com suporte futuro; aprovações de rollback continuam sendo operações sobre Runs encerradas, sem fingir que a CLI está aguardando o eros.
+`paused` significa exclusivamente pausa do agendamento ainda não iniciado. Suspensão de processo e pausa interna de CLI não são oferecidas. `waiting_approval` é reservado ao ciclo de execução com suporte futuro; aprovações de rollback continuam sendo operações sobre Runs encerradas, sem fingir que a CLI está aguardando o Karont.
 
 Transições usam BEGIN IMMEDIATE, condição de estado anterior, evento auditável e checkpoint na mesma transação. Savepoints permitem compor intenções e transições. Repetir o mesmo estado não grava outro checkpoint. Uma reconciliação de crash pode colocar uma Run anteriormente concluída em recovery_needed quando há operação de rollback incerta: conclusão da CLI não prova conclusão daquela operação posterior.
 
@@ -32,7 +32,7 @@ São retidos os últimos 100 checkpoints automáticos por Run. Manuais e eventos
 
 A identidade Linux usa PID, boot_id, starttime de /proc, UID e executável. PID sozinho nunca identifica a execução. A inspeção procura também membros da sessão PTY. `forkpty` cria uma sessão liderada pelo PID retornado; logo após fork, /proc pode ainda mostrar a sessão do pai até setsid/login_tty. A detecção usa a identidade do líder e o escopo de sessão do PTY, evitando associar essa leitura transitória ao daemon inteiro. PIDs reutilizados podem causar bloqueio conservador por escopo de sessão, nunca autorização para matar ou reanexar processo alheio.
 
-O SIGKILL real demonstrou: a CLI normal encerra ao perder o PTY; uma fixture que ignora SIGHUP sobrevive. O eros não reanexa descritores perdidos nem mata automaticamente sobreviventes. A intenção de lançamento é registrada **antes** do spawn; crash entre spawn e gravação da identidade fica incerto, impedindo outro lançamento.
+O SIGKILL real demonstrou: a CLI normal encerra ao perder o PTY; uma fixture que ignora SIGHUP sobrevive. O Karont não reanexa descritores perdidos nem mata automaticamente sobreviventes. A intenção de lançamento é registrada **antes** do spawn; crash entre spawn e gravação da identidade fica incerto, impedindo outro lançamento.
 
 Processos que escapam por setsid/daemonização não são integralmente rastreáveis por esta arquitetura. Isso, efeitos de rede e efeitos fora da worktree continuam riscos residuais explicitados na confirmação. A worktree não é sandbox.
 

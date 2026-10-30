@@ -9,7 +9,7 @@ Foi criado um repositório temporário com `probe.txt` contendo `before\n`.
 A tarefa solicitou alterar somente esse arquivo para `after\n`, sem rede,
 instalação de dependências ou commit. A confiança na pasta temporária foi
 confirmada na tela nativa da CLI. O Codex executou a alteração e respondeu
-`EROS_PROBE_DONE`.
+`KARONT_PROBE_DONE`.
 
 Verificações realizadas:
 

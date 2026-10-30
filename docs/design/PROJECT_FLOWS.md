@@ -79,7 +79,7 @@ O estudo inicial de centro vazio foi substituído pela home com saudação e com
 
 ## Correspondência com implementação
 
-O contrato de resumo de projeto agora inclui `icon` e `root`; a migração SQLite v7 persiste o ícone com padrão `folder`. `projects.update` grava nome, ícone e pasta para projetos de origem `ui`, com chave de operação, validação de raiz e evento `project.updated`. A pasta precisa ser raiz de repositório Git acessível com commit; o seletor de pasta nativo (`eros:projects:choose-folder`) é separado da gravação. Cancelar a seleção não cria projeto.
+O contrato de resumo de projeto agora inclui `icon` e `root`; a migração SQLite v7 persiste o ícone com padrão `folder`. `projects.update` grava nome, ícone e pasta para projetos de origem `ui`, com chave de operação, validação de raiz e evento `project.updated`. A pasta precisa ser raiz de repositório Git acessível com commit; o seletor de pasta nativo (`karont:projects:choose-folder`) é separado da gravação. Cancelar a seleção não cria projeto.
 
 `chats.create` aceita `dotId: null`, inclusive em projeto. A UI cria projetos com `dotIds: []`, sem concessões automáticas. Abrir um chat não exige agente nem inicia Run. Ao iniciar a Run, o daemon verifica autorização existente, raiz e contexto; se o Chat ainda não tem Dot, o vincula ao Dot autorizado na transação de enfileiramento. Essa vinculação não concede acesso novo. Projetos de configuração continuam usando as autorizações explícitas do arquivo local.
 

@@ -1,4 +1,4 @@
-# Plano de implementacao — eros
+# Plano de implementacao — Karont
 
 ## Roteiro por fases • 23/10/2026 • Fontes: guia Ideias e aprendizados de Orca/ADE
 
@@ -27,7 +27,7 @@ Riscos: variações de comportamento/saída das CLIs, PTY e subprocessos, menor 
 
 Objetivo: conceder autonomia sem perder controle.  
 Entregas: motor de permissões no daemon e quatro modos visuais, mapeados às opções nativas de cada CLI quando houver; Central de Aprovações plenamente integrada apenas em adapters estruturados. Tray, notificações, Diagnóstico e relatório Markdown local sanitizado, com consentimento para envio. Ampliar testes unitários, Playwright e CI.  
-Critério de aceite: para PTY, trabalho em worktree e diretórios permitidos quando viável, com aprovações governadas pela própria CLI; eros não controla individualmente cada ação do agente. Central de Aprovações e quatro modos só têm controle pleno via adaptadores estruturados. Fechar janela preserva runs, Diagnóstico gera relatório local sem dados sensíveis.  
+Critério de aceite: para PTY, trabalho em worktree e diretórios permitidos quando viável, com aprovações governadas pela própria CLI; Karont não controla individualmente cada ação do agente. Central de Aprovações e quatro modos só têm controle pleno via adaptadores estruturados. Fechar janela preserva runs, Diagnóstico gera relatório local sem dados sensíveis.
 Riscos: fuga por IPC ou subprocessos, validação insuficiente de comandos em PTY, vazamento no relatório, excesso de aprovações e diferenças de tray/notificações.
 
 ## Fase 3 — continuidade \| G
@@ -61,7 +61,7 @@ Riscos: diferenças de drivers GPU, ambientes gráficos, memória limitada (4 GB
 # Portões de aceitação do MVP \[DECIDIDO\]
 
 ☐ Executar duas tarefas independentes com dots distintos ou sessões separadas.  
-☐ Demonstrar aprovação de ação sensível via CLI nativa; aprovações granulares no painel do eros serão aceitas somente com adaptador estruturado.  
+☐ Demonstrar aprovação de ação sensível via CLI nativa; aprovações granulares no painel do Karont serão aceitas somente com adaptador estruturado.
 ☐ Identificar Run e Dot responsáveis por uma modificação.  
 ☐ Inspecionar diff após a execução e desfazer alterações; diffs ao vivo dependem de adaptador estruturado.  
 ☐ Fechar a janela e manter os dots em andamento.  

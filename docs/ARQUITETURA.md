@@ -1,4 +1,4 @@
-# Arquitetura — eros
+# Arquitetura — Karont
 
 ## Registro técnico • 23/10/2026 • Base: guia Ideias
 
@@ -60,12 +60,12 @@ PROPOSTA: manifesto com hashes, políticas de retenção para logs/cache/snapsho
 ## 5\. Adaptadores de IA — DECISÃO CONFIRMADA (23/10/2026) — incorporar; detalhes a validar em protótipo
 
 Contrato único de eventos tipados permanece objetivo para adaptadores estruturados. O adaptador inicial por terminal gerenciado tem menor granularidade de eventos; normalização de streaming, status, permissões, diffs e consumo depende das capacidades da CLI.  
-Primeiro adaptador da V1: terminal gerenciado por PTY, executando CLIs de agentes. O login ocorre na própria CLI; o eros não captura, armazena nem reutiliza tokens de assinatura. Processos de terminal e scrollback persistem no daemon, independentemente da janela; ao reabrir, a UI se reconecta. Adaptadores estruturados — Codex App Server (experimental), API própria, Claude Agent SDK/Claude Code e Ollama — entram depois para aprovações detalhadas, diffs ao vivo e métricas. Trade-off: mais compatibilidade inicial, menos eventos estruturados.  
+Primeiro adaptador da V1: terminal gerenciado por PTY, executando CLIs de agentes. O login ocorre na própria CLI; o Karont não captura, armazena nem reutiliza tokens de assinatura. Processos de terminal e scrollback persistem no daemon, independentemente da janela; ao reabrir, a UI se reconecta. Adaptadores estruturados — Codex App Server (experimental), API própria, Claude Agent SDK/Claude Code e Ollama — entram depois para aprovações detalhadas, diffs ao vivo e métricas. Trade-off: mais compatibilidade inicial, menos eventos estruturados.
 Seguir a autenticação oficial de cada CLI/provedor; não interceptar credenciais nem pressupor assinatura como API ilimitada. Controlar permissões do processo PTY, acesso ao terminal e retenção segura de scrollback. Recursos não observáveis via CLI devem aparecer como indisponíveis, sem simular dados.
 
 ### Limites do adaptador por terminal e níveis de suporte — DECISÃO CONFIRMADA (23/10/2026)
 
-O PTY genérico não controla individualmente as ações do agente: aprovações pertencem à própria CLI. Central de Aprovações, quatro modos de permissão e diffs ao vivo só funcionam plenamente com adaptadores estruturados. O eros mapeia modos às opções nativas disponíveis de cada CLI, sem simular permissões inexistentes.  
+O PTY genérico não controla individualmente as ações do agente: aprovações pertencem à própria CLI. Central de Aprovações, quatro modos de permissão e diffs ao vivo só funcionam plenamente com adaptadores estruturados. O Karont mapeia modos às opções nativas disponíveis de cada CLI, sem simular permissões inexistentes.
 Nível 1 (qualquer CLI): terminal/scrollback persistentes no daemon; worktree Git por Run; diff após execução; rollback com verificação de conflitos; notificação de conclusão. Manter diretório de trabalho no worktree e limitar diretórios acessíveis quando houver mecanismo efetivo; worktree sozinho NÃO é sandbox.  
 Nível 2 (uma CLI com integração profunda): \[EM ABERTO — CLI a definir\]. Detectar limite e horário de reset quando a CLI expuser esses dados, estado da sessão e Auto Resume quando suportado. Se faltarem dados de uso, mostrar «indisponível»; sem métricas inventadas. Detalhes a validar em protótipo.  
 PÓS-V1 — ESTUDO: contenção de processos do Linux por bubblewrap ou containers, para restringir acesso além do diretório de trabalho e das opções internas de cada CLI.
@@ -78,7 +78,7 @@ Rollback por execução com prévia e trilha auditável; reversão de arquivos n
 
 ## 7\. Permissões e segurança \[DECIDIDO / limites do PTY\] — 23/10/2026
 
-DECIDIDO: motor de permissões do eros fora do prompt. Modos: Pedir aprovação, Aprovar por mim, Acesso total, Somente leitura. No PTY, cada modo só pode mapear opções que a CLI realmente ofereça; o eros não intercepta nem aprova cada ação interna. Concessões individuais (Permitir uma vez/sempre/Negar) dependem da integração estruturada.  
+DECIDIDO: motor de permissões do Karont fora do prompt. Modos: Pedir aprovação, Aprovar por mim, Acesso total, Somente leitura. No PTY, cada modo só pode mapear opções que a CLI realmente ofereça; o Karont não intercepta nem aprova cada ação interna. Concessões individuais (Permitir uma vez/sempre/Negar) dependem da integração estruturada.
 DECIDIDO como funcionalidade do produto: Central de Aprovações no Mission Control e painel flutuante; gestão detalhada de ações sensíveis somente via adaptadores estruturados. No PTY, as aprovações permanecem na CLI. Segredos no Secret Service/keyring seguro, com fallback criptografado por senha.  
 DECIDIDO: permissões no daemon e fora do prompt, com contextIsolation=true, nodeIntegration=false, sandbox=true e validação de mensagens IPC. A UI não acessa diretamente recursos do sistema. Isso não concede controle sobre cada ação interna de uma CLI sob PTY.  
 PROPOSTA — escopo pré-aprovado por tarefa: para Runs noturnas/autônomas, definir previamente diretórios, ferramentas e tipos de ação permitidos, preservando pedidos de aprovação para exceções ou riscos; não significa acesso irrestrito.
@@ -124,14 +124,14 @@ DECISÃO CONFIRMADA (23/10/2026): daemon separado em TypeScript/Node; robustez a
 ## 14\. Posicionamento e diferenciais — DECISÃO CONFIRMADA (23/10/2026) — incorporar; detalhes a validar em protótipo
 
 • Não competir reproduzindo as funcionalidades maduras de terminal e worktree de Orca/ADE; reaproveitar padrões de arquitetura e UX, sem copiar implementação.  
-• Diferenciais do eros: Dot Studio e mascotes 2D personalizáveis; Auto Resume por limite de uso; fila com perfis Leve/Equilibrado/Máximo; memória Global/Workspace/Dot; foco real em Linux com .deb e AppImage testados.  
+• Diferenciais do Karont: Dot Studio e mascotes 2D personalizáveis; Auto Resume por limite de uso; fila com perfis Leve/Equilibrado/Máximo; memória Global/Workspace/Dot; foco real em Linux com .deb e AppImage testados.
 • Observação da referência Orca: materiais consultados exibem uso e horário de reset de cotas dos agentes, sinalizando que esses dados podem ser expostos por algumas CLIs/provedores. Não há evidência observada de retomada automática na referência; disponibilidade deve ser verificada para cada adaptador.
 
 ## 15\. Licenças e propriedade intelectual — DECISÃO CONFIRMADA (23/10/2026) — incorporar; detalhes a validar em protótipo
 
-• Orca: MIT. ADE: AGPL-3.0. Usar ideias e padrões como inspiração, sem copiar código do ADE; a incorporação de código coberto por AGPL pode impor obrigações de copyleft incompatíveis com a licença escolhida para eros.  
+• Orca: MIT. ADE: AGPL-3.0. Usar ideias e padrões como inspiração, sem copiar código do ADE; a incorporação de código coberto por AGPL pode impor obrigações de copyleft incompatíveis com a licença escolhida para o Karont.
 • Qualquer reuso de código ou assets exige revisão da licença, atribuições preservadas e registro da origem. Criar mascotes, marca e interface autorais.  
-• EM ABERTO: licença do eros; MIT ou Apache-2.0 são sugestões, não escolhas aprovadas. Nota técnica informativa, sem aconselhamento jurídico.
+• EM ABERTO: licença do Karont; MIT ou Apache-2.0 são sugestões, não escolhas aprovadas. Nota técnica informativa, sem aconselhamento jurídico.
 
 ## 16\. Fora da V1 — DECISÃO CONFIRMADA (23/10/2026) — incorporar; detalhes a validar em protótipo
 
