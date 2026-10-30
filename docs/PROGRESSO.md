@@ -9,7 +9,7 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 | Tarefa | Estado |
 |---|---|
 | T1 — comparação visual (orquestrador) | Feito. `scripts/visual-snapshot.mjs` (`npm run visual -- <nome>` grava em `artifacts/visual/<nome>/`; `node scripts/visual-snapshot.mjs --compare <a> <b>` compara). 15 telas, PNG + DOM. Dados fixos em `/tmp/karont-visual`, relógio fixo no renderer, ponteiro fixo num canto (senão o mouse real deixa itens em hover) e máscara de ids, horários, PIDs e medições. 3 capturas seguidas em `main`: zero diferenças; 1 px de CSS a mais: 15 diferenças. Linha de base em `artifacts/visual/main/` (só local; recapturar a partir de `main` em outro PC). **Não mexer o mouse sobre a janela durante a captura** |
-| T2 — mover arquivos | A fazer |
+| T2 — mover arquivos | Feito (`c5cb3a2`). Codex luna xhigh, 1 tentativa (não rodou `npm test` no sandbox: `getconf EPERM`). Orquestrador: `check` OK, `test` 50/50, comparação visual zero (30 arquivos), `test:desktop` e os 3 E2E OK. Os docs ainda citam caminhos antigos (DIVIDAS, DESIGN_SYSTEM): fica para a T11 |
 | T3 — tipar o bridge | A fazer |
 | T4 — dividir `main.ts` | A fazer |
 | T5 — componentes compartilhados | A fazer |
