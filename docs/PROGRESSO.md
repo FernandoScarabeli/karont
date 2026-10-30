@@ -15,7 +15,7 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 | T5 — componentes compartilhados | Junta à T6: só o `FormDialog` é genérico; os diálogos das Tarefas têm markup próprio, e unificá-los mudaria a tela |
 | T6 — ChatView (com a T5) | Feito. Codex luna xhigh, 1 tentativa. `components/FormDialog.tsx`; `features/chat/` com `ChatView` (300 linhas), hooks `useChatDraft` (o rascunho inteiro, sem mudança de lógica), `useChatHistory` e `useChatMove`, e 5 componentes de apresentação. `WorkspaceDesk` 1.790 → 1.022 linhas. Mesmas chamadas ao bridge, classes e `aria-label`. `check`, `test` 50/50, visual zero, `test:desktop`, phase1, spec005 e spec006 3× OK |
 | T7 — WorkspaceDesk | A fazer |
-| T8 — TaskDesk | A fazer |
+| T8 — TaskDesk | Feito. Codex luna xhigh, 1 tentativa. `TaskCreationDialog`, `TaskCard`, `TaskDetailsDialog`, `taskShared` e hooks `useTaskCatalog`/`useTaskList`/`useTaskEditor` (mesma ordem de efeitos). `TaskDesk` 1.031 → 293 linhas e reexporta o que os outros usam. `check`, `test` 50/50, visual zero, `test:desktop`, phase1, spec005 e spec006 2× OK |
 | T9 — RunDesk | A fazer |
 | T10 — renderer/app | A fazer |
 | T11 — docs e verificação final (orquestrador) | A fazer |
