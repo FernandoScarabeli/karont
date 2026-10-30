@@ -21,7 +21,7 @@ import type {
   taskEventSchema,
   taskStateSchema,
   taskSummarySchema,
-} from '../../../packages/contracts/src';
+} from '../../../../../packages/contracts/src';
 export type UiDot = {
   id: string;
   name: string;
@@ -53,7 +53,7 @@ export type UiRun = {
   chatId: string | null;
   dotId: string;
   projectId: string;
-  state: import('zod').infer<typeof import('../../../packages/contracts/src').runStateSchema>;
+  state: import('zod').infer<typeof import('../../../../../packages/contracts/src').runStateSchema>;
   createdAt: number;
   startedAt: number | null;
   finishedAt: number | null;
@@ -240,8 +240,8 @@ declare global {
 }
 
 export type Checkpoint = import('zod').infer<
-  typeof import('../../../packages/contracts/src').checkpointSchema
+  typeof import('../../../../../packages/contracts/src').checkpointSchema
 >;
 export type Recovery = import('zod').infer<
-  typeof import('../../../packages/contracts/src').recoverySchema
+  typeof import('../../../../../packages/contracts/src').recoverySchema
 >;

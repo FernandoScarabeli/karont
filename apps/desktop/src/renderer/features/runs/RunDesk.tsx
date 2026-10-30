@@ -1,9 +1,9 @@
-import { ContinuityControls } from './Continuity';
+import { ContinuityControls } from '../continuity/Continuity';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import type { TerminalEvent, PermissionMode } from '../../../packages/contracts/src';
+import type { TerminalEvent, PermissionMode } from '../../../../../../packages/contracts/src';
 import type {
   UiChatDetails,
   UiDiff,
@@ -12,7 +12,7 @@ import type {
   UiRollback,
   UiRun,
   UiWorkspaceProject,
-} from './api';
+} from '../../lib/api';
 
 export const modeLabels: Record<PermissionMode, string> = {
   ask: 'Pedir aprovação',

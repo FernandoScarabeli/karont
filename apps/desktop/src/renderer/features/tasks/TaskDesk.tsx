@@ -9,7 +9,7 @@ import type {
   UiTaskSummary,
   UiWorkspace,
   UiWorkspaceProject,
-} from './api';
+} from '../../lib/api';
 
 const states: { value: UiTaskState; label: string }[] = [
   { value: 'todo', label: 'A fazer' },

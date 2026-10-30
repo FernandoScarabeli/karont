@@ -11,22 +11,22 @@ import {
 } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import { issueReport } from '../../../packages/local/src/report';
+import { issueReport } from '../../../../packages/local/src/report';
 import { NotificationCenter } from './notifications';
-import { APP_VERSION, type DiagnosticItem, type Dot } from '../../../packages/contracts/src';
+import { APP_VERSION, type DiagnosticItem, type Dot } from '../../../../packages/contracts/src';
 import { pathToFileURL } from 'node:url';
 import { trayIcon } from './tray-icon';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { Client } from '../../../packages/local/src/client';
-import { migrateLegacyDirs } from '../../../packages/local/src/paths';
+import { Client } from '../../../../packages/local/src/client';
+import { migrateLegacyDirs } from '../../../../packages/local/src/paths';
 import {
   layoutSchema,
   requestSchema,
   type Command,
   type TerminalEvent,
-} from '../../../packages/contracts/src';
+} from '../../../../packages/contracts/src';
 const started = performance.now();
 for (const flag of [
   'no-sandbox',

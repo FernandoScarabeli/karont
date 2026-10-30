@@ -31,9 +31,9 @@ import {
   Pencil,
   Command,
 } from 'lucide-react';
-import { RunDesk } from './RunDesk';
-import { Attention } from './Attention';
-import { TaskDesk, TaskCreationDialog, type TaskSeed } from './TaskDesk';
+import { RunDesk } from '../runs/RunDesk';
+import { Attention } from '../attention/Attention';
+import { TaskDesk, TaskCreationDialog, type TaskSeed } from '../tasks/TaskDesk';
 import type {
   UiChatDetails,
   UiChatSummary,
@@ -45,8 +45,8 @@ import type {
   UiRun,
   UiWorkspace,
   UiWorkspaceProject,
-} from './api';
-import type { TerminalEvent } from '../../../packages/contracts/src';
+} from '../../lib/api';
+import type { TerminalEvent } from '../../../../../../packages/contracts/src';
 export type WorkspaceView = 'workspaces' | 'favorites' | 'recent' | 'free';
 const projectIcons = {
   folder: Folder,
