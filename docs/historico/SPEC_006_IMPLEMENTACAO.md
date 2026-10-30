@@ -2,7 +2,7 @@
 
 **Estado:** implementada localmente; frontend provisório.  
 **Base:** SPEC-005, SQLite v5; banco atual v6.  
-**Evidência E2E integrada:** [`benchmarks/spec006/2026-10-25T21-34-29-957Z/`](../benchmarks/spec006/2026-10-25T21-34-29-957Z/).
+**Evidência E2E integrada:** [`benchmarks/spec006/2026-10-25T21-34-29-957Z/`](../../benchmarks/spec006/2026-10-25T21-34-29-957Z/).
 
 ## Resultado
 
@@ -103,9 +103,9 @@ outro projeto não aparece no quadro.
 
 **Resultado:** passou em `npm run test:e2e`, usando fixtures locais. A checagem
 está registrada como B17 em
-[`spec006-e2e.json`](../benchmarks/spec006/2026-10-25T21-34-29-957Z/spec006-e2e.json);
+[`spec006-e2e.json`](../../benchmarks/spec006/2026-10-25T21-34-29-957Z/spec006-e2e.json);
 a captura do quadro após mover o cartão é
-[`kanban-residual-filter-1440.png`](../benchmarks/spec006/2026-10-25T21-34-29-957Z/kanban-residual-filter-1440.png).
+[`kanban-residual-filter-1440.png`](../../benchmarks/spec006/2026-10-25T21-34-29-957Z/kanban-residual-filter-1440.png).
 
 ## Validação e pendências
 
@@ -174,7 +174,7 @@ durante uma escrita ambígua e limpeza independente de duas fixtures. Nenhuma
 expectativa de sucesso aceita indistintamente `sent` ou `uncertain`.
 
 Evidências sanitizadas e harness reproduzível:
-[`benchmarks/spec006/ajuste02/`](../benchmarks/spec006/ajuste02/).
+[`benchmarks/spec006/ajuste02/`](../../benchmarks/spec006/ajuste02/).
 Contêm a stack original sem caminho pessoal, resultados por execução e estágio,
 cenários dirigidos e auditoria de recursos. Não contêm corpo de mensagens, saída
 de terminal, tokens, variáveis de ambiente ou exceções arbitrárias. Não foi

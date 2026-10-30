@@ -92,8 +92,8 @@ local (Node 24.22.1, Ubuntu 26.04.1 LTS, kernel 7.0.0-38, x64, Intel i5-10210U,
 |---|---|
 | `npm run check` | Aprovado; TypeScript sem erros. |
 | `npm test` | Aprovado; 34 testes, 34 passaram, 0 falharam. O teste novo cobre restauração de chat global/projeto e fallback de workspace, projeto e conversa removidos. |
-| `npm run test:desktop` | Aprovado após fornecer a autorização da sessão Xwayland ao processo; sandbox, Seccomp, NoNewPrivs, fechamento/reabertura, daemon preservado e layout compacto verificados. Evidência: [`desktop.json`](../benchmarks/runs/2026-10-25T20-38-56-153Z/desktop.json). |
-| `npm run test:e2e` | Aprovado; E2E de regressão e SPEC-005 passaram. Evidências: [`phase1-e2e.json`](../benchmarks/runs/2026-10-25T20-39-28-290Z/phase1-e2e.json) e [`spec005-e2e.json`](../benchmarks/spec005/2026-10-25T20-39-57-317Z/spec005-e2e.json). |
+| `npm run test:desktop` | Aprovado após fornecer a autorização da sessão Xwayland ao processo; sandbox, Seccomp, NoNewPrivs, fechamento/reabertura, daemon preservado e layout compacto verificados. Evidência: [`desktop.json`](../../benchmarks/runs/2026-10-25T20-38-56-153Z/desktop.json). |
+| `npm run test:e2e` | Aprovado; E2E de regressão e SPEC-005 passaram. Evidências: [`phase1-e2e.json`](../../benchmarks/runs/2026-10-25T20-39-28-290Z/phase1-e2e.json) e [`spec005-e2e.json`](../../benchmarks/spec005/2026-10-25T20-39-57-317Z/spec005-e2e.json). |
 
 No desktop, a primeira tentativa parou no preflight porque o terminal não tinha
 `XAUTHORITY` exportado. A repetição do desktop e o E2E foram executados com a
@@ -150,7 +150,7 @@ de um núcleo lógico. A carga geral do host não foi controlada.
 A resposta da página paginada mediu 0,556 ms; os cinco lotes da carga tiveram
 3,095–3,595 ms. Não há baseline pré-4A equivalente nesse host; esses números
 servem como referência inicial, não como alegação de melhoria/regressão. As
-capturas sintéticas estão em [`spec005-1440.png`](../benchmarks/spec005/2026-10-25T20-39-57-317Z/spec005-1440.png) e [`spec005-900.png`](../benchmarks/spec005/2026-10-25T20-39-57-317Z/spec005-900.png).
+capturas sintéticas estão em [`spec005-1440.png`](../../benchmarks/spec005/2026-10-25T20-39-57-317Z/spec005-1440.png) e [`spec005-900.png`](../../benchmarks/spec005/2026-10-25T20-39-57-317Z/spec005-900.png).
 
 ## Matriz de aceite A1–A15
 
@@ -178,7 +178,7 @@ capturas sintéticas estão em [`spec005-1440.png`](../benchmarks/spec005/2026-1
   Auto Resume, busca global, integração externa ou sincronização nesta fase.
 - Fixtures não certificam comportamento de provider/CLI real, e esta E2E não usa
   credenciais ou cota paga. O ciclo real básico registrado em
-  [`VALIDACAO_CLI_REAL.md`](VALIDACAO_CLI_REAL.md) não é prova de respostas
+  [`VALIDACAO_CLI_REAL.md`](../VALIDACAO_CLI_REAL.md) não é prova de respostas
   estruturadas de chat.
 - Não foi habilitada a fixture D-Bus; a entrega nativa de notificações não é
   declarada aprovada. Não houve validação remota do workflow CI.

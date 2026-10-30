@@ -156,11 +156,11 @@ Documentação oficial: Electron — Tray, Process Model, Security e safeStorage
 
 O perfil PTY passa a expor capacidades por modo; perfis `generic` e `codex` não constituem adaptadores estruturados. Políticas nativas são selecionadas e revalidadas pelo daemon. Acesso total exige concessão explícita; o main Electron obtém confirmação nativa por execução. Nenhuma autorização é derivada de stdout ou prompt. SQLite v3 preserva dados anteriores e acrescenta modo da Run e pedidos de rollback com decisões auditadas em eventos.
 
-Central, Diagnóstico e relatório usam o único renderer existente. Notificações e tray vivem no main, inclusive sem janela. Diagnóstico é sob demanda; relatório usa coleta mínima permitida e sanitização, com salvamento/cópia locais. Novos contratos e riscos estão em [PROTOCOLO_LOCAL.md](PROTOCOLO_LOCAL.md) e [SPEC_003_IMPLEMENTACAO.md](SPEC_003_IMPLEMENTACAO.md). São propostas implementadas, sem presumir aprovação formal do protocolo ou segurança completa das ferramentas internas de CLIs. A Fase 3 permanece fora desta entrega.
+Central, Diagnóstico e relatório usam o único renderer existente. Notificações e tray vivem no main, inclusive sem janela. Diagnóstico é sob demanda; relatório usa coleta mínima permitida e sanitização, com salvamento/cópia locais. Novos contratos e riscos estão em [PROTOCOLO_LOCAL.md](PROTOCOLO_LOCAL.md) e [SPEC_003_IMPLEMENTACAO.md](historico/SPEC_003_IMPLEMENTACAO.md). São propostas implementadas, sem presumir aprovação formal do protocolo ou segurança completa das ferramentas internas de CLIs. A Fase 3 permanece fora desta entrega.
 
 ## Registro SPEC-004 — continuidade
 
-A Fase 3 acrescenta ao daemon existente uma camada transacional de estados/checkpoints e uma infraestrutura de agendamento por capacidade, sem supervisor externo. Migração v4 preserva dados e adiciona checkpoints/operações/jobs e identidade Linux. Runs interrompidas ficam recovery_needed; PTY perdido não é reanexado. Nova sessão na mesma worktree exige confirmação e não reenvia prompt. Codex é a única candidata investigada; nenhum adaptador Nível 2 está certificado para Auto Resume na produção. [Implementação e evidências](SPEC_004_IMPLEMENTACAO.md). Fase 4 não iniciada.
+A Fase 3 acrescenta ao daemon existente uma camada transacional de estados/checkpoints e uma infraestrutura de agendamento por capacidade, sem supervisor externo. Migração v4 preserva dados e adiciona checkpoints/operações/jobs e identidade Linux. Runs interrompidas ficam recovery_needed; PTY perdido não é reanexado. Nova sessão na mesma worktree exige confirmação e não reenvia prompt. Codex é a única candidata investigada; nenhum adaptador Nível 2 está certificado para Auto Resume na produção. [Implementação e evidências](historico/SPEC_004_IMPLEMENTACAO.md). Fase 4 não iniciada.
 
 ## Registro SPEC-005 — Fase 4A: organização do trabalho
 
@@ -190,7 +190,7 @@ ambígua exige revisão explícita.
 
 As telas de execução, diff, rollback, atenção e laboratório existentes continuam
 acessíveis pelo mesmo renderer. Comportamento, migração, limites e evidências
-estão detalhados em [SPEC_005_IMPLEMENTACAO.md](SPEC_005_IMPLEMENTACAO.md). A
+estão detalhados em [SPEC_005_IMPLEMENTACAO.md](historico/SPEC_005_IMPLEMENTACAO.md). A
 Fase 4B (Kanban) e Auto Resume não faziam parte daquela entrega.
 
 ## Registro SPEC-006 — Fase 4B: Kanban e `/kanban`
@@ -218,4 +218,4 @@ dos primeiros 100 itens.
 Main, preload, cliente e daemon usam operações IPC nomeadas `tasks.*` com schemas
 estritos; não há `invoke` arbitrário. Texto de tarefa não é incluído em logs,
 relatórios ou notificações. Implementação, matriz de aceite, medições locais,
-limitações e evidências estão em [SPEC_006_IMPLEMENTACAO.md](SPEC_006_IMPLEMENTACAO.md).
+limitações e evidências estão em [SPEC_006_IMPLEMENTACAO.md](historico/SPEC_006_IMPLEMENTACAO.md).

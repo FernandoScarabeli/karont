@@ -157,5 +157,5 @@ não iniciam Runs nem enviam mensagens.
 
 O cliente desktop, main, daemon e contratos precisam ser da mesma build. Esta
 extensão registra a implementação local, sem representar revisão ou aprovação
-formal do protocolo completo. Ver [SPEC_006_IMPLEMENTACAO.md](SPEC_006_IMPLEMENTACAO.md)
+formal do protocolo completo. Ver [SPEC_006_IMPLEMENTACAO.md](historico/SPEC_006_IMPLEMENTACAO.md)
 para migração v5→v6, testes, matriz B0–B16, evidências e limites.

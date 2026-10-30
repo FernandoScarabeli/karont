@@ -38,7 +38,7 @@ npm run test:e2e
 ```
 
 Na validação da SPEC-005, checagem de tipos, build e os 33 testes passaram neste
-ambiente. O relatório [SPEC-005](SPEC_005_IMPLEMENTACAO.md) lista os comandos,
+ambiente. O relatório [SPEC-005](historico/SPEC_005_IMPLEMENTACAO.md) lista os comandos,
 resultados e evidências mais recentes. Foi corrigido o shim Git do teste de
 crash durante rollback para aceitar espaços no caminho do Node. Logs locais
 ficam em `.tools/tests.log` e `.tools/desktop.log`.

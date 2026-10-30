@@ -85,10 +85,10 @@ Os E2Es usam fixtures locais e não substituem validações com um provedor real
 
 - [Arquitetura](docs/ARQUITETURA.md)
 - [Design system](docs/design/DESIGN_SYSTEM.md), [fluxos de projetos](docs/design/PROJECT_FLOWS.md) e [fluxos de chat](docs/design/CHAT_FLOWS.md)
-- [Workspaces, projetos e conversas — SPEC-005](docs/SPEC_005_IMPLEMENTACAO.md)
-- [Tarefas e Kanban — SPEC-006](docs/SPEC_006_IMPLEMENTACAO.md)
+- [Workspaces, projetos e conversas — SPEC-005](docs/historico/SPEC_005_IMPLEMENTACAO.md)
+- [Tarefas e Kanban — SPEC-006](docs/historico/SPEC_006_IMPLEMENTACAO.md)
 - [Protocolo local e segurança](docs/PROTOCOLO_LOCAL.md)
-- [Resultados e benchmarks](benchmarks/RESULTADOS.md) e [matriz de aceite](docs/ACEITE_FASE_0.md)
+- [Resultados e benchmarks](benchmarks/RESULTADOS.md) e [matriz de aceite](docs/historico/ACEITE_FASE_0.md)
 
 ## Contribuições e licença
 

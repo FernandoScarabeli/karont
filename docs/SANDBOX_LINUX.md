@@ -10,7 +10,7 @@ No runner Ubuntu 24.04, o workflow executa `node node_modules/electron/install.j
 
 Prova efetiva do renderer: preferências sandbox/contextIsolation verdadeiras, Node desativado, runtime sandboxed/contextIsolated verdadeiros, **Seccomp=2 e NoNewPrivs=1**, lançamento sem flags desativadoras. `npm run test:desktop` passou, assim como cinco rodadas completas. Helper baixado permanece usuário comum/0755. [Diagnóstico VM](../benchmarks/spec001/sandbox-diagnostic-vm.json), [resultado final](../benchmarks/desktop-latest.json), [série](../benchmarks/series-latest.json).
 
-Procedimento e scripts: [AMBIENTE_VM_FASE_0.md](AMBIENTE_VM_FASE_0.md). Evidência não equivale a aprovação para instalar perfis/helpers no host; as duas rotas administrativas históricas abaixo **não foram usadas**. Também não prova GNOME/Wayland ou suspensão real. Veja [recomendação atual](REVISAO_FASE_0.md).
+Procedimento e scripts: [AMBIENTE_VM_FASE_0.md](AMBIENTE_VM_FASE_0.md). Evidência não equivale a aprovação para instalar perfis/helpers no host; as duas rotas administrativas históricas abaixo **não foram usadas**. Também não prova GNOME/Wayland ou suspensão real. Veja [recomendação atual](historico/REVISAO_FASE_0.md).
 
 ## Investigação anterior — histórico do host Ubuntu
 

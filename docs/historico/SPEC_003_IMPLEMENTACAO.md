@@ -57,7 +57,7 @@ A sanitização é defesa em profundidade sobre uma coleta mínima, não um dete
 
 O usuário escolheu Codex nesta sessão. O teste opt-in `scripts/real-cli-test.mjs` foi executado com o binário instalado, versão 0.164.0, em repositório temporário. O help confirmou as quatro opções nativas e a CLI abriu no PTY. Não foram lidos arquivos de credenciais nem gravados tokens, identificadores privados de sessão ou conteúdo do terminal no relatório de teste.
 
-**BLOQUEADO para aceite funcional completo:** a tarefa não produziu o diff controlado no prazo e o host Ubuntu recusou o Electron no preflight de sandbox. O ciclo Electron + mesma CLI real, autenticação quando necessária, diff e rollback real não foi aprovado. A VM de validação usa simuladores e não recebeu credenciais do host. Evidência reduzida: [`real-cli.json`](../benchmarks/spec003/real-cli.json). A sondagem de help não substitui esse teste.
+**BLOQUEADO para aceite funcional completo:** a tarefa não produziu o diff controlado no prazo e o host Ubuntu recusou o Electron no preflight de sandbox. O ciclo Electron + mesma CLI real, autenticação quando necessária, diff e rollback real não foi aprovado. A VM de validação usa simuladores e não recebeu credenciais do host. Evidência reduzida: [`real-cli.json`](../../benchmarks/spec003/real-cli.json). A sondagem de help não substitui esse teste.
 
 O script real é opt-in (`EROS_REAL_CLI=/caminho/absoluto/codex node scripts/real-cli-test.mjs`), não roda na CI e não instala CLIs. Não automatiza aprovação de ferramentas a partir de texto arbitrário de stdout. Saída privada fica apenas em memória temporária e é descartada. A pendência não bloqueia testes independentes da Fase 2, mas impede declarar o aceite funcional dos agentes.
 
@@ -69,16 +69,16 @@ O E2E verificou: duas CLIs simuladas; PIDs/sessões após destruir/reabrir janel
 
 | Evidência final | Arquivo |
 |---|---|
-| E2E e medições separadas por processo | [JSON](../benchmarks/runs/2026-10-24T00-40-12-960Z/phase1-e2e.json) |
-| Central com decisão negada e aplicada | [Screenshot](../benchmarks/runs/2026-10-24T00-40-12-960Z/phase2-approvals.png) |
-| Diagnóstico e histórico de entregas ao serviço | [Screenshot](../benchmarks/runs/2026-10-24T00-40-12-960Z/phase2-diagnostics-after-events.png) |
-| Layout 900 px | [Screenshot](../benchmarks/runs/2026-10-24T00-40-12-960Z/phase2-compact.png) |
-| Exemplo real de relatório sanitizado | [Markdown](../benchmarks/runs/2026-10-24T00-40-12-960Z/phase2-report.md) |
-| Cinco rodadas desktop + daemon | [Manifesto](../benchmarks/series/2026-10-24T00-34-57-999Z/manifest.json) |
-| Resultado consolidado | [Resumo JSON](../benchmarks/spec003/validation-summary.json) |
-| Check, unitários, desktop, E2E, série e benchmark | [Logs persistentes](../benchmarks/spec003-validation/) |
-| Capacidades do Codex instalado, sem credenciais | [Sonda de help/mapeamento](../benchmarks/spec003/capability-probe.json) |
-| Workflow YAML e comandos declarados | [Validação local](../benchmarks/spec003/workflow-validation.json) |
+| E2E e medições separadas por processo | [JSON](../../benchmarks/runs/2026-10-24T00-40-12-960Z/phase1-e2e.json) |
+| Central com decisão negada e aplicada | [Screenshot](../../benchmarks/runs/2026-10-24T00-40-12-960Z/phase2-approvals.png) |
+| Diagnóstico e histórico de entregas ao serviço | [Screenshot](../../benchmarks/runs/2026-10-24T00-40-12-960Z/phase2-diagnostics-after-events.png) |
+| Layout 900 px | [Screenshot](../../benchmarks/runs/2026-10-24T00-40-12-960Z/phase2-compact.png) |
+| Exemplo real de relatório sanitizado | [Markdown](../../benchmarks/runs/2026-10-24T00-40-12-960Z/phase2-report.md) |
+| Cinco rodadas desktop + daemon | [Manifesto](../../benchmarks/series/2026-10-24T00-34-57-999Z/manifest.json) |
+| Resultado consolidado | [Resumo JSON](../../benchmarks/spec003/validation-summary.json) |
+| Check, unitários, desktop, E2E, série e benchmark | [Logs persistentes](../../benchmarks/spec003-validation/) |
+| Capacidades do Codex instalado, sem credenciais | [Sonda de help/mapeamento](../../benchmarks/spec003/capability-probe.json) |
+| Workflow YAML e comandos declarados | [Validação local](../../benchmarks/spec003/workflow-validation.json) |
 
 A execução remota do GitHub Actions **não foi disparada nem aprovada** nesta sessão. O YAML foi analisado com PyYAML; mantém Node 24, check, unitários/integração, Electron da Fase 0, E2E ampliado com notificações e upload das evidências. O serviço D-Bus de teste requer `python3-dbus`; verifica entrega ao serviço, sem alegar visualização humana. A dependência `libnotify4` foi declarada na CI e no provisionamento. Na VM existente, foi extraída para um diretório do usuário, sem alteração privilegiada no host ou nas políticas de sandbox.
 
@@ -90,7 +90,7 @@ A VM foi reiniciada após uma interrupção de causa não determinada. A série 
 | Dois PTYs, uma amostra E2E | 510,54 MiB | **529,91 MiB** | 1,99 → 2,78% |
 | Janela destruída + dois PTYs, uma amostra | 421,09 MiB | **429,76 MiB** | 0,00 → 0,80% |
 
-O total com dois PTYs cresceu 19,37 MiB (3,79%) nessa comparação de amostras únicas. A série sem agentes ficou próxima da referência, sem evidência de ganho causal. O E2E desta fase inclui diagnóstico/relatório/screenshots antes da medição com agentes; instrumentação, compartilhamento de páginas e carga não controlada limitam a comparação. A CPU usa 100%=um núcleo e resolução de ticks; zero não é custo absoluto nulo. Não foi atribuído vazamento nem causa específica por profiler. Não houve redução de isolamento para economizar RAM. Componentes separados, RSS/PSS, p95, tempos e análise do daemon isolado estão em [RESULTADOS.md](../benchmarks/RESULTADOS.md).
+O total com dois PTYs cresceu 19,37 MiB (3,79%) nessa comparação de amostras únicas. A série sem agentes ficou próxima da referência, sem evidência de ganho causal. O E2E desta fase inclui diagnóstico/relatório/screenshots antes da medição com agentes; instrumentação, compartilhamento de páginas e carga não controlada limitam a comparação. A CPU usa 100%=um núcleo e resolução de ticks; zero não é custo absoluto nulo. Não foi atribuído vazamento nem causa específica por profiler. Não houve redução de isolamento para economizar RAM. Componentes separados, RSS/PSS, p95, tempos e análise do daemon isolado estão em [RESULTADOS.md](../../benchmarks/RESULTADOS.md).
 
 A antiga meta de 200 MB permanece histórica. A referência de aproximadamente 400 MB ocioso aceita na Fase 1 não foi transformada em limite rígido para todas as cargas. A mediana ociosa da série equivale a aproximadamente 391 MB decimais. O limite estrito de CPU <1% não foi demonstrado.
 
