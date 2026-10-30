@@ -1,7 +1,3 @@
-import { ContinuityControls } from '../continuity/Continuity';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import type { UiChatDetails } from '../../lib/api';
 import { DiffView } from './DiffView';

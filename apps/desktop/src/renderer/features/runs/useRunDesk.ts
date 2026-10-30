@@ -7,7 +7,6 @@ import type {
   UiProject,
   UiRollback,
   UiRun,
-  UiWorkspaceProject,
 } from '../../lib/api';
 
 export function useRunDesk(chat: UiChatDetails['chat'] | undefined, previousOnly: boolean) {
