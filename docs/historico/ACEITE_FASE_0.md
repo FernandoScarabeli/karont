@@ -12,7 +12,7 @@
 - [x] Benchmarks RSS/PSS, CPU, abertura/reabertura, streaming, edição e shell sem janela registrados.
 - [x] JSONs, imagens novas, metodologia e riscos documentados.
 
-Ambiente: VM Debian 13/KVM, 2 vCPUs/4 GiB, Xvfb X11/D-Bus, sem mudanças no host Ubuntu. [Série de cinco rodadas](../benchmarks/series/2026-10-23T22-10-53-606Z/manifest.json), [ciclo por PID/starttime](../benchmarks/spec001/lifecycle.json), [relatório](../benchmarks/RESULTADOS.md), [revisão atual](REVISAO_FASE_0.md).
+Ambiente: VM Debian 13/KVM, 2 vCPUs/4 GiB, Xvfb X11/D-Bus, sem mudanças no host Ubuntu. [Série de cinco rodadas](../../benchmarks/series/2026-10-23T22-10-53-606Z/manifest.json), [ciclo por PID/starttime](../../benchmarks/spec001/lifecycle.json), [relatório](../../benchmarks/RESULTADOS.md), [revisão atual](REVISAO_FASE_0.md).
 
 Metas experimentais: partida mediana 533,60 ms; total ocioso 363,84 MiB PSS (**381,52 MB**, acima de 200 MB); CPU ociosa ~1,00%, p95 1,66%, sem comprovar <1%; proxy visual mediano 31,30 ms. Essas metas não são garantias nem orçamento aprovado.
 
@@ -83,10 +83,10 @@ scripts/
 tests/daemon.test.mjs                  três suítes de integração
 docs/ARQUITETURA.md                    cópia do documento (2) recebido
 docs/PLANO_DE_IMPLEMENTACAO.md         cópia do documento (3) recebido
-docs/DECISOES_FASE_0.md                escolhas e limitações
+DECISOES_FASE_0.md                escolhas e limitações
 docs/PROTOCOLO_LOCAL.md                contrato e fronteira de confiança
 docs/BENCHMARKS.md                     como repetir medições
-docs/ACEITE_FASE_0.md                  este registro
+ACEITE_FASE_0.md                  este registro
 benchmarks/
   daemon-latest.json / desktop-latest.json
   RESULTADOS.md
@@ -97,11 +97,11 @@ benchmarks/
 
 ## Revisão técnica de 23/10/2026
 
-O histórico anterior (JSONs, relatório e imagens) foi preservado em `benchmarks/history/initial-phase0/`. **P0 continua bloqueado**: o preflight nativo retornou 1/SIGTRAP por falha do sandbox do host. O resultado novo tem `passed:false`, `status:blocked`, etapa `native-preflight` e nenhuma imagem nova. Ver [investigação e requisitos](SANDBOX_LINUX.md).
+O histórico anterior (JSONs, relatório e imagens) foi preservado em `benchmarks/history/initial-phase0/`. **P0 continua bloqueado**: o preflight nativo retornou 1/SIGTRAP por falha do sandbox do host. O resultado novo tem `passed:false`, `status:blocked`, etapa `native-preflight` e nenhuma imagem nova. Ver [investigação e requisitos](../SANDBOX_LINUX.md).
 
 Na revisão, `npm ci`, `npm run check` e `npm test` foram repetidos com sucesso: **sete testes** aprovados. Três são os testes anteriores do daemon; os quatro novos cobrem PID inexistente, cancelamento de handshake, término de processo durante a amostra e classificação fiel de falhas/prova de sandbox no relatório. Os dois primeiros defeitos foram reproduzidos em testes que falharam antes da correção e passaram depois.
 
-O benchmark isolado do daemon foi repetido. Os valores atuais estão em [RESULTADOS.md](../benchmarks/RESULTADOS.md); não substituem medições desktop. Não foi realizada qualquer nova validação visual ou comparação de RAM do Electron.
+O benchmark isolado do daemon foi repetido. Os valores atuais estão em [RESULTADOS.md](../../benchmarks/RESULTADOS.md); não substituem medições desktop. Não foi realizada qualquer nova validação visual ou comparação de RAM do Electron.
 
 ### P1: evidência real e passos ainda bloqueados
 
@@ -118,4 +118,4 @@ O benchmark isolado do daemon foi repetido. Os valores atuais estão em [RESULTA
 
 A implementação do teste não é evidência de sucesso. **Aceite final da Fase 0 negado enquanto `npm run test:desktop` não passar integralmente em ambiente válido.** Não houve avanço à Fase 1.
 
-Arquivos adicionados nesta revisão: `scripts/sandbox-diagnose.mjs`, `tests/review.test.mjs`, `docs/SANDBOX_LINUX.md`, `docs/REVISAO_FASE_0.md` e artefatos de diagnóstico/histórico em `benchmarks/`. Os demais arquivos foram ajustados pontualmente; consultar o registro da revisão.
+Arquivos adicionados nesta revisão: `scripts/sandbox-diagnose.mjs`, `tests/review.test.mjs`, `docs/SANDBOX_LINUX.md`, `REVISAO_FASE_0.md` e artefatos de diagnóstico/histórico em `benchmarks/`. Os demais arquivos foram ajustados pontualmente; consultar o registro da revisão.

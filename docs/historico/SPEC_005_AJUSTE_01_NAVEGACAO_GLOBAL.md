@@ -70,7 +70,7 @@ grava o fallback, mesmo quando o daemon já validou a conversa salva. O resultad
    padrão durante o bootstrap.
 6. Rodar `npm run check`, `npm test`, `npm run test:desktop` e `npm run test:e2e`;
    registrar os resultados e a evidência da regressão no relatório
-   `docs/SPEC_005_IMPLEMENTACAO.md`.
+   `SPEC_005_IMPLEMENTACAO.md`.
 
 ## Fora de escopo
 

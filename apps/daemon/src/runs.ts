@@ -168,10 +168,21 @@ export class RunManager {
       id: dot.id,
       name: dot.name,
       role: dot.role,
-      projectIds: (this.db.prepare('SELECT id,origin FROM projects ORDER BY id').all() as { id: string; origin: string }[])
-        .filter((project) => project.origin === 'config'
-          ? dot.projectIds.includes(project.id)
-          : Boolean(this.db.prepare('SELECT 1 FROM project_dot_grants WHERE project_id=? AND dot_id=?').get(project.id, dot.id)))
+      projectIds: (
+        this.db.prepare('SELECT id,origin FROM projects ORDER BY id').all() as {
+          id: string;
+          origin: string;
+        }[]
+      )
+        .filter((project) =>
+          project.origin === 'config'
+            ? dot.projectIds.includes(project.id)
+            : Boolean(
+                this.db
+                  .prepare('SELECT 1 FROM project_dot_grants WHERE project_id=? AND dot_id=?')
+                  .get(project.id, dot.id),
+              ),
+        )
         .map((project) => project.id),
       capabilities: capabilities(dot),
     }));
@@ -215,10 +226,7 @@ export class RunManager {
     if (!row) throw Error('Execução não encontrada');
     return { row, run: this.serialize(row) };
   }
-  private authorizedForProject(
-    dot: DotConfig,
-    project: { id: string; origin: string },
-  ) {
+  private authorizedForProject(dot: DotConfig, project: { id: string; origin: string }) {
     if (!this.configuredDots.some((configured) => configured.id === dot.id)) return false;
     if (project.origin === 'config') return dot.projectIds.includes(project.id);
     return Boolean(
@@ -283,14 +291,21 @@ export class RunManager {
     }
     if (chatId) {
       const activeChatRun = this.db
-        .prepare("SELECT id FROM runs WHERE chat_id=? AND state NOT IN ('completed','failed','cancelled') LIMIT 1")
+        .prepare(
+          "SELECT id FROM runs WHERE chat_id=? AND state NOT IN ('completed','failed','cancelled') LIMIT 1",
+        )
         .get(chatId);
       if (activeChatRun) throw Error('Conversa já tem uma execução não terminal vinculada');
     }
     const id = randomUUID(),
       now = Date.now();
     this.continuity.transaction(() => {
-      if (chatId) this.db.prepare('UPDATE chats SET dot_id=?,revision=revision+1,updated_at=? WHERE id=? AND dot_id IS NULL').run(dotId, now, chatId);
+      if (chatId)
+        this.db
+          .prepare(
+            'UPDATE chats SET dot_id=?,revision=revision+1,updated_at=? WHERE id=? AND dot_id IS NULL',
+          )
+          .run(dotId, now, chatId);
       this.db
         .prepare(
           "INSERT INTO runs(id,dot_id,project_id,chat_id,state,created_at,permission_mode,auto_resume) VALUES(?,?,?,?,'queued',?,?,?)",
@@ -333,7 +348,9 @@ export class RunManager {
     const dot = this.configuredDots.find((d) => d.id === row.dot_id);
     const project = this.db
       .prepare('SELECT root,git_root,origin,id FROM projects WHERE id=?')
-      .get(row.project_id) as { root: string; git_root: string; origin: string; id: string } | undefined;
+      .get(row.project_id) as
+      | { root: string; git_root: string; origin: string; id: string }
+      | undefined;
     if (!dot || !project || !this.authorizedForProject(dot, project))
       throw Error('Dot não autorizado para este projeto');
     const root = this.validateProjectRoot(project.root);
@@ -349,7 +366,7 @@ export class RunManager {
     const runDir = path.join(this.worktreeRoot, row.project_id);
     fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
     const worktreePath = path.join(runDir, id);
-    const branch = `eros/run-${id}`;
+    const branch = `karont/run-${id}`;
     const existing = this.db
       .prepare('SELECT path FROM worktrees WHERE run_id=? AND removed_at IS NULL')
       .get(id) as { path: string } | undefined;
@@ -586,9 +603,9 @@ export class RunManager {
   }
   inspect(runId: string) {
     const { run } = this.getRun(runId);
-    const wt = this.db
-      .prepare('SELECT path,removed_at FROM worktrees WHERE run_id=?')
-      .get(runId) as { path: string; removed_at: number | null } | undefined;
+    const wt = this.db.prepare('SELECT path,removed_at FROM worktrees WHERE run_id=?').get(runId) as
+      | { path: string; removed_at: number | null }
+      | undefined;
     const session = this.db
       .prepare('SELECT identity_json FROM sessions WHERE run_id=?')
       .get(runId) as { identity_json: string | null } | undefined;
@@ -603,7 +620,9 @@ export class RunManager {
     if (wt && !wt.removed_at)
       try {
         fingerprint = worktreeFingerprint(wt.path);
-      } catch {}
+      } catch {
+        // Worktree ilegível: segue sem fingerprint (null).
+      }
     const latest = this.db
       .prepare(
         'SELECT snapshot_json FROM checkpoints WHERE run_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1',
@@ -657,9 +676,9 @@ export class RunManager {
         throw Error('Acesso total exige nova execução e confirmação nativa');
     }
     const dot = this.configuredDots.find((d) => d.id === row.dot_id);
-    const project = this.db.prepare('SELECT id,root,origin FROM projects WHERE id=?').get(row.project_id) as
-      | { id: string; root: string; origin: string }
-      | undefined;
+    const project = this.db
+      .prepare('SELECT id,root,origin FROM projects WHERE id=?')
+      .get(row.project_id) as { id: string; root: string; origin: string } | undefined;
     if (!dot || !project || !this.authorizedForProject(dot, project))
       throw Error('Dot não autorizado para este projeto');
     this.validateProjectRoot(project.root);
@@ -697,7 +716,9 @@ export class RunManager {
     for (const active of this.active.values())
       try {
         active.process.kill();
-      } catch {}
+      } catch {
+        // Processo já encerrado: nada a fazer no desligamento.
+      }
   }
   attach(runId: string, listener: (event: unknown) => void) {
     const { run } = this.getRun(runId);
@@ -784,7 +805,9 @@ export class RunManager {
       } else if (afterHash !== null) {
         try {
           additions = fs.readFileSync(full, 'utf8').split('\n').length;
-        } catch {}
+        } catch {
+          // Arquivo novo ilegível (ex.: removido durante a leitura): conta 0 linhas.
+        }
       }
       insert.run(runId, file, kind, beforeHash, afterHash, additions, deletions);
     }

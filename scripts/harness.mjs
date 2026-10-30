@@ -6,6 +6,21 @@ import { createRequire } from 'node:module';
 export const require = createRequire(import.meta.url);
 export const { Client } = require('../dist/local/client.cjs');
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+export async function openDiagnostics(page) {
+  await page.getByRole('button', { name: 'Configurações e ferramentas', exact: true }).click();
+  await page.getByText('Daemon conectado', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Diagnóstico e laboratório', exact: true }).click();
+}
+export async function openConversation(page, title, origin) {
+  await page.getByRole('textbox', { name: 'Buscar projetos e conversas', exact: true }).fill(title);
+  // O resultado acessível inclui o título e a origem, mesmo fora do workspace atual.
+  const name = origin ? `${title} ${origin}` : new RegExp(`^${RegExp.escape(title)} .+ / .+$`);
+  await page.getByRole('button', { name, exact: true }).click();
+  await page.getByRole('heading', { name: title, exact: true }).waitFor();
+}
+export async function chooseProjectFolder(dialog) {
+  await dialog.locator('button', { hasText: 'Escolher…' }).click();
+}
 export async function until(fn) {
   let last;
   for (let n = 0; n < 100; n++) {
@@ -19,16 +34,18 @@ export async function until(fn) {
   throw last;
 }
 export function environment() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-bench-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-bench-'));
   const env = {
     ...process.env,
-    EROS_RUNTIME_DIR: path.join(root, 'run'),
-    EROS_DATA_DIR: path.join(root, 'data'),
-    EROS_DESKTOP_DATA: path.join(root, 'desktop'),
+    KARONT_RUNTIME_DIR: path.join(root, 'run'),
+    KARONT_DATA_DIR: path.join(root, 'data'),
+    KARONT_DESKTOP_DATA: path.join(root, 'desktop'),
   };
   if (!env.XDG_RUNTIME_DIR && process.getuid) env.XDG_RUNTIME_DIR = `/run/user/${process.getuid()}`;
   if (!env.XAUTHORITY && env.DISPLAY && env.XDG_RUNTIME_DIR && fs.existsSync(env.XDG_RUNTIME_DIR)) {
-    const xauthority = fs.readdirSync(env.XDG_RUNTIME_DIR).find((name) => name.startsWith('.mutter-Xwaylandauth.'));
+    const xauthority = fs
+      .readdirSync(env.XDG_RUNTIME_DIR)
+      .find((name) => name.startsWith('.mutter-Xwaylandauth.'));
     if (xauthority) env.XAUTHORITY = path.join(env.XDG_RUNTIME_DIR, xauthority);
   }
   return {
@@ -45,8 +62,8 @@ export async function daemon(env) {
   const errors = [];
   child.stderr.on('data', (v) => errors.push(v.toString()));
   Object.assign(process.env, {
-    EROS_RUNTIME_DIR: env.EROS_RUNTIME_DIR,
-    EROS_DATA_DIR: env.EROS_DATA_DIR,
+    KARONT_RUNTIME_DIR: env.KARONT_RUNTIME_DIR,
+    KARONT_DATA_DIR: env.KARONT_DATA_DIR,
   });
   const client = new Client();
   const state = await until(() => client.request({ method: 'snapshot' })).catch((e) => {
@@ -155,7 +172,7 @@ export function host() {
     node: process.version,
     electron: require('electron/package.json').version,
     testEnvironment:
-      process.env.EROS_TEST_ENVIRONMENT ?? 'local desktop; uncontrolled concurrent load',
+      process.env.KARONT_TEST_ENVIRONMENT ?? 'local desktop; uncontrolled concurrent load',
     display: process.env.WAYLAND_DISPLAY ? 'Wayland' : process.env.DISPLAY ? 'X11' : 'none',
     distribution: fs.readFileSync('/etc/os-release', 'utf8'),
     notes:

@@ -123,7 +123,7 @@ Evidências: [JSON e PIDs/branches](runs/2026-10-23T23-44-56-394Z/phase1-e2e.jso
 
 Cinco rodadas válidas em Debian 13/KVM, 2 vCPU/4 GiB, Xvfb 1440×1000, D-Bus, Electron 45 e Node 24.21; GPU por software, carga do host não controlada. `libnotify4` 0.8.6-1 foi extraído para diretório do usuário dentro da VM (sem instalação privilegiada); CI/provisionamento agora declaram a dependência. A VM perdeu a conexão e o processo QEMU terminou durante uma tentativa anterior, por causa não determinada. Ela foi reiniciada com o mesmo disco/configuração e a série abaixo foi executada integralmente depois disso. Tentativas interrompidas não entram na série final.
 
-[Manifesto e dez JSONs brutos](series/2026-10-24T00-34-57-999Z/manifest.json) · [E2E com CLIs simuladas](runs/2026-10-24T00-40-12-960Z/phase1-e2e.json) · [Código, segurança e limitações](../docs/SPEC_003_IMPLEMENTACAO.md).
+[Manifesto e dez JSONs brutos](series/2026-10-24T00-34-57-999Z/manifest.json) · [E2E com CLIs simuladas](runs/2026-10-24T00-40-12-960Z/phase1-e2e.json) · [Código, segurança e limitações](../docs/historico/SPEC_003_IMPLEMENTACAO.md).
 
 | Cenário sem agentes | Electron PSS mediano | Daemon PSS mediano | Total Fase 1 → Fase 2 | Total p95 Fase 2 | CPU total mediana Fase 1 → Fase 2 |
 |---|---:|---:|---:|---:|---:|
@@ -167,7 +167,7 @@ GNOME/KDE, clique físico no tray/notificação e Wayland real continuam pendent
 
 Cinco rodadas finais em Debian 13/KVM, 2 vCPU/4 GiB, Node 24.21/Electron 45, Xvfb e D-Bus, com sandbox efetivo. Mesmo tipo de VM da Fase 2; caches do SO mantidos, GPU por software e carga do host não controlada. PSS compartilha páginas proporcionalmente e não equivale à soma RSS. p95 usa nearest-rank (máximo entre cinco rodadas). As medianas dos componentes podem não somar exatamente a mediana dos totais.
 
-[Manifesto e dez JSONs finais](series/2026-10-24T01-20-02-258Z/manifest.json) · [checkpoints, agendador e fila](spec004/continuity-benchmark.json) · [relatório técnico](../docs/SPEC_004_IMPLEMENTACAO.md).
+[Manifesto e dez JSONs finais](series/2026-10-24T01-20-02-258Z/manifest.json) · [checkpoints, agendador e fila](spec004/continuity-benchmark.json) · [relatório técnico](../docs/historico/SPEC_004_IMPLEMENTACAO.md).
 
 | Cenário sem agentes | Electron PSS mediano | Daemon PSS mediano | Total Fase 2 → Fase 3 | Total p95 Fase 3 | CPU total mediana |
 |---|---:|---:|---:|---:|---:|

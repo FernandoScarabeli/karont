@@ -1,4 +1,4 @@
-# Arquitetura — eros
+# Arquitetura — Karont
 
 ## Registro técnico • 23/10/2026 • Base: guia Ideias
 
@@ -60,12 +60,12 @@ PROPOSTA: manifesto com hashes, políticas de retenção para logs/cache/snapsho
 ## 5\. Adaptadores de IA — DECISÃO CONFIRMADA (23/10/2026) — incorporar; detalhes a validar em protótipo
 
 Contrato único de eventos tipados permanece objetivo para adaptadores estruturados. O adaptador inicial por terminal gerenciado tem menor granularidade de eventos; normalização de streaming, status, permissões, diffs e consumo depende das capacidades da CLI.  
-Primeiro adaptador da V1: terminal gerenciado por PTY, executando CLIs de agentes. O login ocorre na própria CLI; o eros não captura, armazena nem reutiliza tokens de assinatura. Processos de terminal e scrollback persistem no daemon, independentemente da janela; ao reabrir, a UI se reconecta. Adaptadores estruturados — Codex App Server (experimental), API própria, Claude Agent SDK/Claude Code e Ollama — entram depois para aprovações detalhadas, diffs ao vivo e métricas. Trade-off: mais compatibilidade inicial, menos eventos estruturados.  
+Primeiro adaptador da V1: terminal gerenciado por PTY, executando CLIs de agentes. O login ocorre na própria CLI; o Karont não captura, armazena nem reutiliza tokens de assinatura. Processos de terminal e scrollback persistem no daemon, independentemente da janela; ao reabrir, a UI se reconecta. Adaptadores estruturados — Codex App Server (experimental), API própria, Claude Agent SDK/Claude Code e Ollama — entram depois para aprovações detalhadas, diffs ao vivo e métricas. Trade-off: mais compatibilidade inicial, menos eventos estruturados.
 Seguir a autenticação oficial de cada CLI/provedor; não interceptar credenciais nem pressupor assinatura como API ilimitada. Controlar permissões do processo PTY, acesso ao terminal e retenção segura de scrollback. Recursos não observáveis via CLI devem aparecer como indisponíveis, sem simular dados.
 
 ### Limites do adaptador por terminal e níveis de suporte — DECISÃO CONFIRMADA (23/10/2026)
 
-O PTY genérico não controla individualmente as ações do agente: aprovações pertencem à própria CLI. Central de Aprovações, quatro modos de permissão e diffs ao vivo só funcionam plenamente com adaptadores estruturados. O eros mapeia modos às opções nativas disponíveis de cada CLI, sem simular permissões inexistentes.  
+O PTY genérico não controla individualmente as ações do agente: aprovações pertencem à própria CLI. Central de Aprovações, quatro modos de permissão e diffs ao vivo só funcionam plenamente com adaptadores estruturados. O Karont mapeia modos às opções nativas disponíveis de cada CLI, sem simular permissões inexistentes.
 Nível 1 (qualquer CLI): terminal/scrollback persistentes no daemon; worktree Git por Run; diff após execução; rollback com verificação de conflitos; notificação de conclusão. Manter diretório de trabalho no worktree e limitar diretórios acessíveis quando houver mecanismo efetivo; worktree sozinho NÃO é sandbox.  
 Nível 2 (uma CLI com integração profunda): \[EM ABERTO — CLI a definir\]. Detectar limite e horário de reset quando a CLI expuser esses dados, estado da sessão e Auto Resume quando suportado. Se faltarem dados de uso, mostrar «indisponível»; sem métricas inventadas. Detalhes a validar em protótipo.  
 PÓS-V1 — ESTUDO: contenção de processos do Linux por bubblewrap ou containers, para restringir acesso além do diretório de trabalho e das opções internas de cada CLI.
@@ -78,7 +78,7 @@ Rollback por execução com prévia e trilha auditável; reversão de arquivos n
 
 ## 7\. Permissões e segurança \[DECIDIDO / limites do PTY\] — 23/10/2026
 
-DECIDIDO: motor de permissões do eros fora do prompt. Modos: Pedir aprovação, Aprovar por mim, Acesso total, Somente leitura. No PTY, cada modo só pode mapear opções que a CLI realmente ofereça; o eros não intercepta nem aprova cada ação interna. Concessões individuais (Permitir uma vez/sempre/Negar) dependem da integração estruturada.  
+DECIDIDO: motor de permissões do Karont fora do prompt. Modos: Pedir aprovação, Aprovar por mim, Acesso total, Somente leitura. No PTY, cada modo só pode mapear opções que a CLI realmente ofereça; o Karont não intercepta nem aprova cada ação interna. Concessões individuais (Permitir uma vez/sempre/Negar) dependem da integração estruturada.
 DECIDIDO como funcionalidade do produto: Central de Aprovações no Mission Control e painel flutuante; gestão detalhada de ações sensíveis somente via adaptadores estruturados. No PTY, as aprovações permanecem na CLI. Segredos no Secret Service/keyring seguro, com fallback criptografado por senha.  
 DECIDIDO: permissões no daemon e fora do prompt, com contextIsolation=true, nodeIntegration=false, sandbox=true e validação de mensagens IPC. A UI não acessa diretamente recursos do sistema. Isso não concede controle sobre cada ação interna de uma CLI sob PTY.  
 PROPOSTA — escopo pré-aprovado por tarefa: para Runs noturnas/autônomas, definir previamente diretórios, ferramentas e tipos de ação permitidos, preservando pedidos de aprovação para exceções ou riscos; não significa acesso irrestrito.
@@ -124,14 +124,14 @@ DECISÃO CONFIRMADA (23/10/2026): daemon separado em TypeScript/Node; robustez a
 ## 14\. Posicionamento e diferenciais — DECISÃO CONFIRMADA (23/10/2026) — incorporar; detalhes a validar em protótipo
 
 • Não competir reproduzindo as funcionalidades maduras de terminal e worktree de Orca/ADE; reaproveitar padrões de arquitetura e UX, sem copiar implementação.  
-• Diferenciais do eros: Dot Studio e mascotes 2D personalizáveis; Auto Resume por limite de uso; fila com perfis Leve/Equilibrado/Máximo; memória Global/Workspace/Dot; foco real em Linux com .deb e AppImage testados.  
+• Diferenciais do Karont: Dot Studio e mascotes 2D personalizáveis; Auto Resume por limite de uso; fila com perfis Leve/Equilibrado/Máximo; memória Global/Workspace/Dot; foco real em Linux com .deb e AppImage testados.
 • Observação da referência Orca: materiais consultados exibem uso e horário de reset de cotas dos agentes, sinalizando que esses dados podem ser expostos por algumas CLIs/provedores. Não há evidência observada de retomada automática na referência; disponibilidade deve ser verificada para cada adaptador.
 
 ## 15\. Licenças e propriedade intelectual — DECISÃO CONFIRMADA (23/10/2026) — incorporar; detalhes a validar em protótipo
 
-• Orca: MIT. ADE: AGPL-3.0. Usar ideias e padrões como inspiração, sem copiar código do ADE; a incorporação de código coberto por AGPL pode impor obrigações de copyleft incompatíveis com a licença escolhida para eros.  
+• Orca: MIT. ADE: AGPL-3.0. Usar ideias e padrões como inspiração, sem copiar código do ADE; a incorporação de código coberto por AGPL pode impor obrigações de copyleft incompatíveis com a licença escolhida para o Karont.
 • Qualquer reuso de código ou assets exige revisão da licença, atribuições preservadas e registro da origem. Criar mascotes, marca e interface autorais.  
-• EM ABERTO: licença do eros; MIT ou Apache-2.0 são sugestões, não escolhas aprovadas. Nota técnica informativa, sem aconselhamento jurídico.
+• EM ABERTO: licença do Karont; MIT ou Apache-2.0 são sugestões, não escolhas aprovadas. Nota técnica informativa, sem aconselhamento jurídico.
 
 ## 16\. Fora da V1 — DECISÃO CONFIRMADA (23/10/2026) — incorporar; detalhes a validar em protótipo
 
@@ -156,11 +156,11 @@ Documentação oficial: Electron — Tray, Process Model, Security e safeStorage
 
 O perfil PTY passa a expor capacidades por modo; perfis `generic` e `codex` não constituem adaptadores estruturados. Políticas nativas são selecionadas e revalidadas pelo daemon. Acesso total exige concessão explícita; o main Electron obtém confirmação nativa por execução. Nenhuma autorização é derivada de stdout ou prompt. SQLite v3 preserva dados anteriores e acrescenta modo da Run e pedidos de rollback com decisões auditadas em eventos.
 
-Central, Diagnóstico e relatório usam o único renderer existente. Notificações e tray vivem no main, inclusive sem janela. Diagnóstico é sob demanda; relatório usa coleta mínima permitida e sanitização, com salvamento/cópia locais. Novos contratos e riscos estão em [PROTOCOLO_LOCAL.md](PROTOCOLO_LOCAL.md) e [SPEC_003_IMPLEMENTACAO.md](SPEC_003_IMPLEMENTACAO.md). São propostas implementadas, sem presumir aprovação formal do protocolo ou segurança completa das ferramentas internas de CLIs. A Fase 3 permanece fora desta entrega.
+Central, Diagnóstico e relatório usam o único renderer existente. Notificações e tray vivem no main, inclusive sem janela. Diagnóstico é sob demanda; relatório usa coleta mínima permitida e sanitização, com salvamento/cópia locais. Novos contratos e riscos estão em [PROTOCOLO_LOCAL.md](PROTOCOLO_LOCAL.md) e [SPEC_003_IMPLEMENTACAO.md](historico/SPEC_003_IMPLEMENTACAO.md). São propostas implementadas, sem presumir aprovação formal do protocolo ou segurança completa das ferramentas internas de CLIs. A Fase 3 permanece fora desta entrega.
 
 ## Registro SPEC-004 — continuidade
 
-A Fase 3 acrescenta ao daemon existente uma camada transacional de estados/checkpoints e uma infraestrutura de agendamento por capacidade, sem supervisor externo. Migração v4 preserva dados e adiciona checkpoints/operações/jobs e identidade Linux. Runs interrompidas ficam recovery_needed; PTY perdido não é reanexado. Nova sessão na mesma worktree exige confirmação e não reenvia prompt. Codex é a única candidata investigada; nenhum adaptador Nível 2 está certificado para Auto Resume na produção. [Implementação e evidências](SPEC_004_IMPLEMENTACAO.md). Fase 4 não iniciada.
+A Fase 3 acrescenta ao daemon existente uma camada transacional de estados/checkpoints e uma infraestrutura de agendamento por capacidade, sem supervisor externo. Migração v4 preserva dados e adiciona checkpoints/operações/jobs e identidade Linux. Runs interrompidas ficam recovery_needed; PTY perdido não é reanexado. Nova sessão na mesma worktree exige confirmação e não reenvia prompt. Codex é a única candidata investigada; nenhum adaptador Nível 2 está certificado para Auto Resume na produção. [Implementação e evidências](historico/SPEC_004_IMPLEMENTACAO.md). Fase 4 não iniciada.
 
 ## Registro SPEC-005 — Fase 4A: organização do trabalho
 
@@ -190,7 +190,7 @@ ambígua exige revisão explícita.
 
 As telas de execução, diff, rollback, atenção e laboratório existentes continuam
 acessíveis pelo mesmo renderer. Comportamento, migração, limites e evidências
-estão detalhados em [SPEC_005_IMPLEMENTACAO.md](SPEC_005_IMPLEMENTACAO.md). A
+estão detalhados em [SPEC_005_IMPLEMENTACAO.md](historico/SPEC_005_IMPLEMENTACAO.md). A
 Fase 4B (Kanban) e Auto Resume não faziam parte daquela entrega.
 
 ## Registro SPEC-006 — Fase 4B: Kanban e `/kanban`
@@ -218,4 +218,4 @@ dos primeiros 100 itens.
 Main, preload, cliente e daemon usam operações IPC nomeadas `tasks.*` com schemas
 estritos; não há `invoke` arbitrário. Texto de tarefa não é incluído em logs,
 relatórios ou notificações. Implementação, matriz de aceite, medições locais,
-limitações e evidências estão em [SPEC_006_IMPLEMENTACAO.md](SPEC_006_IMPLEMENTACAO.md).
+limitações e evidências estão em [SPEC_006_IMPLEMENTACAO.md](historico/SPEC_006_IMPLEMENTACAO.md).

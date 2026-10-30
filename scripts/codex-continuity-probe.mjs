@@ -6,9 +6,9 @@ import { execFileSync, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url),
   pty = require('node-pty');
-const executable = process.env.EROS_REAL_CLI;
+const executable = process.env.KARONT_REAL_CLI;
 if (!executable || !path.isAbsolute(executable)) throw Error('CLI absoluta obrigatória');
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-codex-probe-'));
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-codex-probe-'));
 fs.chmodSync(root, 0o700);
 fs.mkdirSync(path.join(root, 'codex'), { mode: 0o700 });
 const env = {
@@ -98,7 +98,7 @@ try {
     });
   server.stdin.on('error', () => {});
   const initialized = await rpc(1, 'initialize', {
-    clientInfo: { name: 'eros_continuity_probe', version: '0.0.1' },
+    clientInfo: { name: 'karont_continuity_probe', version: '0.0.1' },
     capabilities: { experimentalApi: true },
   });
   evidence.rpc.initialize = !!initialized.result;

@@ -62,7 +62,7 @@ function TerminalPane({
       restored = false,
       replay = '';
     const pending: string[] = [];
-    const dispose = window.eros.onEvent((event: TerminalEvent) => {
+    const dispose = window.karont.onEvent((event: TerminalEvent) => {
       if (event.type === 'terminal.output' && event.runId === run.id) {
         if (restoring) pending.push(event.data);
         else terminal.write(event.data);
@@ -92,7 +92,7 @@ function TerminalPane({
       const data = inputBuffer;
       inputBuffer = '';
       if (data)
-        void window.eros
+        void window.karont
           .writeTerminal(run.id, data)
           .catch(() =>
             setMessage('O terminal encerrou; a saída continua disponível para revisão.'),
@@ -108,16 +108,18 @@ function TerminalPane({
         fit.fit();
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(
-          () => void window.eros.resizeTerminal(run.id, terminal.cols, terminal.rows),
+          () => void window.karont.resizeTerminal(run.id, terminal.cols, terminal.rows),
           100,
         );
-      } catch {}
+      } catch {
+        // fit() falha se o terminal já foi desmontado ou está oculto; o próximo resize ajusta.
+      }
     });
     observer.observe(host.current);
     let retry: ReturnType<typeof setTimeout> | undefined,
       stopped = false;
     const attach = () =>
-      void window.eros.attachTerminal(run.id).catch(() => {
+      void window.karont.attachTerminal(run.id).catch(() => {
         if (!stopped) retry = setTimeout(attach, 2000);
       });
     attach();
@@ -141,7 +143,7 @@ function TerminalPane({
     setMessage('');
     const prompt = `${dot?.role ? `${dot.role}\n\n` : ''}${value}\r`;
     try {
-      await window.eros.writeTerminal(run.id, prompt);
+      await window.karont.writeTerminal(run.id, prompt);
       if (task.current) task.current.value = '';
     } catch {
       setMessage('O terminal ainda não está pronto para receber a instrução.');
@@ -211,7 +213,7 @@ function TerminalPane({
         {run.state === 'running' && (
           <button
             className="danger-quiet"
-            onClick={() => void window.eros.cancelRun(run.id).then(refreshRun)}
+            onClick={() => void window.karont.cancelRun(run.id).then(refreshRun)}
           >
             Cancelar
           </button>
@@ -240,13 +242,13 @@ export function RunDesk({
   const rollbackDialog = useRef<HTMLDialogElement>(null);
   useEffect(
     () => () => {
-      void window.eros.detachTerminals().catch(() => {});
+      void window.karont.detachTerminals().catch(() => {});
     },
     [],
   );
   const loadRuns = React.useCallback(async () => {
-    if (chat) return (await window.eros.chatRuns(chat.id)).items;
-    const listed = await window.eros.runs(100);
+    if (chat) return (await window.karont.chatRuns(chat.id)).items;
+    const listed = await window.karont.runs(100);
     return previousOnly ? listed.filter((run) => run.chatId === null) : listed;
   }, [chat?.id, previousOnly]);
   useEffect(() => {
@@ -274,12 +276,12 @@ export function RunDesk({
       );
     };
     const openRequested = (event: Event) => focus((event as CustomEvent<string>).detail);
-    window.addEventListener('eros-open-run', openRequested);
-    const unfocus = window.eros.onFocusRun(focus);
-    void window.eros.focusTarget().then((id) => {
+    window.addEventListener('karont-open-run', openRequested);
+    const unfocus = window.karont.onFocusRun(focus);
+    void window.karont.focusTarget().then((id) => {
       if (id) focus(id);
     });
-    const dispose = window.eros.onEvent((event) => {
+    const dispose = window.karont.onEvent((event) => {
       setConnectionError('');
       if (
         event.type === 'run.updated' &&
@@ -293,9 +295,9 @@ export function RunDesk({
     });
     const projectRequest =
       chat?.projectId && chat.workspaceId
-        ? window.eros.projects(chat.workspaceId).then((page) => page.items)
-        : window.eros.projects();
-    void Promise.all([window.eros.dots(), projectRequest, loadRuns()])
+        ? window.karont.projects(chat.workspaceId).then((page) => page.items)
+        : window.karont.projects();
+    void Promise.all([window.karont.dots(), projectRequest, loadRuns()])
       .then(([nextDots, nextProjects, nextRuns]) => {
         if (!mounted) return;
         setDots(nextDots);
@@ -325,7 +327,7 @@ export function RunDesk({
       mounted = false;
       dispose();
       unfocus();
-      window.removeEventListener('eros-open-run', openRequested);
+      window.removeEventListener('karont-open-run', openRequested);
       clearInterval(reconnect);
     };
   }, [chat?.id, chat?.projectId, chat?.workspaceId, loadRuns]);
@@ -354,7 +356,7 @@ export function RunDesk({
     setNotice('');
     setError('');
     try {
-      const run = await window.eros.startRun(dot.id, projectId, mode, mode === 'full', chat?.id);
+      const run = await window.karont.startRun(dot.id, projectId, mode, mode === 'full', chat?.id);
       setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 100));
     } catch {
       setError('Esta execução não pôde iniciar. Confira o dot, o projeto Git e a CLI configurada.');
@@ -368,7 +370,7 @@ export function RunDesk({
     setRollback(undefined);
     setDiff(undefined);
     try {
-      setDiff(await window.eros.diff(run.id));
+      setDiff(await window.karont.diff(run.id));
     } catch {
       setError('O diff desta execução ainda não está disponível.');
     }
@@ -376,7 +378,7 @@ export function RunDesk({
   async function previewRollback() {
     if (!diff) return;
     try {
-      setRollback(await window.eros.rollbackPreview(diff.run.id));
+      setRollback(await window.karont.rollbackPreview(diff.run.id));
     } catch {
       setError('Não foi possível preparar a prévia de reversão.');
     }
@@ -385,9 +387,9 @@ export function RunDesk({
     if (!rollback?.canRollback || busy) return;
     setBusy(true);
     try {
-      const result = await window.eros.rollbackApply(rollback.run.id);
+      const result = await window.karont.rollbackApply(rollback.run.id);
       setRollback(undefined);
-      setDiff(await window.eros.diff(rollback.run.id));
+      setDiff(await window.karont.diff(rollback.run.id));
       setNotice(
         result.applied
           ? 'Reversão registrada no histórico desta execução.'
@@ -397,7 +399,7 @@ export function RunDesk({
       setError(
         'A reversão não foi concluída. Revise a prévia e os arquivos antes de tentar novamente.',
       );
-      setRollback(await window.eros.rollbackPreview(rollback.run.id).catch(() => undefined));
+      setRollback(await window.karont.rollbackPreview(rollback.run.id).catch(() => undefined));
     } finally {
       setBusy(false);
     }
@@ -411,7 +413,7 @@ export function RunDesk({
     )
       return;
     try {
-      await window.eros.removeWorktree(diff.run.id);
+      await window.karont.removeWorktree(diff.run.id);
       setDiff(undefined);
       setNotice('Worktree removida; o histórico da execução foi preservado.');
     } catch {
@@ -425,7 +427,7 @@ export function RunDesk({
     <section className="run-desk" aria-labelledby="runs-title">
       <div className="desk-heading">
         <div>
-          <div className="eyebrow">EROS / EXECUÇÕES LOCAIS</div>
+          <div className="eyebrow">KARONT / EXECUÇÕES LOCAIS</div>
           <h2 id="runs-title">
             {chat
               ? 'Execuções desta conversa'
@@ -481,7 +483,7 @@ export function RunDesk({
             <div className="desk-empty">
               <strong>Configure os primeiros dots</strong>
               <p>
-                Crie <code>~/.config/eros/dots.json</code> a partir de{' '}
+                Crie <code>~/.config/karont/dots.json</code> a partir de{' '}
                 <code>config/dots.example.json</code>, ajuste os diretórios e a CLI. O arquivo fica
                 fora do repositório e não contém credenciais.
               </p>
@@ -664,7 +666,7 @@ export function RunDesk({
                       {run.state === 'running' && (
                         <button
                           className="danger-quiet"
-                          onClick={() => void window.eros.cancelRun(run.id).then(refreshRun)}
+                          onClick={() => void window.karont.cancelRun(run.id).then(refreshRun)}
                         >
                           Cancelar
                         </button>
@@ -744,7 +746,7 @@ export function RunDesk({
           aria-labelledby="rollback-title"
           onCancel={() => {
             if (rollback.approvalId)
-              void window.eros.decideApproval(rollback.approvalId, false).catch(() => {});
+              void window.karont.decideApproval(rollback.approvalId, false).catch(() => {});
             setRollback(undefined);
           }}
         >
@@ -789,7 +791,7 @@ export function RunDesk({
               className="quiet"
               onClick={() => {
                 if (rollback.approvalId)
-                  void window.eros.decideApproval(rollback.approvalId, false).catch(() => {});
+                  void window.karont.decideApproval(rollback.approvalId, false).catch(() => {});
                 setRollback(undefined);
               }}
             >

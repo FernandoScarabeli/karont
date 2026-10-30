@@ -12,16 +12,21 @@ test('benchmark recusa PID inexistente em vez de reportar consumo zero', async (
 });
 
 test('fechar cliente durante handshake cancela a conexão imediatamente', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-close-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-close-test-'));
   const runtime = path.join(root, 'run');
   const data = path.join(root, 'data');
   fs.mkdirSync(runtime, { mode: 0o700 });
   fs.mkdirSync(data, { mode: 0o700 });
   const previous = {
-    EROS_RUNTIME_DIR: process.env.EROS_RUNTIME_DIR,
-    EROS_DATA_DIR: process.env.EROS_DATA_DIR,
+    KARONT_RUNTIME_DIR: process.env.KARONT_RUNTIME_DIR,
+    KARONT_DATA_DIR: process.env.KARONT_DATA_DIR,
+    KARONT_CONFIG_DIR: process.env.KARONT_CONFIG_DIR,
   };
-  Object.assign(process.env, { EROS_RUNTIME_DIR: runtime, EROS_DATA_DIR: data });
+  Object.assign(process.env, {
+    KARONT_RUNTIME_DIR: runtime,
+    KARONT_DATA_DIR: data,
+    KARONT_CONFIG_DIR: path.join(root, 'config'),
+  });
   fs.writeFileSync(
     path.join(runtime, 'session.json'),
     JSON.stringify({ version: 1, secret: 'a'.repeat(64) }),

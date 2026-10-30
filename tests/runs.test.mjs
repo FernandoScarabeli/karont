@@ -28,12 +28,12 @@ function git(cwd, ...args) {
 }
 
 test('duas execuções PTY, fila, reconexão, worktrees, diff, rollback e conflito', async () => {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-runs-'));
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-runs-'));
   const root = path.join(temp, 'repo');
   fs.mkdirSync(root);
   git(root, 'init', '--quiet');
   git(root, 'config', 'user.email', 'test@local.invalid');
-  git(root, 'config', 'user.name', 'Eros Test');
+  git(root, 'config', 'user.name', 'Karont Test');
   fs.writeFileSync(path.join(root, 'base.txt'), 'base\n');
   git(root, 'add', '.');
   git(root, 'commit', '--quiet', '-m', 'base');
@@ -59,9 +59,10 @@ test('duas execuções PTY, fila, reconexão, worktrees, diff, rollback e confli
   );
   const env = {
     ...process.env,
-    EROS_RUNTIME_DIR: runtime,
-    EROS_DATA_DIR: data,
-    EROS_DOTS_CONFIG: config,
+    KARONT_RUNTIME_DIR: runtime,
+    KARONT_DATA_DIR: data,
+    KARONT_CONFIG_DIR: path.join(temp, 'config-dir'),
+    KARONT_DOTS_CONFIG: config,
   };
   const daemon = spawn(process.execPath, ['dist/daemon/entry.cjs'], {
     env,
@@ -70,9 +71,10 @@ test('duas execuções PTY, fila, reconexão, worktrees, diff, rollback e confli
   const errors = [];
   daemon.stderr.on('data', (chunk) => errors.push(chunk.toString()));
   Object.assign(process.env, {
-    EROS_RUNTIME_DIR: runtime,
-    EROS_DATA_DIR: data,
-    EROS_DOTS_CONFIG: config,
+    KARONT_RUNTIME_DIR: runtime,
+    KARONT_DATA_DIR: data,
+    KARONT_CONFIG_DIR: path.join(temp, 'config-dir'),
+    KARONT_DOTS_CONFIG: config,
   });
   let client = new Client();
   let events = [];
@@ -116,13 +118,23 @@ test('duas execuções PTY, fila, reconexão, worktrees, diff, rollback e confli
           }),
         /indisponível/,
       );
-    const blankChat = await client.request({ method: 'chats.create', value: { projectId: 'repo', title: 'Nova conversa sem Dot', operationId: crypto.randomUUID() } });
+    const blankChat = await client.request({
+      method: 'chats.create',
+      value: {
+        projectId: 'repo',
+        title: 'Nova conversa sem Dot',
+        operationId: crypto.randomUUID(),
+      },
+    });
     assert.equal(blankChat.chat.dotId, null);
     const first = await client.request({
       method: 'runs.start',
       value: { dotId: 'alpha', projectId: 'repo', chatId: blankChat.chat.id },
     });
-    const boundChat = await client.request({ method: 'chats.get', value: { chatId: blankChat.chat.id } });
+    const boundChat = await client.request({
+      method: 'chats.get',
+      value: { chatId: blankChat.chat.id },
+    });
     assert.equal(boundChat.chat.dotId, 'alpha');
     const second = await client.request({
       method: 'runs.start',
@@ -236,6 +248,10 @@ test('duas execuções PTY, fila, reconexão, worktrees, diff, rollback e confli
     const db = new DatabaseSync(path.join(data, 'phase0.sqlite'));
     const wtA = db.prepare('SELECT path FROM worktrees WHERE run_id=?').get(first.id).path;
     const wtB = db.prepare('SELECT path FROM worktrees WHERE run_id=?').get(second.id).path;
+    assert.equal(
+      db.prepare('SELECT branch FROM worktrees WHERE run_id=?').get(first.id).branch,
+      `karont/run-${first.id}`,
+    );
     assert.ok(fs.existsSync(wtA));
     assert.ok(fs.existsSync(wtB));
     await assert.rejects(

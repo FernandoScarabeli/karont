@@ -13,4 +13,4 @@ curl -fLO "https://nodejs.org/dist/$node_version/SHASUMS256.txt"
 grep "  node-$node_version-linux-x64.tar.xz$" SHASUMS256.txt | sha256sum --check -
 tar -xJf "node-$node_version-linux-x64.tar.xz" -C /usr/local --strip-components=1
 # Não instala helper SUID, não altera sysctl, AppArmor nem permissões do Electron.
-touch /var/lib/eros-guest-ready
+touch /var/lib/karont-guest-ready

@@ -2,6 +2,8 @@
 
 ## Refatoração em andamento
 
+**Orquestrador começando uma sessão nova ou em outro computador: leia primeiro [docs/RETOMAR.md](docs/RETOMAR.md).**
+
 O trabalho atual segue [docs/SPEC_REFATORACAO.md](docs/SPEC_REFATORACAO.md). Leia a spec antes de qualquer tarefa. O estado e as decisões do usuário ficam em [docs/PROGRESSO.md](docs/PROGRESSO.md); problemas encontrados fora do escopo vão para [docs/DIVIDAS.md](docs/DIVIDAS.md).
 
 Papéis: o Claude Code orquestra (planeja, revisa, roda os testes e faz merge); o Codex executa **uma tarefa por vez**, em branch/worktree própria, e implementa somente o que a tarefa pede.

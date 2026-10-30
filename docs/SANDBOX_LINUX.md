@@ -1,12 +1,16 @@
 # Sandbox Linux — investigação P0
 
+## Refatoração – Fase 1: CI e contorno local
+
+No runner Ubuntu 24.04, o workflow executa `node node_modules/electron/install.js` logo após `npm ci` para garantir o binário e, em seguida, `sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox`. O preparo é específico do runner descartável e mantém o sandbox ativo. Localmente, o helper aprovado fica em `/usr/local/lib/karont-dev/chrome-sandbox`: `CHROME_DEVEL_SANDBOX` só é respeitado quando **não existe** `chrome-sandbox` ao lado do executável do Electron. Após `npm ci`, renomeie essa cópia local antes de usar a variável e confira a compatibilidade do helper quando a versão do Electron mudar. Os registros abaixo são históricos; o passo do CI ainda depende da execução pelo orquestrador.
+
 ## SPEC-001 — desbloqueio em ambiente separado
 
 **Sandbox validado em VM Debian 13/KVM.** O host Ubuntu descrito abaixo permanece protegido e bloqueado; não foi alterado. A rota usada foi uma VM com kernel próprio e política padrão Debian, sem exceções, SUID ou mudanças em sysctls. AppArmor está carregado no guest (`Y`, contexto `unconfined`), `unprivileged_userns_clone=1`; a sonda `unshare` passou. Os knobs específicos do Ubuntu não são inferidos como desligados: um está ausente e outro inacessível ao usuário do guest, conforme diagnóstico.
 
 Prova efetiva do renderer: preferências sandbox/contextIsolation verdadeiras, Node desativado, runtime sandboxed/contextIsolated verdadeiros, **Seccomp=2 e NoNewPrivs=1**, lançamento sem flags desativadoras. `npm run test:desktop` passou, assim como cinco rodadas completas. Helper baixado permanece usuário comum/0755. [Diagnóstico VM](../benchmarks/spec001/sandbox-diagnostic-vm.json), [resultado final](../benchmarks/desktop-latest.json), [série](../benchmarks/series-latest.json).
 
-Procedimento e scripts: [AMBIENTE_VM_FASE_0.md](AMBIENTE_VM_FASE_0.md). Evidência não equivale a aprovação para instalar perfis/helpers no host; as duas rotas administrativas históricas abaixo **não foram usadas**. Também não prova GNOME/Wayland ou suspensão real. Veja [recomendação atual](REVISAO_FASE_0.md).
+Procedimento e scripts: [AMBIENTE_VM_FASE_0.md](AMBIENTE_VM_FASE_0.md). Evidência não equivale a aprovação para instalar perfis/helpers no host; as duas rotas administrativas históricas abaixo **não foram usadas**. Também não prova GNOME/Wayland ou suspensão real. Veja [recomendação atual](historico/REVISAO_FASE_0.md).
 
 ## Investigação anterior — histórico do host Ubuntu
 
@@ -55,10 +59,10 @@ Uma VM Linux de teste com sandbox de Chromium suportado é outra opção, sem al
 Quando um helper **já estiver instalado e aprovado** (exemplo de caminho dedicado), executar como usuário comum, sem sudo:
 
 ```bash
-stat -Lc '%U %G %a %n' /usr/local/lib/eros-phase0/chrome-sandbox
+stat -Lc '%U %G %a %n' /usr/local/lib/karont-dev/chrome-sandbox
 # Esperado: root root 4755, e diretórios pais não graváveis pelo usuário.
-CHROME_DEVEL_SANDBOX=/usr/local/lib/eros-phase0/chrome-sandbox npm run sandbox:diagnose
-CHROME_DEVEL_SANDBOX=/usr/local/lib/eros-phase0/chrome-sandbox npm run test:desktop
+CHROME_DEVEL_SANDBOX=/usr/local/lib/karont-dev/chrome-sandbox npm run sandbox:diagnose
+CHROME_DEVEL_SANDBOX=/usr/local/lib/karont-dev/chrome-sandbox npm run test:desktop
 npm run benchmark:report
 ```
 

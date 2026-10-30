@@ -17,10 +17,10 @@ export function Attention() {
     setError('');
     setNotice('');
     try {
-      if (next === 'approvals') setApprovals(await window.eros.approvals());
+      if (next === 'approvals') setApprovals(await window.karont.approvals());
       if (next === 'diagnostics') {
-        setItems(await window.eros.diagnostics());
-        const n = await window.eros.notifications();
+        setItems(await window.karont.diagnostics());
+        const n = await window.karont.notifications();
         setEnabled(n.enabled);
         setDelivery(
           n.history
@@ -31,14 +31,14 @@ export function Attention() {
             .join('\n') || 'Nenhum envio registrado',
         );
       }
-      if (next === 'report') setReport(await window.eros.report());
+      if (next === 'report') setReport(await window.karont.report());
     } catch {
       setError('Não foi possível carregar. Verifique a conexão e tente novamente.');
     }
   }
   useEffect(() => {
     if (panel) region.current?.focus();
-    const dispose = window.eros.onEvent((event) => {
+    const dispose = window.karont.onEvent((event) => {
       if (event.type === 'approval.updated')
         setApprovals((current) =>
           [event.approval, ...current.filter((a) => a.id !== event.approval.id)].slice(0, 100),
@@ -57,13 +57,13 @@ export function Attention() {
     setBusy(true);
     setError('');
     try {
-      await window.eros.decideApproval(a.id, allow);
-      setApprovals(await window.eros.approvals());
+      await window.karont.decideApproval(a.id, allow);
+      setApprovals(await window.karont.approvals());
     } catch {
       setError(
         'A decisão não pôde ser aplicada. Atualize a prévia: pode haver conflito ou decisão anterior.',
       );
-      void window.eros
+      void window.karont
         .approvals()
         .then(setApprovals)
         .catch(() => {});
@@ -142,7 +142,7 @@ export function Attention() {
           {panel === 'approvals' && (
             <>
               <p>
-                Operações do eros com confirmação auditável. Aprovações internas dos agentes
+                Operações do Karont com confirmação auditável. Aprovações internas dos agentes
                 continuam na CLI. Não há detecção confiável de interação pendente no PTY genérico.
               </p>
               {!approvals.length ? (
@@ -167,7 +167,7 @@ export function Attention() {
                           className="quiet"
                           onClick={() => {
                             window.dispatchEvent(
-                              new CustomEvent('eros-open-run', { detail: a.runId }),
+                              new CustomEvent('karont-open-run', { detail: a.runId }),
                             );
                             setPanel(undefined);
                           }}
@@ -209,7 +209,7 @@ export function Attention() {
                   onChange={(e) => {
                     const value = e.target.checked;
                     setEnabled(value);
-                    void window.eros.notifications(value).catch(() => {
+                    void window.karont.notifications(value).catch(() => {
                       setEnabled(!value);
                       setError('Preferência não salva.');
                     });
@@ -255,7 +255,7 @@ export function Attention() {
                 <button
                   className="quiet"
                   onClick={() =>
-                    void window.eros
+                    void window.karont
                       .copyReport()
                       .then(() => setNotice('Relatório copiado.'))
                       .catch(() => setError('Não foi possível copiar.'))
@@ -266,7 +266,7 @@ export function Attention() {
                 <button
                   className="primary"
                   onClick={() =>
-                    void window.eros
+                    void window.karont
                       .saveReport()
                       .then((ok) => {
                         if (ok) setNotice('Relatório salvo localmente.');

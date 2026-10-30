@@ -18,8 +18,20 @@ const {
 } = require('../dist/daemon/continuity.cjs');
 const { AutoResumeScheduler } = require('../dist/daemon/auto-resume.cjs');
 const { requestSchema } = require('../dist/contracts/index.cjs');
+function karontEnvironment() {
+  const e = environment();
+  e.env.KARONT_RUNTIME_DIR = path.join(e.root, 'run');
+  e.env.KARONT_DATA_DIR = path.join(e.root, 'data');
+  e.env.KARONT_CONFIG_DIR = path.join(e.root, 'config');
+  Object.assign(process.env, {
+    KARONT_RUNTIME_DIR: e.env.KARONT_RUNTIME_DIR,
+    KARONT_DATA_DIR: e.env.KARONT_DATA_DIR,
+    KARONT_CONFIG_DIR: e.env.KARONT_CONFIG_DIR,
+  });
+  return e;
+}
 function fixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-continuity-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-continuity-'));
   const db = openDatabase(path.join(root, 'test.sqlite'));
   fs.chmodSync(path.join(root, 'test.sqlite'), 0o600);
   db.prepare('INSERT INTO dots VALUES(?,?,?,?,?,?,?)').run(
@@ -330,7 +342,7 @@ test('IPC de continuidade recusa estado, snapshot, comandos, sessão e confirma�
     assert.equal(requestSchema.safeParse({ id: 1, ...command }).success, false);
 });
 test('SIGKILL real: duas Runs, filho sobrevivente, fila persistente, replay e nova sessão explícita', async () => {
-  const e = environment();
+  const e = karontEnvironment();
   const root = path.join(e.root, 'repo');
   fs.mkdirSync(root);
   const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
@@ -359,7 +371,7 @@ test('SIGKILL real: duas Runs, filho sobrevivente, fila persistente, replay e no
     }),
     { mode: 0o600 },
   );
-  e.env.EROS_DOTS_CONFIG = config;
+  e.env.KARONT_DOTS_CONFIG = config;
   let d;
   const pids = [];
   try {
@@ -402,7 +414,7 @@ test('SIGKILL real: duas Runs, filho sobrevivente, fila persistente, replay e no
         pids.push(processIdentity(run.pid));
         assert.equal(
           fs.readFileSync(
-            path.join(e.env.EROS_DATA_DIR, 'worktrees', 'repo', id, 'progress.txt'),
+            path.join(e.env.KARONT_DATA_DIR, 'worktrees', 'repo', id, 'progress.txt'),
             'utf8',
           ),
           'persisted',
@@ -462,7 +474,7 @@ test('SIGKILL real: duas Runs, filho sobrevivente, fila persistente, replay e no
     await assert.rejects(
       client.request({ method: 'runs.resume', value: { runId: a.id, operationId: randomUUID() } }),
     );
-    const wt = path.join(e.env.EROS_DATA_DIR, 'worktrees', 'repo', a.id);
+    const wt = path.join(e.env.KARONT_DATA_DIR, 'worktrees', 'repo', a.id);
     fs.writeFileSync(path.join(wt, 'progress.txt'), 'reviewed');
     assert.equal(
       (await client.request({ method: 'recovery.inspect', value: { runId: a.id } }))
@@ -502,7 +514,7 @@ test('SIGKILL real: duas Runs, filho sobrevivente, fila persistente, replay e no
   }
 });
 test('SIGKILL durante rollback deixa operação incerta; restauração parcial nunca é repetida', async () => {
-  const e = environment(),
+  const e = karontEnvironment(),
     root = path.join(e.root, 'repo');
   fs.mkdirSync(root);
   const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
@@ -549,7 +561,7 @@ test('SIGKILL durante rollback deixa operação incerta; restauração parcial n
     }),
     { mode: 0o600 },
   );
-  e.env.EROS_DOTS_CONFIG = config;
+  e.env.KARONT_DOTS_CONFIG = config;
   e.env.PATH = bin + ':' + process.env.PATH;
   let d;
   try {
@@ -586,7 +598,7 @@ test('SIGKILL durante rollback deixa operação incerta; restauração parcial n
     assert.equal(inspection.state, 'recovery_needed');
     assert.deepEqual(inspection.uncertainOperations, ['rollback']);
     assert.equal(inspection.canStartNewSession, false);
-    const wt = path.join(e.env.EROS_DATA_DIR, 'worktrees', 'repo', run.id);
+    const wt = path.join(e.env.KARONT_DATA_DIR, 'worktrees', 'repo', run.id);
     assert.equal(fs.readFileSync(path.join(wt, 'a.txt'), 'utf8'), 'before\n');
     assert.equal(fs.readFileSync(path.join(wt, 'b.txt'), 'utf8'), 'after\n');
     const again = await d.client.request({ method: 'rollback.preview', value: { runId: run.id } });
@@ -666,12 +678,12 @@ test('job persistido em tentativa incerta após reabrir SQLite nunca chama conti
 });
 test('socket recusa novas operações de continuidade sem autenticação', async () => {
   const { default: net } = await import('node:net');
-  const e = environment();
+  const e = karontEnvironment();
   let d;
   try {
     d = await daemon(e.env);
     for (const method of ['checkpoints.create', 'runs.resume', 'runs.autoResume']) {
-      const s = net.createConnection(path.join(e.env.EROS_RUNTIME_DIR, 'daemon.sock'));
+      const s = net.createConnection(path.join(e.env.KARONT_RUNTIME_DIR, 'daemon.sock'));
       s.on('error', () => {});
       const closed = new Promise((r) => s.once('close', r));
       await once(s, 'data');

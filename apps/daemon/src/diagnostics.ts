@@ -54,7 +54,9 @@ export function daemonDiagnostics(dots: DotConfig[]): DiagnosticItem[] {
     try {
       fs.accessSync(dot.executable, fs.constants.X_OK);
       found++;
-    } catch {}
+    } catch {
+      // Executável ausente ou sem permissão: só não entra na contagem de acessíveis.
+    }
   }
   add(
     'Ferramentas',
@@ -66,7 +68,7 @@ export function daemonDiagnostics(dots: DotConfig[]): DiagnosticItem[] {
     'Segurança',
     'Keyring',
     'unverified',
-    'Eros não armazena credenciais de agentes; serviço não sondado.',
+    'Karont não armazena credenciais de agentes; serviço não sondado.',
   );
   add(
     'Falhas',

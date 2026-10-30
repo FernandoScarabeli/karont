@@ -2,7 +2,7 @@
 
 ## Fronteira de confiança
 
-Socket AF_UNIX de filesystem, sem TCP, em `$XDG_RUNTIME_DIR/eros-<uid>`, ou `/tmp/eros-<uid>` se XDG não estiver disponível. Diretório próprio 0700, socket 0600 e metadados de sessão 0600. O fallback não usa diretório público: o subdiretório é privado e seu dono/modo são verificados. Banco em `$XDG_DATA_HOME/eros` (fallback `~/.local/share/eros`), diretório 0700 e arquivos 0600. Para testes, `EROS_RUNTIME_DIR` e `EROS_DATA_DIR` isolam totalmente as instâncias. Caminhos longos podem exceder o limite de AF_UNIX do Linux; use diretório runtime curto.
+Socket AF_UNIX de filesystem, sem TCP, em `$XDG_RUNTIME_DIR/karont-<uid>`, ou `/tmp/karont-<uid>` se XDG não estiver disponível. Diretório próprio 0700, socket 0600 e metadados de sessão 0600. O fallback não usa diretório público: o subdiretório é privado e seu dono/modo são verificados. Banco em `$XDG_DATA_HOME/karont` (fallback `~/.local/share/karont`), com diretório 0700 e arquivos 0600. A configuração fica em `$XDG_CONFIG_HOME/karont` (fallback `~/.config/karont`). Para testes, `KARONT_RUNTIME_DIR` e `KARONT_DATA_DIR` isolam totalmente as instâncias. As demais variáveis de configuração do aplicativo são `KARONT_CONFIG_DIR`, `KARONT_DOTS_CONFIG`, `KARONT_DESKTOP_DATA` e `KARONT_NODE_BINARY`. Caminhos longos podem exceder o limite de AF_UNIX do Linux; use diretório runtime curto.
 
 Symlinks nos diretórios finais e lock são recusados; o lock usa `O_NOFOLLOW`. Caminhos XDG e seus ancestrais são configuração confiável do usuário, não entrada do renderer. Arquivos SQLite existentes também são verificados. A criação do diretório é atômica; diretórios existentes com dono/modo incorretos são recusados, sem corrigir permissões de terceiros.
 
@@ -10,7 +10,7 @@ O daemon gera segredo aleatório de 256 bits a cada início e grava em `session.
 
 ## Handshake mútuo
 
-Codificação UTF-8, um objeto JSON por linha (LF). `H(role, value) = HMAC-SHA256(secret, "eros:1:" + role + ":" + value)`, em hex minúsculo. Comparações constantes para provas de tamanho igual.
+Codificação UTF-8, um objeto JSON por linha (LF). `H(role, value) = HMAC-SHA256(secret, "karont:1:" + role + ":" + value)`, em hex minúsculo. Comparações constantes para provas de tamanho igual. O rótulo antigo era `eros:1` e mudou na Refatoração – Fase 1.
 
 1. Servidor gera `Ns`, nonce aleatório de 32 bytes em hex, exclusivo da conexão, e envia `{type:"challenge",version:1,nonce:Ns,proof:H("server", Ns)}`.
 2. Cliente lê o segredo privado e verifica a prova. Gera nonce próprio `Nc` de 32 bytes e responde `{type:"authenticate",version:1,nonce:Nc,proof:H("client", Ns + ":" + Nc)}`.
@@ -49,7 +49,7 @@ A Fase 1 mantém o socket AF_UNIX, o diretório e os modos privados, o segredo e
 
 O main process Electron registra canais IPC nomeados por operação, valida remetente, frame principal e URL local antes de encaminhar; o preload expõe capacidades fixas. Executável, argumentos e projeto vêm do JSON privado de dots, não do renderer. O daemon recusa dot sem autorização ao projeto, caminho que não seja raiz Git, CLI não executável, argumentos com NUL e operações inválidas. Execução usa `node-pty` com vetor de argumentos, `cwd` worktree e ambiente filtrado; não há construção de linha shell. A entrada explícita no terminal ainda pode acionar comandos dentro da própria CLI, conforme as aprovações nativas dela.
 
-Eventos `terminal.output` só são enviados após attach, em partes limitadas. Cada Run tem callback de assinatura próprio; reanexar uma sessão não remove a assinatura da outra. O servidor limita envio pendente por conexão; sob pressão, pode descartar entrega em tempo real e a UI deve reconectar para obter o scrollback atual. Respostas de diff/reversão limitam prévias a 100 arquivos/conflitos e sinalizam truncamento; a UI bloqueia rollback quando a prévia está truncada. Cada sessão mantém no processo do daemon até 256 KiB de saída e até 20 sessões concluídas; o buffer não é salvo no SQLite, em RunEvent nem nos logs, e desaparece se o daemon for reiniciado. PIDs, dimensões, estados e tempos da sessão são persistidos. Conteúdo exibido numa CLI pode incluir informação sensível; ele permanece visível ao usuário e temporariamente em memória da aplicação. Eros não lê arquivos de credenciais do provedor nem herda variáveis de ambiente de API para os processos da CLI.
+Eventos `terminal.output` só são enviados após attach, em partes limitadas. Cada Run tem callback de assinatura próprio; reanexar uma sessão não remove a assinatura da outra. O servidor limita envio pendente por conexão; sob pressão, pode descartar entrega em tempo real e a UI deve reconectar para obter o scrollback atual. Respostas de diff/reversão limitam prévias a 100 arquivos/conflitos e sinalizam truncamento; a UI bloqueia rollback quando a prévia está truncada. Cada sessão mantém no processo do daemon até 256 KiB de saída e até 20 sessões concluídas; o buffer não é salvo no SQLite, em RunEvent nem nos logs, e desaparece se o daemon for reiniciado. PIDs, dimensões, estados e tempos da sessão são persistidos. Conteúdo exibido numa CLI pode incluir informação sensível; ele permanece visível ao usuário e temporariamente em memória da aplicação. O Karont não lê arquivos de credenciais do provedor nem herda variáveis de ambiente de API para os processos da CLI.
 
 Riscos para revisão: (1) cliente autenticado do mesmo UID pode iniciar CLIs autorizadas e enviar entrada a uma sessão enquanto detém o segredo local; a capacidade não isola processos maliciosos do mesmo usuário; (2) terminal genérico não distingue texto comum de token digitado nem controla comandos/aprovações internos; (3) scrollback pode conter saída sensível em RAM, embora não seja persistido em histórico; (4) eventos descartados sob backpressure exigem attach/reconexão; (5) limite de 100 solicitações/s também restringe entrada/redimensionamentos; (6) worktree não impede acesso da CLI a caminhos externos; (7) mensagens novas não recebem criptografia adicional e dependem das permissões do socket/kernel já descritas.
 
@@ -157,5 +157,5 @@ não iniciam Runs nem enviam mensagens.
 
 O cliente desktop, main, daemon e contratos precisam ser da mesma build. Esta
 extensão registra a implementação local, sem representar revisão ou aprovação
-formal do protocolo completo. Ver [SPEC_006_IMPLEMENTACAO.md](SPEC_006_IMPLEMENTACAO.md)
+formal do protocolo completo. Ver [SPEC_006_IMPLEMENTACAO.md](historico/SPEC_006_IMPLEMENTACAO.md)
 para migração v5→v6, testes, matriz B0–B16, evidências e limites.

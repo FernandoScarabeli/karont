@@ -7,7 +7,7 @@ image=$(realpath "${1:?Uso: start.sh imagem-verificada.qcow2 [diretorio-local]}"
 state=${2:-benchmarks/tmp/vm-repro}
 mkdir -p "$state"
 state=$(realpath "$state")
-tools=${EROS_QEMU_PREFIX:-/usr}
+tools=${KARONT_QEMU_PREFIX:-/usr}
 qemu="$tools/bin/qemu-system-x86_64"
 img="$tools/bin/qemu-img"
 iso="$tools/bin/genisoimage"
@@ -19,8 +19,8 @@ python3 - "$state" "$(dirname "$0")/provision-guest.sh" <<'PY'
 import pathlib,sys
 p=pathlib.Path(sys.argv[1]); script=pathlib.Path(sys.argv[2]).read_text()
 key=(p/'id_ed25519.pub').read_text().strip()
-(p/'user-data').write_text('#cloud-config\nusers:\n  - name: eros\n    shell: /bin/bash\n    lock_passwd: true\n    ssh_authorized_keys:\n      - '+key+'\ndisable_root: true\nssh_pwauth: false\nwrite_files:\n  - path: /root/eros-provision.sh\n    permissions: "0700"\n    content: |\n'+''.join('      '+l+'\n' for l in script.splitlines())+'runcmd:\n  - [bash, /root/eros-provision.sh]\n')
-(p/'meta-data').write_text('instance-id: eros-spec001\nlocal-hostname: eros-spec001\n')
+(p/'user-data').write_text('#cloud-config\nusers:\n  - name: karont\n    shell: /bin/bash\n    lock_passwd: true\n    ssh_authorized_keys:\n      - '+key+'\ndisable_root: true\nssh_pwauth: false\nwrite_files:\n  - path: /root/karont-provision.sh\n    permissions: "0700"\n    content: |\n'+''.join('      '+l+'\n' for l in script.splitlines())+'runcmd:\n  - [bash, /root/karont-provision.sh]\n')
+(p/'meta-data').write_text('instance-id: karont-spec001\nlocal-hostname: karont-spec001\n')
 PY
 "$iso" -quiet -output "$state/seed.iso" -volid CIDATA -joliet -rock "$state/user-data" "$state/meta-data"
 if test ! -f "$state/guest.qcow2"; then

@@ -23,7 +23,7 @@ Implementador e Revisor. Ambos usam `/usr/local/bin/codex`, perfil `codex` e
 argumentos vazios. Auto Resume está desativado nessa configuração, pois ainda
 não há adaptador certificado. Não há credenciais nesse arquivo.
 
-O script exporta `EROS_DOTS_CONFIG` apontando para esse JSON. Os demais dados do
+O script exporta `KARONT_DOTS_CONFIG` apontando para esse JSON. Os demais dados do
 aplicativo continuam nos diretórios XDG padrão. Não foi iniciada tarefa de IA
 nem alterada a autenticação do Codex; login, se necessário, ocorre pela CLI.
 
@@ -38,7 +38,7 @@ npm run test:e2e
 ```
 
 Na validação da SPEC-005, checagem de tipos, build e os 33 testes passaram neste
-ambiente. O relatório [SPEC-005](SPEC_005_IMPLEMENTACAO.md) lista os comandos,
+ambiente. O relatório [SPEC-005](historico/SPEC_005_IMPLEMENTACAO.md) lista os comandos,
 resultados e evidências mais recentes. Foi corrigido o shim Git do teste de
 crash durante rollback para aceitar espaços no caminho do Node. Logs locais
 ficam em `.tools/tests.log` e `.tools/desktop.log`.

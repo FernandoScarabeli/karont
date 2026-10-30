@@ -113,7 +113,8 @@ export class Continuity {
     this.previousShutdown = String(
       (
         db.prepare("SELECT value FROM settings WHERE key='daemon.clean'").get() as
-          { value: string } | undefined
+          | { value: string }
+          | undefined
       )?.value ?? 'first',
     );
     db.prepare("INSERT OR REPLACE INTO settings VALUES('daemon.clean','false')").run();
@@ -152,7 +153,9 @@ export class Continuity {
     if (worktree && !worktree.removed_at)
       try {
         fingerprint = worktreeFingerprint(worktree.path);
-      } catch {}
+      } catch {
+        // Worktree ilegível: o checkpoint é gravado sem fingerprint (null), como se não existisse.
+      }
     const lastEvent = this.db
       .prepare('SELECT max(id) AS id FROM run_events WHERE run_id=?')
       .get(runId)?.id;
@@ -202,7 +205,8 @@ export class Continuity {
   transition(runId: string, to: RunState, reason: string) {
     return this.transaction(() => {
       const row = this.db.prepare('SELECT state FROM runs WHERE id=?').get(runId) as
-        { state: RunState } | undefined;
+        | { state: RunState }
+        | undefined;
       if (!row) throw Error('Execução não encontrada');
       if (row.state === to) return false;
       if (!edges[row.state].includes(to)) throw Error('Transição de execução não permitida');
@@ -217,7 +221,8 @@ export class Continuity {
   }
   begin(id: string, runId: string, kind: string) {
     const existing = this.db.prepare('SELECT * FROM operations WHERE id=?').get(id) as
-      { run_id: string; kind: string; status: string } | undefined;
+      | { run_id: string; kind: string; status: string }
+      | undefined;
     if (existing) {
       if (existing.run_id !== runId || existing.kind !== kind)
         throw Error('Chave de operação reutilizada');

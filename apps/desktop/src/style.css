@@ -304,7 +304,7 @@ select {
 .terminal {
   padding: 16px 12px;
   font:
-    10px/2.1 ui-monospace,
+    10px / 2.1 ui-monospace,
     monospace;
   white-space: nowrap;
   overflow: hidden;
@@ -360,7 +360,12 @@ select {
 .run-desk {
   border: 1px solid var(--bg-selected);
   border-radius: 7px;
-  background: linear-gradient(145deg, var(--bg-sidebar) 0%, var(--bg-sidebar) 48%, var(--bg-canvas) 100%);
+  background: linear-gradient(
+    145deg,
+    var(--bg-sidebar) 0%,
+    var(--bg-sidebar) 48%,
+    var(--bg-canvas) 100%
+  );
   padding: 20px;
   margin-bottom: 26px;
   box-shadow: 0 16px 38px #080d0a55;
@@ -788,7 +793,7 @@ select {
   padding: 12px;
   color: var(--text-secondary);
   font:
-    10px/1.55 ui-monospace,
+    10px / 1.55 ui-monospace,
     monospace;
   tab-size: 2;
   white-space: pre;
@@ -1003,7 +1008,7 @@ select {
   border: 1px solid var(--border-control);
   padding: 16px;
   font:
-    12px/1.6 ui-monospace,
+    12px / 1.6 ui-monospace,
     monospace;
 }
 .attention-panel pre {
@@ -1391,7 +1396,9 @@ dialog.rollback-dialog::backdrop {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   color: var(--text-primary);
-  font: 11px/1.6 system-ui, sans-serif;
+  font:
+    11px / 1.6 system-ui,
+    sans-serif;
 }
 .delivery-status,
 .delivery-uncertain {
@@ -1440,7 +1447,9 @@ dialog.rollback-dialog::backdrop {
   border-radius: 4px;
   background: var(--bg-canvas);
   color: var(--text-primary);
-  font: 11px/1.55 system-ui, sans-serif;
+  font:
+    11px / 1.55 system-ui,
+    sans-serif;
 }
 .composer-footer {
   display: flex;

@@ -6,7 +6,7 @@
 
 - O daemon Node/TypeScript mantém uma fila persistente de Runs, com até duas CLIs PTY em execução ao mesmo tempo. Estados: `queued`, `running`, `completed`, `failed` e `cancelled`.
 - A migração SQLite avança de `user_version=1` para `2` sem recriar o banco da Fase 0. Ela adiciona `dots`, `projects`, `runs`, `sessions`, `run_events`, `worktrees` e `file_changes`.
-- Dots e projetos vêm de JSON privado no XDG Config Home. O exemplo em [`config/dots.example.json`](../config/dots.example.json) traz dois dots de demonstração sem credenciais.
+- Dots e projetos vêm de JSON privado no XDG Config Home. O exemplo em [`config/dots.example.json`](../../config/dots.example.json) traz dois dots de demonstração sem credenciais.
 - Cada execução cria branch e Git worktree próprios. O processo recebe executável absoluto, vetor de argumentos, `cwd` da worktree e ambiente filtrado; não há montagem de comando shell.
 - A UI usa xterm.js em dois painéis, com entrada, redimensionamento, scrollback em memória do daemon (256 KiB por sessão), histórico, status, diffs, prévia de rollback e confirmação.
 - Fechar e destruir a `BrowserWindow` remove a assinatura de eventos da janela; daemon, PTYs e CLIs seguem ativos. Ao reabrir, o aplicativo anexa às mesmas sessões e pede o scrollback mantido no daemon.
@@ -51,21 +51,21 @@ O ciclo fechar/reabrir é suportado enquanto o daemon permanecer vivo. PIDs, est
 
 Git worktree isola alterações de código entre Runs, mas não é uma sandbox de segurança: a CLI pode acessar outros caminhos permitidos ao mesmo usuário e executar efeitos externos. O terminal genérico não entende cada ação do agente nem controla suas aprovações; continue usando a própria CLI. Rollback não desfaz comandos, chamadas de rede, mudanças fora da worktree ou outros efeitos que o eros não registrou.
 
-O scrollback pode conter conteúdo sensível durante a vida do daemon. Ele não é gravado no SQLite, em `RunEvent` ou nos logs. O ambiente da CLI é filtrado pelo daemon; a CLI conserva acesso às credenciais já configuradas por ela sob a conta do usuário. A fronteira IPC continua sendo local ao mesmo UID, conforme descrito em [`PROTOCOLO_LOCAL.md`](PROTOCOLO_LOCAL.md).
+O scrollback pode conter conteúdo sensível durante a vida do daemon. Ele não é gravado no SQLite, em `RunEvent` ou nos logs. O ambiente da CLI é filtrado pelo daemon; a CLI conserva acesso às credenciais já configuradas por ela sob a conta do usuário. A fronteira IPC continua sendo local ao mesmo UID, conforme descrito em [`PROTOCOLO_LOCAL.md`](../PROTOCOLO_LOCAL.md).
 
 ## Testes e evidências
 
 Na execução final, `npm run check` e `npm test` passaram com **11 testes** (nove anteriores preservados e dois testes da Fase 1). Em Debian 13/KVM, o `test:desktop` preservou sandbox Chromium efetivo (`seccomp=2`, `NoNewPrivs=1`) e ciclo Fase 0; o `test:e2e` iniciou duas CLIs/PTys, destruiu a janela, verificou os mesmos PIDs ativos, reabriu, recuperou saída e entrada, produziu diff e confirmou rollback. Depois foram repetidas cinco rodadas dos benchmarks desktop e do daemon. As CLIs simuladas não usaram conta nem API externa.
 
-- [Teste desktop final e prova de sandbox](../benchmarks/runs/2026-10-23T23-48-52-955Z/desktop.json)
-- [Manifesto da série final de cinco rodadas](../benchmarks/series/2026-10-23T23-46-03-673Z/manifest.json)
-- [Resultado E2E e amostras PSS/CPU](../benchmarks/runs/2026-10-23T23-44-56-394Z/phase1-e2e.json)
-- [Dois terminais simultâneos](../benchmarks/runs/2026-10-23T23-44-56-394Z/phase1-two-terminals.png)
-- [Janela reaberta](../benchmarks/runs/2026-10-23T23-44-56-394Z/phase1-reconnected.png)
-- CI para Linux/Node 24: [`.github/workflows/linux.yml`](../.github/workflows/linux.yml). O workflow está configurado; não foi disparado contra um remoto nesta sessão.
+- [Teste desktop final e prova de sandbox](../../benchmarks/runs/2026-10-23T23-48-52-955Z/desktop.json)
+- [Manifesto da série final de cinco rodadas](../../benchmarks/series/2026-10-23T23-46-03-673Z/manifest.json)
+- [Resultado E2E e amostras PSS/CPU](../../benchmarks/runs/2026-10-23T23-44-56-394Z/phase1-e2e.json)
+- [Dois terminais simultâneos](../../benchmarks/runs/2026-10-23T23-44-56-394Z/phase1-two-terminals.png)
+- [Janela reaberta](../../benchmarks/runs/2026-10-23T23-44-56-394Z/phase1-reconnected.png)
+- CI para Linux/Node 24: [`.github/workflows/linux.yml`](../../.github/workflows/linux.yml). O workflow está configurado; não foi disparado contra um remoto nesta sessão.
 
-Resultados e comparação com a mediana histórica da Fase 0 estão em [`benchmarks/RESULTADOS.md`](../benchmarks/RESULTADOS.md). A série de referência sem agentes marcou 373,97 MiB PSS ocioso (mediana); o E2E com dois PTYs marcou 510,54 MiB numa amostra única. O cenário, instrumentação e número de amostras diferem, então os valores ficam reportados separadamente.
+Resultados e comparação com a mediana histórica da Fase 0 estão em [`benchmarks/RESULTADOS.md`](../../benchmarks/RESULTADOS.md). A série de referência sem agentes marcou 373,97 MiB PSS ocioso (mediana); o E2E com dois PTYs marcou 510,54 MiB numa amostra única. O cenário, instrumentação e número de amostras diferem, então os valores ficam reportados separadamente.
 
 ## Protocolo e pendências
 
-A extensão SPEC-002 está documentada em [`PROTOCOLO_LOCAL.md`](PROTOCOLO_LOCAL.md), com métodos, validações e riscos. O canal AF_UNIX, segredo e handshake v1 foram preservados. **A extensão ainda aguarda revisão formal; implementação e teste não equivalem a aprovação do protocolo.** Compatibilidade com GNOME/KDE, Wayland/X11 físico, tray nativo e pacote distribuível também não foi verificada.
+A extensão SPEC-002 está documentada em [`PROTOCOLO_LOCAL.md`](../PROTOCOLO_LOCAL.md), com métodos, validações e riscos. O canal AF_UNIX, segredo e handshake v1 foram preservados. **A extensão ainda aguarda revisão formal; implementação e teste não equivalem a aprovação do protocolo.** Compatibilidade com GNOME/KDE, Wayland/X11 físico, tray nativo e pacote distribuível também não foi verificada.

@@ -9,7 +9,7 @@
 - `npm run test:desktop` aprovado avulso e **cinco rodadas desktop completas** aprovadas na série. Cinco benchmarks do daemon concluídos; diagnóstico e geração de relatório executados, além de benchmark isolado pelo comando npm.
 - Todos os ciclos fechar/reabrir preservaram PID **e starttime** do daemon, layout/editor persistidos e reconexão. Renderer real presente antes e ausente depois; árvore shell passou de sete para seis processos em todas as rodadas. Pausa SIGSTOP/SIGCONT de main+daemon provocou timeout e recuperou conexão; nova tentativa de daemon continuou recusada com 73. Isso não comprova suspensão física.
 
-Evidências: [manifesto de cinco rodadas](../benchmarks/series/2026-10-23T22-10-53-606Z/manifest.json), [identidades do ciclo](../benchmarks/spec001/lifecycle.json), [desktop final](../benchmarks/runs/2026-10-23T22-13-41-064Z/desktop.json), [diagnóstico guest](../benchmarks/spec001/sandbox-diagnostic-vm.json), [ambiente e hashes](../benchmarks/spec001/environment.json), [resultados](../benchmarks/RESULTADOS.md). Screenshots novas constam do JSON de cada rodada; as antigas permanecem históricas.
+Evidências: [manifesto de cinco rodadas](../../benchmarks/series/2026-10-23T22-10-53-606Z/manifest.json), [identidades do ciclo](../../benchmarks/spec001/lifecycle.json), [desktop final](../../benchmarks/runs/2026-10-23T22-13-41-064Z/desktop.json), [diagnóstico guest](../../benchmarks/spec001/sandbox-diagnostic-vm.json), [ambiente e hashes](../../benchmarks/spec001/environment.json), [resultados](../../benchmarks/RESULTADOS.md). Screenshots novas constam do JSON de cada rodada; as antigas permanecem históricas.
 
 ### Correções e extensão de validação
 
@@ -40,7 +40,7 @@ A árvore observada tem main, três zygotes, GPU, serviço de rede e um renderer
 
 Validado: Debian 13.7, kernel 6.12.113+deb13-cloud-amd64, KVM 2 vCPU/4 GiB, X11 virtual Xvfb 1440×1000×24, D-Bus, GPU por software; digitação e viewport 900 px. Carga do host e caches não controlados. Não validado: GNOME/KDE, Wayland, clique físico X/tray, suspensão ACPI/logind, escalas diversas, hardware real sob pressão de memória e pacote distribuível. Nenhum desses itens foi marcado aprovado por existência de script. O Ubuntu principal continua bloqueado para o binário local; a VM constitui a execução Linux válida permitida pela SPEC.
 
-Arquivos desta etapa: `scripts/desktop-test.mjs`, `harness.mjs`, `report.mjs`, novos `desktop-proof.mjs`, `benchmark-series.mjs`, `scripts/vm/*.sh`, `tests/review.test.mjs`, comando `benchmark:series`, documentos existentes atualizados e novo [procedimento VM](AMBIENTE_VM_FASE_0.md). JSONs/logs/screenshots em `benchmarks/runs/`, `series/` e `spec001/`; histórico anterior em `history/pre-spec001/`. Não houve integração de CLIs/APIs, reconstrução, commit, publicação ou avanço de fase.
+Arquivos desta etapa: `scripts/desktop-test.mjs`, `harness.mjs`, `report.mjs`, novos `desktop-proof.mjs`, `benchmark-series.mjs`, `scripts/vm/*.sh`, `tests/review.test.mjs`, comando `benchmark:series`, documentos existentes atualizados e novo [procedimento VM](../AMBIENTE_VM_FASE_0.md). JSONs/logs/screenshots em `benchmarks/runs/`, `series/` e `spec001/`; histórico anterior em `history/pre-spec001/`. Não houve integração de CLIs/APIs, reconstrução, commit, publicação ou avanço de fase.
 
 ## Revisão anterior — histórico (bloqueio no host Ubuntu)
 
@@ -50,7 +50,7 @@ Arquivos desta etapa: `scripts/desktop-test.mjs`, `harness.mjs`, `report.mjs`, n
 
 **Bloqueado.** O critério P0 exige Electron com sandbox real e `npm run test:desktop` aprovado integralmente. Isso não ocorreu. A última tentativa desktop, às **18:50:40 BRT**, abortou no preflight por SIGTRAP. O JSON mantém `passed:false`, `status:blocked`, `stage:native-preflight`, `checks:[]`, `artifacts:[]`.
 
-[Resultado atual do desktop](../benchmarks/desktop-latest.json) · [rodada imutável](../benchmarks/runs/2026-10-23T21-50-40-657Z/desktop.json) · [kernel](../benchmarks/sandbox-kernel.txt) · [diagnóstico e requisitos de ambiente](SANDBOX_LINUX.md).
+[Resultado atual do desktop](../../benchmarks/desktop-latest.json) · [rodada imutável](../../benchmarks/runs/2026-10-23T21-50-40-657Z/desktop.json) · [kernel](../../benchmarks/sandbox-kernel.txt) · [diagnóstico e requisitos de ambiente](../SANDBOX_LINUX.md).
 
 ## Achados e correções
 
@@ -98,7 +98,7 @@ Mesmo computador, uma rodada local por cenário; outras aplicações do usuário
 
 CPU=100% representa um núcleo lógico; zero é ausência de ticks contabilizados em aproximadamente 5 s, não consumo absoluto nulo. Essas diferenças não demonstram ganho estatisticamente significativo. O streaming é sintético, sem modelo/CLI. Os ~377 MiB PSS anteriores do Electron continuam evidência histórica descartada para aceite; não foram otimizados ou revalidados nesta revisão.
 
-[Resultado bruto atual do daemon](../benchmarks/daemon-latest.json) · [relatório atual](../benchmarks/RESULTADOS.md) · [procedimento reproduzível](BENCHMARKS.md) · [histórico anterior](../benchmarks/history/initial-phase0/RESULTADOS.md).
+[Resultado bruto atual do daemon](../../benchmarks/daemon-latest.json) · [relatório atual](../../benchmarks/RESULTADOS.md) · [procedimento reproduzível](../BENCHMARKS.md) · [histórico anterior](../../benchmarks/history/initial-phase0/RESULTADOS.md).
 
 ## Arquivos da revisão
 
@@ -112,4 +112,4 @@ CPU=100% representa um núcleo lógico; zero é ausência de ticks contabilizado
 
 ## O que falta para o aceite
 
-Preparar um ambiente permitido para o sandbox, com política específica aprovada pelo administrador ou helper confiável compatível, **sem desligar proteções globais**. Repetir os comandos de [SANDBOX_LINUX.md](SANDBOX_LINUX.md), exigir sucesso integral do E2E e confirmar manualmente X/tray no compositor. Depois repetir benchmarks desktop, revisar o orçamento de RAM e registrar o resultado. Enquanto isso, não aprovar P0/P1 nem iniciar Fase 1.
+Preparar um ambiente permitido para o sandbox, com política específica aprovada pelo administrador ou helper confiável compatível, **sem desligar proteções globais**. Repetir os comandos de [SANDBOX_LINUX.md](../SANDBOX_LINUX.md), exigir sucesso integral do E2E e confirmar manualmente X/tray no compositor. Depois repetir benchmarks desktop, revisar o orçamento de RAM e registrar o resultado. Enquanto isso, não aprovar P0/P1 nem iniciar Fase 1.

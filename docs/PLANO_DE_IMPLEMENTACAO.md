@@ -1,4 +1,4 @@
-# Plano de implementacao — eros
+# Plano de implementacao — Karont
 
 ## Roteiro por fases • 23/10/2026 • Fontes: guia Ideias e aprendizados de Orca/ADE
 
@@ -27,7 +27,7 @@ Riscos: variações de comportamento/saída das CLIs, PTY e subprocessos, menor 
 
 Objetivo: conceder autonomia sem perder controle.  
 Entregas: motor de permissões no daemon e quatro modos visuais, mapeados às opções nativas de cada CLI quando houver; Central de Aprovações plenamente integrada apenas em adapters estruturados. Tray, notificações, Diagnóstico e relatório Markdown local sanitizado, com consentimento para envio. Ampliar testes unitários, Playwright e CI.  
-Critério de aceite: para PTY, trabalho em worktree e diretórios permitidos quando viável, com aprovações governadas pela própria CLI; eros não controla individualmente cada ação do agente. Central de Aprovações e quatro modos só têm controle pleno via adaptadores estruturados. Fechar janela preserva runs, Diagnóstico gera relatório local sem dados sensíveis.  
+Critério de aceite: para PTY, trabalho em worktree e diretórios permitidos quando viável, com aprovações governadas pela própria CLI; Karont não controla individualmente cada ação do agente. Central de Aprovações e quatro modos só têm controle pleno via adaptadores estruturados. Fechar janela preserva runs, Diagnóstico gera relatório local sem dados sensíveis.
 Riscos: fuga por IPC ou subprocessos, validação insuficiente de comandos em PTY, vazamento no relatório, excesso de aprovações e diferenças de tray/notificações.
 
 ## Fase 3 — continuidade \| G
@@ -61,7 +61,7 @@ Riscos: diferenças de drivers GPU, ambientes gráficos, memória limitada (4 GB
 # Portões de aceitação do MVP \[DECIDIDO\]
 
 ☐ Executar duas tarefas independentes com dots distintos ou sessões separadas.  
-☐ Demonstrar aprovação de ação sensível via CLI nativa; aprovações granulares no painel do eros serão aceitas somente com adaptador estruturado.  
+☐ Demonstrar aprovação de ação sensível via CLI nativa; aprovações granulares no painel do Karont serão aceitas somente com adaptador estruturado.
 ☐ Identificar Run e Dot responsáveis por uma modificação.  
 ☐ Inspecionar diff após a execução e desfazer alterações; diffs ao vivo dependem de adaptador estruturado.  
 ☐ Fechar a janela e manter os dots em andamento.  
@@ -100,18 +100,18 @@ As decisões deste roteiro consolidam a guia Ideias e os aprendizados de Orca (M
 
 ## Registro SPEC-003 — Fase 2
 
-Implementados os modos por capacidade, confirmação nativa de acesso total, pedidos/decisões reais de rollback no daemon, Central de Aprovações, integração de atenção Linux, Diagnóstico e relatório local sanitizado. Histórico e escopo das fases anteriores preservados. O teste real escolhido (Codex) foi tentado, mas seu aceite funcional completo está **BLOQUEADO**; revisões formais e GNOME/KDE continuam pendentes. Consulte [entrega e evidências](SPEC_003_IMPLEMENTACAO.md). Implementação não equivale a aceite das pendências nem autoriza iniciar a Fase 3.
+Implementados os modos por capacidade, confirmação nativa de acesso total, pedidos/decisões reais de rollback no daemon, Central de Aprovações, integração de atenção Linux, Diagnóstico e relatório local sanitizado. Histórico e escopo das fases anteriores preservados. O teste real escolhido (Codex) foi tentado, mas seu aceite funcional completo está **BLOQUEADO**; revisões formais e GNOME/KDE continuam pendentes. Consulte [entrega e evidências](historico/SPEC_003_IMPLEMENTACAO.md). Implementação não equivale a aceite das pendências nem autoriza iniciar a Fase 3.
 
 ## Registro SPEC-004 — Fase 3
 
-Implementadas continuidade persistente, fila, checkpoints, recuperação conservadora e infraestrutura opcional de Auto Resume. Codex 0.164.0 foi investigado em ambiente isolado sem credenciais; sua validação funcional autenticada continua bloqueada e Auto Resume aparece indisponível. O aceite técnico e as pendências constam no [relatório SPEC-004](SPEC_004_IMPLEMENTACAO.md), sem autorizar início automático da Fase 4.
+Implementadas continuidade persistente, fila, checkpoints, recuperação conservadora e infraestrutura opcional de Auto Resume. Codex 0.164.0 foi investigado em ambiente isolado sem credenciais; sua validação funcional autenticada continua bloqueada e Auto Resume aparece indisponível. O aceite técnico e as pendências constam no [relatório SPEC-004](historico/SPEC_004_IMPLEMENTACAO.md), sem autorizar início automático da Fase 4.
 
 ## Atualização de 25/10/2026 — preparação da Fase 4A
 
 O ciclo básico com Codex autenticado foi validado posteriormente; consulte
 [o resultado e seus limites](VALIDACAO_CLI_REAL.md). Auto Resume permanece pendente.
 O usuário autorizou avançar para organização do trabalho e solicitou uma SPEC para
-implementação por seu subagente. A [SPEC-005 — Workspaces, projetos e conversas](SPEC_005_ORGANIZACAO_DO_TRABALHO.md)
+implementação por seu subagente. A [SPEC-005 — Workspaces, projetos e conversas](historico/SPEC_005_ORGANIZACAO_DO_TRABALHO.md)
 define a primeira entrega, Fase 4A. Kanban e `/kanban` ficam para a Fase 4B.
 Conversas livres nesta primeira entrega têm histórico local, sem motor de IA;
 esse limite não equivale ao aceite completo de chats livres da Fase 4.
@@ -124,7 +124,7 @@ cadastro de projeto por seletor nativo e concessão explícita de Dots, conversa
 projeto/livres, mensagens do usuário, drafts, Runs vinculadas, favoritos/recentes
 e movimentação de conversa livre com preview e confirmação. O acesso ao
 laboratório e às execuções antigas foi preservado. O relatório
-[SPEC_005_IMPLEMENTACAO.md](SPEC_005_IMPLEMENTACAO.md) contém migração, validações,
+[SPEC_005_IMPLEMENTACAO.md](historico/SPEC_005_IMPLEMENTACAO.md) contém migração, validações,
 matriz A1–A15, medições e limitações reais.
 
 Conversa livre nesta etapa é somente histórico local; não existe backend sem

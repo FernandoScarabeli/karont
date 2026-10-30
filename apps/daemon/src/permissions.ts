@@ -46,7 +46,9 @@ export function capabilities(dot: DotConfig) {
         if (probes.size >= 16) probes.delete(probes.keys().next().value!);
         probes.set(key, { native, auto });
       }
-    } catch {}
+    } catch {
+      // CLI ausente, lenta ou sem --help: nenhuma capacidade é marcada como validada.
+    }
   }
   return (['ask', 'auto', 'full', 'readOnly'] as PermissionMode[]).map((mode) => ({
     mode,
@@ -65,12 +67,12 @@ export function capabilities(dot: DotConfig) {
           ? mode === 'readOnly'
             ? 'Sandbox nativo read-only, sem escalonamento. Restringe comandos gerados; MCP, hooks e ferramentas externas exigem revisão própria. Não isola todo o processo.'
             : mode === 'auto'
-              ? 'Revisão automática nativa do Codex em workspace-write. Sem botões de aprovação no eros.'
+              ? 'Revisão automática nativa do Codex em workspace-write. Sem botões de aprovação no Karont.'
               : mode === 'full'
                 ? 'Sandbox de comandos desativado. Acesso aos arquivos da conta e à rede; exige confirmação por execução.'
                 : 'Sandbox nativo workspace-write e aprovação on-request na CLI; ela decide quando perguntar. Worktree não é sandbox.'
           : mode === 'ask' && dot.adapter === 'generic'
-            ? 'Sem garantia do eros: usa a política já configurada na CLI. Aprovações ficam no terminal; worktree não é sandbox.'
+            ? 'Sem garantia do Karont: usa a política já configurada na CLI. Aprovações ficam no terminal; worktree não é sandbox.'
             : 'Sem mecanismo efetivo validado. Codex exige perfil explícito, args vazio e opções compatíveis.',
   }));
 }

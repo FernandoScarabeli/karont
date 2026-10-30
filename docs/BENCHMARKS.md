@@ -19,7 +19,7 @@ npm run benchmark:report
 
 Os dois últimos comandos de medição geram `benchmarks/daemon-latest.json` e `benchmarks/desktop-latest.json`; o gerador produz [RESULTADOS.md](../benchmarks/RESULTADOS.md). O resultado desktop registra `passed:false` e o erro de preflight quando o sandbox não está disponível, retornando código de saída não zero. Não considere esse cenário aprovado. As screenshots são gravadas durante a suíte desktop e podem pertencer a execução anterior: confira o JSON e sua data antes de usá-las como evidência.
 
-Os scripts criam diretórios efêmeros `eros-bench-*` em `/tmp`, usando overrides XDG exclusivos. Iniciam processos próprios e encerram apenas os PIDs iniciados por eles, sem tocar em uma instância normal do usuário. Em interrupção abrupta do script, o daemon é intencionalmente independente e pode sobreviver: use os caminhos isolados daquele ensaio em `EROS_RUNTIME_DIR`/`EROS_DATA_DIR` com `npm run daemon:status` e `npm run daemon:stop`. Não mate processos por nome.
+Os scripts criam diretórios efêmeros `karont-bench-*` em `/tmp`, usando overrides XDG exclusivos. Iniciam processos próprios e encerram apenas os PIDs iniciados por eles, sem tocar em uma instância normal do usuário. Em interrupção abrupta do script, o daemon é intencionalmente independente e pode sobreviver: use os caminhos isolados daquele ensaio em `KARONT_RUNTIME_DIR`/`KARONT_DATA_DIR` com `npm run daemon:status` e `npm run daemon:stop`. Não mate processos por nome.
 
 ## Cenários e definições
 
@@ -64,7 +64,7 @@ npm run benchmark
 npm run benchmark:report
 ```
 
-Em ambiente sem display físico, use o wrapper `scripts/vm/validate-guest.sh` **dentro do guest**. Ele configura Xvfb/D-Bus e identifica as condições da execução. `EROS_BENCH_ROUNDS` pode aumentar a série; valores menores que cinco são recusados. Cada rodada executa desktop e daemon em sequência, com saída/JSON próprios. Falhas encerram a série com código não zero, manifesto incompleto e evidência preservada; somente séries com cinco ou mais sucessos e prova completa do sandbox são agregadas.
+Em ambiente sem display físico, use o wrapper `scripts/vm/validate-guest.sh` **dentro do guest**. Ele configura Xvfb/D-Bus e identifica as condições da execução. `KARONT_BENCH_ROUNDS` pode aumentar a série; valores menores que cinco são recusados. Cada rodada executa desktop e daemon em sequência, com saída/JSON próprios. Falhas encerram a série com código não zero, manifesto incompleto e evidência preservada; somente séries com cinco ou mais sucessos e prova completa do sandbox são agregadas.
 
 Atualização dos cenários anteriores: o preflight agora usa perfil e daemon próprios novos, medindo partida integrada até janela pronta e ping autenticado, **sem limpar caches do SO**. É início frio de processos/perfil, não de cache ou de boot. A abertura Playwright é medida separadamente com daemon pronto e bibliotecas aquecidas pelo preflight. Uma reabertura usa a segunda execução real do binário.
 

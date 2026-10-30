@@ -43,15 +43,17 @@ async function refused(socket, payload) {
   ]);
 }
 test('daemon: singleton concorrente, socket, handshake, limites, heartbeat, reconexão e SQLite', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-test-'));
   const env = {
     ...process.env,
-    EROS_RUNTIME_DIR: path.join(root, 'run'),
-    EROS_DATA_DIR: path.join(root, 'data'),
+    KARONT_RUNTIME_DIR: path.join(root, 'run'),
+    KARONT_DATA_DIR: path.join(root, 'data'),
+    KARONT_CONFIG_DIR: path.join(root, 'config'),
   };
   Object.assign(process.env, {
-    EROS_RUNTIME_DIR: env.EROS_RUNTIME_DIR,
-    EROS_DATA_DIR: env.EROS_DATA_DIR,
+    KARONT_RUNTIME_DIR: env.KARONT_RUNTIME_DIR,
+    KARONT_DATA_DIR: env.KARONT_DATA_DIR,
+    KARONT_CONFIG_DIR: env.KARONT_CONFIG_DIR,
   });
   const children = [];
   const clients = [];
@@ -63,23 +65,26 @@ test('daemon: singleton concorrente, socket, handshake, limites, heartbeat, reco
     const first = await until(() => c.request({ method: 'snapshot' }));
     pid = first.pid;
     assert.equal(first.pid, children[0].pid);
-    assert.equal(fs.statSync(path.join(env.EROS_RUNTIME_DIR, 'daemon.sock')).mode & 0o777, 0o600);
-    assert.equal(fs.statSync(env.EROS_RUNTIME_DIR).mode & 0o777, 0o700);
-    assert.equal(fs.statSync(path.join(env.EROS_RUNTIME_DIR, 'session.json')).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(path.join(env.KARONT_RUNTIME_DIR, 'daemon.sock')).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(env.KARONT_RUNTIME_DIR).mode & 0o777, 0o700);
+    assert.equal(
+      fs.statSync(path.join(env.KARONT_RUNTIME_DIR, 'session.json')).mode & 0o777,
+      0o600,
+    );
     const duplicates = Array.from({ length: 5 }, () => launch(env));
     children.push(...duplicates);
     const codes = await Promise.all(duplicates.map((p) => once(p, 'exit').then(([code]) => code)));
     assert.deepEqual(codes, [73, 73, 73, 73, 73]);
     assert.equal((await c.request({ method: 'ping' })).pid, pid);
     const meta = JSON.parse(
-      fs.readFileSync(path.join(env.EROS_RUNTIME_DIR, 'session.json'), 'utf8'),
+      fs.readFileSync(path.join(env.KARONT_RUNTIME_DIR, 'session.json'), 'utf8'),
     );
-    const raw = net.createConnection(path.join(env.EROS_RUNTIME_DIR, 'daemon.sock'));
+    const raw = net.createConnection(path.join(env.KARONT_RUNTIME_DIR, 'daemon.sock'));
     raw.on('error', () => {});
     const challenge = JSON.parse((await once(raw, 'data'))[0]);
     const nonce = randomBytes(32).toString('hex');
     const h = (role, value) =>
-      createHmac('sha256', meta.secret).update(`eros:1:${role}:${value}`).digest('hex');
+      createHmac('sha256', meta.secret).update(`karont:1:${role}:${value}`).digest('hex');
     const auth =
       JSON.stringify({
         type: 'authenticate',
@@ -91,15 +96,15 @@ test('daemon: singleton concorrente, socket, handshake, limites, heartbeat, reco
     const ready = JSON.parse((await once(raw, 'data'))[0]);
     assert.equal(ready.proof, h('ready', challenge.nonce + ':' + nonce));
     raw.destroy();
-    await refused(path.join(env.EROS_RUNTIME_DIR, 'daemon.sock'), auth); // replay across connections
-    await refused(path.join(env.EROS_RUNTIME_DIR, 'daemon.sock'), '{}\n');
+    await refused(path.join(env.KARONT_RUNTIME_DIR, 'daemon.sock'), auth); // replay across connections
+    await refused(path.join(env.KARONT_RUNTIME_DIR, 'daemon.sock'), '{}\n');
     await refused(
-      path.join(env.EROS_RUNTIME_DIR, 'daemon.sock'),
+      path.join(env.KARONT_RUNTIME_DIR, 'daemon.sock'),
       JSON.stringify({ type: 'authenticate', version: 99, proof: 'x' }) + '\n',
     );
-    await refused(path.join(env.EROS_RUNTIME_DIR, 'daemon.sock'), '{broken\n');
-    await refused(path.join(env.EROS_RUNTIME_DIR, 'daemon.sock'), 'x'.repeat(65537));
-    await refused(path.join(env.EROS_RUNTIME_DIR, 'daemon.sock'));
+    await refused(path.join(env.KARONT_RUNTIME_DIR, 'daemon.sock'), '{broken\n');
+    await refused(path.join(env.KARONT_RUNTIME_DIR, 'daemon.sock'), 'x'.repeat(65537));
+    await refused(path.join(env.KARONT_RUNTIME_DIR, 'daemon.sock'));
     await assert.rejects(() => c.request({ method: 'layout', value: { columns: 99 } }));
     await until(() => c.request({ method: 'ping' }));
     await c.request({
@@ -128,7 +133,7 @@ test('daemon: singleton concorrente, socket, handshake, limites, heartbeat, reco
     pid = recovered.pid;
     assert.equal(recovered.layout.columns, 2);
     assert.equal(recovered.layout.editor, 'estado persistido ✓');
-    const db = new DatabaseSync(path.join(env.EROS_DATA_DIR, 'phase0.sqlite'));
+    const db = new DatabaseSync(path.join(env.KARONT_DATA_DIR, 'phase0.sqlite'));
     assert.equal(db.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
     db.prepare('INSERT INTO phase0_search(content) VALUES(?)').run('prototipo local');
     assert.equal(
@@ -139,8 +144,8 @@ test('daemon: singleton concorrente, socket, handshake, limites, heartbeat, reco
     db.close();
     await c2.request({ method: 'shutdown' });
     await wait(150);
-    assert.ok(!fs.existsSync(path.join(env.EROS_RUNTIME_DIR, 'daemon.sock')));
-    assert.ok(!fs.existsSync(path.join(env.EROS_RUNTIME_DIR, 'session.json')));
+    assert.ok(!fs.existsSync(path.join(env.KARONT_RUNTIME_DIR, 'daemon.sock')));
+    assert.ok(!fs.existsSync(path.join(env.KARONT_RUNTIME_DIR, 'session.json')));
     pid = undefined;
   } finally {
     for (const c of clients) c.close();
@@ -156,12 +161,17 @@ test('daemon: singleton concorrente, socket, handshake, limites, heartbeat, reco
   }
 });
 test('recusa diretório público e symlink no lock', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-unsafe-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-unsafe-'));
+  // Usa os nomes antigos de propósito para cobrir a compatibilidade EROS_*.
   const env = {
     ...process.env,
     EROS_RUNTIME_DIR: path.join(root, 'run'),
     EROS_DATA_DIR: path.join(root, 'data'),
+    EROS_CONFIG_DIR: path.join(root, 'config'),
   };
+  delete env.KARONT_RUNTIME_DIR;
+  delete env.KARONT_DATA_DIR;
+  delete env.KARONT_CONFIG_DIR;
   try {
     fs.mkdirSync(env.EROS_RUNTIME_DIR, { mode: 0o755 });
     // mkdir's mode is filtered by the caller's umask; make the insecure fixture exact.
@@ -179,16 +189,20 @@ test('recusa diretório público e symlink no lock', async () => {
 });
 
 test('cliente recusa prova de servidor inválida e confirmação antiga', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eros-fake-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-fake-'));
   const runtime = path.join(root, 'run');
   const data = path.join(root, 'data');
   fs.mkdirSync(runtime, { mode: 0o700 });
   fs.mkdirSync(data, { mode: 0o700 });
-  Object.assign(process.env, { EROS_RUNTIME_DIR: runtime, EROS_DATA_DIR: data });
+  Object.assign(process.env, {
+    KARONT_RUNTIME_DIR: runtime,
+    KARONT_DATA_DIR: data,
+    KARONT_CONFIG_DIR: path.join(root, 'config'),
+  });
   const secret = randomBytes(32).toString('hex');
   const ns = randomBytes(32).toString('hex');
   const h = (role, value) =>
-    createHmac('sha256', secret).update(`eros:1:${role}:${value}`).digest('hex');
+    createHmac('sha256', secret).update(`karont:1:${role}:${value}`).digest('hex');
   fs.writeFileSync(path.join(runtime, 'session.json'), JSON.stringify({ version: 1, secret }), {
     mode: 0o600,
   });

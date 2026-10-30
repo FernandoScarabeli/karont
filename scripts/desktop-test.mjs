@@ -13,6 +13,7 @@ import {
   host,
   require,
   rendererSandbox,
+  openDiagnostics,
   processes,
   Client,
 } from './harness.mjs';
@@ -38,8 +39,8 @@ try {
   // OS caches are intentionally NOT dropped; no privileged host changes.
   const cold = environment();
   Object.assign(process.env, {
-    EROS_RUNTIME_DIR: cold.env.EROS_RUNTIME_DIR,
-    EROS_DATA_DIR: cold.env.EROS_DATA_DIR,
+    KARONT_RUNTIME_DIR: cold.env.KARONT_RUNTIME_DIR,
+    KARONT_DATA_DIR: cold.env.KARONT_DATA_DIR,
   });
   const coldClient = new Client();
   const preflightStart = performance.now();
@@ -102,8 +103,7 @@ try {
   page.setDefaultTimeout(10000);
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.getByText('Daemon conectado', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Laboratório', exact: true }).click();
+  await openDiagnostics(page);
   result.metrics.electronStartupMs = performance.now() - t;
   assert.equal(await page.locator('.panel').count(), 8);
   result.checks.push('oito painéis em um renderer');
@@ -127,7 +127,7 @@ try {
     '--single-process',
   ])
     assert.ok(!args.some((a) => a === flag || a.startsWith(flag + '=')), `Flag insegura: ${flag}`);
-  const runtime = await page.evaluate(() => window.eros.runtime);
+  const runtime = await page.evaluate(() => window.karont.runtime);
   assert.deepEqual(runtime, { sandboxed: true, contextIsolated: true });
   const rendererPid = await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].webContents.getOSProcessId(),
@@ -139,7 +139,7 @@ try {
   result.checks.push('sandbox efetivo: runtime isolado, filtro seccomp e NoNewPrivs no renderer');
   assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
   result.checks.push('sandbox, contextIsolation e ausência de Node no renderer');
-  await assert.rejects(() => page.evaluate(() => window.eros.layout({ columns: 99 })));
+  await assert.rejects(() => page.evaluate(() => window.karont.layout({ columns: 99 })));
   result.checks.push('IPC inválido rejeitado');
   result.stage = 'workload-and-persistence';
   await wait(1000);
@@ -271,8 +271,7 @@ try {
   });
   const secondExit = once(second, 'exit');
   const restored = await nextWindow;
-  await restored.getByText('Daemon conectado', { exact: true }).waitFor();
-  await restored.getByRole('button', { name: 'Laboratório', exact: true }).click();
+  await openDiagnostics(restored);
   result.metrics.reopenMs = performance.now() - reopen;
   await restored.locator('.cm-content').waitFor();
   assert.ok((await restored.locator('.cm-content').innerText()).includes('restauração confirmada'));

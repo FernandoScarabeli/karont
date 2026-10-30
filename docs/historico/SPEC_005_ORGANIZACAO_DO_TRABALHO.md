@@ -335,7 +335,7 @@ e o que passou; não marcar como aprovado.
 
 ## 12. Entrega e limites de autorização
 
-Entregar código, testes e `docs/SPEC_005_IMPLEMENTACAO.md` com:
+Entregar código, testes e `SPEC_005_IMPLEMENTACAO.md` com:
 funcionalidades, migração, decisões, instruções de uso, evidências, matriz A1–A15,
 métricas e limitações. Atualizar README, arquitetura, plano e protocolo sem apagar
 registros históricos. Declarar **Fase 4A implementada** somente após evidências;
@@ -353,7 +353,7 @@ ou mudem a semântica acima devem ser explicitadas, não escondidas em implement
 
 ## Prompt para o subagente
 
-> Implemente a SPEC-005 em `docs/SPEC_005_ORGANIZACAO_DO_TRABALHO.md`, correspondente
+> Implemente a SPEC-005 em `SPEC_005_ORGANIZACAO_DO_TRABALHO.md`, correspondente
 > à Fase 4A: Workspaces, cadastro de projetos pela interface, conversas persistentes,
 > vínculo às Runs, favoritos/recentes e movimentação de conversa livre para projeto.
 > Leia a SPEC inteira e as referências iniciais antes de editar. Preserve as

@@ -130,7 +130,9 @@ export class AutoResumeScheduler {
         let valid = false;
         try {
           valid = await adapter!.validate(job.run_id, job.session_id);
-        } catch {}
+        } catch {
+          // Falha ao validar conta como sessão inválida: segue para recovery_needed logo abaixo.
+        }
         if (this.closed) return;
         // A cancellation or preference change during async validation always wins.
         if (
