@@ -1,6 +1,6 @@
 # Retomar o trabalho (outro computador ou nova sessão)
 
-Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto da conversa anterior. Leia este arquivo inteiro antes de agir. Última atualização: 2026-10-30, ao fim da tarefa T7 da Fase 1.
+Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto da conversa anterior. Leia este arquivo inteiro antes de agir. Última atualização: 2026-10-30, ao fim da Fase 1.
 
 ## 1. O que ler, nesta ordem
 
@@ -12,12 +12,9 @@ Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto 
 
 ## 2. Onde parou
 
-- Branch da fase: `refactor/fase-1-faxina` (já no GitHub). Ainda **não há PR** da Fase 1; ele será aberto ao fim da fase, para `main`.
-- Concluídas: T1, T1b, T2, T3, a reescrita do histórico e a renomeação eros → Karont (T4 a T7). Detalhes em PROGRESSO.
-- **Próxima: T8**, configurar o Biome sem formatar nada (dependência nova já aprovada, decisão 2). Depois T9 a T11, na ordem do plano. Lembretes:
-  - T8 (Biome) e T9 (formatação em massa) são **commits separados**; a T9 não leva nenhuma outra mudança.
-  - A licença continua `UNLICENSED` (decisão 14).
-- O CI tem duas falhas intermitentes nos E2E (DIVIDAS #15 e #20). Se falhar, veja o log e rode de novo só o job; se for outra etapa, investigue.
+- **Refatoração – Fase 1 concluída** (PR #2, merge em `main` em 2026-10-30). Detalhes em PROGRESSO.
+- **Próximo passo:** planejar a Refatoração – Fase 2 a partir de SPEC_REFATORACAO.md (seção 6), escrever `docs/PLANO_FASE_2.md` com as perguntas de decisão para o usuário e só então criar a branch `refactor/fase-2-...` a partir de `main`.
+- O CI tem uma falha intermitente conhecida nos E2E (DIVIDAS #15, spec006). Se falhar, veja o log e rode de novo só o job; se for outra etapa, investigue.
 
 ## 3. Preparar a máquina
 

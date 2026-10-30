@@ -4,7 +4,7 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 
 ## Fase atual
 
-**Refatoração – Fase 1 (faxina e identidade)**, branch `refactor/fase-1-faxina`. Plano em [PLANO_FASE_1.md](PLANO_FASE_1.md).
+**Refatoração – Fase 1 (faxina e identidade): concluída.** Todas as tarefas feitas; PR #2 (`refactor/fase-1-faxina` → `main`) com merge em 2026-10-30, CI verde. Plano em [PLANO_FASE_1.md](PLANO_FASE_1.md). Próximo passo: planejar a Refatoração – Fase 2 (ver SPEC_REFATORACAO.md, seção 6).
 
 | Tarefa | Estado |
 |---|---|
