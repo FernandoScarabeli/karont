@@ -592,6 +592,22 @@ try {
     for (const run of crashRuns)
       assert.equal(runs.find((r) => r.id === run.id).state, 'recovery_needed');
   });
+  const continuationNotices = () =>
+    fs
+      .readFileSync(notificationLog, 'utf8')
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  // O daemon marca as Runs como recovery_needed antes de o desktop reconectar, então o aviso
+  // só sai no próximo heartbeat (até 2 s). Retomar antes disso esconde o estado do desktop.
+  if (notificationService)
+    await until(() =>
+      assert.equal(
+        continuationNotices().filter((n) => n.title === 'Recuperação necessária').length,
+        2,
+      ),
+    );
   await restored
     .locator(`[aria-label="Continuidade ${crashRuns[0].id.slice(0, 8)}"]`)
     .getByRole('button', { name: 'Retomar', exact: true })
@@ -611,13 +627,6 @@ try {
     'Checkpoint manual na UI; SIGKILL real do daemon com duas Runs; reconexão; aviso de risco e nova sessão explicitamente confirmada',
   );
   if (notificationService) {
-    const continuationNotices = () =>
-      fs
-        .readFileSync(notificationLog, 'utf8')
-        .trim()
-        .split('\n')
-        .filter(Boolean)
-        .map((line) => JSON.parse(line));
     await until(() => {
       const notices = continuationNotices();
       assert.equal(notices.filter((n) => n.title === 'Recuperação necessária').length, 2);
