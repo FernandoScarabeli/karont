@@ -14,7 +14,7 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 | `benchmark` (3 rodadas, mediana) | Feito, mas com o PC ocupado (o usuário optou por não esperar). Refazer ocioso depois |
 | `SPEC_REFATORACAO.md`, `AGENTS.md`, `DIVIDAS.md`, `PROGRESSO.md` | Feito |
 | `BASELINE.md` | Feito |
-| Plano da Fase 1 | Pendente |
+| Plano da Fase 1 | Feito: [PLANO_FASE_1.md](PLANO_FASE_1.md), aguardando respostas do usuário |
 
 ## Decisões do usuário
 
