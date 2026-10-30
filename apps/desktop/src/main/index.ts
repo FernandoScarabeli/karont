@@ -273,7 +273,7 @@ if (!app.requestSingleInstanceLock()) {
           value: { ...input, operationId: randomUUID() },
         });
       });
-      const handlers: [string, Command['method'], (value: any) => object][] = [
+      const handlers: [string, Command['method'], (value: unknown) => object][] = [
         ['karont:workspaces:list', 'workspaces.list', (value) => ({ value })],
         ['karont:workspaces:create', 'workspaces.create', (value) => ({ value })],
         ['karont:workspaces:rename', 'workspaces.rename', (value) => ({ value })],
