@@ -10,9 +10,24 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 |---|---|
 | T1 — CI e testes de desktop | Feito (`43b7291`). Codex (gpt-6.1-sol high), 2 tentativas |
 | T1b — spec005 para os fluxos vigentes | Feito (`9cd79bf`). Codex: 1ª com sol high, 2ª com luna xhigh; o orquestrador terminou os últimos ajustes (seletor de `<summary>` e corrida de rascunho, DIVIDAS #14), porque o Codex não roda E2E no sandbox dele |
-| T2 a T11 | Pendentes |
+| T2 — docs históricos | Feito (`a2d0c09`). Codex luna xhigh, 1 tentativa. Um `git mv` rodou fora do sandbox por aprovação automática da config do Codex; corrigido no comando (ver abaixo) |
+| T3 a T11 | Pendentes |
 
-Verificação ao fim da T1b (local, pelo orquestrador): `check` OK, `test` 42/42, `test:desktop` OK, `test:e2e` OK (phase1, spec005, spec006).
+Verificação ao fim da T1b (local, pelo orquestrador): `check` OK, `test` 42/42, `test:desktop` OK, `test:e2e` OK (phase1, spec005, spec006). CI verde no push seguinte (run `41098654702`).
+
+### Comando padrão do Codex
+
+O `~/.codex/config.toml` do usuário tem `approvals_reviewer = "auto_review"`, que aprova sozinho pedidos de execução fora do sandbox. Por isso o comando sempre força `approval_policy="never"` (pedidos fora do sandbox são recusados) e libera só a pasta git da própria worktree, para `git mv`/`git add` funcionarem:
+
+```bash
+W=~/karont-worktrees/fase-1-tarefa-N
+cd "$W" && PATH="$HOME/.local/share/fnm/node-versions/v24.22.2/installation/bin:$PATH" \
+codex exec -m gpt-6-luna -c model_reasoning_effort="xhigh" -c approval_policy="never" \
+  -C "$W" -s workspace-write --add-dir "<repo>/.git/worktrees/fase-1-tarefa-N" \
+  -o <resposta.md> - < <tarefa.md>
+```
+
+O Codex não roda E2E no próprio sandbox (`spawnSync getconf EPERM`); o orquestrador roda.
 
 ## Fase 0 (concluída, PR #1)
 
