@@ -17,7 +17,7 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 | T7 — WorkspaceDesk | Feito. Codex luna xhigh, 1 tentativa. `Sidebar`, `SidebarFooter`, `HomeView`, `WorkspacePages`, `ProjectDialog`, `WorkspaceDialog`, `workspaceShared` e hooks `useWorkspaceData` (os 5 efeitos de carregamento juntos, corpo idêntico), `useProjectForm`, `useWorkspaceForm`, `useSidebarState`. `WorkspaceDesk` 1.022 → 135 linhas; maior arquivo, `Sidebar` (344). `check`, `test` 50/50, visual zero, `test:desktop`, phase1, spec005 e spec006 2× OK |
 | T8 — TaskDesk | Feito. Codex luna xhigh, 1 tentativa. `TaskCreationDialog`, `TaskCard`, `TaskDetailsDialog`, `taskShared` e hooks `useTaskCatalog`/`useTaskList`/`useTaskEditor` (mesma ordem de efeitos). `TaskDesk` 1.031 → 293 linhas e reexporta o que os outros usam. `check`, `test` 50/50, visual zero, `test:desktop`, phase1, spec005 e spec006 2× OK |
 | T9 — RunDesk | A fazer |
-| T10 — renderer/app | A fazer |
+| T10 — renderer/app | Feito pelo orquestrador (só mover; escrever a tarefa daria o mesmo trabalho). `renderer/main.tsx` com 11 linhas; `LegacyWorkbench` em `app/` (334 linhas, sem dividir: é o laboratório legado, que a Fase 3 deve rever). CSS gerado idêntico (md5). `check`, `test` 50/50, visual zero, `test:desktop` e 3 E2E OK |
 | T11 — docs e verificação final (orquestrador) | A fazer |
 
 ## Fase 1 (concluída, PR #2)
