@@ -4,7 +4,17 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 
 ## Fase atual
 
-**Refatoração – Fase 0 (linha de base)**, branch `refactor/fase-0-baseline`. Em andamento.
+**Refatoração – Fase 1 (faxina e identidade)**, branch `refactor/fase-1-faxina`. Plano em [PLANO_FASE_1.md](PLANO_FASE_1.md).
+
+| Tarefa | Estado |
+|---|---|
+| T1 — CI e testes de desktop | Feito (`43b7291`). Codex (gpt-6.1-sol high), 2 tentativas |
+| T1b — spec005 para os fluxos vigentes | Feito (`9cd79bf`). Codex: 1ª com sol high, 2ª com luna xhigh; o orquestrador terminou os últimos ajustes (seletor de `<summary>` e corrida de rascunho, DIVIDAS #14), porque o Codex não roda E2E no sandbox dele |
+| T2 a T11 | Pendentes |
+
+Verificação ao fim da T1b (local, pelo orquestrador): `check` OK, `test` 42/42, `test:desktop` OK, `test:e2e` OK (phase1, spec005, spec006).
+
+## Fase 0 (concluída, PR #1)
 
 | Item | Estado |
 |---|---|
@@ -39,6 +49,7 @@ Registradas em 2026-10-30, para a Fase 1 (o usuário aceitou todas as recomenda�
 14. **Licença:** continua `UNLICENSED` por enquanto; decidir depois.
 15. **Histórico do git:** aprovada a reescrita para remover os artefatos gerados. Feita pelo orquestrador depois da tarefa T3, antes do PR da Fase 1, com backup do repositório.
 16. **PR da Fase 0:** merge aprovado mesmo com o CI vermelho, porque a falha é anterior e o PR só tem documentação.
+17. **Modelo do Codex:** a partir da tarefa T2, usar `-m gpt-6-luna -c model_reasoning_effort="xhigh"` (mais barato). As tarefas são escritas em blocos pequenos, passo a passo, cada um com o seu critério de pronto.
 
 ## Ambiente local
 
@@ -51,4 +62,4 @@ Registradas em 2026-10-30, para a Fase 1 (o usuário aceitou todas as recomenda�
 
 ## Tarefas concluídas
 
-Nenhuma tarefa de código ainda.
+Ver a tabela da fase atual.
