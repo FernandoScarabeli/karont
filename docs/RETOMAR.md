@@ -1,6 +1,6 @@
 # Retomar o trabalho (outro computador ou nova sessão)
 
-Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto da conversa anterior. Leia este arquivo inteiro antes de agir. Última atualização: 2026-10-30, no início da Fase 2.
+Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto da conversa anterior. Leia este arquivo inteiro antes de agir. Última atualização: 2026-10-30, ao fim da Fase 2.
 
 ## 1. O que ler, nesta ordem
 
@@ -13,7 +13,9 @@ Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto 
 ## 2. Onde parou
 
 - **Refatoração – Fase 1 concluída** (PR #2, merge em `main` em 2026-10-30).
-- **Refatoração – Fase 2 em andamento** na branch `refactor/fase-2-estrutura`. Plano escrito e aprovado; a tabela de PROGRESSO diz qual tarefa é a próxima. A T1 (comparação visual) vem antes de qualquer mudança de código, porque é ela que prova que nada mudou na tela.
+- **Refatoração – Fase 2 concluída** na branch `refactor/fase-2-estrutura`, com PR para `main` aguardando CI e merge.
+- **Próximo passo:** a Refatoração – Fase 3 (estilos e redesign). Ela **precisa do `karont.pen`** e das referências visuais do usuário antes de redesenhar (decisão 7). Planejar em `docs/PLANO_FASE_3.md`, com as perguntas de decisão (CSS Modules ou arquivos planos com `@layer`).
+- Para provar que uma mudança não alterou a tela: `npm run visual -- <nome>` antes e depois e `node scripts/visual-snapshot.mjs --compare <a> <b>` (ver PROGRESSO, T1). Na Fase 3 a tela muda de propósito: aí a comparação serve para mostrar o que mudou.
 - O CI tem uma falha intermitente conhecida nos E2E (DIVIDAS #15, spec006). Se falhar, veja o log e rode de novo só o job; se for outra etapa, investigue.
 
 ## 3. Preparar a máquina

@@ -6,7 +6,7 @@ Estado em 2026-10-25: **base visual implementada no desktop**, a partir da dire�
 
 Workspace desktop escuro, compacto, com separação tonal de superfícies e cor pontual para foco, identidade e estados. Referências originais: `references/01.png` a `references/10.png` e painel de briefing do `karont.pen`; os fundos do briefing não são cores do produto. A direção existente foi implementada, sem criar outra identidade visual.
 
-Canvas e componentes DS definem a composição. `apps/desktop/src/tokens.css` centraliza os tokens implementados; `karont.css` aplica o shell e adapta os componentes existentes. `WorkspaceDesk.tsx` reúne navegação, home e chat; ToDo, terminal, execução e diagnóstico reutilizam suas funcionalidades com a nova paleta. Novos padrões devem atualizar código, documentação e variáveis/componentes reutilizáveis do canvas na mesma entrega.
+Canvas e componentes DS definem a composição. `apps/desktop/src/renderer/styles/tokens.css` centraliza os tokens implementados; `karont.css` (mesma pasta) aplica o shell e adapta os componentes existentes. `renderer/features/workspace/` reúne navegação e home, e `renderer/features/chat/` o chat; ToDo, terminal, execução e diagnóstico reutilizam suas funcionalidades com a nova paleta. Novos padrões devem atualizar código, documentação e variáveis/componentes reutilizáveis do canvas na mesma entrega.
 
 ## Cores semânticas
 

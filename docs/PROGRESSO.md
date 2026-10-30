@@ -4,7 +4,7 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 
 ## Fase atual
 
-**Refatoração – Fase 2 (estrutura de pastas e quebra dos arquivos grandes): em andamento.** Branch `refactor/fase-2-estrutura`. Plano em [PLANO_FASE_2.md](PLANO_FASE_2.md).
+**Refatoração – Fase 2 (estrutura de pastas e quebra dos arquivos grandes): concluída na branch, PR aberto para `main`.** Branch `refactor/fase-2-estrutura`. Plano em [PLANO_FASE_2.md](PLANO_FASE_2.md).
 
 | Tarefa | Estado |
 |---|---|
@@ -16,9 +16,9 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 | T6 — ChatView (com a T5) | Feito. Codex luna xhigh, 1 tentativa. `components/FormDialog.tsx`; `features/chat/` com `ChatView` (300 linhas), hooks `useChatDraft` (o rascunho inteiro, sem mudança de lógica), `useChatHistory` e `useChatMove`, e 5 componentes de apresentação. `WorkspaceDesk` 1.790 → 1.022 linhas. Mesmas chamadas ao bridge, classes e `aria-label`. `check`, `test` 50/50, visual zero, `test:desktop`, phase1, spec005 e spec006 3× OK |
 | T7 — WorkspaceDesk | Feito. Codex luna xhigh, 1 tentativa. `Sidebar`, `SidebarFooter`, `HomeView`, `WorkspacePages`, `ProjectDialog`, `WorkspaceDialog`, `workspaceShared` e hooks `useWorkspaceData` (os 5 efeitos de carregamento juntos, corpo idêntico), `useProjectForm`, `useWorkspaceForm`, `useSidebarState`. `WorkspaceDesk` 1.022 → 135 linhas; maior arquivo, `Sidebar` (344). `check`, `test` 50/50, visual zero, `test:desktop`, phase1, spec005 e spec006 2× OK |
 | T8 — TaskDesk | Feito. Codex luna xhigh, 1 tentativa. `TaskCreationDialog`, `TaskCard`, `TaskDetailsDialog`, `taskShared` e hooks `useTaskCatalog`/`useTaskList`/`useTaskEditor` (mesma ordem de efeitos). `TaskDesk` 1.031 → 293 linhas e reexporta o que os outros usam. `check`, `test` 50/50, visual zero, `test:desktop`, phase1, spec005 e spec006 2× OK |
-| T9 — RunDesk | A fazer |
+| T9 — RunDesk | Feito. Codex luna xhigh, 1 tentativa. `TerminalPane`, `DotLauncher`, `RunTerminals`, `RunHistory`, `DiffView`, `RollbackDialog`, `runShared` e `useRunDesk` (estado e efeitos juntos, na ordem original). `RunDesk` 817 → 143 linhas. Polling (DIVIDAS #5) e posição do `xterm.css` iguais; CSS gerado idêntico (md5). O orquestrador tirou imports sem uso e, depois, formatou `useRunDesk.ts`, que a limpeza tinha deixado fora do padrão (`3646f72`). `check`, `test` 50/50, visual zero, `test:desktop` e 3 E2E OK |
 | T10 — renderer/app | Feito pelo orquestrador (só mover; escrever a tarefa daria o mesmo trabalho). `renderer/main.tsx` com 11 linhas; `LegacyWorkbench` em `app/` (334 linhas, sem dividir: é o laboratório legado, que a Fase 3 deve rever). CSS gerado idêntico (md5). `check`, `test` 50/50, visual zero, `test:desktop` e 3 E2E OK |
-| T11 — docs e verificação final (orquestrador) | A fazer |
+| T11 — docs e verificação final (orquestrador) | Feito. `ARQUITETURA.md` com a nova estrutura; caminhos atualizados em `DESIGN_SYSTEM.md` e `DIVIDAS.md`. Roteiro da seção 7 na branch: `check`, `format:check`, `test` 50/50, `test:desktop`, `test:e2e` e `benchmark` OK. Nenhum arquivo do desktop passa de 344 linhas (antes: 1.790). Comparação visual contra a `main` original, recapturada com o script atual: zero diferenças nos 30 arquivos. Desempenho, neste PC, `main` × branch: `test:desktop` 7 rodadas alternadas, memória e CPU iguais (ex.: ocioso 1.044 × 1.044 MiB; editor 86 × 87% CPU); o tempo até o diagnóstico deu 795 × 884 ms, mas uma medição isolada (7 rodadas em 4 pontos: `main`, T4, T7 e final) não confirmou: 776/746 ms na `main` e 779/714 ms no final, ruído. O `npm run benchmark` mede só o daemon, que esta fase não tocou |
 
 ## Fase 1 (concluída, PR #2)
 

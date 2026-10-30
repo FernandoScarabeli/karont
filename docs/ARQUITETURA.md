@@ -219,3 +219,30 @@ Main, preload, cliente e daemon usam operações IPC nomeadas `tasks.*` com sche
 estritos; não há `invoke` arbitrário. Texto de tarefa não é incluído em logs,
 relatórios ou notificações. Implementação, matriz de aceite, medições locais,
 limitações e evidências estão em [SPEC_006_IMPLEMENTACAO.md](historico/SPEC_006_IMPLEMENTACAO.md).
+
+## Estrutura do código do desktop — Refatoração – Fase 2 (30/10/2026)
+
+Organização de `apps/desktop/src/` depois da Refatoração – Fase 2. Nenhum comportamento ou visual mudou; detalhes e verificação em [PLANO_FASE_2.md](PLANO_FASE_2.md).
+
+```
+main/        processo principal do Electron
+  index.ts       fluxo de inicialização; importa bootstrap.ts primeiro
+  bootstrap.ts   recusa flags sem sandbox, nome do app, migração de pastas e userData
+  state.ts       cliente do daemon e estado compartilhado (janela, Runs, bandeja)
+  window.ts      janela, URL confiável e autorização de origem do IPC
+  ipc.ts         registro e validação de todos os canais karont:*
+  daemon.ts      início do daemon e heartbeat
+  notify.ts, notifications.ts, tray.ts, tray-icon.ts, diagnostics.ts
+preload/     preload.ts: implementa o tipo KarontBridge (satisfies)
+shared/      bridge.ts: tipo do window.karont e tipos Ui*, só tipos
+renderer/
+  main.tsx       monta o app e importa os estilos (a ordem dos imports define a cascata)
+  app/           LegacyWorkbench (laboratório e diagnóstico legados)
+  features/      workspace, chat, tasks, runs, editor, attention, continuity
+                 cada uma com componentes de apresentação e hooks use* por assunto
+  components/    componentes reutilizáveis (FormDialog)
+  lib/           api.ts: reexporta os tipos de shared/ e declara window.karont
+  styles/        tokens.css, style.css, karont.css (consolidação na Fase 3)
+```
+
+Regras: o estado da UI fica em hooks por feature, sem store global (decisão 18 em PROGRESSO); nenhum módulo do main chama `app.getPath` no topo; o `xterm.css` é importado pelo `RunDesk` e precisa entrar antes dos estilos do app.
