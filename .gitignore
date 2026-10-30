@@ -3,3 +3,19 @@ dist/
 *.log
 benchmarks/tmp/
 .tools/
+
+# Saídas geradas por execuções e especificações de benchmark
+benchmarks/runs/
+benchmarks/series/
+benchmarks/spec*/
+
+# Imagens e dados históricos gerados pelos benchmarks
+benchmarks/history/**/*.png
+benchmarks/history/**/*.json
+benchmarks/*.png
+
+# Prints e baselines visuais locais
+artifacts/
+
+# Revisões visuais antigas
+.impeccable/review/
