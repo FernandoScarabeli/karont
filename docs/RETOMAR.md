@@ -1,26 +1,26 @@
 # Retomar o trabalho (outro computador ou nova sessão)
 
-Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto da conversa anterior. Leia este arquivo inteiro antes de agir. Última atualização: 2026-10-30, ao fim da Fase 1.
+Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto da conversa anterior. Leia este arquivo inteiro antes de agir. Última atualização: 2026-10-30, no início da Fase 2.
 
 ## 1. O que ler, nesta ordem
 
 1. [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md): a spec (papéis, regras invariantes, fases).
-2. [PROGRESSO.md](PROGRESSO.md): o estado atual, as **decisões do usuário (1–17)** e o comando padrão do Codex.
-3. [PLANO_FASE_1.md](PLANO_FASE_1.md): as tarefas da fase atual (T1–T11).
+2. [PROGRESSO.md](PROGRESSO.md): o estado atual, as **decisões do usuário (1–20)** e o comando padrão do Codex.
+3. [PLANO_FASE_2.md](PLANO_FASE_2.md): as tarefas da fase atual (T1–T11). O da Fase 1 ([PLANO_FASE_1.md](PLANO_FASE_1.md)) é só referência.
 4. [DIVIDAS.md](DIVIDAS.md): problemas conhecidos, para não "descobrir" de novo.
 5. [BASELINE.md](BASELINE.md): números de referência.
 
 ## 2. Onde parou
 
-- **Refatoração – Fase 1 concluída** (PR #2, merge em `main` em 2026-10-30). Detalhes em PROGRESSO.
-- **Próximo passo:** planejar a Refatoração – Fase 2 a partir de SPEC_REFATORACAO.md (seção 6), escrever `docs/PLANO_FASE_2.md` com as perguntas de decisão para o usuário e só então criar a branch `refactor/fase-2-...` a partir de `main`.
+- **Refatoração – Fase 1 concluída** (PR #2, merge em `main` em 2026-10-30).
+- **Refatoração – Fase 2 em andamento** na branch `refactor/fase-2-estrutura`. Plano escrito e aprovado; a tabela de PROGRESSO diz qual tarefa é a próxima. A T1 (comparação visual) vem antes de qualquer mudança de código, porque é ela que prova que nada mudou na tela.
 - O CI tem uma falha intermitente conhecida nos E2E (DIVIDAS #15, spec006). Se falhar, veja o log e rode de novo só o job; se for outra etapa, investigue.
 
 ## 3. Preparar a máquina
 
 ```bash
 git clone git@github.com:FernandoScarabeli/karont.git && cd karont
-git switch refactor/fase-1-faxina
+git switch refactor/fase-2-estrutura
 # Node 24 (o projeto exige >=24). Sem root, via fnm:
 curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
 export PATH="$HOME/.local/share/fnm:$PATH"; eval "$(fnm env --shell bash)"; fnm install 24; fnm use 24
@@ -51,7 +51,7 @@ O CI do GitHub já prepara o helper sozinho e deve estar verde.
 ## 4. Como trabalhar (combinado com o usuário)
 
 - **Usuário:** dev iniciante/intermediário, em vibecoding. Respostas **curtas e simples**, em português. Detalhes técnicos vão para os docs, não para o chat. Decisões são apresentadas com uma recomendação pronta, para ele responder "ok".
-- **Fluxo:** o Claude planeja, escreve a tarefa, roda o Codex, revisa o diff, roda os testes **ele mesmo**, faz o commit na branch da tarefa e o fast-forward na branch da fase, faz o push e confere o CI. Uma tarefa do Codex por vez, cada uma em worktree própria (`~/karont-worktrees/fase-1-tarefa-N`, branch `refactor/fase-1-tarefa-N`).
+- **Fluxo:** o Claude planeja, escreve a tarefa, roda o Codex, revisa o diff, roda os testes **ele mesmo**, faz o commit na branch da tarefa e o fast-forward na branch da fase, faz o push e confere o CI. Uma tarefa do Codex por vez, cada uma em worktree própria (`~/karont-worktrees/fase-N-tarefa-M`, branch `refactor/fase-N-tarefa-M`).
 - **Codex:** usar `gpt-6-luna` com `xhigh`. Tarefas escritas em **blocos numerados**, cada um com um critério de "pronto". O comando exato está em PROGRESSO ("Comando padrão do Codex"). Ele precisa sempre ter:
   - `-c approval_policy="never"`: a config do usuário tem `approvals_reviewer = "auto_review"`, que aprovaria sozinha comandos fora do sandbox;
   - `-s workspace-write`, nunca o modo que desliga o sandbox;

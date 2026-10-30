@@ -4,7 +4,25 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 
 ## Fase atual
 
-**Refatoração – Fase 1 (faxina e identidade): concluída.** Todas as tarefas feitas; PR #2 (`refactor/fase-1-faxina` → `main`) com merge em 2026-10-30, CI verde. Plano em [PLANO_FASE_1.md](PLANO_FASE_1.md). Próximo passo: planejar a Refatoração – Fase 2 (ver SPEC_REFATORACAO.md, seção 6).
+**Refatoração – Fase 2 (estrutura de pastas e quebra dos arquivos grandes): em andamento.** Branch `refactor/fase-2-estrutura`. Plano em [PLANO_FASE_2.md](PLANO_FASE_2.md).
+
+| Tarefa | Estado |
+|---|---|
+| T1 — comparação visual (orquestrador) | A fazer |
+| T2 — mover arquivos | A fazer |
+| T3 — tipar o bridge | A fazer |
+| T4 — dividir `main.ts` | A fazer |
+| T5 — componentes compartilhados | A fazer |
+| T6 — ChatView | A fazer |
+| T7 — WorkspaceDesk | A fazer |
+| T8 — TaskDesk | A fazer |
+| T9 — RunDesk | A fazer |
+| T10 — renderer/app | A fazer |
+| T11 — docs e verificação final (orquestrador) | A fazer |
+
+## Fase 1 (concluída, PR #2)
+
+**Refatoração – Fase 1 (faxina e identidade): concluída.** Todas as tarefas feitas; PR #2 (`refactor/fase-1-faxina` → `main`) com merge em 2026-10-30, CI verde. Plano em [PLANO_FASE_1.md](PLANO_FASE_1.md).
 
 | Tarefa | Estado |
 |---|---|
@@ -30,10 +48,10 @@ Verificação ao fim da T1b (local, pelo orquestrador): `check` OK, `test` 42/42
 O `~/.codex/config.toml` do usuário tem `approvals_reviewer = "auto_review"`, que aprova sozinho pedidos de execução fora do sandbox. Por isso o comando sempre força `approval_policy="never"` (pedidos fora do sandbox são recusados) e libera só a pasta git da própria worktree, para `git mv`/`git add` funcionarem:
 
 ```bash
-W=~/karont-worktrees/fase-1-tarefa-N
+W=~/karont-worktrees/fase-N-tarefa-M
 cd "$W" && PATH="$HOME/.local/share/fnm/node-versions/v24.22.2/installation/bin:$PATH" \
 codex exec -m gpt-6-luna -c model_reasoning_effort="xhigh" -c approval_policy="never" \
-  -C "$W" -s workspace-write --add-dir "<repo>/.git/worktrees/fase-1-tarefa-N" \
+  -C "$W" -s workspace-write --add-dir "<repo>/.git/worktrees/fase-N-tarefa-M" \
   -o <resposta.md> - < <tarefa.md>
 ```
 
@@ -75,6 +93,12 @@ Registradas em 2026-10-30, para a Fase 1 (o usuário aceitou todas as recomenda�
 15. **Histórico do git:** aprovada a reescrita para remover os artefatos gerados. Feita pelo orquestrador depois da tarefa T3, antes do PR da Fase 1, com backup do repositório.
 16. **PR da Fase 0:** merge aprovado mesmo com o CI vermelho, porque a falha é anterior e o PR só tem documentação.
 17. **Modelo do Codex:** a partir da tarefa T2, usar `-m gpt-6-luna -c model_reasoning_effort="xhigh"` (mais barato). As tarefas são escritas em blocos pequenos, passo a passo, cada um com o seu critério de pronto.
+
+Registradas em 2026-10-30, para a Fase 2:
+
+18. **Estado da UI:** só hooks por feature (`useChat`, `useProjects`...), sem store global nem dependência nova (usuário aceitou a recomendação).
+19. **Pasta `apps/desktop/src/shared/`** para o tipo do `window.karont`, usado pelo preload e pelo renderer (orquestrador; desvio da estrutura da spec, justificado em PLANO_FASE_2).
+20. **Diff visual nulo** medido pelo script da T1 (PNG byte a byte + DOM). Se o PNG não estabilizar, vale DOM idêntico + conferência a olho, registrado no plano (orquestrador).
 
 ## Ambiente local
 
