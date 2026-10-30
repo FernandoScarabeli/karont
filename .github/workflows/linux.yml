@@ -27,13 +27,12 @@ jobs:
           node node_modules/electron/install.js
           sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
       - run: npm run check
-      # Não bloqueante até a formatação em massa (Refatoração – Fase 1, T9).
+      # Lint não bloqueante até os erros apontados serem tratados (docs/DIVIDAS.md #21).
       - name: Lint (Biome)
         run: npm run lint
         continue-on-error: true
       - name: Formatação (Biome)
         run: npm run format:check
-        continue-on-error: true
       - run: npm test
       - name: Phase 0 Electron sandbox and lifecycle
         run: xvfb-run -a dbus-run-session -- npm run test:desktop
