@@ -113,6 +113,12 @@ Registrada em 2026-10-31, para a Fase 3:
 
 22. **Preview web para iterar no design:** o usuário descreve as telas pelo chat e vê o resultado no navegador, com recarga automática (`npm run preview:web` → `http://127.0.0.1:5180/preview.html`). É ferramenta só de dev: o build e o app Electron não mudam. A ponte é um Electron sem janela (sandbox ligado) que expõe os mesmos canais do IPC (`channelHandlers()`) por HTTP + SSE em `127.0.0.1`, com token por sessão e checagem de Host/Origin; o mapeamento método → canal fica num lugar só (`shared/createBridge.ts`). Um Codex para o front e outro para o back, ainda uma tarefa por vez. O usuário ainda não usa dados reais, então o preview usa o daemon padrão. Tarefas F3-P1 (`b99ea3a`) e F3-P2 (`0a46a44`): `check`, `test` 52/52, `test:desktop` e os 3 E2E OK nas duas.
 
+Registradas em 2026-10-31, para a Fase 3 (o usuário aprovou as mudanças de daemon/contrato que elas exigem):
+
+23. **Chat é sempre conversa com a IA.** O Enter sempre manda a mensagem para o terminal da Run (salvar fica interno, como registro). Se não houver Run ativa, o Enter inicia uma com a escolha do composer e manda a mensagem como primeira entrada. "Só salvar para mandar depois" deixa de existir no chat; anotações ficam para um bloco de notas futuro (fora do escopo atual).
+24. **Seletor no composer: Terminal ou CLI** (Claude, Codex… os Dots configurados). Substitui a regra antiga "sem seletor de Dot no fluxo de nova conversa" do `AGENTS.md`. O app passa a ter um Dot **Terminal** embutido (o shell do usuário), sem configuração, autorizado em qualquer projeto.
+25. **Conversa sem projeto roda na pasta pessoal (`~`)**, direto, sem worktree: sem "Ver mudanças", sem "Desfazer", sem checkpoints. A tela avisa isso de forma clara antes e durante. Exige mudança no daemon e no contrato (`runs.start` sem `projectId`) e, se preciso, migração aditiva do SQLite.
+
 ## Ambiente local
 
 - Node 24 via fnm em `~/.local/share/fnm` (shell do usuário não foi alterado). No PC `scarabeliDesktop` (a partir da Fase 2), Node 24.21 via nvm, já no `PATH`.
