@@ -210,14 +210,50 @@ test("limita a 16 terminais, rejeita escrita após saída e emite changed", asyn
     () => manager.write(exited.terminal.id, "x"),
     (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
   );
+  await manager.open({ cwd: root, cols: 80, rows: 24 });
+  assert.equal(manager.list().terminals.length, 17);
   await manager.close(exited.terminal.id);
-  assert.equal(manager.list().terminals.length, 15);
+  assert.equal(manager.list().terminals.length, 16);
   assert.equal(
     recorder.events.some((event) => event.event === "terminals.changed"),
     true,
   );
   await manager.closeAll();
   assert.equal(manager.list().terminals.length, 0);
+});
+
+test("reserva vagas antes dos awaits em aberturas simultâneas", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-terminal-reservation-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const created: FakePty[] = [];
+  let executableChecks = 0;
+  let releaseExecutableCheck: (() => void) | undefined;
+  const executableGate = new Promise<void>((resolve) => {
+    releaseExecutableCheck = resolve;
+  });
+  const manager = new TerminalManager({
+    broadcast: async () => undefined,
+    ptyFactory: fakeFactory(created),
+    env: { SHELL: "/bin/bash" },
+    homeDir: root,
+    isExecutable: async () => {
+      executableChecks += 1;
+      await executableGate;
+      return true;
+    },
+  });
+
+  const attempts = Array.from({ length: 17 }, () =>
+    manager.open({ cwd: root, cols: 80, rows: 24 }),
+  );
+  const allResults = Promise.allSettled(attempts);
+  await waitUntil(() => executableChecks === 16);
+  releaseExecutableCheck?.();
+  const results = await allResults;
+  assert.equal(results.filter((result) => result.status === "fulfilled").length, 16);
+  assert.equal(results.filter((result) => result.status === "rejected").length, 1);
+  assert.equal(created.length, 16);
+  await manager.closeAll();
 });
 
 test("seleciona SHELL válido, usa fallback para SHELL relativo ou ausente", async (context) => {

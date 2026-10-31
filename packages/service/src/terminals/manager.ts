@@ -75,6 +75,7 @@ export class TerminalManager {
   readonly #now: () => Date;
   readonly #schedule: TerminalScheduler;
   readonly #terminals = new Map<string, ManagedTerminal>();
+  #openingTerminals = 0;
 
   constructor({
     broadcast,
@@ -105,7 +106,8 @@ export class TerminalManager {
     command?: string;
   }): Promise<{ terminal: TerminalInfo }> {
     validateSize(params.cols, params.rows);
-    if (this.#terminals.size >= MAX_TERMINALS) {
+    const activeTerminals = [...this.#terminals.values()].filter(({ info }) => !info.exited).length;
+    if (activeTerminals + this.#openingTerminals >= MAX_TERMINALS) {
       throw new ServiceError("unavailable", "O serviço já está com 16 terminais abertos.");
     }
 
@@ -116,15 +118,6 @@ export class TerminalManager {
         "A pasta do terminal deve ser um caminho absoluto.",
       );
     }
-    let cwdInfo: Awaited<ReturnType<typeof stat>>;
-    try {
-      cwdInfo = await stat(cwd);
-    } catch {
-      throw new ServiceError("invalid_request", "A pasta do terminal não existe.");
-    }
-    if (!cwdInfo.isDirectory()) {
-      throw new ServiceError("invalid_request", "A pasta do terminal não é um diretório.");
-    }
     if (params.command !== undefined) {
       const commandBytes = Buffer.byteLength(params.command, "utf8");
       if (commandBytes < 1 || commandBytes > 4_096 || params.command.includes("\u0000")) {
@@ -132,87 +125,105 @@ export class TerminalManager {
       }
     }
 
-    const shell = await this.#selectShell();
-    const shellName = path.basename(shell);
-    const args = ["bash", "zsh", "sh"].includes(shellName) ? ["-l"] : [];
-    const id = randomUUID();
-    const terminalEnv = createTerminalEnvironment(this.#env);
-    let pty: TerminalPty;
+    this.#openingTerminals += 1;
+    let reserved = true;
     try {
-      const options = {
-        name: "xterm-256color",
+      let cwdInfo: Awaited<ReturnType<typeof stat>>;
+      try {
+        cwdInfo = await stat(cwd);
+      } catch {
+        throw new ServiceError("invalid_request", "A pasta do terminal não existe.");
+      }
+      if (!cwdInfo.isDirectory()) {
+        throw new ServiceError("invalid_request", "A pasta do terminal não é um diretório.");
+      }
+
+      const shell = await this.#selectShell();
+      const shellName = path.basename(shell);
+      const args = ["bash", "zsh", "sh"].includes(shellName) ? ["-l"] : [];
+      const id = randomUUID();
+      const terminalEnv = createTerminalEnvironment(this.#env);
+      let pty: TerminalPty;
+      try {
+        const options = {
+          name: "xterm-256color",
+          cols: params.cols,
+          rows: params.rows,
+          cwd,
+          env: terminalEnv,
+        };
+        pty = this.#ptyFactory
+          ? this.#ptyFactory(shell, args, options)
+          : await (await import("node-pty")).spawn(shell, args, options);
+      } catch {
+        throw new ServiceError("unavailable", "Não foi possível iniciar o shell do terminal.");
+      }
+
+      let resolveExit = (): void => undefined;
+      const exitPromise = new Promise<void>((resolve) => {
+        resolveExit = resolve;
+      });
+      const info: TerminalInfo = {
+        id,
+        title: `${shellName} · ${abbreviatePath(cwd, this.#homeDir)}`,
+        cwd,
+        shell,
         cols: params.cols,
         rows: params.rows,
-        cwd,
-        env: terminalEnv,
+        startedAt: this.#now().toISOString(),
+        exited: false,
       };
-      pty = this.#ptyFactory
-        ? this.#ptyFactory(shell, args, options)
-        : await (await import("node-pty")).spawn(shell, args, options);
-    } catch {
-      throw new ServiceError("unavailable", "Não foi possível iniciar o shell do terminal.");
-    }
-
-    let resolveExit = (): void => undefined;
-    const exitPromise = new Promise<void>((resolve) => {
-      resolveExit = resolve;
-    });
-    const info: TerminalInfo = {
-      id,
-      title: `${shellName} · ${abbreviatePath(cwd, this.#homeDir)}`,
-      cwd,
-      shell,
-      cols: params.cols,
-      rows: params.rows,
-      startedAt: this.#now().toISOString(),
-      exited: false,
-    };
-    const terminal: ManagedTerminal = {
-      info,
-      pty,
-      replay: "",
-      seq: 0,
-      pendingAdds: new Set(),
-      pendingFlushes: 0,
-      resolveExit,
-      exitPromise,
-      coalescer: undefined as unknown as DeltaCoalescer,
-    };
-    terminal.coalescer = new DeltaCoalescer(
-      async (data) => {
-        terminal.replay = appendReplay(terminal.replay, data);
-        terminal.seq += 1;
-        await this.#broadcast({
-          event: "terminals.output",
-          payload: { id, seq: terminal.seq, data },
-        });
-      },
-      {
-        onFlushPending: () => {
-          terminal.pendingFlushes += 1;
-          if (terminal.pendingFlushes === 1) pty.pause();
+      const terminal: ManagedTerminal = {
+        info,
+        pty,
+        replay: "",
+        seq: 0,
+        pendingAdds: new Set(),
+        pendingFlushes: 0,
+        resolveExit,
+        exitPromise,
+        coalescer: undefined as unknown as DeltaCoalescer,
+      };
+      terminal.coalescer = new DeltaCoalescer(
+        async (data) => {
+          terminal.replay = appendReplay(terminal.replay, data);
+          terminal.seq += 1;
+          await this.#broadcast({
+            event: "terminals.output",
+            payload: { id, seq: terminal.seq, data },
+          });
         },
-        onFlushComplete: () => {
-          terminal.pendingFlushes = Math.max(0, terminal.pendingFlushes - 1);
-          if (terminal.pendingFlushes === 0 && !terminal.info.exited && !terminal.closePromise) {
-            pty.resume();
-          }
+        {
+          onFlushPending: () => {
+            terminal.pendingFlushes += 1;
+            if (terminal.pendingFlushes === 1) pty.pause();
+          },
+          onFlushComplete: () => {
+            terminal.pendingFlushes = Math.max(0, terminal.pendingFlushes - 1);
+            if (terminal.pendingFlushes === 0 && !terminal.info.exited && !terminal.closePromise) {
+              pty.resume();
+            }
+          },
         },
-      },
-    );
-    this.#terminals.set(id, terminal);
-    pty.onData((data) => {
-      this.#queueOutput(terminal, data);
-      this.#onOutputForInitialCommand(terminal, data);
-    });
-    pty.onExit(({ exitCode, signal }) => {
-      void this.#handleExit(terminal, exitCode, signal);
-    });
-    if (params.command !== undefined) {
-      this.#scheduleInitialCommand(terminal, params.command);
+      );
+      this.#terminals.set(id, terminal);
+      this.#openingTerminals -= 1;
+      reserved = false;
+      pty.onData((data) => {
+        this.#queueOutput(terminal, data);
+        this.#onOutputForInitialCommand(terminal, data);
+      });
+      pty.onExit(({ exitCode, signal }) => {
+        void this.#handleExit(terminal, exitCode, signal);
+      });
+      if (params.command !== undefined) {
+        this.#scheduleInitialCommand(terminal, params.command);
+      }
+      void this.#emitChanged().catch(() => undefined);
+      return { terminal: { ...info } };
+    } finally {
+      if (reserved) this.#openingTerminals -= 1;
     }
-    await this.#emitChanged();
-    return { terminal: { ...info } };
   }
 
   attach(id: string): { terminal: TerminalInfo; replay: string; seq: number } {

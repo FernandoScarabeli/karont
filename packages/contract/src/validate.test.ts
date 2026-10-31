@@ -53,6 +53,18 @@ test("parseResult valida o schema do método", () => {
     result: { pong: true, at: "2026-10-31T10:00:00Z" },
   });
   assert.equal(parseResult("system.ping", { pong: false, at: "not-a-date" }).ok, false);
+  assert.equal(
+    parseResult("system.info", {
+      serviceVersion: "0.0.0",
+      contractVersion: 1,
+      pid: 123,
+      startedAt: "2026-10-31T10:00:00Z",
+      nodeVersion: "24.0.0",
+      platform: "linux",
+      homeDir: "/home/test",
+    }).ok,
+    true,
+  );
   assert.equal(methods["system.info"].result.safeParse({}).success, false);
 });
 

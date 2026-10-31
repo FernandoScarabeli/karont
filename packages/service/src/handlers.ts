@@ -76,6 +76,7 @@ export function createHandlers({
           startedAt,
           nodeVersion: process.versions.node,
           platform: process.platform,
+          homeDir,
         };
       case "settings.get":
         return { key: request.params.key, value: getSetting(db, request.params.key) };
@@ -98,13 +99,15 @@ export function createHandlers({
         return terminalManager.list();
       case "terminals.open": {
         const result = await terminalManager.open(request.params);
-        recordRecentFolder(db, {
-          path: result.terminal.cwd,
-          usedAt: new Date().toISOString(),
-        });
-        await broadcast({
-          event: "folders.changed",
-          payload: await listRecentFolders(db, homeDir),
+        conn.afterResponse(async () => {
+          recordRecentFolder(db, {
+            path: result.terminal.cwd,
+            usedAt: new Date().toISOString(),
+          });
+          await broadcast({
+            event: "folders.changed",
+            payload: await listRecentFolders(db, homeDir),
+          });
         });
         return result;
       }

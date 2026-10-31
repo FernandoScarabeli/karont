@@ -80,10 +80,12 @@ test("ping, info e settings usam contrato e banco", async () => {
     serviceVersion: string;
     contractVersion: number;
     startedAt: string;
+    homeDir: string;
   };
   assert.equal(info.serviceVersion, "0.0.0");
   assert.equal(info.contractVersion, 1);
   assert.equal(info.startedAt, "2026-10-31T00:00:00.000Z");
+  assert.equal(info.homeDir, root);
   assert.deepEqual(
     await handlers.handle(request("settings.set", { key: "test.value", value: [1, "two"] }), conn),
     {
@@ -348,11 +350,12 @@ test("folders.recent ordena, limita a oito e oculta pastas que não existem", as
   db.close();
 });
 
-test("terminals.open armazena a pasta e emite folders.changed", async (context) => {
+test("terminals.open responde antes de armazenar a pasta e emitir folders.changed", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ks-open-recent-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const db = openDatabase(path.join(root, "karont.db"));
   const emitted: AnyEvent[] = [];
+  const afterResponse: Array<() => void | Promise<void>> = [];
   const handlers = createHandlers({
     db,
     startedAt: new Date().toISOString(),
@@ -364,10 +367,14 @@ test("terminals.open armazena a pasta e emite folders.changed", async (context) 
     homeDir: root,
   });
 
-  await handlers.handle(
+  const result = (await handlers.handle(
     request("terminals.open", { cwd: root, cols: 80, rows: 24 }),
-    connection([]),
-  );
+    connection([], afterResponse),
+  )) as { terminal: { id: string } };
+  assert.ok(result.terminal.id);
+  assert.equal(afterResponse.length, 1);
+  assert.equal(db.prepare("SELECT path FROM recent_folders WHERE path = ?").get(root), undefined);
+  await afterResponse[0]?.();
   const saved = db.prepare("SELECT path, used_at FROM recent_folders WHERE path = ?").get(root) as
     | { path: string; used_at: string }
     | undefined;
@@ -382,6 +389,31 @@ test("terminals.open armazena a pasta e emite folders.changed", async (context) 
   });
   await handlers.closeTerminals();
   db.close();
+});
+
+test("falha ao gravar pasta recente não transforma terminals.open em erro", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-open-recent-failure-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    ptyFactory: () => new TestPty(),
+    env: { SHELL: "/bin/bash" },
+    homeDir: root,
+  });
+  db.close();
+  const afterResponse: Array<() => void | Promise<void>> = [];
+
+  const result = (await handlers.handle(
+    request("terminals.open", { cwd: root, cols: 80, rows: 24 }),
+    connection([], afterResponse),
+  )) as { terminal: { id: string } };
+  assert.ok(result.terminal.id);
+  await assert.rejects(Promise.resolve().then(() => afterResponse[0]?.()));
+  await handlers.closeTerminals();
 });
 
 class TestPty implements TerminalPty {
