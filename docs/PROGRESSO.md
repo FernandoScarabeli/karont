@@ -10,8 +10,8 @@ Repositório recriado do zero em 2026-10-31.
   - [x] B2 Serviço: socket com streaming + SQLite com migrações — executor back
   - [x] F2 Moldura vazia — executor front
   - [x] B3 Ponte do preview web (HTTP + SSE) — executor back
-  - [ ] B4 Electron seguro + ponte de canal único — executor back
-  - [ ] E2E de fumaça + CI — orquestrador
+  - [x] B4 Electron seguro + ponte de canal único — executor back
+  - [x] E2E de fumaça + CI (CI no GitHub ainda não rodou) — orquestrador
 
 ## Decisões do dono
 
@@ -38,3 +38,6 @@ Repositório recriado do zero em 2026-10-31.
 - Tokens de cor vêm da "Direção A · Lua" do `karont.pen`. Só `--k-color-danger` (`#EF7B73`) não estava no design: proposta do orquestrador, ajustável.
 - Biome usa `"preset": "recommended"` (o `biome migrate` tinha trocado para `none`, o que desliga as regras).
 - Preview web: `npm run preview:web` na raiz → http://127.0.0.1:5173/. Reaproveita um serviço já rodando; se não houver, inicia um em modo dev (`KARONT_DEV=1`) e o encerra ao sair.
+- Rodar o app: `npm run start:desktop` (com `CHROME_DEVEL_SANDBOX=/usr/local/lib/karont-dev/chrome-sandbox`). E2E: `npm run test:e2e` (mesma variável). Rodada completa local: ~6 s de checagens + ~2 s de E2E.
+- O E2E usa `chromiumSandbox: true`: o Playwright passa `--no-sandbox` ao Electron por padrão.
+- O serviço destacado é iniciado por um `bash` mínimo que fecha os descritores herdados acima de 2. O Chromium deixa caches da GPU e sockets internos sem CLOEXEC, e o serviço os seguraria por horas (isso também travava o `app.close()` do Playwright).

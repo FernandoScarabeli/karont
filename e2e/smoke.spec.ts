@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readlink, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -25,7 +25,8 @@ test("app abre, mostra a moldura e conversa com o serviço", async () => {
   let servicePid: number | undefined;
 
   try {
-    const app = await electron.launch({ args: [mainEntry], env });
+    // chromiumSandbox: o Playwright passa --no-sandbox por padrão; o Karont nunca roda assim.
+    const app = await electron.launch({ args: [mainEntry], env, chromiumSandbox: true });
     const window = await app.firstWindow();
 
     await expect(window.getByRole("heading", { name: "Início", level: 1 })).toBeVisible();
@@ -67,6 +68,15 @@ test("app abre, mostra a moldura e conversa com o serviço", async () => {
       return native.request("fs.readFile", { path: "/etc/passwd" });
     });
     expect(denied).toMatchObject({ ok: false, error: { code: "unknown_method" } });
+
+    // O serviço destacado não herda descritores do Electron (caches da GPU, sockets do Chromium…).
+    if (servicePid && process.platform === "linux") {
+      const fdDir = `/proc/${servicePid}/fd`;
+      const targets = await Promise.all(
+        (await readdir(fdDir)).map((fd) => readlink(`${fdDir}/${fd}`).catch(() => "")),
+      );
+      expect(targets.filter((target) => /Electron|GPUCache|Dawn/.test(target))).toEqual([]);
+    }
 
     await app.close();
 

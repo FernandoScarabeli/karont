@@ -8,3 +8,5 @@ release/
 .env.*
 coverage/
 .vite/
+test-results/
+playwright-report/

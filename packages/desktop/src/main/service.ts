@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AnyEvent } from "@karont/contract";
@@ -9,6 +10,26 @@ const serviceEntry = path.join(path.dirname(fileURLToPath(import.meta.url)), "se
 const initialConnectTimeoutMs = 1_000;
 const reconnectTimeoutMs = 2_000;
 const startupRetryWindowMs = 10_000;
+
+// O Chromium deixa vários descritores abertos sem CLOEXEC (caches da GPU, sockets internos,
+// canais do processo pai). Um serviço destacado herdaria todos e os seguraria por horas.
+// O Node não tem "closefrom" no spawn, então um bash mínimo fecha tudo acima de 2 e faz exec.
+// (O dash, /bin/sh do Ubuntu, não aceita descritores com dois dígitos.)
+const CLOSE_INHERITED_FDS_AND_EXEC =
+  'for p in /proc/$$/fd/*; do n=${p##*/}; [ "$n" -gt 2 ] 2>/dev/null && eval "exec $n>&-"; done; exec "$0" "$@"';
+
+export function detachedServiceCommand(
+  platform: NodeJS.Platform = process.platform,
+  hasBash: boolean = existsSync("/bin/bash") && existsSync("/proc/self/fd"),
+): { command: string; args: string[] } {
+  if (platform === "linux" && hasBash) {
+    return {
+      command: "/bin/bash",
+      args: ["-c", CLOSE_INHERITED_FDS_AND_EXEC, process.execPath, serviceEntry],
+    };
+  }
+  return { command: process.execPath, args: [serviceEntry] };
+}
 
 export type ServiceManager = {
   start(): Promise<void>;
@@ -74,8 +95,10 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
     if (spawnAttemptedForOutage || closed) return;
     spawnAttemptedForOutage = true;
     try {
-      const child = spawn(process.execPath, [serviceEntry], {
+      const { command, args } = detachedServiceCommand();
+      const child = spawn(command, args, {
         env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+        cwd: "/",
         detached: true,
         stdio: "ignore",
       });
