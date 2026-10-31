@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+  <title>Karont</title>
+  <g fill="#EDEDED">
+    <circle cx="11" cy="8" r="5.5" />
+  </g>
+  <g fill="none" stroke="#EDEDED" stroke-linecap="round" stroke-width="1.5">
+    <path d="M6.5 16.2h9" />
+    <path d="M9 19h4" />
+  </g>
+</svg>

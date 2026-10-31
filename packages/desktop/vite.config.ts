@@ -1,3 +1,4 @@
+import { cp } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
@@ -15,6 +16,21 @@ export default defineConfig(({ mode }) => {
   const format = target === "preload" ? "cjs" : "es";
 
   return {
+    plugins:
+      target === "main"
+        ? [
+            {
+              name: "copy-tray-assets",
+              async closeBundle() {
+                await cp(
+                  path.join(desktopDirectory, "assets"),
+                  path.join(desktopDirectory, "dist", "assets"),
+                  { recursive: true },
+                );
+              },
+            },
+          ]
+        : [],
     build: {
       outDir: path.join(desktopDirectory, "dist"),
       emptyOutDir: target === "main",

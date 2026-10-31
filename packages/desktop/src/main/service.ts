@@ -36,10 +36,14 @@ export type ServiceManager = {
   getClient(): ServiceClient | null;
   getStatus(): "connecting" | "connected" | "disconnected";
   publishCurrentStatus(): void;
+  shutdown(timeoutMs?: number): Promise<void>;
   close(): void;
 };
 
-export function createServiceManager(publish: (event: AnyEvent) => void): ServiceManager {
+export function createServiceManager(
+  publish: (event: AnyEvent) => void,
+  options: { connect?: (timeoutMs: number) => Promise<ServiceClient> } = {},
+): ServiceManager {
   const paths = resolvePaths();
   let client: ServiceClient | null = null;
   let state: "connecting" | "connected" | "disconnected" = "connecting";
@@ -48,6 +52,8 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
   let spawnAttemptedForOutage = false;
   let removeClientListeners: (() => void) | undefined;
   let closed = false;
+  let shuttingDown = false;
+  let shutdownPromise: Promise<void> | undefined;
 
   function publishStatus(nextState: typeof state): void {
     state = nextState;
@@ -55,7 +61,7 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
   }
 
   function attach(nextClient: ServiceClient): void {
-    if (closed) {
+    if (closed || shuttingDown) {
       nextClient.close();
       return;
     }
@@ -84,15 +90,16 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
     retryAttempt = 0;
     spawnAttemptedForOutage = false;
     publishStatus("disconnected");
-    scheduleReconnect();
+    if (!shuttingDown) scheduleReconnect();
   }
 
   async function connect(timeoutMs: number): Promise<ServiceClient> {
+    if (options.connect) return options.connect(timeoutMs);
     return connectService({ paths, timeoutMs });
   }
 
   function startDetachedService(): void {
-    if (spawnAttemptedForOutage || closed) return;
+    if (spawnAttemptedForOutage || closed || shuttingDown) return;
     spawnAttemptedForOutage = true;
     try {
       const { command, args } = detachedServiceCommand();
@@ -114,7 +121,7 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
   }
 
   async function reconnect(): Promise<void> {
-    if (closed || client) return;
+    if (closed || shuttingDown || client) return;
     try {
       attach(await connect(reconnectTimeoutMs));
     } catch {
@@ -125,7 +132,7 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
   }
 
   function scheduleReconnect(): void {
-    if (closed || client || retryTimer !== undefined) return;
+    if (closed || shuttingDown || client || retryTimer !== undefined) return;
     const delayMs = backoffDelay(retryAttempt);
     retryAttempt += 1;
     retryTimer = setTimeout(() => {
@@ -136,6 +143,7 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
 
   return {
     async start(): Promise<void> {
+      if (closed || shuttingDown) return;
       try {
         attach(await connect(initialConnectTimeoutMs));
         return;
@@ -146,12 +154,12 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
 
       const deadline = Date.now() + startupRetryWindowMs;
       let attempt = 0;
-      while (!closed && Date.now() < deadline) {
+      while (!closed && !shuttingDown && Date.now() < deadline) {
         const remainingMs = deadline - Date.now();
         await delay(Math.min(backoffDelay(attempt), remainingMs));
         attempt += 1;
         const connectTimeRemaining = deadline - Date.now();
-        if (closed || connectTimeRemaining <= 0) break;
+        if (closed || shuttingDown || connectTimeRemaining <= 0) break;
         try {
           attach(await connect(Math.min(reconnectTimeoutMs, connectTimeRemaining)));
           return;
@@ -160,7 +168,7 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
         }
       }
 
-      if (closed) return;
+      if (closed || shuttingDown) return;
       retryAttempt = attempt;
       publishStatus("disconnected");
       scheduleReconnect();
@@ -169,6 +177,23 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
     getStatus: () => state,
     publishCurrentStatus(): void {
       publishStatus(state);
+    },
+    shutdown(timeoutMs = 3_000): Promise<void> {
+      if (shutdownPromise) return shutdownPromise;
+      shuttingDown = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+      retryTimer = undefined;
+      const activeClient = client;
+      if (!activeClient) {
+        shutdownPromise = Promise.resolve();
+        return shutdownPromise;
+      }
+
+      shutdownPromise = settleWithin(
+        Promise.resolve().then(() => activeClient.request("service.shutdown", {})),
+        timeoutMs,
+      );
+      return shutdownPromise;
     },
     close(): void {
       if (closed) return;
@@ -181,6 +206,22 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
       activeClient?.close();
     },
   };
+}
+
+function settleWithin(promise: Promise<unknown>, timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(resolve, timeoutMs);
+    promise.then(
+      () => {
+        clearTimeout(timeout);
+        resolve();
+      },
+      () => {
+        clearTimeout(timeout);
+        resolve();
+      },
+    );
+  });
 }
 
 function delay(milliseconds: number): Promise<void> {
