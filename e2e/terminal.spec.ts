@@ -45,14 +45,35 @@ test("Nova conversa → Terminal: abre um shell de verdade, sem violar a CSP; Co
 
     // Nova conversa → Terminal, com comando inicial digitado no campo de mensagem.
     await window.getByRole("button", { name: "Nova conversa", exact: true }).click();
+
+    // O botão de pasta abre direto o seletor nativo (trocado por uma resposta pronta).
+    const folder = await mkdtemp(path.join(os.tmpdir(), "kpasta-"));
+    await app.evaluate(({ dialog }, chosen) => {
+      const state = globalThis as unknown as { karontPickCalls: number };
+      state.karontPickCalls = 0;
+      dialog.showOpenDialog = (async () => {
+        state.karontPickCalls += 1;
+        return { canceled: false, filePaths: [chosen] };
+      }) as typeof dialog.showOpenDialog;
+    }, folder);
+    await window.getByRole("button", { name: /^Pasta:/ }).click();
+    await expect
+      .poll(() =>
+        app.evaluate(() => (globalThis as unknown as { karontPickCalls: number }).karontPickCalls),
+      )
+      .toBe(1);
+    await expect(
+      window.getByRole("button", { name: new RegExp(path.basename(folder)) }),
+    ).toBeVisible();
     const composer = window.locator("textarea").first();
-    await composer.fill("echo karont-$((40+2))");
+    await composer.fill("echo karont-$((40+2)) && pwd");
     await composer.press("Enter");
     const rows = window.locator(".xterm-rows");
     await expect(rows).toBeVisible();
     // O xterm só desenha o que está visível: garanta a área na tela antes de ler o texto.
     await rows.scrollIntoViewIfNeeded();
     await expect(rows).toContainText("karont-42");
+    await expect(rows).toContainText(path.basename(folder));
 
     // O terminal aparece na seção Conversas da sidebar.
     await expect(

@@ -15,6 +15,7 @@ Repositório recriado do zero em 2026-10-31.
   - [x] F4 Campo de mensagem único (composer) + botão de pasta + cabeçalho do terminal
   - [x] F5 Conversas lado a lado (dividir, redimensionar, arrastar para os cantos, layout salvo)
   - [x] Fonte de títulos: **Sora** no lugar da Instrument Serif (entra no F4)
+  - [x] F6 Ajustes do dono (pasta direto no seletor do sistema, "Vamos trabalhar", sem textos de ajuda, ícones das CLIs)
   - [ ] E2E + PR (orquestrador)
 
 ## Decisões do dono
