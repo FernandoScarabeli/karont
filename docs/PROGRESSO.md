@@ -55,6 +55,8 @@ Repositório recriado do zero em 2026-10-31.
 
 15. Codex sempre no **modo rápido** (`-c service_tier="fast"`), pedido do dono (2026-10-31).
 
+16. Painéis, depois de ver a tela (2026-10-31): sem menu "⋯" no cabeçalho; "Encerrar terminal" vira um `X` no item da sidebar (no hover/foco); o `X` do painel só fecha o painel; mover painel por teclado com `Ctrl+Alt+Shift+setas`. O "Rodando" sai do cabeçalho; a bolinha de status fica ao lado do item na sidebar (cinza = terminal rodando; azul fica para agente trabalhando no M2).
+
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
 - Node 24 roda `.ts` direto (type stripping): testes e serviço em dev rodam sem build. Por isso o TS usa `erasableSyntaxOnly` (sem `enum`/`namespace`) e imports com extensão `.ts`.
