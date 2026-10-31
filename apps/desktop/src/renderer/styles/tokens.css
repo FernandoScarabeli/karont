@@ -2,6 +2,11 @@
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";
 @import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/geist-sans/400.css";
+@import "@fontsource/geist-sans/500.css";
+@import "@fontsource/geist-sans/600.css";
+@import "@fontsource/geist-mono/400.css";
+@import "@fontsource/geist-mono/500.css";
 :root {
   --bg-canvas: #141414;
   --bg-sidebar: #191919;
@@ -40,4 +45,71 @@
   --motion-fast: 140ms;
   --motion-panel: 220ms;
   --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Direção A · Lua — tokens aprovados, ainda sem uso nas telas. */
+:root {
+  --k-chrome: #0f0f10;
+  --k-page: #141415;
+  --k-card: #19191b;
+  --k-raised: #232325;
+  --k-well: #0f0f10;
+  --k-line: #262627;
+  --k-text: #ededed;
+  --k-text-2: #a1a1a6;
+  --k-text-3: #85858b;
+  --k-primary: #f3eee3;
+  --k-on-primary: #141415;
+  --k-live: #7db4e0;
+  --k-attention: #e5a93b;
+  --k-positive: #4cc38a;
+  --k-negative: #e5484d;
+  --k-focus: #89adff;
+  --k-dot-claude-bg: #2b201b;
+  --k-dot-claude-ink: #f0b79c;
+  --k-dot-codex-bg: #1a2430;
+  --k-dot-codex-ink: #9cc3f0;
+  --k-dot-other-bg: #232325;
+  --k-dot-other-ink: #a1a1a6;
+  --k-user-bg: #2a2723;
+  --k-user-ink: #efe9de;
+
+  --k-font-ui: "Geist Sans", system-ui, sans-serif;
+  --k-font-mono: "Geist Mono", monospace;
+  --k-fs-title: 28px;
+  --k-fs-figure: 24px;
+  --k-fs-body: 14px;
+  --k-fs-label: 13px;
+  --k-fs-meta: 12px;
+  --k-fs-keycap: 11px;
+  --k-fw-regular: 400;
+  --k-fw-medium: 500;
+  --k-fw-strong: 600;
+
+  --k-sidebar-width: 232px;
+  --k-topbar-height: 52px;
+  --k-nav-row: 32px;
+  --k-row: 48px;
+  --k-avatar: 28px;
+  --k-icon: 16px;
+  --k-icon-sm: 14px;
+  --k-composer-height: 104px;
+  --k-page-pad-x: 40px;
+  --k-page-pad-top: 36px;
+  --k-gap: 24px;
+  --k-gap-sm: 8px;
+
+  --k-radius-keycap: 4px;
+  --k-radius-control: 8px;
+  --k-radius-card: 12px;
+  --k-radius-panel: 16px;
+
+  --k-shadow-float: 0 12px 32px rgb(0 0 0 / 0.4);
+  --k-z-menu: 20;
+  --k-z-dialog: 40;
+  --k-z-toast: 60;
+  --k-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --k-dur-fast: 150ms;
+  --k-dur-menu: 200ms;
+  --k-dur-enter: 360ms;
 }
