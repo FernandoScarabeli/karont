@@ -1,0 +1,48 @@
+.sheet {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  padding: var(--k-sheet-padding);
+  border-top-left-radius: var(--k-radius-xl);
+  background: var(--k-color-bg-sheet);
+}
+
+.pageTitle {
+  flex: 0 0 auto;
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-brand);
+  font-size: var(--k-text-28);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+}
+
+.emptyState {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-empty-state-gap);
+  padding-block: var(--k-space-6);
+  text-align: center;
+}
+
+.emptyTitle {
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-16);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+}
+
+.emptyDescription {
+  max-width: var(--k-empty-state-max-width);
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-14);
+  line-height: var(--k-leading-normal);
+}

@@ -1,0 +1,37 @@
+export const t = {
+  brand: {
+    name: "karont",
+  },
+  shell: {
+    areasNavigation: "Áreas",
+    home: "Início",
+    newWorkspace: "Novo workspace",
+    search: "Buscar",
+    searchShortcut: "Ctrl K",
+    searchAccessibleName: "Buscar (Ctrl K)",
+    sidebar: "Barra lateral",
+    primaryNavigation: "Navegação principal",
+    newConversation: "Nova conversa",
+    tasks: "Tarefas",
+    projects: "Projetos",
+    newProject: "Novo projeto",
+    noProjects: "Nenhum projeto ainda",
+    conversations: "Conversas",
+    newLooseConversation: "Nova conversa solta",
+    noConversations: "Nenhuma conversa ainda",
+    settings: "Configurações",
+    availableSoon: "Disponível em breve",
+  },
+  service: {
+    connected: "Serviço conectado",
+    connecting: "Conectando ao serviço…",
+    disconnected: "Serviço desconectado",
+    noBridge: "Sem conexão com o serviço",
+    versionPrefix: "v",
+  },
+  home: {
+    title: "Início",
+    emptyTitle: "Tudo pronto para começar",
+    emptyDescription: "Os agentes, projetos e conversas vão aparecer aqui.",
+  },
+} as const;
