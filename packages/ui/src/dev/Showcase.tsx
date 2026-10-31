@@ -23,7 +23,7 @@ const palette = [
   { token: "--k-color-working", value: "#7DB4E0" },
   { token: "--k-color-attention", value: "#E5A93B" },
   { token: "--k-color-danger", value: "#EF7B73" },
-  { token: "--k-color-focus", value: "#7DB4E0" },
+  { token: "--k-color-focus", value: "#F3EEE3" },
 ];
 
 const textSizes = [11, 12, 13, 14, 15, 16, 24, 28] as const;

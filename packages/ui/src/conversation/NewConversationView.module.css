@@ -26,6 +26,8 @@
 }
 
 .composer {
+  --k-radius-md: var(--k-radius-sm);
+
   display: flex;
   width: min(100%, var(--k-new-conversation-width));
   flex-direction: column;

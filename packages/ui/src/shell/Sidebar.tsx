@@ -3,13 +3,14 @@ import { Button } from "../components/Button/Button.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
-import { useTerminals } from "../terminal/useTerminals.ts";
+import { getTerminalDisplayTitles, useTerminals } from "../terminal/useTerminals.ts";
 import { ServiceStatus } from "./ServiceStatus.tsx";
 import styles from "./Sidebar.module.css";
 
 export function Sidebar() {
   const { navigate, view } = useNavigation();
   const { terminals, error } = useTerminals();
+  const terminalTitles = getTerminalDisplayTitles(terminals);
 
   return (
     <aside aria-label={t.shell.sidebar} className={styles.sidebar}>
@@ -80,7 +81,9 @@ export function Sidebar() {
                     type="button"
                   >
                     <SquareTerminal aria-hidden="true" size={15} strokeWidth={1.8} />
-                    <span className={styles.conversationTitle}>{terminal.title}</span>
+                    <span className={styles.conversationTitle}>
+                      {terminalTitles.get(terminal.id) ?? terminal.title}
+                    </span>
                     {terminal.exited ? (
                       <span className={styles.exitedMarker}>{t.shell.exited}</span>
                     ) : null}
@@ -101,7 +104,7 @@ export function Sidebar() {
           className={styles.settingsButton}
           icon={<Settings aria-hidden="true" size={16} strokeWidth={1.75} />}
           label={t.shell.settings}
-          onClick={() => navigate({ name: "settings", section: "agents" })}
+          onClick={() => navigate({ name: "settings", section: "general" })}
           size="sm"
         />
       </footer>

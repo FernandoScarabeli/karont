@@ -42,3 +42,22 @@ export function useTerminals(): TerminalsState {
 
   return state;
 }
+
+export function getTerminalDisplayTitles(terminals: TerminalInfo[]): Map<string, string> {
+  const originalOrder = new Map(terminals.map((terminal, index) => [terminal.id, index]));
+  const ordered = [...terminals].sort((left, right) => {
+    const startDifference = Date.parse(left.startedAt) - Date.parse(right.startedAt);
+    if (startDifference !== 0) return startDifference;
+    return (originalOrder.get(left.id) ?? 0) - (originalOrder.get(right.id) ?? 0);
+  });
+  const occurrences = new Map<string, number>();
+  const titles = new Map<string, string>();
+
+  for (const terminal of ordered) {
+    const occurrence = (occurrences.get(terminal.title) ?? 0) + 1;
+    occurrences.set(terminal.title, occurrence);
+    titles.set(terminal.id, occurrence > 1 ? `${terminal.title} (${occurrence})` : terminal.title);
+  }
+
+  return titles;
+}
