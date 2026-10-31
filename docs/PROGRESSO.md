@@ -7,7 +7,7 @@ Repositório recriado do zero em 2026-10-31.
 - **M1 (agentes)** — em andamento na branch `m1-agentes`.
   - [x] B1 Detecção de agentes + CLIs do usuário (serviço e contrato)
   - [ ] B2 Terminal no serviço (`node-pty`, eventos com backpressure, sobrevive à janela)
-  - [ ] F1 Configurações › Agentes (lista, detectar de novo, adicionar/remover CLI)
+  - [x] F1 Configurações › Agentes (lista, detectar de novo, adicionar/remover CLI)
   - [ ] F2 Terminal na interface (xterm)
   - [ ] E2E + merge (orquestrador)
 
