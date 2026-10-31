@@ -116,6 +116,10 @@
   line-height: var(--k-leading-normal);
 }
 
+.notFoundAgentName {
+  color: var(--k-color-text-secondary);
+}
+
 .agentState {
   display: inline-flex;
   align-items: center;

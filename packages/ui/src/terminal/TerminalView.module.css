@@ -31,6 +31,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--k-color-text-primary);
+  font-family: var(--k-font-mono);
   font-size: var(--k-text-14);
   font-weight: var(--k-weight-medium);
   line-height: var(--k-leading-tight);
@@ -46,6 +47,13 @@
   margin: 0;
   font-size: var(--k-text-12);
   line-height: var(--k-leading-normal);
+}
+
+.runningDot {
+  width: var(--k-dot-size);
+  height: var(--k-dot-size);
+  border-radius: var(--k-radius-full);
+  background: var(--k-color-text-secondary);
 }
 
 .running {

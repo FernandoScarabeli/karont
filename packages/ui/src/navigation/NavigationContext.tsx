@@ -4,7 +4,7 @@ export type View =
   | { name: "home" }
   | { name: "new-conversation" }
   | { name: "terminal"; id: string }
-  | { name: "settings"; section: "agents" };
+  | { name: "settings"; section: "general" | "agents" };
 
 type NavigationState = {
   view: View;

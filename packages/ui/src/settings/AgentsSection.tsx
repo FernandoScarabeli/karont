@@ -173,10 +173,8 @@ export function AgentsSection() {
       ) : (
         <>
           {phase === "ready" ? (
-            <fieldset className={styles.listToolbar}>
-              <legend className={styles.count}>
-                {t.settings.detectedCount(foundCount, agents.length)}
-              </legend>
+            <div className={styles.listToolbar}>
+              <p className={styles.count}>{t.settings.detectedCount(foundCount, agents.length)}</p>
               <Button
                 disabled={isDetecting}
                 iconStart={<RefreshCw aria-hidden="true" size={15} strokeWidth={1.8} />}
@@ -186,7 +184,7 @@ export function AgentsSection() {
               >
                 {isDetecting ? t.settings.detecting : t.settings.detectAgain}
               </Button>
-            </fieldset>
+            </div>
           ) : null}
 
           {phase === "loading" ? (
@@ -224,7 +222,15 @@ export function AgentsSection() {
                   <li className={styles.agentItem} key={agent.id}>
                     <div className={styles.agentDetails}>
                       <div className={styles.agentHeading}>
-                        <span className={styles.agentName}>{agent.name}</span>
+                        <span
+                          className={
+                            agent.found
+                              ? styles.agentName
+                              : `${styles.agentName} ${styles.notFoundAgentName}`
+                          }
+                        >
+                          {agent.name}
+                        </span>
                         <span className={styles.agentState}>
                           {agent.found ? (
                             <CircleCheck

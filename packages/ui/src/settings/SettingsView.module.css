@@ -48,15 +48,20 @@
 
 .sectionLink {
   display: flex;
+  width: 100%;
   min-height: var(--k-control-height-lg);
   align-items: center;
   padding-inline: var(--k-space-3);
+  border: 0;
   border-radius: var(--k-radius-md);
+  background: transparent;
   color: var(--k-color-text-secondary);
+  font-family: var(--k-font-sans);
   font-size: var(--k-text-13);
   font-weight: var(--k-weight-medium);
   line-height: var(--k-leading-tight);
-  text-decoration: none;
+  text-align: start;
+  cursor: pointer;
 }
 
 .sectionLink[aria-current="page"] {

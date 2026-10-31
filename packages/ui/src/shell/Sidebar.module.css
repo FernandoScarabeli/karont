@@ -44,7 +44,7 @@
 .section {
   display: flex;
   flex-direction: column;
-  gap: var(--k-space-1);
+  gap: var(--k-space-2);
 }
 
 .sectionHeader {
@@ -69,9 +69,9 @@
   min-height: var(--k-sidebar-item-height);
   align-items: center;
   margin: 0;
-  padding-inline: var(--k-space-2);
+  padding-inline: var(--k-space-8);
   color: var(--k-color-text-muted);
-  font-size: var(--k-text-13);
+  font-size: var(--k-text-12);
   line-height: var(--k-leading-normal);
 }
 
@@ -120,6 +120,7 @@
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
+  font-family: var(--k-font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

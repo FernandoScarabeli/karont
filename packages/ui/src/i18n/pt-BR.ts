@@ -78,6 +78,19 @@ export const t = {
   settings: {
     title: "Configurações",
     sectionsNavigation: "Seções das configurações",
+    general: "Geral",
+    closeBehaviorTitle: "Ao fechar a janela",
+    closeBehaviorAsk: "Perguntar sempre",
+    closeBehaviorAskDescription: "O Karont pergunta o que fazer toda vez.",
+    closeBehaviorBackground: "Deixar rodando em segundo plano",
+    closeBehaviorBackgroundDescription:
+      "A janela some e o Karont fica na bandeja; agentes e terminais continuam.",
+    closeBehaviorQuit: "Fechar tudo",
+    closeBehaviorQuitDescription: "Encerra agentes e terminais e sai do Karont.",
+    preferenceSaved: "Preferência salva",
+    loadingPreference: "Carregando preferência…",
+    closeBehaviorLoadFailed: "Não foi possível carregar a preferência.",
+    closeBehaviorSaveFailed: "Não foi possível salvar a preferência.",
     agents: "Agentes",
     agentsDescription:
       "O Karont usa as CLIs que já estão instaladas e logadas no seu computador. O login é feito na própria CLI.",

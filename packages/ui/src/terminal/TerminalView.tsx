@@ -1,7 +1,7 @@
 import { BridgeError, type TerminalInfo } from "@karont/contract";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import { CircleCheck, CircleDashed, CircleX, SquareTerminal, TriangleAlert, X } from "lucide-react";
+import { CircleDashed, Square, SquareTerminal, TriangleAlert, X } from "lucide-react";
 import { type RefObject, useEffect, useId, useRef, useState } from "react";
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
@@ -10,6 +10,7 @@ import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { connectXtermCspStyles, createXtermCspDocument } from "./cspStyles.ts";
+import { getTerminalDisplayTitles, useTerminals } from "./useTerminals.ts";
 import "@xterm/xterm/css/xterm.css";
 import styles from "./TerminalView.module.css";
 
@@ -18,6 +19,7 @@ const MAX_WRITE_BYTES = 65_536;
 export function TerminalView({ id }: { id: string }) {
   const bridge = getBridge();
   const { navigate } = useNavigation();
+  const { terminals } = useTerminals();
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const cancelCloseRef = useRef<HTMLButtonElement>(null);
@@ -226,8 +228,11 @@ export function TerminalView({ id }: { id: string }) {
     };
   }, [bridge, id]);
 
-  const title =
-    terminalInfo?.title ?? (terminalError ? t.terminal.unknownTitle : t.terminal.loadingTitle);
+  const title = terminalInfo
+    ? (getTerminalDisplayTitles(terminals).get(terminalInfo.id) ?? terminalInfo.title)
+    : terminalError
+      ? t.terminal.unknownTitle
+      : t.terminal.loadingTitle;
   const exited = terminalInfo?.exited ?? false;
   const stateLabel = terminalInfo
     ? exited
@@ -269,9 +274,9 @@ export function TerminalView({ id }: { id: string }) {
           >
             {terminalInfo ? (
               exited ? (
-                <CircleX aria-hidden="true" size={15} strokeWidth={1.8} />
+                <Square aria-hidden="true" size={15} strokeWidth={1.8} />
               ) : (
-                <CircleCheck aria-hidden="true" size={15} strokeWidth={1.8} />
+                <span aria-hidden="true" className={styles.runningDot} />
               )
             ) : (
               <CircleDashed aria-hidden="true" size={15} strokeWidth={1.8} />
