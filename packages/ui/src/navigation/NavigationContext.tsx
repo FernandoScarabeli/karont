@@ -1,6 +1,10 @@
 import { createContext, type PropsWithChildren, useCallback, useContext, useState } from "react";
 
-export type View = { name: "home" } | { name: "settings"; section: "agents" };
+export type View =
+  | { name: "home" }
+  | { name: "new-conversation" }
+  | { name: "terminal"; id: string }
+  | { name: "settings"; section: "agents" };
 
 type NavigationState = {
   view: View;
