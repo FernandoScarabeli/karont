@@ -66,13 +66,24 @@
 
 .emptyList {
   display: flex;
+  min-width: 0;
   min-height: var(--k-sidebar-item-height);
   align-items: center;
   margin: 0;
-  padding-inline: var(--k-space-8);
+  overflow: hidden;
+  padding-inline: var(--k-space-2);
   color: var(--k-color-text-muted);
   font-size: var(--k-text-12);
   line-height: var(--k-leading-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emptyList > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .conversationList {

@@ -10,7 +10,6 @@ import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { connectXtermCspStyles, createXtermCspDocument } from "./cspStyles.ts";
-import { getTerminalDisplayTitles, useTerminals } from "./useTerminals.ts";
 import "@xterm/xterm/css/xterm.css";
 import styles from "./TerminalView.module.css";
 
@@ -19,7 +18,6 @@ const MAX_WRITE_BYTES = 65_536;
 export function TerminalView({ id }: { id: string }) {
   const bridge = getBridge();
   const { navigate } = useNavigation();
-  const { terminals } = useTerminals();
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const cancelCloseRef = useRef<HTMLButtonElement>(null);
@@ -229,7 +227,7 @@ export function TerminalView({ id }: { id: string }) {
   }, [bridge, id]);
 
   const title = terminalInfo
-    ? (getTerminalDisplayTitles(terminals).get(terminalInfo.id) ?? terminalInfo.title)
+    ? terminalInfo.title
     : terminalError
       ? t.terminal.unknownTitle
       : t.terminal.loadingTitle;
@@ -241,6 +239,14 @@ export function TerminalView({ id }: { id: string }) {
     : terminalError
       ? t.terminal.statusUnavailable
       : t.terminal.connecting;
+  const shellName = terminalInfo
+    ? (terminalInfo.shell.split(/[\\/]/).filter(Boolean).at(-1) ?? terminalInfo.shell)
+    : "";
+  const separatorIndex = terminalInfo?.title.indexOf(" · ") ?? -1;
+  const folderTitle =
+    terminalInfo && separatorIndex >= 0
+      ? terminalInfo.title.slice(separatorIndex + 3)
+      : (terminalInfo?.cwd ?? "");
 
   async function closeTerminal() {
     if (!bridge || isClosing) return;
@@ -263,11 +269,24 @@ export function TerminalView({ id }: { id: string }) {
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headingGroup}>
+          <SquareTerminal
+            aria-hidden="true"
+            className={styles.headerIcon}
+            size={18}
+            strokeWidth={1.8}
+          />
           <h1 className={styles.title} id={titleId}>
             {terminalInfo ? (
-              <span className={styles.visuallyHidden}>{t.terminal.namePrefix}</span>
+              <>
+                <span className={styles.visuallyHidden}>{t.terminal.namePrefix}</span>
+                <span className={styles.shellName}>{shellName}</span>
+                <span aria-hidden="true" className={styles.titleSeparator}>
+                  ·
+                </span>
+                <span className={styles.folderTitle}>{folderTitle}</span>
+              </>
             ) : null}
-            {title}
+            {!terminalInfo ? title : null}
           </h1>
           <p
             className={`${styles.state} ${exited ? styles.exited : terminalInfo ? styles.running : ""}`}
@@ -284,16 +303,18 @@ export function TerminalView({ id }: { id: string }) {
             <span>{stateLabel}</span>
           </p>
         </div>
-        <IconButton
-          icon={<X aria-hidden="true" size={16} strokeWidth={1.8} />}
-          label={t.terminal.close}
-          onClick={() => {
-            setCloseError("");
-            if (exited) void closeTerminal();
-            else setIsConfirmOpen(true);
-          }}
-          size="md"
-        />
+        <div className={styles.actions}>
+          <IconButton
+            icon={<X aria-hidden="true" size={16} strokeWidth={1.8} />}
+            label={t.terminal.close}
+            onClick={() => {
+              setCloseError("");
+              if (exited) void closeTerminal();
+              else setIsConfirmOpen(true);
+            }}
+            size="md"
+          />
+        </div>
       </header>
 
       {terminalError ? (

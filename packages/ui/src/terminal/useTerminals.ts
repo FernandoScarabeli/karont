@@ -43,6 +43,22 @@ export function useTerminals(): TerminalsState {
   return state;
 }
 
+export type TerminalDisplayDetails = {
+  shell: string;
+  path: string;
+  shortTitle: string;
+};
+
+export function getTerminalDisplayDetails(terminal: TerminalInfo): TerminalDisplayDetails {
+  const shell = terminal.shell.split(/[\\/]/).filter(Boolean).at(-1) ?? terminal.shell;
+  const separatorIndex = terminal.title.indexOf(" · ");
+  const path = separatorIndex >= 0 ? terminal.title.slice(separatorIndex + 3) : terminal.cwd;
+  const normalizedPath = path.replace(/[\\/]+$/, "");
+  const folderName = normalizedPath === "~" ? "~" : (normalizedPath.split(/[\\/]/).at(-1) ?? path);
+
+  return { shell, path, shortTitle: `${shell} · ${folderName}` };
+}
+
 export function getTerminalDisplayTitles(terminals: TerminalInfo[]): Map<string, string> {
   const originalOrder = new Map(terminals.map((terminal, index) => [terminal.id, index]));
   const ordered = [...terminals].sort((left, right) => {
@@ -54,9 +70,10 @@ export function getTerminalDisplayTitles(terminals: TerminalInfo[]): Map<string,
   const titles = new Map<string, string>();
 
   for (const terminal of ordered) {
-    const occurrence = (occurrences.get(terminal.title) ?? 0) + 1;
-    occurrences.set(terminal.title, occurrence);
-    titles.set(terminal.id, occurrence > 1 ? `${terminal.title} (${occurrence})` : terminal.title);
+    const shortTitle = getTerminalDisplayDetails(terminal).shortTitle;
+    const occurrence = (occurrences.get(shortTitle) ?? 0) + 1;
+    occurrences.set(shortTitle, occurrence);
+    titles.set(terminal.id, occurrence > 1 ? `${shortTitle} (${occurrence})` : shortTitle);
   }
 
   return titles;

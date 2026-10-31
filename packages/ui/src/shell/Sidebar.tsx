@@ -3,7 +3,11 @@ import { Button } from "../components/Button/Button.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
-import { getTerminalDisplayTitles, useTerminals } from "../terminal/useTerminals.ts";
+import {
+  getTerminalDisplayDetails,
+  getTerminalDisplayTitles,
+  useTerminals,
+} from "../terminal/useTerminals.ts";
 import { ServiceStatus } from "./ServiceStatus.tsx";
 import styles from "./Sidebar.module.css";
 
@@ -49,7 +53,9 @@ export function Sidebar() {
               size="sm"
             />
           </div>
-          <p className={styles.emptyList}>{t.shell.noProjects}</p>
+          <p className={styles.emptyList}>
+            <span>{t.shell.noProjects}</span>
+          </p>
         </section>
 
         <section aria-labelledby="sidebar-conversations-title" className={styles.section}>
@@ -66,33 +72,44 @@ export function Sidebar() {
           </div>
           {error ? (
             <p className={styles.emptyList} role="status">
-              {t.shell.conversationsLoadError}
+              <span>{t.shell.conversationsLoadError}</span>
             </p>
           ) : terminals.length > 0 ? (
             <ul aria-label={t.shell.conversations} className={styles.conversationList}>
-              {terminals.map((terminal) => (
-                <li className={styles.conversationItem} key={terminal.id}>
-                  <button
-                    aria-current={
-                      view.name === "terminal" && view.id === terminal.id ? "page" : undefined
-                    }
-                    className={styles.conversationButton}
-                    onClick={() => navigate({ name: "terminal", id: terminal.id })}
-                    type="button"
-                  >
-                    <SquareTerminal aria-hidden="true" size={15} strokeWidth={1.8} />
-                    <span className={styles.conversationTitle}>
-                      {terminalTitles.get(terminal.id) ?? terminal.title}
-                    </span>
-                    {terminal.exited ? (
-                      <span className={styles.exitedMarker}>{t.shell.exited}</span>
-                    ) : null}
-                  </button>
-                </li>
-              ))}
+              {terminals.map((terminal) => {
+                const details = getTerminalDisplayDetails(terminal);
+                const accessibleName = t.terminal.sidebarAccessibleName(
+                  details.shell,
+                  details.path,
+                );
+                return (
+                  <li className={styles.conversationItem} key={terminal.id}>
+                    <button
+                      aria-current={
+                        view.name === "terminal" && view.id === terminal.id ? "page" : undefined
+                      }
+                      aria-label={accessibleName}
+                      className={styles.conversationButton}
+                      onClick={() => navigate({ name: "terminal", id: terminal.id })}
+                      title={accessibleName}
+                      type="button"
+                    >
+                      <SquareTerminal aria-hidden="true" size={15} strokeWidth={1.8} />
+                      <span className={styles.conversationTitle}>
+                        {terminalTitles.get(terminal.id) ?? details.shortTitle}
+                      </span>
+                      {terminal.exited ? (
+                        <span className={styles.exitedMarker}>{t.shell.exited}</span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
-            <p className={styles.emptyList}>{t.shell.noConversations}</p>
+            <p className={styles.emptyList}>
+              <span>{t.shell.noConversations}</span>
+            </p>
           )}
         </section>
       </nav>
