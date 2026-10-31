@@ -12,9 +12,9 @@ Repositório recriado do zero em 2026-10-31.
   - [x] B3 Fechar a janela: perguntar / segundo plano (bandeja) / fechar tudo
   - [x] F3 Configurações › Geral ("Ao fechar a janela")
   - [x] B4 Escolher pasta (diálogo nativo), pastas recentes, terminal com comando inicial
-  - [ ] F4 Campo de mensagem único (composer) + botão de pasta + cabeçalho do terminal
+  - [x] F4 Campo de mensagem único (composer) + botão de pasta + cabeçalho do terminal
   - [ ] F5 Conversas lado a lado (dividir, redimensionar, arrastar para os cantos, layout salvo)
-  - [ ] Fonte de títulos: **Sora** no lugar da Instrument Serif (entra no F4)
+  - [x] Fonte de títulos: **Sora** no lugar da Instrument Serif (entra no F4)
   - [ ] E2E + PR (orquestrador)
 
 ## Decisões do dono
