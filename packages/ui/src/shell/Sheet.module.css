@@ -14,8 +14,8 @@
   margin: 0;
   color: var(--k-color-text-primary);
   font-family: var(--k-font-brand);
-  font-size: var(--k-text-28);
-  font-weight: var(--k-weight-medium);
+  font-size: var(--k-text-32);
+  font-weight: var(--k-weight-brand);
   line-height: var(--k-leading-tight);
 }
 
@@ -34,8 +34,9 @@
 .emptyTitle {
   margin: 0;
   color: var(--k-color-text-primary);
-  font-size: var(--k-text-16);
-  font-weight: var(--k-weight-medium);
+  font-family: var(--k-font-brand);
+  font-size: var(--k-text-24);
+  font-weight: var(--k-weight-brand);
   line-height: var(--k-leading-tight);
 }
 

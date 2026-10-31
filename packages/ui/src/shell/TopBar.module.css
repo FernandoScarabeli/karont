@@ -18,8 +18,8 @@
 .brandName {
   color: var(--k-color-text-primary);
   font-family: var(--k-font-brand);
-  font-size: var(--k-text-15);
-  font-weight: var(--k-weight-semibold);
+  font-size: var(--k-text-20);
+  font-weight: var(--k-weight-brand);
   line-height: var(--k-leading-tight);
 }
 

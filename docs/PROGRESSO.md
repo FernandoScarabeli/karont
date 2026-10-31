@@ -8,7 +8,7 @@ Repositório recriado do zero em 2026-10-31.
   - [x] B1 Contrato (schemas zod) — executor back
   - [x] F1 Tokens, fonte e componentes base — executor front
   - [x] B2 Serviço: socket com streaming + SQLite com migrações — executor back
-  - [ ] F2 Moldura vazia — executor front
+  - [x] F2 Moldura vazia — executor front
   - [ ] B3 Ponte do preview web (HTTP + SSE) — executor back
   - [ ] B4 Electron seguro + ponte de canal único — executor back
   - [ ] E2E de fumaça + CI — orquestrador
@@ -27,7 +27,8 @@ Repositório recriado do zero em 2026-10-31.
 
 6. `lucide-react` aprovado para ícones (2026-10-31). Motivo: o design do `karont.pen` já usa os ícones Lucide; são SVGs locais.
 7. Fonte não fica presa só à Geist: pode haver uma segunda fonte (ex.: títulos/marca), escolhida pelo dono (2026-10-31).
-8. O Karont terá uma cor de marca forte e reconhecível, **não roxa** (escolha em andamento, 2026-10-31).
+8. Cor de marca: o padrão é o **marfim** (`#F3EEE3`, "branco papel"), e a pessoa poderá escolher outra cor de destaque (2026-10-31). Proposta do orquestrador, aguardando ok: lista curta de cores prontas (marfim, magenta, turquesa, lima…), com contraste garantido; salva em `settings`; tela no M5. No M0 basta o token `--k-color-brand` ser único e trocável.
+9. Segunda fonte: **Instrument Serif** na marca e nos títulos grandes; o resto em Geist (2026-10-31). Dependência `@fontsource/instrument-serif` aprovada.
 
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
