@@ -4,7 +4,7 @@ Repositório recriado do zero em 2026-10-31.
 
 ## Estado
 - **M0 (esqueleto)** — concluído e na `main` (PR #1, 2026-10-31).
-- **M1 (agentes)** — em andamento na branch `m1-agentes`.
+- **M1 (agentes)** — concluído na branch `m1-agentes`; PR aberto para a `main` (2026-10-31).
   - [x] B1 Detecção de agentes + CLIs do usuário (serviço e contrato)
   - [x] B2 Terminal no serviço (`node-pty`, eventos com backpressure, sobrevive à janela)
   - [x] F1 Configurações › Agentes (lista, detectar de novo, adicionar/remover CLI)
@@ -17,8 +17,8 @@ Repositório recriado do zero em 2026-10-31.
   - [x] Fonte de títulos: **Sora** no lugar da Instrument Serif (entra no F4)
   - [x] F6 Ajustes do dono (pasta direto no seletor do sistema, "Vamos trabalhar", sem textos de ajuda, ícones das CLIs)
   - [x] B6 Correções da revisão de código (cliente lento, fechar tudo, limite de terminais, homeDir, detecção, open mais rápido)
-  - [ ] F7 Correções da revisão na interface (resize, resync/replay, foco ao encerrar, homeDir)
-  - [ ] E2E + PR (orquestrador)
+  - [x] F7 Correções da revisão na interface (resize, resync/replay, foco ao encerrar, homeDir)
+  - [x] E2E + PR (orquestrador)
 
 ## Decisões do dono
 
