@@ -43,12 +43,13 @@ test("Nova conversa → Terminal: abre um shell de verdade, sem violar a CSP; Co
       .click();
     await expect(window.getByText("0 de 10 encontrados")).toBeVisible();
 
-    // Nova conversa → Terminal.
+    // Nova conversa → Terminal, com comando inicial digitado no campo de mensagem.
     await window.getByRole("button", { name: "Nova conversa", exact: true }).click();
-    await window.getByRole("button", { name: "Abrir terminal" }).click();
+    const composer = window.locator("textarea").first();
+    await composer.fill("echo karont-$((40+2))");
+    await composer.press("Enter");
     const rows = window.locator(".xterm-rows");
     await expect(rows).toBeVisible();
-    await window.keyboard.type("echo karont-$((40+2))\n");
     // O xterm só desenha o que está visível: garanta a área na tela antes de ler o texto.
     await rows.scrollIntoViewIfNeeded();
     await expect(rows).toContainText("karont-42");
