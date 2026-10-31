@@ -103,5 +103,6 @@ test("eventos do terminal validam saída, encerramento e lista", () => {
     events["terminals.exit"].safeParse({ id: "t1", exitCode: null, signal: 1 }).success,
     true,
   );
+  assert.equal(events["terminals.resync"].safeParse({ id: "t1" }).success, true);
   assert.equal(events["terminals.changed"].safeParse({ terminals: [terminal] }).success, true);
 });

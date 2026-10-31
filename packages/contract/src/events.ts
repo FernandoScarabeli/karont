@@ -21,6 +21,7 @@ export const events = {
     seq: z.number().int().min(0),
     data: z.string(),
   }),
+  "terminals.resync": z.strictObject({ id: z.string().min(1) }),
   "terminals.exit": z.strictObject({
     id: z.string().min(1),
     exitCode: z.number().int().nullable(),

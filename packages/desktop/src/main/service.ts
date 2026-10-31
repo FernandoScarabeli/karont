@@ -1,9 +1,15 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AnyEvent } from "@karont/contract";
-import { connectService, resolvePaths, type ServiceClient } from "@karont/service";
+import {
+  connectService,
+  resolvePaths,
+  type ServiceClient,
+  type ServicePaths,
+} from "@karont/service";
 import { backoffDelay } from "./backoff.ts";
 
 const serviceEntry = path.join(path.dirname(fileURLToPath(import.meta.url)), "service.js");
@@ -41,10 +47,22 @@ export type ServiceManager = {
 
 export function createServiceManager(
   publish: (event: AnyEvent) => void,
-  options: { connect?: (timeoutMs: number) => Promise<ServiceClient> } = {},
+  options: {
+    connect?: (timeoutMs: number) => Promise<ServiceClient>;
+    paths?: ServicePaths;
+    socketIdentity?: (socketPath: string) => Promise<string | undefined>;
+    processExists?: (pid: number) => boolean;
+    signalProcess?: (pid: number, signal: NodeJS.Signals) => void;
+  } = {},
 ): ServiceManager {
-  const paths = resolvePaths();
+  const paths = options.paths ?? resolvePaths();
+  const socketIdentity = options.socketIdentity ?? getSocketIdentity;
+  const processExists = options.processExists ?? isProcessAlive;
+  const signalProcess = options.signalProcess ?? ((pid, signal) => process.kill(pid, signal));
   let client: ServiceClient | null = null;
+  let lastServicePid: number | undefined;
+  let lastServiceSocketPath: string | undefined;
+  let lastServiceSocketIdentity: string | undefined;
   let state: "connecting" | "connected" | "disconnected" = "connecting";
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let retryAttempt = 0;
@@ -59,7 +77,7 @@ export function createServiceManager(
     publish({ event: "bridge.status", payload: { state: nextState } });
   }
 
-  function attach(nextClient: ServiceClient): void {
+  async function attach(nextClient: ServiceClient): Promise<void> {
     if (closed || shuttingDown) {
       nextClient.close();
       return;
@@ -74,7 +92,22 @@ export function createServiceManager(
       removeEventListener();
       removeCloseListener();
     };
-    publishStatus("connected");
+    await rememberService(nextClient);
+    if (client === nextClient) publishStatus("connected");
+  }
+
+  async function rememberService(serviceClient: ServiceClient): Promise<void> {
+    try {
+      const info = await serviceClient.request("system.info", {});
+      const identity = await socketIdentity(paths.socketPath);
+      if (Number.isInteger(info.pid)) {
+        lastServicePid = info.pid;
+        lastServiceSocketPath = paths.socketPath;
+        lastServiceSocketIdentity = identity;
+      }
+    } catch {
+      // A failed diagnostic request does not make a connected service unavailable.
+    }
   }
 
   function detachListeners(): void {
@@ -122,7 +155,7 @@ export function createServiceManager(
   async function reconnect(): Promise<void> {
     if (closed || shuttingDown || client) return;
     try {
-      attach(await connect(reconnectTimeoutMs));
+      await attach(await connect(reconnectTimeoutMs));
     } catch {
       startDetachedService();
       publishStatus("disconnected");
@@ -144,7 +177,7 @@ export function createServiceManager(
     async start(): Promise<void> {
       if (closed || shuttingDown) return;
       try {
-        attach(await connect(initialConnectTimeoutMs));
+        await attach(await connect(initialConnectTimeoutMs));
         return;
       } catch {
         publishStatus("connecting");
@@ -160,7 +193,7 @@ export function createServiceManager(
         const connectTimeRemaining = deadline - Date.now();
         if (closed || shuttingDown || connectTimeRemaining <= 0) break;
         try {
-          attach(await connect(Math.min(reconnectTimeoutMs, connectTimeRemaining)));
+          await attach(await connect(Math.min(reconnectTimeoutMs, connectTimeRemaining)));
           return;
         } catch {
           // Tenta novamente até o prazo de inicialização e depois mantém a reconexão ativa.
@@ -182,16 +215,32 @@ export function createServiceManager(
       shuttingDown = true;
       if (retryTimer !== undefined) clearTimeout(retryTimer);
       retryTimer = undefined;
-      const activeClient = client;
-      if (!activeClient) {
-        shutdownPromise = Promise.resolve();
-        return shutdownPromise;
-      }
+      shutdownPromise = (async () => {
+        let shutdownClient = client;
+        const reconnectingForShutdown = shutdownClient === null;
+        if (!shutdownClient) {
+          try {
+            shutdownClient = await connect(initialConnectTimeoutMs);
+          } catch {
+            shutdownClient = null;
+          }
+        }
 
-      shutdownPromise = settleWithin(
-        Promise.resolve().then(() => activeClient.request("service.shutdown", {})),
-        timeoutMs,
-      );
+        if (shutdownClient) {
+          if (reconnectingForShutdown) {
+            await settleWithin(
+              rememberService(shutdownClient),
+              Math.min(initialConnectTimeoutMs, timeoutMs),
+            );
+          }
+          const stopped = await settleWithin(
+            Promise.resolve().then(() => shutdownClient?.request("service.shutdown", {})),
+            timeoutMs,
+          );
+          if (stopped) return;
+        }
+        await signalKnownService();
+      })();
       return shutdownPromise;
     },
     close(): void {
@@ -205,22 +254,67 @@ export function createServiceManager(
       activeClient?.close();
     },
   };
+
+  async function signalKnownService(): Promise<void> {
+    const pid = lastServicePid;
+    const socketPath = lastServiceSocketPath;
+    const expectedIdentity = lastServiceSocketIdentity;
+    if (
+      pid === undefined ||
+      socketPath === undefined ||
+      socketPath !== paths.socketPath ||
+      expectedIdentity === undefined
+    ) {
+      return;
+    }
+    let currentIdentity: string | undefined;
+    try {
+      currentIdentity = await socketIdentity(socketPath);
+    } catch {
+      return;
+    }
+    if (currentIdentity !== expectedIdentity || !processExists(pid)) return;
+    try {
+      signalProcess(pid, "SIGTERM");
+    } catch {
+      // The process may have exited after the existence check.
+    }
+  }
 }
 
-function settleWithin(promise: Promise<unknown>, timeoutMs: number): Promise<void> {
+function settleWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
-    const timeout = setTimeout(resolve, timeoutMs);
+    const timeout = setTimeout(() => resolve(false), timeoutMs);
     promise.then(
       () => {
         clearTimeout(timeout);
-        resolve();
+        resolve(true);
       },
       () => {
         clearTimeout(timeout);
-        resolve();
+        resolve(false);
       },
     );
   });
+}
+
+async function getSocketIdentity(socketPath: string): Promise<string | undefined> {
+  try {
+    const socketInfo = await lstat(socketPath);
+    if (!socketInfo.isSocket()) return undefined;
+    return `${socketInfo.dev}:${socketInfo.ino}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "EPERM";
+  }
 }
 
 function delay(milliseconds: number): Promise<void> {

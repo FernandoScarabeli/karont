@@ -118,6 +118,7 @@ export const methods = {
       startedAt: isoDateTimeSchema,
       nodeVersion: z.string(),
       platform: z.string(),
+      homeDir: z.string(),
     }),
   },
   "settings.get": {

@@ -7,6 +7,7 @@ import { ConnectionClosedError, FrameWriter } from "./connection.ts";
 import { openDatabase } from "./db.ts";
 import { createHandlers, type HandlerConnection, ServiceError } from "./handlers.ts";
 import { ensurePrivateDir, type ServicePaths } from "./paths.ts";
+import { TerminalOutputFlow } from "./terminal-output.ts";
 import type { TerminalPtyFactory } from "./terminals/manager.ts";
 import { FrameDecoder } from "./wire.ts";
 
@@ -35,6 +36,7 @@ type ConnectionState = {
   authenticated: boolean;
   authTimer: ReturnType<typeof setTimeout>;
   readyPromise: Promise<void>;
+  outputFlow: TerminalOutputFlow;
 };
 
 export async function startService({
@@ -102,11 +104,21 @@ export async function startService({
       authenticated: false,
       authTimer: setTimeout(() => socket.destroy(), authTimeoutMs),
       readyPromise: Promise.resolve(),
+      outputFlow: undefined as unknown as TerminalOutputFlow,
     };
+    state.outputFlow = new TerminalOutputFlow(writer, {
+      isOpen: () => state.authenticated && !socket.destroyed && !closing,
+      onError: (error, message) => {
+        if (error instanceof ConnectionClosedError) return;
+        log(message, error);
+        socket.destroy();
+      },
+    });
     sockets.add(state);
     socket.on("error", (error) => log("Erro no socket do serviço.", error));
     socket.on("close", () => {
       clearTimeout(state.authTimer);
+      state.outputFlow.close();
       sockets.delete(state);
     });
     socket.on("data", (chunk: Buffer) => {
@@ -161,18 +173,26 @@ export async function startService({
     const recipients = [...sockets].filter(
       (state) => state.authenticated && !state.socket.destroyed,
     );
-    await Promise.all(
-      recipients.map(async (state) => {
-        try {
-          await state.writer.send({ type: "event", event: event.event, payload: event.payload });
-        } catch (error) {
-          if (!(error instanceof ConnectionClosedError)) {
-            log("Falha ao enviar evento; a conexão será encerrada.", error);
-            state.socket.destroy();
-          }
-        }
-      }),
-    );
+    await Promise.all(recipients.map((state) => sendBroadcastEvent(state, event)));
+  }
+
+  async function sendBroadcastEvent(state: ConnectionState, event: AnyEvent): Promise<void> {
+    if (event.event === "terminals.output") {
+      state.outputFlow.send(event);
+      return;
+    }
+
+    try {
+      await state.writer.send({ type: "event", event: event.event, payload: event.payload });
+    } catch (error) {
+      handleSendError(state, error, "Falha ao enviar evento; a conexão será encerrada.");
+    }
+  }
+
+  function handleSendError(state: ConnectionState, error: unknown, message: string): void {
+    if (error instanceof ConnectionClosedError) return;
+    log(message, error);
+    state.socket.destroy();
   }
 
   function closeService(): Promise<void> {
@@ -184,6 +204,7 @@ export async function startService({
         : Promise.resolve();
       for (const state of sockets) {
         clearTimeout(state.authTimer);
+        state.outputFlow.close();
         state.socket.destroy();
       }
       await handlers.closeTerminals();
@@ -213,6 +234,14 @@ export async function startService({
       });
       return;
     }
+
+    const terminalAttach =
+      parsed.request.method === "terminals.attach"
+        ? {
+            id: parsed.request.params.id,
+            generation: state.outputFlow.captureAttachGeneration(parsed.request.params.id),
+          }
+        : undefined;
 
     const afterResponse: Array<() => void> = [];
     const conn: HandlerConnection = {
@@ -257,6 +286,9 @@ export async function startService({
       return;
     }
     if (succeeded && conn.isOpen()) {
+      if (terminalAttach) {
+        state.outputFlow.completeAttach(terminalAttach.id, terminalAttach.generation);
+      }
       for (const task of afterResponse) {
         try {
           void Promise.resolve(task()).catch((error: unknown) => {

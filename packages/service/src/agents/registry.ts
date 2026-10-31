@@ -19,7 +19,9 @@ export type AgentListResult = { agents: Agent[]; detectedAt: string };
 
 export class AgentRegistry {
   private cachedDetection: DetectedAgent[] | undefined;
+  private cachedCustomPaths = new Map<string, string | undefined>();
   private detectedAt: string | undefined;
+  private detectionPromise: Promise<void> | undefined;
   private readonly db: DatabaseSync;
   private readonly options: AgentDetectionOptions;
 
@@ -29,7 +31,8 @@ export class AgentRegistry {
   }
 
   async list(): Promise<AgentListResult> {
-    if (!this.cachedDetection) await this.refreshDetection();
+    if (this.detectionPromise) await this.detectionPromise;
+    else if (!this.cachedDetection) await this.refreshDetection();
     return this.makeListResult();
   }
 
@@ -54,6 +57,7 @@ export class AgentRegistry {
     }
 
     const record = addCustomAgent(this.db, { name, command });
+    this.cachedCustomPaths.set(record.id, resolvedPath);
     return { agent: toCustomAgent(record, resolvedPath) };
   }
 
@@ -61,28 +65,48 @@ export class AgentRegistry {
     if (agentCatalog.some((agent) => agent.id === id) || !removeCustomAgent(this.db, id)) {
       throw new ServiceError("invalid_request", "Esse agente não existe ou não pode ser removido.");
     }
+    this.cachedCustomPaths.delete(id);
     return { removed: true };
   }
 
-  private async refreshDetection(): Promise<void> {
-    this.cachedDetection = await detectAgents(this.options);
-    this.detectedAt = new Date().toISOString();
+  private refreshDetection(): Promise<void> {
+    if (this.detectionPromise) return this.detectionPromise;
+    const detectionPromise = (async () => {
+      const detected = await detectAgents(this.options);
+      const customRecords = listCustomAgents(this.db);
+      const customPaths = new Map<string, string | undefined>();
+      await Promise.all(
+        customRecords.map(async (record) => {
+          const resolvedPath =
+            this.options.env.KARONT_DISABLE_AGENT_DETECTION === "1"
+              ? undefined
+              : await resolveAgentCommand(record.command, this.options);
+          customPaths.set(record.id, resolvedPath);
+        }),
+      );
+      this.cachedDetection = detected;
+      this.cachedCustomPaths = customPaths;
+      this.detectedAt = new Date().toISOString();
+    })();
+    this.detectionPromise = detectionPromise;
+    void detectionPromise.then(
+      () => {
+        if (this.detectionPromise === detectionPromise) this.detectionPromise = undefined;
+      },
+      () => {
+        if (this.detectionPromise === detectionPromise) this.detectionPromise = undefined;
+      },
+    );
+    return detectionPromise;
   }
 
-  private async makeListResult(): Promise<AgentListResult> {
+  private makeListResult(): AgentListResult {
     const detectedAt = this.detectedAt;
     if (!detectedAt || !this.cachedDetection)
       throw new Error("Detecção de agentes não inicializada.");
     const knownAgents = this.cachedDetection.map(toKnownAgent);
-    const customRecords = listCustomAgents(this.db);
-    const customAgents = await Promise.all(
-      customRecords.map(async (record) => {
-        if (this.options.env.KARONT_DISABLE_AGENT_DETECTION === "1") {
-          return toCustomAgent(record);
-        }
-        const resolvedPath = await resolveAgentCommand(record.command, this.options);
-        return toCustomAgent(record, resolvedPath);
-      }),
+    const customAgents = listCustomAgents(this.db).map((record) =>
+      toCustomAgent(record, this.cachedCustomPaths.get(record.id)),
     );
     return { agents: [...knownAgents, ...customAgents], detectedAt };
   }

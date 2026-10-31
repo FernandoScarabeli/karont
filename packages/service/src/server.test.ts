@@ -279,7 +279,7 @@ test("erro remoto vira BridgeError", { skip }, async () => {
   }
 });
 
-test("dois clientes recebem toda a saída do terminal apesar de um pausar a leitura", {
+test("cliente lento recebe resync e recupera a saída pelo replay", {
   skip,
 }, async () => {
   const paths = await testPaths();
@@ -302,41 +302,46 @@ test("dois clientes recebem toda a saída do terminal apesar de um pausar a leit
     });
     const terminal = (open.result as { terminal: { id: string } }).terminal;
     const fastFrames = [...open.frames];
-    const slowFrames = await waitForEvent(slow, "terminals.changed");
+    await waitForEvent(slow, "terminals.changed");
     slow.socket.pause();
 
+    const outputBytes = 12 * 1024 * 1024;
+    const expected = "x".repeat(outputBytes);
     const write = await requestRaw(fast, "write", "terminals.write", {
       id: terminal.id,
-      data: "seq 1 200000\n",
+      data: `head -c ${outputBytes} /dev/zero | tr '\\000' x\n`,
     });
     assert.equal(write.ok, true);
 
-    const expected = `${Array.from({ length: 200_000 }, (_, index) => String(index + 1)).join("\r\n")}\r\n`;
     fastFrames.push(...write.frames);
     let fastText = outputText(fastFrames, terminal.id);
-    const partialLimit = 256 * 1024;
-    while (Buffer.byteLength(fastText, "utf8") < partialLimit) {
-      fastFrames.push(await fast.nextFrame());
-      fastText = outputText(fastFrames, terminal.id);
-    }
-    assert.ok(fastText.length > 0, "o cliente ativo recebe saída enquanto o outro está pausado");
-    slow.socket.resume();
-
     while (!fastText.includes(expected)) {
       fastFrames.push(await fast.nextFrame());
       fastText = outputText(fastFrames, terminal.id);
     }
-    let slowText = "";
-    while (!slowText.includes(expected)) {
-      slowFrames.push(await slow.nextFrame());
-      slowText = outputText(slowFrames, terminal.id);
-    }
     assert.ok(fastText.includes(expected));
-    assert.ok(slowText.includes(expected));
-    assert.deepEqual(
-      outputSequences(fastFrames, terminal.id),
-      outputSequences(slowFrames, terminal.id),
-    );
+    slow.socket.resume();
+    const slowFrames = await waitForEvent(slow, "terminals.resync");
+    const resync = slowFrames.find(
+      (frame) =>
+        typeof frame === "object" &&
+        frame !== null &&
+        "event" in frame &&
+        frame.event === "terminals.resync",
+    ) as { event: string; payload: { id: string } } | undefined;
+    assert.deepEqual(resync, {
+      type: "event",
+      event: "terminals.resync",
+      payload: { id: terminal.id },
+    });
+
+    const attached = await requestRaw(slow, "resync-attach", "terminals.attach", {
+      id: terminal.id,
+    });
+    const replay = (attached.result as { replay: string; seq: number }).replay;
+    assert.ok(replay.includes("x".repeat(1_000)));
+    assert.ok((attached.result as { seq: number }).seq > 0);
+
     assert.deepEqual(
       outputSequences(fastFrames, terminal.id),
       outputSequences(fastFrames, terminal.id).map((_, index) => index + 1),
