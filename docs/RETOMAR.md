@@ -1,28 +1,28 @@
 # Retomar o trabalho (outro computador ou nova sessão)
 
-Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto da conversa anterior. Leia este arquivo inteiro antes de agir. Última atualização: 2026-10-30, ao fim da Fase 2.
+Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto da conversa anterior. Leia este arquivo inteiro antes de agir. Última atualização: 2026-10-30, com a Fase 3 planejada.
 
 ## 1. O que ler, nesta ordem
 
 1. [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md): a spec (papéis, regras invariantes, fases).
-2. [PROGRESSO.md](PROGRESSO.md): o estado atual, as **decisões do usuário (1–20)** e o comando padrão do Codex.
-3. [PLANO_FASE_2.md](PLANO_FASE_2.md): as tarefas da fase atual (T1–T11). O da Fase 1 ([PLANO_FASE_1.md](PLANO_FASE_1.md)) é só referência.
+2. [PROGRESSO.md](PROGRESSO.md): o estado atual, as **decisões do usuário (1–21)** e o comando padrão do Codex.
+3. [PLANO_FASE_3.md](PLANO_FASE_3.md): a fase atual (redesign). Os planos das Fases 1 e 2 são só referência.
 4. [DIVIDAS.md](DIVIDAS.md): problemas conhecidos, para não "descobrir" de novo.
 5. [BASELINE.md](BASELINE.md): números de referência.
 
 ## 2. Onde parou
 
 - **Refatoração – Fase 1 concluída** (PR #2, merge em `main` em 2026-10-30).
-- **Refatoração – Fase 2 concluída** na branch `refactor/fase-2-estrutura`, com PR para `main` aguardando CI e merge.
-- **Próximo passo:** a Refatoração – Fase 3 (estilos e redesign). Ela **precisa do `karont.pen`** e das referências visuais do usuário antes de redesenhar (decisão 7). Planejar em `docs/PLANO_FASE_3.md`, com as perguntas de decisão (CSS Modules ou arquivos planos com `@layer`).
-- Para provar que uma mudança não alterou a tela: `npm run visual -- <nome>` antes e depois e `node scripts/visual-snapshot.mjs --compare <a> <b>` (ver PROGRESSO, T1). Na Fase 3 a tela muda de propósito: aí a comparação serve para mostrar o que mudou.
-- O CI tem uma falha intermitente conhecida nos E2E (DIVIDAS #15, spec006). Se falhar, veja o log e rode de novo só o job; se for outra etapa, investigue.
+- **Refatoração – Fase 2 concluída** (PR #3, CI verde). Se o PR ainda não teve merge, peça ao usuário para fazê-lo (o orquestrador não tem permissão) e depois atualize `refactor/fase-3-design` a partir de `main`.
+- **Próximo passo: Fase 3, Etapa A, no chat de design.** Siga o [PLANO_FASE_3.md](PLANO_FASE_3.md): receba as referências do usuário, salve e anote em `docs/design/references/`, pergunte o que incomoda, proponha 2 ou 3 direções e só depois mexa em código. O usuário vai criar um `karont.pen` novo no pen.dev (decisão 21).
+- Para mostrar o que mudou numa tela: `npm run visual -- <nome>` antes e depois e `node scripts/visual-snapshot.mjs --compare <a> <b>`.
+- Os E2E locais precisam do PC livre (DIVIDAS #23). A intermitência #15 do spec006 foi resolvida na Fase 2.
 
 ## 3. Preparar a máquina
 
 ```bash
 git clone git@github.com:FernandoScarabeli/karont.git && cd karont
-git switch refactor/fase-2-estrutura
+git switch refactor/fase-3-design
 # Node 24 (o projeto exige >=24). Sem root, via fnm:
 curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
 export PATH="$HOME/.local/share/fnm:$PATH"; eval "$(fnm env --shell bash)"; fnm install 24; fnm use 24

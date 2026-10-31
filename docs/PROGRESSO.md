@@ -4,7 +4,11 @@ Estado vivo do trabalho descrito em [SPEC_REFATORACAO.md](SPEC_REFATORACAO.md). 
 
 ## Fase atual
 
-**Refatoração – Fase 2 (estrutura de pastas e quebra dos arquivos grandes): concluída na branch, PR aberto para `main`.** Branch `refactor/fase-2-estrutura`. Plano em [PLANO_FASE_2.md](PLANO_FASE_2.md).
+**Refatoração – Fase 3 (estilos e redesign): planejada, aguardando o chat de design.** Branch `refactor/fase-3-design`. Plano em [PLANO_FASE_3.md](PLANO_FASE_3.md). Começa pela Etapa A (direção visual a partir das referências do usuário); nenhum código antes da direção aprovada.
+
+## Fase 2 (concluída, PR #3)
+
+**Refatoração – Fase 2 (estrutura de pastas e quebra dos arquivos grandes): concluída.** PR #3 com CI verde; o merge fica com o usuário (o orquestrador foi bloqueado pela proteção de permissões ao tentar fazer o merge). Plano em [PLANO_FASE_2.md](PLANO_FASE_2.md).
 
 | Tarefa | Estado |
 |---|---|
@@ -100,6 +104,10 @@ Registradas em 2026-10-30, para a Fase 2:
 18. **Estado da UI:** só hooks por feature (`useChat`, `useProjects`...), sem store global nem dependência nova (usuário aceitou a recomendação).
 19. **Pasta `apps/desktop/src/shared/`** para o tipo do `window.karont`, usado pelo preload e pelo renderer (orquestrador; desvio da estrutura da spec, justificado em PLANO_FASE_2).
 20. **Diff visual nulo** medido pelo script da T1 (PNG byte a byte + DOM). Se o PNG não estabilizar, vale DOM idêntico + conferência a olho, registrado no plano (orquestrador).
+
+Registrada em 2026-10-30, para a Fase 3:
+
+21. **Design sem o `karont.pen` antigo:** o usuário instala o pen.dev neste PC e cria um `karont.pen` novo na raiz do repositório; a regra de design do `AGENTS.md` continua valendo. A direção visual vem de referências que o usuário manda pelo chat, guardadas em `docs/design/references/` com anotações em `README.md`. O trabalho de design acontece num chat separado, só para isso.
 
 ## Ambiente local
 
