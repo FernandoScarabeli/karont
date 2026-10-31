@@ -13,6 +13,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
+    "preview:web": "node scripts/preview-web.mjs",
     "start": "electron dist/desktop/main.cjs",
     "daemon": "node dist/daemon/entry.cjs",
     "check": "tsc --noEmit",
