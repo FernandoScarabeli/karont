@@ -18,6 +18,8 @@ Guia para o orquestrador (Claude Code) continuar a refatoração sem o contexto 
 - Para mostrar o que mudou numa tela: `npm run visual -- <nome>` antes e depois e `node scripts/visual-snapshot.mjs --compare <a> <b>`.
 - Os E2E locais precisam do PC livre (DIVIDAS #23). A intermitência #15 do spec006 foi resolvida na Fase 2.
 
+- **Preview web (decisão 22):** `npm run preview:web` e abrir `http://127.0.0.1:5180/preview.html`. Sobe a ponte (`apps/desktop/src/preview/bridge.ts`, Electron sem janela; precisa do helper do sandbox, que o script acha sozinho) e o Vite em modo dev. Portas fixas 5180/5181. Mudanças no renderer aparecem sem reiniciar; mudanças no `main/` ou na ponte exigem reiniciar o comando. O resultado final ainda é conferido no Electron (`npm run visual`).
+
 ## 3. Preparar a máquina
 
 ```bash

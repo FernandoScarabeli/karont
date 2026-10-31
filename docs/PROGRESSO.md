@@ -109,6 +109,10 @@ Registrada em 2026-10-30, para a Fase 3:
 
 21. **Design sem o `karont.pen` antigo:** o usuário instala o pen.dev neste PC e cria um `karont.pen` novo na raiz do repositório; a regra de design do `AGENTS.md` continua valendo. A direção visual vem de referências que o usuário manda pelo chat, guardadas em `docs/design/references/` com anotações em `README.md`. O trabalho de design acontece num chat separado, só para isso.
 
+Registrada em 2026-10-31, para a Fase 3:
+
+22. **Preview web para iterar no design:** o usuário descreve as telas pelo chat e vê o resultado no navegador, com recarga automática (`npm run preview:web` → `http://127.0.0.1:5180/preview.html`). É ferramenta só de dev: o build e o app Electron não mudam. A ponte é um Electron sem janela (sandbox ligado) que expõe os mesmos canais do IPC (`channelHandlers()`) por HTTP + SSE em `127.0.0.1`, com token por sessão e checagem de Host/Origin; o mapeamento método → canal fica num lugar só (`shared/createBridge.ts`). Um Codex para o front e outro para o back, ainda uma tarefa por vez. O usuário ainda não usa dados reais, então o preview usa o daemon padrão. Tarefas F3-P1 (`b99ea3a`) e F3-P2 (`0a46a44`): `check`, `test` 52/52, `test:desktop` e os 3 E2E OK nas duas.
+
 ## Ambiente local
 
 - Node 24 via fnm em `~/.local/share/fnm` (shell do usuário não foi alterado). No PC `scarabeliDesktop` (a partir da Fase 2), Node 24.21 via nvm, já no `PATH`.
