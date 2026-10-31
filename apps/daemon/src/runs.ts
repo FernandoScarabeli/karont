@@ -15,6 +15,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import * as pty from 'node-pty';
 import type { DatabaseSync } from 'node:sqlite';
 import type { DotConfig } from './database';
+import { dotAllowedInProject } from './dotAuthorization';
 
 const MAX_SCROLLBACK = 256 * 1024;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -175,13 +176,13 @@ export class RunManager {
         }[]
       )
         .filter((project) =>
-          project.origin === 'config'
-            ? dot.projectIds.includes(project.id)
-            : Boolean(
-                this.db
-                  .prepare('SELECT 1 FROM project_dot_grants WHERE project_id=? AND dot_id=?')
-                  .get(project.id, dot.id),
-              ),
+          dotAllowedInProject(dot, project, (projectId, dotId) =>
+            Boolean(
+              this.db
+                .prepare('SELECT 1 FROM project_dot_grants WHERE project_id=? AND dot_id=?')
+                .get(projectId, dotId),
+            ),
+          ),
         )
         .map((project) => project.id),
       capabilities: capabilities(dot),
@@ -228,11 +229,12 @@ export class RunManager {
   }
   private authorizedForProject(dot: DotConfig, project: { id: string; origin: string }) {
     if (!this.configuredDots.some((configured) => configured.id === dot.id)) return false;
-    if (project.origin === 'config') return dot.projectIds.includes(project.id);
-    return Boolean(
-      this.db
-        .prepare('SELECT 1 FROM project_dot_grants WHERE project_id=? AND dot_id=?')
-        .get(project.id, dot.id),
+    return dotAllowedInProject(dot, project, (projectId, dotId) =>
+      Boolean(
+        this.db
+          .prepare('SELECT 1 FROM project_dot_grants WHERE project_id=? AND dot_id=?')
+          .get(projectId, dotId),
+      ),
     );
   }
   private validateProjectRoot(rootValue: string) {

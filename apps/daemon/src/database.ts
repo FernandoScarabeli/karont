@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { dotSchema, projectSchema, type Dot, type Project } from '../../../packages/contracts/src';
 import { paths, privateFile } from '../../../packages/local/src/paths';
+import { builtinDots, TERMINAL_DOT_ID } from './builtinDots';
 
 const configSchema = z
   .object({
@@ -281,7 +282,7 @@ export function openDatabase(file: string) {
 }
 
 export function readDotConfig(file = paths().dots) {
-  if (!fs.existsSync(file)) return { dots: [] as DotConfig[], projects: [] as Project[] };
+  if (!fs.existsSync(file)) return { dots: builtinDots, projects: [] as Project[] };
   privateFile(file);
   const config = configSchema.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
   const projects = config.projects.map((project) =>
@@ -312,7 +313,11 @@ export function readDotConfig(file = paths().dots) {
   if (new Set(dots.map((dot) => dot.id)).size !== dots.length) throw Error('IDs de Dot duplicados');
   if (new Set(projects.map((project) => project.id)).size !== projects.length)
     throw Error('IDs de projeto duplicados');
-  return { dots, projects };
+  // Um Dot `terminal` definido em dots.json vence o embutido; caso contrário, ele vem depois dos Dots configurados.
+  return {
+    dots: dots.some((dot) => dot.id === TERMINAL_DOT_ID) ? dots : [...dots, ...builtinDots],
+    projects,
+  };
 }
 
 export function syncConfig(db: DatabaseSync, dots: DotConfig[], projects: Project[]) {

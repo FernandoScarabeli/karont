@@ -508,7 +508,8 @@ export const dotListSchema = z
       })
       .strict(),
   )
-  .max(8);
+  // Até 8 Dots do dots.json + o Terminal embutido (decisão 24).
+  .max(9);
 export const projectListSchema = z
   .array(z.object({ id: safeIdSchema, name: z.string().min(1).max(120) }).strict())
   .max(100);

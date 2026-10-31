@@ -100,7 +100,7 @@ test('duas execuções PTY, fila, reconexão, worktrees, diff, rollback e confli
   try {
     await until(() => client.request({ method: 'ping' }));
     const dots = await client.request({ method: 'dots.list' });
-    assert.deepEqual(dots.map((dot) => dot.id).sort(), ['alpha', 'beta']);
+    assert.deepEqual(dots.map((dot) => dot.id).sort(), ['alpha', 'beta', 'terminal']);
     await assert.rejects(() =>
       client.request({ method: 'runs.start', value: { dotId: 'alpha', projectId: 'elsewhere' } }),
     );

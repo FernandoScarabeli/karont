@@ -3,8 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type { DotConfig } from './database';
+import { builtinDots } from './builtinDots';
 import { APP_VERSION, type DiagnosticItem } from '../../../packages/contracts/src';
-export function daemonDiagnostics(dots: DotConfig[]): DiagnosticItem[] {
+export function daemonDiagnostics(allDots: DotConfig[]): DiagnosticItem[] {
+  // O Terminal embutido é o shell do sistema, não uma CLI configurada: fica fora da contagem
+  // para o diagnóstico não dizer que há ferramentas quando o dots.json está vazio.
+  const builtinIds = new Set(builtinDots.map((dot) => dot.id + '\0' + dot.executable));
+  const dots = allDots.filter((dot) => !builtinIds.has(dot.id + '\0' + dot.executable));
   const items: DiagnosticItem[] = [];
   const add = (category: string, label: string, status: DiagnosticItem['status'], value: string) =>
     items.push({ category, label, status, value: value.slice(0, 500) });

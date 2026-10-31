@@ -25,6 +25,7 @@ import {
   taskSummarySchema,
 } from '../../../packages/contracts/src';
 import type { DotConfig } from './database';
+import { dotAllowedInProject } from './dotAuthorization';
 
 const ACTIVE_STATES = [
   'queued',
@@ -322,11 +323,12 @@ export class WorkspaceManager {
   private isAuthorized(dotId: string, project: ProjectRow) {
     const dot = this.configuredDots.find((item) => item.id === dotId);
     if (!dot) return false;
-    if (project.origin === 'config') return dot.projectIds.includes(project.id);
-    return Boolean(
-      this.db
-        .prepare('SELECT 1 FROM project_dot_grants WHERE project_id=? AND dot_id=?')
-        .get(project.id, dotId),
+    return dotAllowedInProject(dot, project, (projectId, authorizedDotId) =>
+      Boolean(
+        this.db
+          .prepare('SELECT 1 FROM project_dot_grants WHERE project_id=? AND dot_id=?')
+          .get(projectId, authorizedDotId),
+      ),
     );
   }
 
@@ -1259,9 +1261,9 @@ export class WorkspaceManager {
       const available = Boolean(
         dot &&
           project &&
-          (project.origin === 'config'
-            ? dot.projectIds.includes(project.id)
-            : uiGrants.has(`${project.id}\u0000${dot.id}`)),
+          dotAllowedInProject(dot, project, (projectId, dotId) =>
+            uiGrants.has(`${projectId}\u0000${dotId}`),
+          ),
       );
       byTask.get(item.task_id)?.push(
         taskAssigneeSchema.parse({
