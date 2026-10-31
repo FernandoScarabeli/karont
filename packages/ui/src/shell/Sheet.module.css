@@ -9,6 +9,11 @@
   background: var(--k-color-bg-sheet);
 }
 
+.terminalSheet {
+  overflow: hidden;
+  padding: 0;
+}
+
 .pageTitle {
   flex: 0 0 auto;
   margin: 0;

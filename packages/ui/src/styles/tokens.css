@@ -19,6 +19,7 @@
   --k-color-focus: #7db4e0;
   --k-color-brand: #f3eee3;
   --k-color-ok: #6fcf97;
+  --k-color-terminal-selection: rgb(125 180 224 / 30%);
   --k-color-dialog-backdrop: rgb(0 0 0 / 72%);
   --k-shadow-dialog: 0 var(--k-space-8) var(--k-space-10) rgb(0 0 0 / 32%);
 
@@ -103,6 +104,9 @@
   --k-settings-nav-width: 160px;
   --k-settings-content-max-width: 960px;
   --k-settings-prose-width: 68ch;
+  --k-new-conversation-width: 760px;
+  --k-new-conversation-prompt-height: 180px;
+  --k-terminal-header-height: 52px;
 }
 
 @media (prefers-reduced-motion: reduce) {
