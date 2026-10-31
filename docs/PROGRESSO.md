@@ -10,7 +10,7 @@ Repositório recriado do zero em 2026-10-31.
   - [x] F1 Configurações › Agentes (lista, detectar de novo, adicionar/remover CLI)
   - [x] F2 Nova conversa com seletor (agentes "em breve" + Terminal) e Terminal na interface (xterm)
   - [x] B3 Fechar a janela: perguntar / segundo plano (bandeja) / fechar tudo
-  - [ ] F3 Configurações › Geral ("Ao fechar a janela")
+  - [x] F3 Configurações › Geral ("Ao fechar a janela")
   - [ ] E2E + merge (orquestrador)
 
 ## Decisões do dono
