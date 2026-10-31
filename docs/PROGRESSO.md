@@ -5,8 +5,8 @@ Repositório recriado do zero em 2026-10-31.
 ## Estado
 - **M0 (esqueleto)** — em andamento na branch `m0-esqueleto`.
   - [x] T0 Base do repositório (workspaces, TypeScript, Biome, pastas) — orquestrador
-  - [ ] B1 Contrato (schemas zod) — executor back
-  - [ ] F1 Tokens, fonte e componentes base — executor front
+  - [x] B1 Contrato (schemas zod) — executor back
+  - [x] F1 Tokens, fonte e componentes base — executor front
   - [ ] B2 Serviço: socket com streaming + SQLite com migrações — executor back
   - [ ] F2 Moldura vazia — executor front
   - [ ] B3 Ponte do preview web (HTTP + SSE) — executor back
@@ -30,3 +30,5 @@ Repositório recriado do zero em 2026-10-31.
 - Node 24 roda `.ts` direto (type stripping): testes e serviço em dev rodam sem build. Por isso o TS usa `erasableSyntaxOnly` (sem `enum`/`namespace`) e imports com extensão `.ts`.
 - TypeScript 7.0.2 (compilador nativo).
 - Electron 45.2.1 traz Node 24.22.1 com `node:sqlite`: o serviço pode rodar como `ELECTRON_RUN_AS_NODE=1` no app empacotado.
+- Tokens de cor vêm da "Direção A · Lua" do `karont.pen`. Só `--k-color-danger` (`#EF7B73`) não estava no design: proposta do orquestrador, ajustável.
+- Biome usa `"preset": "recommended"` (o `biome migrate` tinha trocado para `none`, o que desliga as regras).
