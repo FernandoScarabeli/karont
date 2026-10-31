@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, closeSync, lstatSync, openSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import type { JsonValue } from "@karont/contract";
+import type { JsonValue, RecentFolder } from "@karont/contract";
 
 export const migrations: { version: number; up: string }[] = [
   {
@@ -12,7 +12,13 @@ export const migrations: { version: number; up: string }[] = [
     version: 2,
     up: "CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, command TEXT NOT NULL, created_at TEXT NOT NULL) STRICT;",
   },
+  {
+    version: 3,
+    up: "CREATE TABLE recent_folders (path TEXT PRIMARY KEY, used_at TEXT NOT NULL) STRICT;",
+  },
 ];
+
+export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
 
 export type CustomAgentRecord = {
   id: string;
@@ -113,6 +119,23 @@ export function addCustomAgent(
 
 export function removeCustomAgent(db: DatabaseSync, id: string): boolean {
   return db.prepare("DELETE FROM agents WHERE id = ?").run(id).changes > 0;
+}
+
+export function recordRecentFolder(db: DatabaseSync, folder: RecentFolderRecord): void {
+  db.prepare("INSERT OR REPLACE INTO recent_folders (path, used_at) VALUES (?, ?)").run(
+    folder.path,
+    folder.usedAt,
+  );
+  db.exec(
+    "DELETE FROM recent_folders WHERE path NOT IN (SELECT path FROM recent_folders ORDER BY used_at DESC, rowid DESC LIMIT 50)",
+  );
+}
+
+export function listRecentFolderRecords(db: DatabaseSync): RecentFolderRecord[] {
+  const rows = db
+    .prepare("SELECT path, used_at FROM recent_folders ORDER BY used_at DESC, rowid DESC LIMIT 50")
+    .all() as { path: string; used_at: string }[];
+  return rows.map(({ path, used_at }) => ({ path, usedAt: used_at }));
 }
 
 function readUserVersion(db: DatabaseSync): number {

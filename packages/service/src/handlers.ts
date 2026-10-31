@@ -10,8 +10,9 @@ import {
 import type { AgentDetectionFs } from "./agents/detect.ts";
 import { AgentRegistry } from "./agents/registry.ts";
 import { DeltaCoalescer } from "./coalescer.ts";
-import { getSetting, setSetting } from "./db.ts";
+import { getSetting, recordRecentFolder, setSetting } from "./db.ts";
 import { ServiceError } from "./errors.ts";
+import { listRecentFolders, validateFolder } from "./folders.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
 
 export { ServiceError } from "./errors.ts";
@@ -89,10 +90,24 @@ export function createHandlers({
         return agentRegistry.add(request.params);
       case "agents.remove":
         return agentRegistry.remove(request.params.id);
+      case "folders.recent":
+        return listRecentFolders(db, homeDir);
+      case "folders.validate":
+        return validateFolder(request.params.path);
       case "terminals.list":
         return terminalManager.list();
-      case "terminals.open":
-        return terminalManager.open(request.params);
+      case "terminals.open": {
+        const result = await terminalManager.open(request.params);
+        recordRecentFolder(db, {
+          path: result.terminal.cwd,
+          usedAt: new Date().toISOString(),
+        });
+        await broadcast({
+          event: "folders.changed",
+          payload: await listRecentFolders(db, homeDir),
+        });
+        return result;
+      }
       case "terminals.attach":
         return terminalManager.attach(request.params.id);
       case "terminals.write":

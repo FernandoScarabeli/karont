@@ -15,8 +15,7 @@ const startupRetryWindowMs = 10_000;
 // canais do processo pai). Um serviço destacado herdaria todos e os seguraria por horas.
 // O Node não tem "closefrom" no spawn, então um bash mínimo fecha tudo acima de 2 e faz exec.
 // (O dash, /bin/sh do Ubuntu, não aceita descritores com dois dígitos.)
-const CLOSE_INHERITED_FDS_AND_EXEC =
-  'for p in /proc/$$/fd/*; do n=${p##*/}; [ "$n" -gt 2 ] 2>/dev/null && eval "exec $n>&-"; done; exec "$0" "$@"';
+const CLOSE_INHERITED_FDS_AND_EXEC = `for p in /proc/$$/fd/*; do n=\${p##*/}; [ "$n" -gt 2 ] 2>/dev/null && eval "exec $n>&-"; done; exec "$0" "$@"`;
 
 export function detachedServiceCommand(
   platform: NodeJS.Platform = process.platform,

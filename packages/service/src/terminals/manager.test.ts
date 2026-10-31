@@ -287,6 +287,25 @@ test("valida a pasta de trabalho e redimensiona terminal", async (context) => {
   await manager.close(terminal.id);
 });
 
+test("escreve o comando inicial no pty depois de criar o shell", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-terminal-command-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const created: FakePty[] = [];
+  const manager = new TerminalManager({
+    broadcast: async () => undefined,
+    ptyFactory: fakeFactory(created),
+    env: { SHELL: "/bin/bash" },
+    homeDir: root,
+    isExecutable: async () => true,
+  });
+
+  const command = "echo karont-$((2+3))";
+  const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24, command });
+  assert.deepEqual(created[0]?.writes, [`${command}\r`]);
+  assert.equal(terminal.title, "bash · ~");
+  await manager.close(terminal.id);
+});
+
 test("pty real abre shell, recebe entrada, redimensiona, reproduz e fecha", {
   skip: skipNative,
 }, async (context) => {

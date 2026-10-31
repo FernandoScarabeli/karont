@@ -7,6 +7,7 @@ import {
   settingKeySchema,
   terminalInfoSchema,
 } from "./methods.ts";
+import { isMethodName } from "./validate.ts";
 
 test("todos os métodos aceitam parâmetros válidos", () => {
   assert.equal(methods["system.ping"].params.safeParse({}).success, true);
@@ -89,6 +90,25 @@ test("métodos de terminal validam caminhos, dimensões e bytes UTF-8", () => {
   assert.equal(methods["terminals.list"].params.safeParse({}).success, true);
   assert.equal(methods["terminals.open"].params.safeParse({ cols: 80, rows: 24 }).success, true);
   assert.equal(
+    methods["terminals.open"].params.safeParse({
+      cols: 80,
+      rows: 24,
+      command: "echo uma linha\necho outra linha",
+    }).success,
+    true,
+  );
+  assert.equal(
+    methods["terminals.open"].params.safeParse({ cols: 80, rows: 24, command: "é".repeat(2_048) })
+      .success,
+    true,
+  );
+  for (const command of ["", "cmd\u0000arg", "x".repeat(4_097), "é".repeat(2_049)]) {
+    assert.equal(
+      methods["terminals.open"].params.safeParse({ cols: 80, rows: 24, command }).success,
+      false,
+    );
+  }
+  assert.equal(
     methods["terminals.open"].params.safeParse({ cwd: "/tmp", cols: 2, rows: 500 }).success,
     true,
   );
@@ -126,6 +146,23 @@ test("métodos de terminal validam caminhos, dimensões e bytes UTF-8", () => {
       exited: false,
     }).success,
     true,
+  );
+});
+
+test("folders.* valida caminhos e pickFolder não é método de requisição", () => {
+  assert.equal(isMethodName("folders.recent"), true);
+  assert.equal(isMethodName("folders.validate"), true);
+  assert.equal(isMethodName("pickFolder"), false);
+  assert.equal(methods["folders.recent"].params.safeParse({}).success, true);
+  assert.equal(methods["folders.validate"].params.safeParse({ path: "./projeto" }).success, true);
+  assert.equal(methods["folders.validate"].params.safeParse({ path: "" }).success, false);
+  assert.equal(
+    methods["folders.validate"].params.safeParse({ path: "x".repeat(4_097) }).success,
+    false,
+  );
+  assert.equal(
+    methods["folders.validate"].params.safeParse({ path: "/tmp\u0000x" }).success,
+    false,
   );
 });
 

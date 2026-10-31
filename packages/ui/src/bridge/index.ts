@@ -6,6 +6,8 @@ import {
   type NativeBridge,
   type NativeResult,
   type ParamsOf,
+  type PickFolderOptions,
+  type PickFolderResult,
   parseEvent,
   parseResult,
   type ResultOf,
@@ -87,6 +89,13 @@ function createNativeBridge(native: NativeBridge): KarontBridge {
           // Um consumidor não deve impedir a entrega a outros ouvintes.
         }
       });
+    },
+    async pickFolder(options?: PickFolderOptions): Promise<PickFolderResult> {
+      try {
+        return await native.pickFolder(options);
+      } catch {
+        return null;
+      }
     },
   };
 }

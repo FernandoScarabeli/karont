@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { terminalInfoSchema } from "./methods.ts";
+import { recentFolderSchema, terminalInfoSchema } from "./methods.ts";
 
 export const events = {
   "dev.streamTest.delta": z.strictObject({
@@ -29,6 +29,7 @@ export const events = {
   "terminals.changed": z.strictObject({
     terminals: z.array(terminalInfoSchema),
   }),
+  "folders.changed": z.strictObject({ folders: z.array(recentFolderSchema).max(8) }),
 } as const satisfies Record<string, z.ZodType>;
 
 export type EventName = keyof typeof events;
