@@ -1,86 +1,92 @@
-import { Bot, ChevronUp, PanelsTopLeft, Pencil, Plus, Settings, UserRound } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Bot, Settings, Workflow } from 'lucide-react';
 import type { useWorkspaceData } from './useWorkspaceData';
-import type { useWorkspaceForm } from './useWorkspaceForm';
 
-type Props = {
-  data: ReturnType<typeof useWorkspaceData>;
-  workspaceForm: ReturnType<typeof useWorkspaceForm>;
-};
+type Props = { data: ReturnType<typeof useWorkspaceData> };
 
-export function SidebarFooter({ data, workspaceForm }: Props) {
-  const { workspaces, workspace, home, navigation, setFormError, setPage } = data;
-  const { workspaceMenu, setWorkspaceMenu, workspaceName, setWorkspaceName, setWorkspaceDialog } =
-    workspaceForm;
+export function SidebarFooter({ data }: Props) {
+  const { setPage } = data;
+  const [userName, setUserName] = useState('Perfil local');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    void window.karont
+      .systemUser()
+      .then(({ name }) => {
+        if (active && name.trim()) setUserName(name.trim());
+      })
+      .catch(() => {
+        if (active) setUserName('Perfil local');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen]);
+
+  function openPage(page: 'settings' | 'agents' | 'automations') {
+    setMenuOpen(false);
+    setPage(page);
+  }
+
   return (
-    <footer className="k-sidebar-footer">
-      <div className="k-workspace-select">
-        <button
-          className="k-nav"
-          aria-expanded={workspaceMenu}
-          onClick={() => setWorkspaceMenu(!workspaceMenu)}
-        >
-          <PanelsTopLeft />
-          <span title={workspace?.name}>{workspace?.name ?? 'Workspace'}</span>
-          <ChevronUp size={14} />
-        </button>
-        {workspaceMenu && (
-          <div className="k-popover k-workspace-menu">
-            {workspaces.map((w) => (
-              <button
-                key={w.id}
-                onClick={() => {
-                  setWorkspaceMenu(false);
-                  void home(w.id);
-                }}
-              >
-                {w.name}
-                {w.id === navigation.workspaceId && <span>Atual</span>}
-              </button>
-            ))}
-            <button
-              onClick={() => {
-                setWorkspaceMenu(false);
-                setWorkspaceName('');
-                setFormError('');
-                setWorkspaceDialog('create');
-              }}
-            >
-              <Plus size={16} />
-              Criar workspace
-            </button>
-            {workspace && (
-              <button
-                onClick={() => {
-                  setWorkspaceMenu(false);
-                  setWorkspaceName(workspace.name);
-                  setFormError('');
-                  setWorkspaceDialog('rename');
-                }}
-              >
-                <Pencil size={16} />
-                Renomear workspace
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="k-profile">
-        <span className="k-avatar">
-          <UserRound size={15} />
+    <footer className="k-sidebar-footer ks-sidebar-footer">
+      <div className="ks-profile-row">
+        <span className="ks-avatar" aria-hidden="true">
+          {userName.slice(0, 1).toLocaleUpperCase() || 'P'}
         </span>
-        <span>Perfil local</span>
-        <button
-          className="k-icon"
-          title="Configurações e ferramentas"
-          aria-label="Configurações e ferramentas"
-          onClick={() => setPage('settings')}
-        >
-          <Settings />
-        </button>
-      </div>
-      <div className="k-provider" title="A API local ainda não fornece limites de uso do provedor">
-        <Bot size={14} />
-        <span>Limites de uso indisponíveis</span>
+        <span className="ks-profile-name" title={userName}>
+          {userName}
+        </span>
+        <div className="ks-profile-menu" ref={menuRef}>
+          <button
+            className="ks-icon-button ks-settings-button"
+            type="button"
+            title="Configurações e ferramentas"
+            aria-label="Configurações e ferramentas"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <Settings aria-hidden="true" />
+          </button>
+          {menuOpen && (
+            <div className="ks-settings-menu" role="menu" aria-label="Configurações e ferramentas">
+              <button type="button" role="menuitem" onClick={() => openPage('settings')}>
+                <Settings aria-hidden="true" />
+                Configurações e ferramentas
+              </button>
+              <button type="button" role="menuitem" onClick={() => openPage('agents')}>
+                <Bot aria-hidden="true" />
+                Agentes
+              </button>
+              <button type="button" role="menuitem" onClick={() => openPage('automations')}>
+                <Workflow aria-hidden="true" />
+                Automações
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </footer>
   );

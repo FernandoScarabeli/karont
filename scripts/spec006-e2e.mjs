@@ -211,7 +211,7 @@ try {
     title: 'SPEC-006 filtro residual — Outro projeto',
     state: 'review',
   });
-  await page.getByRole('button', { name: 'ToDo', exact: true }).click();
+  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
   const taskFilters = page.locator('.task-filters');
   await taskFilters
     .getByRole('combobox', { name: 'Projeto', exact: true })
@@ -369,7 +369,7 @@ try {
 
   result.stage = 'kanban-manual-command';
   const beforeAutomaticRunCount = (await request('runs.list', { limit: 100 })).length;
-  await page.getByRole('button', { name: 'ToDo', exact: true }).click();
+  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
   const filterProject = taskFilters.getByRole('combobox', { name: 'Projeto', exact: true });
   await filterProject.selectOption('project-a');
   const boardStartedAt = performance.now();
@@ -564,7 +564,7 @@ try {
 
   result.stage = 'task-update-history';
   await page.getByRole('button', { name: 'Início', exact: true }).click();
-  await page.getByRole('button', { name: 'ToDo', exact: true }).click();
+  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
   await page.getByRole('button', { name: 'Visão agregada', exact: true }).click();
   await taskFilters
     .getByRole('combobox', { name: 'Projeto', exact: true })
@@ -644,7 +644,7 @@ try {
   });
   assert.equal(activeRuns.length, 2);
   await page.getByRole('button', { name: 'Início', exact: true }).click();
-  await page.getByRole('button', { name: 'ToDo', exact: true }).click();
+  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
   await taskFilters
     .getByRole('combobox', { name: 'Projeto', exact: true })
     .selectOption('project-a');
@@ -736,7 +736,7 @@ try {
   const expectedProjectTaskCount = projectTaskCountBeforeMass + 102;
   assert.equal(allPageOne.items.length + allPageTwo.items.length, expectedProjectTaskCount);
   await page.getByRole('button', { name: 'Início', exact: true }).click();
-  await page.getByRole('button', { name: 'ToDo', exact: true }).click();
+  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
   await page.getByRole('button', { name: 'Visão agregada', exact: true }).click();
   await taskFilters.getByRole('combobox', { name: 'Estado', exact: true }).selectOption('');
   await taskFilters.getByRole('combobox', { name: 'Responsável', exact: true }).selectOption('');

@@ -5,9 +5,9 @@ import type { useWorkspaceData } from './useWorkspaceData';
 type WorkspaceData = ReturnType<typeof useWorkspaceData>;
 
 export function useWorkspaceForm(data: WorkspaceData) {
-  const [workspaceMenu, setWorkspaceMenu] = useState(false);
   const [workspaceDialog, setWorkspaceDialog] = useState<'create' | 'rename'>();
   const [workspaceName, setWorkspaceName] = useState('');
+  const [workspaceTargetId, setWorkspaceTargetId] = useState<string>();
 
   async function saveWorkspace(event: FormEvent) {
     event.preventDefault();
@@ -15,12 +15,18 @@ export function useWorkspaceForm(data: WorkspaceData) {
     data.setBusy(true);
     data.setFormError('');
     try {
+      const targetId = workspaceTargetId ?? data.navigation.workspaceId;
       const result =
-        workspaceDialog === 'rename' && data.navigation.workspaceId
-          ? await window.karont.renameWorkspace(data.navigation.workspaceId, workspaceName)
+        workspaceDialog === 'rename' && targetId
+          ? await window.karont.renameWorkspace(targetId, workspaceName)
           : await window.karont.createWorkspace(workspaceName);
-      data.setWorkspaces((old) => [...old.filter((w) => w.id !== result.id), result]);
+      data.setWorkspaces((old) =>
+        old.some((workspace) => workspace.id === result.id)
+          ? old.map((workspace) => (workspace.id === result.id ? result : workspace))
+          : [...old, result],
+      );
       setWorkspaceDialog(undefined);
+      setWorkspaceTargetId(undefined);
       await data.home(result.id);
     } catch {
       data.setFormError('Não foi possível salvar o workspace. Confira o nome e tente novamente.');
@@ -30,12 +36,11 @@ export function useWorkspaceForm(data: WorkspaceData) {
   }
 
   return {
-    workspaceMenu,
-    setWorkspaceMenu,
     workspaceDialog,
     setWorkspaceDialog,
     workspaceName,
     setWorkspaceName,
+    setWorkspaceTargetId,
     saveWorkspace,
   };
 }

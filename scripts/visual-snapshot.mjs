@@ -312,7 +312,7 @@ try {
   await page.getByRole('heading', { name: 'Alterações desta execução' }).scrollIntoViewIfNeeded();
   await capture(page, 'chat-diff');
 
-  await page.getByRole('button', { name: 'ToDo', exact: true }).click();
+  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
   await page.getByRole('button', { name: 'Abrir tarefa Tarefa a fazer', exact: true }).waitFor();
   await capture(page, 'tarefas');
   await page

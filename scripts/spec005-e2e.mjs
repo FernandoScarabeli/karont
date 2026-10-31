@@ -226,9 +226,7 @@ try {
   const initialWorkspace = initialWorkspaces.items[0];
   assert.ok(initialWorkspace);
   const workspacesBeforeCancel = initialWorkspaces.items.length;
-  await page
-    .getByRole('button', { name: initialWorkspace.name, exact: true, expanded: false })
-    .click();
+  await page.getByRole('button', { name: initialWorkspace.name, exact: true }).click();
   await page.getByRole('button', { name: 'Criar workspace', exact: true }).click();
   let workspaceDialog = page.getByRole('dialog', { name: 'Criar workspace', exact: true });
   await workspaceDialog
@@ -241,9 +239,7 @@ try {
     workspacesBeforeCancel,
   );
   result.stage = 'workspace-create';
-  await page
-    .getByRole('button', { name: initialWorkspace.name, exact: true, expanded: false })
-    .click();
+  await page.getByRole('button', { name: initialWorkspace.name, exact: true }).click();
   await page.getByRole('button', { name: 'Criar workspace', exact: true }).click();
   workspaceDialog = page.getByRole('dialog', { name: 'Criar workspace', exact: true });
   await workspaceDialog
@@ -254,7 +250,10 @@ try {
     .press('Enter');
   await page.getByRole('button', { name: 'Workspace SPEC-005', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Workspace SPEC-005', exact: true }).click();
-  await page.getByRole('button', { name: 'Renomear workspace', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Workspace SPEC-005', exact: true })
+    .click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Renomear workspace', exact: true }).click();
   result.stage = 'workspace-rename';
   const renameDialog = page.getByRole('dialog', { name: 'Renomear workspace', exact: true });
   await renameDialog
@@ -387,7 +386,7 @@ try {
     'cancelamento não grava; raiz Git inválida e raiz indisponível recusadas; diretório com espaços e ícone persistidos; projeto criado sem Dot e sem confirmação nativa',
   );
 
-  await page.getByRole('button', { name: workspace.name, exact: true, expanded: false }).click();
+  await page.getByRole('button', { name: workspace.name, exact: true }).click();
   await page.getByRole('button', { name: 'Criar workspace', exact: true }).click();
   workspaceDialog = page.getByRole('dialog', { name: 'Criar workspace', exact: true });
   await workspaceDialog
@@ -603,7 +602,7 @@ try {
   const freeConversations = () =>
     page
       .locator('section.k-group')
-      .filter({ has: page.getByRole('heading', { name: 'Conversas livres', exact: true }) });
+      .filter({ has: page.getByRole('heading', { name: 'Conversas', exact: true }) });
   await page.getByRole('button', { name: 'Nova conversa livre', exact: true }).click();
   await page.getByRole('button', { name: 'Renomear conversa', exact: true }).click();
   await page

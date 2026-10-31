@@ -8,7 +8,9 @@ export const require = createRequire(import.meta.url);
 export const { Client } = require('../dist/local/client.cjs');
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 export async function openDiagnostics(page) {
+  // A engrenagem do rodapé abre um menu; o item de mesmo nome leva à página.
   await page.getByRole('button', { name: 'Configurações e ferramentas', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Configurações e ferramentas', exact: true }).click();
   await page.getByText('Daemon conectado', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Diagnóstico e laboratório', exact: true }).click();
 }

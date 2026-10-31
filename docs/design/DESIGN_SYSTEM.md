@@ -2,7 +2,7 @@
 
 ## Direção A · Lua — decisão validada em 2026-10-30
 
-A direção segue o estilo True-black flat da skill design-taste-frontend, com um passe de unslop: superfícies em grafite quase preto, profundidade por degraus e cor apenas quando carrega significado. A forma vem da marca lua sobre a água, registrada em [lua-reflexo-estudo-01.png](brand/lua-reflexo-estudo-01.png). Os tokens registram a decisão visual aprovada; ainda não foram aplicados às telas. Esta direção substitui a base de 2026-10-25 conforme cada tela migrar.
+A direção segue o estilo True-black flat da skill design-taste-frontend: superfícies em grafite quase preto, profundidade por degraus e cor apenas quando carrega significado. A forma vem da marca lua sobre a água, registrada em [lua-reflexo-estudo-01.png](brand/lua-reflexo-estudo-01.png). A moldura foi implementada; as páginas internas continuam migrando por tarefa. Esta direção substitui a base de 2026-10-25 conforme cada tela migrar.
 
 ### Cores semânticas
 
@@ -85,6 +85,66 @@ A direção segue o estilo True-black flat da skill design-taste-frontend, com u
 - `--k-text-3` não atinge 4,5:1 sobre `--k-raised`; nesse fundo, use `--k-text-2`.
 - O foco por teclado usa `--k-focus` em anel de 2 px com offset de 2 px.
 
+### Moldura (implementado)
+
+A barra do topo tem 48 px (`--k-shell-topbar-height`), fundo `--k-chrome` e linha inferior `--k-line`. A marca usa o arquivo `assets/karont-lua.png` em 24 × 24 px, raio 6 px, o wordmark “karont” em Geist Sans 15/600 e o controle de recolher/mostrar sidebar. A área da marca mantém 232 px mesmo quando a sidebar está recolhida.
+
+As abas ficam alinhadas ao rodapé da barra: início com largura 40 px, abas de workspace com altura 40 px e até 160 px de nome, e botão de criação com largura 32 px. Workspaces são ordenados por `createdAt`. A aba atual usa fundo `--k-page`, linha `--k-line-strong` (`#2E2E30`) e peso 500; as abas inativas usam `--k-text-2` e hover `--k-card`. A aba ativa não tem linha inferior e recebe as curvas inferiores de 8 px para se unir à página. Clique direito ou Menu/Shift+F10 abre o menu de renomear workspace; Esc e clique fora fecham o menu. As abas excedentes rolam horizontalmente, sem barra visível.
+
+A busca ocupa 260 × 32 px e pode encolher até 200 px. O atalho Ctrl+K/Cmd+K foca o campo; Esc limpa e desfoca. A busca também filtra os Projetos e Chats visíveis na sidebar. Chats recentes de todos os workspaces aparecem em um painel de 360 px, limitado à janela, com fundo `--k-card`, linha `--k-line`, raio `--k-radius-card`, sombra `--k-shadow-float` e camada `--k-z-menu`; o cabeçalho preserva os nomes “Recentes/Resultados · todos os workspaces”. A lista aceita as setas ↑/↓ e Tab; clicar em um resultado abre o Chat e fecha o painel.
+
+A sidebar tem 232 px, fundo `--k-chrome`, linha direita `--k-line` e padding de 16 × 10 px. As linhas de navegação usam 32 px, texto de 14 px e ícones de 16 px. Grupos têm intervalo de 20 px; o cabeçalho mede 28 px e usa texto 12/500. “Favoritos” só aparece quando existe favorito. Conversas de Projeto começam alinhadas 10 px depois do início do nome do Projeto. Uma conversa atual recebe fundo `--k-raised`, peso 500 e `aria-current="page"`.
+
+O rodapé contém somente a linha do usuário, separada por `--k-line`, com 8 px antes, altura 44 px, avatar redondo de 28 px e engrenagem de 28 px. O nome vem de `window.karont.systemUser()`; durante a carga ou em caso de falha, aparece “Perfil local” e a inicial “P”. O menu da engrenagem conserva Configurações e ferramentas e abre Agentes e Automações.
+
+`LiveMoon` desenha a marca de Run viva em HTML: círculo de 7 px e reflexos de 10 × 1,5 px e 6 × 1,5 px, com intervalo de 2 px e 60% de opacidade no segundo reflexo. Usa somente `--k-live`, inclui `role="img"`, nome acessível e título. `AttentionDot` é um círculo de 6 px com `--k-attention` e rótulo “Precisa de você”. Runs `running`/`queued` e aprovações pendentes ou Runs `recovery_needed` são carregados por `runs(100)` e `approvals()`, associados a workspaces pelo Projeto e atualizados por eventos, sem polling. Em erro, o hook guarda a falha e não exibe marca. A lua aparece também à direita de conversas com Run `running`/`queued`.
+
+#### Tokens da moldura
+
+| Token | Valor | Regra de uso |
+| --- | --- | --- |
+| `--k-line-strong` | `#2E2E30` | Borda da aba ativa |
+| `--k-focus-width` / `--k-focus-offset` | `2px` / `2px` | Foco visível |
+| `--k-shell-topbar-height` | `48px` | Altura da barra superior |
+| `--k-shell-viewport-height` / `--k-shell-viewport-width` | `100dvh` / `100vw` | Área útil da janela para o shell e popovers |
+| `--k-shell-brand-padding-x` / `--k-shell-brand-gap` | `18px` / `10px` | Marca |
+| `--k-shell-mark-size` / `--k-shell-mark-radius` | `24px` / `6px` | Símbolo da marca |
+| `--k-shell-icon-button-size` | `28px` | Controles de ícone da moldura |
+| `--k-shell-tab-height` / `--k-shell-tab-padding-x` / `--k-shell-tab-radius` | `40px` / `14px` / `10px` | Abas de workspace |
+| `--k-shell-tabs-padding-left` / `--k-shell-tabs-gap` | `16px` / `2px` | Área de abas |
+| `--k-shell-tab-ear-size` | `8px` | Curvas inferiores da aba ativa |
+| `--k-shell-tab-home-width` / `--k-shell-tab-plus-width` | `40px` / `32px` | Início e criar workspace |
+| `--k-shell-tab-name-max-width` | `160px` | Limite do nome da aba |
+| `--k-shell-search-width` / `--k-shell-search-min-width` | `260px` / `200px` | Campo de busca |
+| `--k-shell-search-height` / `--k-shell-search-padding-x` | `32px` / `12px` | Campo de busca |
+| `--k-shell-search-icon-size` | `14px` | Ícone de busca |
+| `--k-shell-search-panel-width` / `--k-shell-search-panel-max-height` | `360px` / `480px` | Limite do painel de resultados |
+| `--k-shell-search-panel-viewport-max-height` | `60vh` | Limite responsivo do painel de resultados |
+| `--k-shell-search-panel-gap` / `--k-shell-search-panel-inset` | `4px` / `16px` | Painel de resultados |
+| `--k-shell-sidebar-padding-y` / `--k-shell-sidebar-padding-x` | `16px` / `10px` | Sidebar |
+| `--k-shell-sidebar-gap` / `--k-shell-sidebar-group-gap` | `2px` / `20px` | Sidebar e grupos |
+| `--k-shell-sidebar-heading-height` / `--k-shell-sidebar-heading-gap` | `28px` / `6px` | Cabeçalho de grupo |
+| `--k-shell-sidebar-empty-size` | `12px` | Estado vazio da sidebar |
+| `--k-shell-profile-padding-x` / `--k-shell-profile-height` | `8px` / `44px` | Linha do usuário |
+| `--k-shell-profile-top-padding` / `--k-shell-profile-gap` | `8px` / `10px` | Rodapé do usuário |
+| `--k-shell-footer-border-width` / `--k-shell-line-width` | `1px` / `1px` | Hairlines da moldura |
+| `--k-shell-page-radius` | `12px` | Canto superior esquerdo da página |
+| `--k-shell-chat-indent` | `25px` | Alinhamento das conversas de Projeto |
+| `--k-shell-settings-menu-width` / `--k-shell-popover-padding` | `228px` / `6px` | Menus da moldura |
+| `--k-shell-popover-row-height` / `--k-shell-popover-row-gap` | `32px` / `8px` | Itens de menu |
+| `--k-shell-brand-font-size` / `--k-shell-chat-font-size` | `15px` / `13px` | Wordmark e nomes de conversa |
+| `--k-live-moon-width` / `--k-live-moon-height` | `12px` / `14px` | Caixa da lua viva |
+| `--k-live-moon-orb-size` | `7px` | Círculo da lua viva |
+| `--k-live-moon-long-width` / `--k-live-moon-short-width` | `10px` / `6px` | Reflexos da lua viva |
+| `--k-live-moon-bar-height` / `--k-live-moon-bar-radius` | `1.5px` / `1px` | Reflexos da lua viva |
+| `--k-live-moon-gap` / `--k-live-moon-reflection-opacity` | `2px` / `0.6` | Espaço e opacidade do reflexo menor |
+| `--k-live-moon-line-height` | `0` | Evita altura de linha extra na marca HTML |
+| `--k-attention-dot-size` | `6px` | Ponto de atenção |
+
+Os tokens existentes continuam definidos em `tokens.css`; `--k-topbar-height: 52px` fica reservado às superfícies ainda não migradas. A nova moldura usa `--k-shell-topbar-height: 48px`. O foco usa `--k-focus` a 2 px com offset de 2 px. `prefers-reduced-motion` remove transições e animações. A janela mínima prevista é 840 × 620 px: sidebar permanece em 232 px, as abas rolam e a busca não passa abaixo de 200 px.
+
+Agentes e Automações no menu da engrenagem, assim como a busca em painel flutuante, são decisões do orquestrador para esta tarefa e precisam ser validadas com o usuário.
+
 ### Contraste WCAG
 
 Contraste calculado pela fórmula WCAG para luminância relativa sRGB: `(Lmais clara + 0,05) / (Lmais escura + 0,05)`. Os valores estão arredondados a duas casas; AA para texto normal exige pelo menos 4,5:1.
@@ -108,7 +168,6 @@ Contraste calculado pela fórmula WCAG para luminância relativa sRGB: `(Lmais c
 ### Ainda não implementado / ideias futuras
 
 - **Nova home:** mostrar Runs em andamento via `runs.list`, pedido de permissão para desfazer via `approvals.decide`, ação Retomar, recentes com o Dot e contagens de tarefas. São capacidades a implementar nas telas, não parte desta tarefa de tokens.
-- **Bloco de usuário no rodapé da sidebar:** inicial, nome e engrenagem. O nome precisa de uma fonte real, como o usuário do sistema operacional, o que exige uma tarefa própria de preload/IPC. Foto só aparece se o usuário escolher uma imagem local.
 - **Uso restante por Dot no rodapé:** ainda não há fonte de dados; a API local não fornece esse dado e o app não pode ler credenciais das CLIs. É necessária uma spec antes de qualquer código.
 
 ---
