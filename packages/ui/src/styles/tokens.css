@@ -19,6 +19,8 @@
   --k-color-focus: #7db4e0;
   --k-color-brand: #f3eee3;
   --k-color-ok: #6fcf97;
+  --k-color-dialog-backdrop: rgb(0 0 0 / 72%);
+  --k-shadow-dialog: 0 var(--k-space-8) var(--k-space-10) rgb(0 0 0 / 32%);
 
   --k-font-sans: "Geist Sans", system-ui, sans-serif;
   --k-font-mono: "Geist Mono", ui-monospace, monospace;
@@ -96,6 +98,11 @@
   --k-service-footer-gap: 4px;
   --k-empty-state-gap: 8px;
   --k-empty-state-max-width: 360px;
+  --k-dialog-width-sm: 420px;
+  --k-dialog-width-md: 520px;
+  --k-settings-nav-width: 160px;
+  --k-settings-content-max-width: 960px;
+  --k-settings-prose-width: 68ch;
 }
 
 @media (prefers-reduced-motion: reduce) {

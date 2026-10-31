@@ -2,10 +2,13 @@ import { ListTodo, Plus, Settings, SquarePen } from "lucide-react";
 import { Button } from "../components/Button/Button.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { t } from "../i18n/pt-BR.ts";
+import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { ServiceStatus } from "./ServiceStatus.tsx";
 import styles from "./Sidebar.module.css";
 
 export function Sidebar() {
+  const { navigate, view } = useNavigation();
+
   return (
     <aside aria-label={t.shell.sidebar} className={styles.sidebar}>
       <nav aria-label={t.shell.primaryNavigation} className={styles.navigation}>
@@ -66,10 +69,11 @@ export function Sidebar() {
       <footer className={styles.footer}>
         <ServiceStatus />
         <IconButton
-          aria-description={t.shell.availableSoon}
-          disabled
+          aria-current={view.name === "settings" ? "page" : undefined}
+          className={styles.settingsButton}
           icon={<Settings aria-hidden="true" size={16} strokeWidth={1.75} />}
           label={t.shell.settings}
+          onClick={() => navigate({ name: "settings", section: "agents" })}
           size="sm"
         />
       </footer>
