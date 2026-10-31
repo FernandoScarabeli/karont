@@ -86,13 +86,14 @@ export class TerminalManager {
     cwd?: string;
     cols: number;
     rows: number;
+    command?: string;
   }): Promise<{ terminal: TerminalInfo }> {
     validateSize(params.cols, params.rows);
     if (this.#terminals.size >= MAX_TERMINALS) {
       throw new ServiceError("unavailable", "O serviço já está com 16 terminais abertos.");
     }
 
-    const cwd = params.cwd ?? this.#homeDir;
+    const cwd = path.resolve(params.cwd ?? this.#homeDir);
     if (!path.isAbsolute(cwd) || cwd.length > 4_096) {
       throw new ServiceError(
         "invalid_request",
@@ -107,6 +108,12 @@ export class TerminalManager {
     }
     if (!cwdInfo.isDirectory()) {
       throw new ServiceError("invalid_request", "A pasta do terminal não é um diretório.");
+    }
+    if (params.command !== undefined) {
+      const commandBytes = Buffer.byteLength(params.command, "utf8");
+      if (commandBytes < 1 || commandBytes > 4_096 || params.command.includes("\u0000")) {
+        throw new ServiceError("invalid_request", "O comando inicial do terminal é inválido.");
+      }
     }
 
     const shell = await this.#selectShell();
@@ -182,6 +189,22 @@ export class TerminalManager {
     pty.onExit(({ exitCode, signal }) => {
       void this.#handleExit(terminal, exitCode, signal);
     });
+    if (params.command !== undefined) {
+      try {
+        pty.write(`${params.command}\r`);
+      } catch {
+        try {
+          pty.kill("SIGHUP");
+        } catch {
+          // O processo pode ter encerrado antes do envio do comando.
+        }
+        this.#terminals.delete(id);
+        throw new ServiceError(
+          "unavailable",
+          "Não foi possível enviar o comando inicial ao shell.",
+        );
+      }
+    }
     await this.#emitChanged();
     return { terminal: { ...info } };
   }

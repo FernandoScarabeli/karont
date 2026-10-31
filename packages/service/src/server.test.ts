@@ -350,6 +350,38 @@ test("dois clientes recebem toda a saída do terminal apesar de um pausar a leit
   }
 });
 
+test("terminals.open executa o comando inicial no shell real", { skip }, async () => {
+  const paths = await testPaths();
+  const root = path.dirname(paths.runtimeDir);
+  const service = await startService({
+    paths,
+    dev: false,
+    homeDir: root,
+    env: { ...process.env, SHELL: "/bin/sh" },
+  });
+  try {
+    const client = await connectService({ paths, timeoutMs: 3_000 });
+    const output: string[] = [];
+    const removeListener = client.onEvent((event) => {
+      if (event.event === "terminals.output") output.push(event.payload.data);
+    });
+    try {
+      await client.request("terminals.open", {
+        cwd: root,
+        cols: 80,
+        rows: 24,
+        command: "echo karont-$((2+3))",
+      });
+      await waitUntil(() => output.join("").includes("karont-5"));
+    } finally {
+      removeListener();
+      client.close();
+    }
+  } finally {
+    await service.close();
+  }
+});
+
 test("service.shutdown responde, fecha os terminais e injeta a saída do processo", {
   skip,
 }, async () => {

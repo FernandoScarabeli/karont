@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
-import { access, chmod, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { type AnyEvent, type ParsedRequest, parseRequest } from "@karont/contract";
 import type { AgentDetectionFs } from "./agents/detect.ts";
-import { openDatabase } from "./db.ts";
+import { openDatabase, recordRecentFolder } from "./db.ts";
 import type { HandlerConnection } from "./handlers.ts";
 import { createHandlers, ServiceError } from "./handlers.ts";
+import type { TerminalPty } from "./terminals/manager.ts";
 import { createFakeCliDir } from "./testing/fake-clis.ts";
 
 function request(method: string, params: unknown): ParsedRequest {
@@ -261,6 +262,149 @@ test("agents.add valida CLIs e agents.list mantém catálogo antes das personali
   });
   db.close();
 });
+
+test("folders.validate normaliza caminho e distingue diretório, arquivo e inexistente", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-folders-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "projeto");
+  const file = path.join(root, "arquivo.txt");
+  await mkdir(directory);
+  await writeFile(file, "conteúdo");
+  const db = openDatabase(path.join(root, "karont.db"));
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    env: { PATH: "" },
+    homeDir: root,
+  });
+  const conn = connection([]);
+
+  assert.deepEqual(
+    await handlers.handle(
+      request("folders.validate", { path: path.join(root, "projeto", "..", "projeto") }),
+      conn,
+    ),
+    { path: directory, exists: true, isDirectory: true },
+  );
+  assert.deepEqual(await handlers.handle(request("folders.validate", { path: file }), conn), {
+    path: file,
+    exists: true,
+    isDirectory: false,
+  });
+  assert.deepEqual(
+    await handlers.handle(request("folders.validate", { path: path.join(root, "apagada") }), conn),
+    { path: path.join(root, "apagada"), exists: false, isDirectory: false },
+  );
+  db.close();
+});
+
+test("folders.recent ordena, limita a oito e oculta pastas que não existem", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-recent-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const homeDir = path.join(root, "home");
+  await mkdir(homeDir);
+  const validFolders: string[] = [];
+  for (let index = 0; index < 9; index += 1) {
+    const folder = path.join(root, `projeto-${index}`);
+    await mkdir(folder);
+    validFolders.push(folder);
+  }
+  validFolders.push(homeDir);
+  const db = openDatabase(path.join(root, "karont.db"));
+  for (const [index, folder] of validFolders.entries()) {
+    recordRecentFolder(db, {
+      path: folder,
+      usedAt: `2026-01-01T00:${String(index).padStart(2, "0")}:00.000Z`,
+    });
+  }
+  recordRecentFolder(db, {
+    path: path.join(root, "apagada"),
+    usedAt: "2026-01-01T01:00:00.000Z",
+  });
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    env: { PATH: "" },
+    homeDir,
+  });
+
+  const result = (await handlers.handle(request("folders.recent", {}), connection([]))) as {
+    folders: { path: string; name: string; usedAt: string }[];
+  };
+  assert.equal(result.folders.length, 8);
+  assert.equal(
+    result.folders.some((folder) => folder.path.endsWith("apagada")),
+    false,
+  );
+  assert.deepEqual(
+    result.folders.map((folder) => folder.usedAt),
+    [...result.folders.map((folder) => folder.usedAt)].sort().reverse(),
+  );
+  assert.equal(result.folders.find((folder) => folder.path === homeDir)?.name, "~");
+  db.close();
+});
+
+test("terminals.open armazena a pasta e emite folders.changed", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-open-recent-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const emitted: AnyEvent[] = [];
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void emitted.push(event),
+    ptyFactory: () => new TestPty(),
+    env: { SHELL: "/bin/bash" },
+    homeDir: root,
+  });
+
+  await handlers.handle(
+    request("terminals.open", { cwd: root, cols: 80, rows: 24 }),
+    connection([]),
+  );
+  const saved = db.prepare("SELECT path, used_at FROM recent_folders WHERE path = ?").get(root) as
+    | { path: string; used_at: string }
+    | undefined;
+  assert.equal(saved?.path, root);
+  assert.equal(Number.isNaN(Date.parse(saved?.used_at ?? "")), false);
+  const changed = emitted.find((event) => event.event === "folders.changed");
+  assert.ok(changed);
+  assert.deepEqual(changed.payload.folders[0], {
+    path: root,
+    name: "~",
+    usedAt: saved?.used_at,
+  });
+  await handlers.closeTerminals();
+  db.close();
+});
+
+class TestPty implements TerminalPty {
+  readonly #exitListeners: Array<(event: { exitCode: number; signal?: number }) => void> = [];
+
+  onData(_listener: (data: string) => void): { dispose(): void } {
+    return { dispose: () => undefined };
+  }
+
+  onExit(listener: (event: { exitCode: number; signal?: number }) => void): { dispose(): void } {
+    this.#exitListeners.push(listener);
+    return { dispose: () => undefined };
+  }
+
+  write(_data: string): void {}
+  resize(_cols: number, _rows: number): void {}
+  pause(): void {}
+  resume(): void {}
+
+  kill(): void {
+    for (const listener of this.#exitListeners) listener({ exitCode: 0, signal: 1 });
+  }
+}
 
 function tempFs(allowedRoots: string[]): AgentDetectionFs {
   const roots = allowedRoots.map((allowedRoot) => path.resolve(allowedRoot));
