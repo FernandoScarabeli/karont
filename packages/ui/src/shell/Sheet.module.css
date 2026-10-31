@@ -19,7 +19,7 @@
   margin: 0;
   color: var(--k-color-text-primary);
   font-family: var(--k-font-brand);
-  font-size: var(--k-text-32);
+  font-size: var(--k-text-28);
   font-weight: var(--k-weight-brand);
   line-height: var(--k-leading-tight);
 }

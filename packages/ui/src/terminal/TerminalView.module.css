@@ -22,21 +22,51 @@
 .headingGroup {
   display: flex;
   min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--k-space-4);
+  gap: var(--k-space-3);
+}
+
+.headerIcon {
+  flex: 0 0 auto;
+  color: var(--k-color-text-secondary);
 }
 
 .title {
+  display: inline-flex;
   min-width: 0;
+  align-items: baseline;
+  gap: var(--k-space-2);
   margin: 0;
   overflow: hidden;
   color: var(--k-color-text-primary);
-  font-family: var(--k-font-mono);
+  font-family: var(--k-font-sans);
   font-size: var(--k-text-14);
-  font-weight: var(--k-weight-medium);
+  font-weight: var(--k-weight-regular);
   line-height: var(--k-leading-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.shellName {
+  flex: 0 0 auto;
+  font-weight: var(--k-weight-semibold);
+}
+
+.titleSeparator {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+}
+
+.folderTitle {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--k-color-text-muted);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-regular);
+  text-overflow: ellipsis;
 }
 
 .state {
@@ -47,6 +77,13 @@
   margin: 0;
   font-size: var(--k-text-12);
   line-height: var(--k-leading-normal);
+}
+
+.actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--k-space-2);
 }
 
 .runningDot {

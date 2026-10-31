@@ -25,8 +25,8 @@
 
   --k-font-sans: "Geist Sans", system-ui, sans-serif;
   --k-font-mono: "Geist Mono", ui-monospace, monospace;
-  --k-font-brand: "Instrument Serif", Georgia, serif;
-  --k-weight-brand: 400;
+  --k-font-brand: "Sora Variable", var(--k-font-sans);
+  --k-weight-brand: 600;
 
   --k-text-11: 11px;
   --k-text-12: 12px;
@@ -34,6 +34,7 @@
   --k-text-14: 14px;
   --k-text-15: 15px;
   --k-text-16: 16px;
+  --k-text-17: 17px;
   --k-text-20: 20px;
   --k-text-24: 24px;
   --k-text-28: 28px;
@@ -107,6 +108,9 @@
   --k-new-conversation-width: 760px;
   --k-new-conversation-prompt-height: 180px;
   --k-terminal-header-height: 52px;
+  --k-composer-textarea-min-height: 56px;
+  --k-composer-textarea-max-height: 224px;
+  --k-composer-submit-size: 36px;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -26,7 +26,7 @@ const palette = [
   { token: "--k-color-focus", value: "#F3EEE3" },
 ];
 
-const textSizes = [11, 12, 13, 14, 15, 16, 24, 28] as const;
+const textSizes = [11, 12, 13, 14, 15, 16, 17, 24, 28] as const;
 const buttonVariants: ButtonVariant[] = ["primary", "secondary", "ghost", "danger"];
 const buttonSizes: ButtonSize[] = ["sm", "md", "lg"];
 const sizeNames: Record<ButtonSize, string> = {
@@ -62,6 +62,14 @@ export function Showcase() {
         </header>
 
         <div className={styles.sections}>
+          <section className={styles.section}>
+            <h2 className={styles.title}>Marca e títulos</h2>
+            <div className={styles.brandSamples}>
+              <span className={styles.brandTitle}>Nova conversa</span>
+              <span className={styles.brandWordmark}>karont</span>
+            </div>
+          </section>
+
           <section className={styles.section}>
             <h2 className={styles.title}>Paleta de cores</h2>
             <ul className={styles.palette}>
