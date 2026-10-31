@@ -9,9 +9,9 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@fontsource-variable/sora": "5.3.0",
     "@fontsource/geist-mono": "5.3.0",
     "@fontsource/geist-sans": "5.3.0",
-    "@fontsource/instrument-serif": "5.3.0",
     "@karont/contract": "0.0.0",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",

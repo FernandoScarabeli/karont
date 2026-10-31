@@ -11,10 +11,10 @@ Repositório recriado do zero em 2026-10-31.
   - [x] F2 Nova conversa com seletor (agentes "em breve" + Terminal) e Terminal na interface (xterm)
   - [x] B3 Fechar a janela: perguntar / segundo plano (bandeja) / fechar tudo
   - [x] F3 Configurações › Geral ("Ao fechar a janela")
-  - [ ] B4 Escolher pasta (diálogo nativo), pastas recentes, terminal com comando inicial
+  - [x] B4 Escolher pasta (diálogo nativo), pastas recentes, terminal com comando inicial
   - [ ] F4 Campo de mensagem único (composer) + botão de pasta + cabeçalho do terminal
   - [ ] F5 Conversas lado a lado (dividir, redimensionar, arrastar para os cantos, layout salvo)
-  - [ ] Fonte de títulos no lugar da Instrument Serif (escolha do dono)
+  - [ ] Fonte de títulos: **Sora** no lugar da Instrument Serif (entra no F4)
   - [ ] E2E + PR (orquestrador)
 
 ## Decisões do dono
@@ -32,7 +32,7 @@ Repositório recriado do zero em 2026-10-31.
 6. `lucide-react` aprovado para ícones (2026-10-31). Motivo: o design do `karont.pen` já usa os ícones Lucide; são SVGs locais.
 7. Fonte não fica presa só à Geist: pode haver uma segunda fonte (ex.: títulos/marca), escolhida pelo dono (2026-10-31).
 8. Cor de marca: o padrão é o **marfim** (`#F3EEE3`, "branco papel"), e a pessoa escolhe outra cor de destaque numa lista pronta (aprovado em 2026-10-31). Lista: marfim `#F3EEE3`, magenta `#FF4F8B`, turquesa `#2DD4C4`, lima `#C6F135`, azul elétrico `#5B8CFF`, coral `#FF7A59` (todas com contraste AA com texto `#0F0F10` e sobre o fundo). A escolha fica salva em `settings` e a tela entra no M5. No M0 basta o token `--k-color-brand` ser único e trocável. Estados nunca dependem só da cor (sempre texto ou ícone junto).
-9. Segunda fonte: **Instrument Serif** na marca e nos títulos grandes; o resto em Geist (2026-10-31). Dependência `@fontsource/instrument-serif` aprovada.
+9. Segunda fonte: **Sora** na marca e nos títulos grandes; o resto em Geist (escolhida em 2026-10-31, no lugar da Instrument Serif, que o dono não gostou). Dependência `@fontsource-variable/sora` aprovada; `@fontsource/instrument-serif` removida.
 
 10. Fluxo de trabalho: o orquestrador só coordena; todo código é feito pelo Codex `gpt-6-luna` em `xhigh` (2026-10-31).
 11. `main` protegida: só por PR com o CI "Checagens e testes" verde; sem force push nem exclusão; vale para admins (2026-10-31).
