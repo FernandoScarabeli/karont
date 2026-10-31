@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { TerminalEvent } from '../../../../packages/contracts/src';
 import { userDataPath } from './bootstrap';
 import { NotificationCenter } from './notifications';
-import { client, pendingResumes, runStates, state } from './state';
+import { client, pendingResumes, runStates, sendToRenderer, state } from './state';
 import { openWindow } from './window';
 import { updateTray } from './tray';
 
@@ -38,7 +38,7 @@ export function notify(key: string, title: string, runId?: string) {
   notifications.notify(key, title, () => {
     state.targetRun = runId;
     void openWindow().then(() => {
-      if (runId) state.win?.webContents.send('karont:focus-run', runId);
+      if (runId) sendToRenderer('karont:focus-run', runId);
     });
   });
 }
@@ -81,5 +81,5 @@ client.onEvent((event: TerminalEvent) => {
       event.approval.status === 'applied' ? 'Rollback concluído' : 'Rollback falhou',
       event.approval.runId,
     );
-  if (state.win && !state.win.isDestroyed()) state.win.webContents.send('karont:event', event);
+  sendToRenderer('karont:event', event);
 });

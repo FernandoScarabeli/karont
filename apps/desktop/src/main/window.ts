@@ -9,6 +9,7 @@ export const trustedURL = pathToFileURL(index).href;
 
 let opening: Promise<void> | undefined;
 export async function openWindow() {
+  if (state.headless) return;
   if (state.win) {
     state.win.show();
     state.win.focus();

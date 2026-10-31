@@ -1,6 +1,6 @@
 import { app, Menu, Tray } from 'electron';
 import { trayIcon } from './tray-icon';
-import { runStates, state } from './state';
+import { runStates, sendToRenderer, state } from './state';
 import { openWindow } from './window';
 
 export function updateTray() {
@@ -15,7 +15,7 @@ export function updateTray() {
         label: `Execução ${id.slice(0, 8)}`,
         click: () => {
           state.targetRun = id;
-          void openWindow().then(() => state.win?.webContents.send('karont:focus-run', id));
+          void openWindow().then(() => sendToRenderer('karont:focus-run', id));
         },
       })),
       { label: 'Encerrar aplicativo (daemon e CLIs continuam)', click: () => app.quit() },

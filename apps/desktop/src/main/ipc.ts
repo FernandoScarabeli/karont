@@ -10,6 +10,8 @@ import { authorize } from './window';
 import { diagnostics } from './diagnostics';
 import { notifications, preferencesPath } from './notify';
 
+export type ChannelHandler = (value: unknown, recheck: () => void) => Promise<unknown> | unknown;
+
 const projectAddUiSchema = z
   .object({
     workspaceId: z.string().uuid(),
@@ -43,9 +45,10 @@ function noValue(value: unknown) {
   return {};
 }
 
-export function registerIpc() {
-  ipcMain.handle('karont:command', async (event, command: unknown) => {
-    authorize(event);
+export function channelHandlers(): Map<string, ChannelHandler> {
+  const handlers = new Map<string, ChannelHandler>();
+
+  handlers.set('karont:command', async (command) => {
     if (!command || typeof command !== 'object') throw Error('Mensagem inválida');
     const c = command as Record<string, unknown>;
     if (c.method === 'snapshot' && Object.keys(c).length === 1)
@@ -60,37 +63,35 @@ export function registerIpc() {
     }
     throw Error('Comando IPC recusado');
   });
-  ipcMain.handle('karont:diagnostics', async (event, value: unknown) => {
-    authorize(event);
+  handlers.set('karont:diagnostics', (value) => {
     noValue(value);
     return diagnostics();
   });
-  ipcMain.handle('karont:report', async (event, value: unknown) => {
-    authorize(event);
+  handlers.set('karont:report', async (value) => {
     noValue(value);
     return issueReport(await diagnostics());
   });
-  ipcMain.handle('karont:report:save', async (event, value: unknown) => {
-    authorize(event);
+  handlers.set('karont:report:save', async (value) => {
     noValue(value);
     const report = issueReport(await diagnostics());
-    const result = await dialog.showSaveDialog(state.win!, {
+    const options = {
       title: 'Salvar relatório local',
       defaultPath: 'karont-problema.md',
       filters: [{ name: 'Markdown', extensions: ['md'] }],
-    });
+    };
+    const result = state.win
+      ? await dialog.showSaveDialog(state.win, options)
+      : await dialog.showSaveDialog(options);
     if (result.canceled || !result.filePath) return false;
     fs.writeFileSync(result.filePath, report, { mode: 0o600 });
     return true;
   });
-  ipcMain.handle('karont:report:copy', async (event, value: unknown) => {
-    authorize(event);
+  handlers.set('karont:report:copy', async (value) => {
     noValue(value);
     clipboard.writeText(issueReport(await diagnostics()));
     return true;
   });
-  ipcMain.handle('karont:notifications', (event, value: unknown) => {
-    authorize(event);
+  handlers.set('karont:notifications', (value) => {
     if (value !== undefined && typeof value !== 'boolean') throw Error('Preferência inválida');
     if (typeof value === 'boolean') {
       notifications.enabled = value;
@@ -99,25 +100,25 @@ export function registerIpc() {
     }
     return { enabled: notifications.enabled, history: notifications.history };
   });
-  ipcMain.handle('karont:focus-target', (event, value: unknown) => {
-    authorize(event);
+  handlers.set('karont:focus-target', (value) => {
     noValue(value);
     const id = state.targetRun;
     state.targetRun = undefined;
     return id;
   });
-  ipcMain.handle('karont:projects:choose-folder', async (event) => {
-    authorize(event);
-    const selected = await dialog.showOpenDialog(state.win!, {
+  handlers.set('karont:projects:choose-folder', async (_value, recheck) => {
+    const options = {
       title: 'Escolher pasta raiz',
       buttonLabel: 'Selecionar pasta',
-      properties: ['openDirectory'],
-    });
-    authorize(event);
+      properties: ['openDirectory'] as Array<'openDirectory'>,
+    };
+    const selected = state.win
+      ? await dialog.showOpenDialog(state.win, options)
+      : await dialog.showOpenDialog(options);
+    recheck();
     return selected.canceled ? null : (selected.filePaths[0] ?? null);
   });
-  ipcMain.handle('karont:projects:add', async (event, value: unknown) => {
-    authorize(event);
+  handlers.set('karont:projects:add', async (value) => {
     const input = projectAddUiSchema.parse(value);
     if (input.dotIds.length)
       throw Error('Concessões são configuradas separadamente do cadastro de projeto');
@@ -126,7 +127,8 @@ export function registerIpc() {
       value: { ...input, operationId: randomUUID() },
     });
   });
-  const handlers: [string, Command['method'], (value: unknown) => object][] = [
+
+  const commandHandlers: [string, Command['method'], (value: unknown) => object][] = [
     ['karont:workspaces:list', 'workspaces.list', (value) => ({ value })],
     ['karont:workspaces:create', 'workspaces.create', (value) => ({ value })],
     ['karont:workspaces:rename', 'workspaces.rename', (value) => ({ value })],
@@ -177,13 +179,12 @@ export function registerIpc() {
     ['karont:rollback:preview', 'rollback.preview', (value) => ({ value })],
     ['karont:rollback:apply', 'rollback.apply', (value) => ({ value })],
   ];
-  for (const [channel, method, payload] of handlers) {
-    ipcMain.handle(channel, async (event, value: unknown) => {
-      authorize(event);
+  for (const [channel, method, payload] of commandHandlers) {
+    handlers.set(channel, async (value, recheck) => {
       const request = requestSchema.parse({ id: 1, method, ...payload(value) });
       if (request.method === 'runs.start' && request.value.permissionMode === 'full') {
-        const consent = await dialog.showMessageBox(state.win!, {
-          type: 'warning',
+        const options = {
+          type: 'warning' as const,
           title: 'Acesso total para esta execução',
           message: 'Permitir acesso ampliado à sua conta?',
           detail:
@@ -192,9 +193,12 @@ export function registerIpc() {
           defaultId: 0,
           cancelId: 0,
           noLink: true,
-        });
+        };
+        const consent = state.win
+          ? await dialog.showMessageBox(state.win, options)
+          : await dialog.showMessageBox(options);
         if (consent.response !== 1) throw Error('Acesso total não autorizado');
-        authorize(event);
+        recheck();
         request.value.elevatedConfirmed = true;
       }
       const { id: _id, ...command } = request;
@@ -202,6 +206,17 @@ export function registerIpc() {
       if (request.method === 'terminal.attach') attachedRuns.add(request.value.runId);
       if (request.method === 'terminal.detachAll') attachedRuns.clear();
       return result;
+    });
+  }
+
+  return handlers;
+}
+
+export function registerIpc() {
+  for (const [channel, handler] of channelHandlers()) {
+    ipcMain.handle(channel, async (event, value: unknown) => {
+      authorize(event);
+      return handler(value, () => authorize(event));
     });
   }
 }
