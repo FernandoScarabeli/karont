@@ -8,7 +8,7 @@ Repositório recriado do zero em 2026-10-31.
   - [x] B1 Detecção de agentes + CLIs do usuário (serviço e contrato)
   - [x] B2 Terminal no serviço (`node-pty`, eventos com backpressure, sobrevive à janela)
   - [x] F1 Configurações › Agentes (lista, detectar de novo, adicionar/remover CLI)
-  - [ ] F2 Nova conversa com seletor (agentes "em breve" + Terminal) e Terminal na interface (xterm)
+  - [x] F2 Nova conversa com seletor (agentes "em breve" + Terminal) e Terminal na interface (xterm)
   - [x] B3 Fechar a janela: perguntar / segundo plano (bandeja) / fechar tudo
   - [ ] F3 Configurações › Geral ("Ao fechar a janela")
   - [ ] E2E + merge (orquestrador)
@@ -54,3 +54,4 @@ Repositório recriado do zero em 2026-10-31.
 - O E2E usa `chromiumSandbox: true`: o Playwright passa `--no-sandbox` ao Electron por padrão.
 - O serviço destacado é iniciado por um `bash` mínimo que fecha os descritores herdados acima de 2. O Chromium deixa caches da GPU e sockets internos sem CLOEXEC, e o serviço os seguraria por horas (isso também travava o `app.close()` do Playwright).
 - `node-pty` 1.1.0 usa N-API: o mesmo binário roda no Node 24 e no Electron (`ELECTRON_RUN_AS_NODE`). O npm 12 bloqueia scripts de instalação; `node-pty` está liberado em `allowScripts` no `package.json` da raiz (precisa de python3, make e g++).
+- Terminal e CSP: o xterm 6 injeta `<style>` (Viewport, DomRenderer) e um `setAttribute("style")`. Com `style-src 'self'` isso é bloqueado. `packages/ui/src/terminal/cspStyles.ts` desvia esses estilos para `adoptedStyleSheets` (não passam pelo `style-src`) sem afrouxar a CSP. Validado no Electron: zero violações. Ao atualizar o xterm, refazer essa checagem.

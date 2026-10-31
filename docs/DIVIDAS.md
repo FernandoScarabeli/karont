@@ -5,3 +5,5 @@
 3. **Fechar descritores herdados depende de `/bin/bash` e `/proc`** (`packages/desktop/src/main/service.ts`). Sem bash, o serviço é iniciado direto e herda os descritores do Electron. No macOS (depois do v1) será preciso outra solução (`/dev/fd` ou um pequeno launcher nativo). (M0-B4)
 4. **Aviso do Chromium no Wayland** (`--ozone-platform=wayland is not compatible with Vulkan`) aparece no stderr do app. É inofensivo, mas vale silenciar desligando o Vulkan ou ajustando a plataforma. (M0-B4)
 5. **Textos do diálogo de fechar e da bandeja estão fixos no main** (`packages/desktop/src/main.ts`, `tray.ts`), fora do `i18n/pt-BR.ts` da interface. Quando houver tradução, mover para um catálogo compartilhado. (M1-B3)
+6. **Bundle da interface com ~700 kB** (aviso do Vite acima de 500 kB), principalmente xterm. Carregar o terminal sob demanda (`import()` dinâmico) quando fizer sentido. (M1-F2)
+7. **`cspStyles.ts` intercepta `appendChild`/`insertBefore`/`append` enquanto há terminal montado.** Funciona e é restrito ao contêiner do terminal, mas depende de detalhes internos do xterm 6. Atualizar o xterm exige repetir a checagem de CSP no Electron. (M1-F2)
