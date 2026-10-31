@@ -1,0 +1,171 @@
+.section {
+  display: grid;
+  align-content: start;
+  gap: var(--k-space-5);
+  min-width: 0;
+}
+
+.sectionHeader {
+  display: grid;
+  gap: var(--k-space-2);
+}
+
+.title {
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-16);
+  font-weight: var(--k-weight-semibold);
+  line-height: var(--k-leading-tight);
+}
+
+.description {
+  max-width: var(--k-settings-prose-width);
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+.listToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  min-width: 0;
+  min-height: var(--k-control-height-lg);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.count {
+  margin: 0;
+  padding: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+  font-variant-numeric: tabular-nums;
+}
+
+.statusMessage,
+.connectionMessage,
+.emptyList {
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+.errorState {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-4);
+}
+
+.errorMessage {
+  margin: 0;
+  color: var(--k-color-danger);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+.announcement {
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+.agentList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agentItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-4);
+  min-width: 0;
+  padding-block: var(--k-space-3);
+  border-top: var(--k-border-width) solid var(--k-color-border);
+}
+
+.agentDetails {
+  display: grid;
+  justify-items: start;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+
+.agentHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+
+.agentName {
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-14);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-normal);
+}
+
+.agentState {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}
+
+.foundIcon {
+  color: var(--k-color-ok);
+}
+
+.stateIcon {
+  color: var(--k-color-text-muted);
+}
+
+.agentPath {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}
+
+.marker {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--k-control-height-sm);
+  padding-inline: var(--k-space-2);
+  border: var(--k-border-width) solid var(--k-color-border-strong);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-11);
+  line-height: var(--k-leading-tight);
+}
+
+.emptyList {
+  padding-block: var(--k-space-4);
+  border-top: var(--k-border-width) solid var(--k-color-border);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: var(--k-space-2);
+}
+
+.addForm {
+  display: grid;
+  gap: var(--k-space-4);
+}

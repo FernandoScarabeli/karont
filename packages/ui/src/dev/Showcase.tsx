@@ -1,5 +1,8 @@
+import { useState } from "react";
 import { Button, type ButtonSize, type ButtonVariant } from "../components/Button/Button.tsx";
+import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
+import { TextField } from "../components/TextField/TextField.tsx";
 import styles from "./Showcase.module.css";
 
 const palette = [
@@ -41,6 +44,8 @@ function PlusIcon() {
 }
 
 export function Showcase() {
+  const [dialogOpen, setDialogOpen] = useState(false);
+
   return (
     <main className={styles.page}>
       <div className={styles.content}>
@@ -146,6 +151,51 @@ export function Showcase() {
                 </div>
               </div>
             </div>
+          </section>
+
+          <section className={styles.section}>
+            <h2 className={styles.title}>Campo</h2>
+            <div className={styles.componentList}>
+              <TextField
+                hint="Exemplo de ajuda para preencher o campo."
+                label="Nome"
+                placeholder="Minha CLI"
+              />
+              <TextField
+                error="Informe um nome válido."
+                label="Comando"
+                mono
+                value="/opt/tools/minha-cli"
+                readOnly
+              />
+            </div>
+          </section>
+
+          <section className={styles.section}>
+            <h2 className={styles.title}>Diálogo</h2>
+            <div className={styles.controlGroup}>
+              <Button onClick={() => setDialogOpen(true)} variant="secondary">
+                Abrir diálogo
+              </Button>
+            </div>
+            <Dialog
+              description="Uma breve explicação sobre a decisão solicitada."
+              footer={
+                <>
+                  <Button onClick={() => setDialogOpen(false)} variant="secondary">
+                    Cancelar
+                  </Button>
+                  <Button onClick={() => setDialogOpen(false)} variant="primary">
+                    Confirmar
+                  </Button>
+                </>
+              }
+              onClose={() => setDialogOpen(false)}
+              open={dialogOpen}
+              title="Título do diálogo"
+            >
+              <TextField autoFocus label="Nome" placeholder="Exemplo" />
+            </Dialog>
           </section>
         </div>
       </div>

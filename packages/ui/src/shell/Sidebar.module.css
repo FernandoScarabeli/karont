@@ -79,3 +79,8 @@
   padding-block-start: var(--k-space-2);
   border-top: var(--k-border-width) solid var(--k-color-border);
 }
+
+.settingsButton[aria-current="page"] {
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+}
