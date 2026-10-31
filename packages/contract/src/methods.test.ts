@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { jsonValueSchema, MAX_SETTING_BYTES, methods, settingKeySchema } from "./methods.ts";
+import {
+  jsonValueSchema,
+  MAX_SETTING_BYTES,
+  methods,
+  settingKeySchema,
+  terminalInfoSchema,
+} from "./methods.ts";
 
 test("todos os métodos aceitam parâmetros válidos", () => {
   assert.equal(methods["system.ping"].params.safeParse({}).success, true);
@@ -77,6 +83,50 @@ test("métodos de agentes validam parâmetros", () => {
   }
   assert.equal(methods["agents.remove"].params.safeParse({ id: "custom-id" }).success, true);
   assert.equal(methods["agents.remove"].params.safeParse({ id: "" }).success, false);
+});
+
+test("métodos de terminal validam caminhos, dimensões e bytes UTF-8", () => {
+  assert.equal(methods["terminals.list"].params.safeParse({}).success, true);
+  assert.equal(methods["terminals.open"].params.safeParse({ cols: 80, rows: 24 }).success, true);
+  assert.equal(
+    methods["terminals.open"].params.safeParse({ cwd: "/tmp", cols: 2, rows: 500 }).success,
+    true,
+  );
+  assert.equal(
+    methods["terminals.open"].params.safeParse({ cwd: "relative", cols: 80, rows: 24 }).success,
+    false,
+  );
+  assert.equal(methods["terminals.open"].params.safeParse({ cols: 1, rows: 24 }).success, false);
+  assert.equal(methods["terminals.open"].params.safeParse({ cols: 80, rows: 501 }).success, false);
+  assert.equal(
+    methods["terminals.write"].params.safeParse({ id: "t1", data: "é".repeat(32_768) }).success,
+    true,
+  );
+  assert.equal(
+    methods["terminals.write"].params.safeParse({ id: "t1", data: "é".repeat(32_769) }).success,
+    false,
+  );
+  for (const method of ["terminals.attach", "terminals.close"] as const) {
+    assert.equal(methods[method].params.safeParse({ id: "t1" }).success, true);
+  }
+  assert.equal(
+    methods["terminals.resize"].params.safeParse({ id: "t1", cols: 80, rows: 24 }).success,
+    true,
+  );
+  assert.equal(methods["service.shutdown"].params.safeParse({}).success, true);
+  assert.equal(
+    terminalInfoSchema.safeParse({
+      id: "t1",
+      title: "bash · ~",
+      cwd: "/tmp",
+      shell: "/bin/bash",
+      cols: 80,
+      rows: 24,
+      startedAt: "2026-10-31T00:00:00.000Z",
+      exited: false,
+    }).success,
+    true,
+  );
 });
 
 test("SettingKey aceita apenas o formato previsto", () => {

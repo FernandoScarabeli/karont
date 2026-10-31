@@ -10,6 +10,7 @@ import { computeMac, readSecret } from "./auth.ts";
 import { connectService } from "./client.ts";
 import type { ServicePaths } from "./paths.ts";
 import { ServiceAlreadyRunningError, startService } from "./server.ts";
+import type { TerminalPty } from "./terminals/manager.ts";
 import { encodeFrame, FrameDecoder } from "./wire.ts";
 
 const skip = process.env.KARONT_SKIP_SOCKET_TESTS === "1";
@@ -31,6 +32,8 @@ type RawClient = {
   socket: Socket;
   nextFrame(): Promise<unknown>;
 };
+
+type RawResponse = { type: "response"; id: string; ok: boolean; result?: unknown };
 
 async function rawClient(paths: ServicePaths): Promise<RawClient> {
   const socket = net.createConnection(paths.socketPath);
@@ -275,3 +278,208 @@ test("erro remoto vira BridgeError", { skip }, async () => {
     await service.close();
   }
 });
+
+test("dois clientes recebem toda a saída do terminal apesar de um pausar a leitura", {
+  skip,
+}, async () => {
+  const paths = await testPaths();
+  const root = path.dirname(paths.runtimeDir);
+  const service = await startService({
+    paths,
+    dev: false,
+    homeDir: root,
+    env: { ...process.env, SHELL: "/bin/sh" },
+  });
+  let fast: RawClient | undefined;
+  let slow: RawClient | undefined;
+  try {
+    fast = await rawClient(paths);
+    slow = await rawClient(paths);
+    const open = await requestRaw(fast, "open", "terminals.open", {
+      cwd: root,
+      cols: 80,
+      rows: 24,
+    });
+    const terminal = (open.result as { terminal: { id: string } }).terminal;
+    const fastFrames = [...open.frames];
+    const slowFrames = await waitForEvent(slow, "terminals.changed");
+    slow.socket.pause();
+
+    const write = await requestRaw(fast, "write", "terminals.write", {
+      id: terminal.id,
+      data: "seq 1 200000\n",
+    });
+    assert.equal(write.ok, true);
+
+    const expected = `${Array.from({ length: 200_000 }, (_, index) => String(index + 1)).join("\r\n")}\r\n`;
+    fastFrames.push(...write.frames);
+    let fastText = outputText(fastFrames, terminal.id);
+    const partialLimit = 256 * 1024;
+    while (Buffer.byteLength(fastText, "utf8") < partialLimit) {
+      fastFrames.push(await fast.nextFrame());
+      fastText = outputText(fastFrames, terminal.id);
+    }
+    assert.ok(fastText.length > 0, "o cliente ativo recebe saída enquanto o outro está pausado");
+    slow.socket.resume();
+
+    while (!fastText.includes(expected)) {
+      fastFrames.push(await fast.nextFrame());
+      fastText = outputText(fastFrames, terminal.id);
+    }
+    let slowText = "";
+    while (!slowText.includes(expected)) {
+      slowFrames.push(await slow.nextFrame());
+      slowText = outputText(slowFrames, terminal.id);
+    }
+    assert.ok(fastText.includes(expected));
+    assert.ok(slowText.includes(expected));
+    assert.deepEqual(
+      outputSequences(fastFrames, terminal.id),
+      outputSequences(slowFrames, terminal.id),
+    );
+    assert.deepEqual(
+      outputSequences(fastFrames, terminal.id),
+      outputSequences(fastFrames, terminal.id).map((_, index) => index + 1),
+    );
+
+    await requestRaw(fast, "close", "terminals.close", { id: terminal.id });
+  } finally {
+    fast?.socket.destroy();
+    slow?.socket.destroy();
+    await service.close();
+  }
+});
+
+test("service.shutdown responde, fecha os terminais e injeta a saída do processo", {
+  skip,
+}, async () => {
+  const paths = await testPaths();
+  const root = path.dirname(paths.runtimeDir);
+  const terminal = new ShutdownFakePty();
+  const exitCodes: number[] = [];
+  const service = await startService({
+    paths,
+    dev: false,
+    homeDir: root,
+    env: { ...process.env, SHELL: "/bin/sh" },
+    ptyFactory: () => terminal,
+    exitProcess: (code) => exitCodes.push(code),
+  });
+  let client: RawClient | undefined;
+  try {
+    client = await rawClient(paths);
+    const open = await requestRaw(client, "open", "terminals.open", {
+      cwd: root,
+      cols: 80,
+      rows: 24,
+    });
+    assert.equal(open.ok, true);
+    const shutdown = await requestRaw(client, "shutdown", "service.shutdown", {});
+    assert.deepEqual(shutdown.result, { ok: true });
+    await waitUntil(() => exitCodes.length === 1);
+    assert.deepEqual(exitCodes, [0]);
+    assert.deepEqual(terminal.signals, ["SIGHUP"]);
+  } finally {
+    client?.socket.destroy();
+    await service.close();
+  }
+});
+
+async function requestRaw(
+  client: RawClient,
+  id: string,
+  method: string,
+  params: unknown,
+): Promise<RawResponse & { frames: unknown[] }> {
+  client.socket.write(encodeFrame({ type: "request", id, method, params }));
+  const frames: unknown[] = [];
+  while (true) {
+    const frame = await client.nextFrame();
+    frames.push(frame);
+    if (responseFrame(frame) && (frame as RawResponse).id === id) {
+      return { ...(frame as RawResponse), frames };
+    }
+  }
+}
+
+async function waitForEvent(client: RawClient, event: string): Promise<unknown[]> {
+  const frames: unknown[] = [];
+  while (true) {
+    const frame = await client.nextFrame();
+    frames.push(frame);
+    if (typeof frame === "object" && frame !== null && "event" in frame && frame.event === event) {
+      return frames;
+    }
+  }
+}
+
+function outputText(frames: unknown[], terminalId: string): string {
+  return frames
+    .filter(
+      (frame): frame is { event: string; payload: { id: string; data: string } } =>
+        typeof frame === "object" &&
+        frame !== null &&
+        "event" in frame &&
+        frame.event === "terminals.output" &&
+        "payload" in frame &&
+        typeof frame.payload === "object" &&
+        frame.payload !== null &&
+        "id" in frame.payload &&
+        frame.payload.id === terminalId &&
+        "data" in frame.payload &&
+        typeof frame.payload.data === "string",
+    )
+    .map((frame) => frame.payload.data)
+    .join("");
+}
+
+function outputSequences(frames: unknown[], terminalId: string): number[] {
+  return frames
+    .filter(
+      (frame): frame is { event: string; payload: { id: string; seq: number } } =>
+        typeof frame === "object" &&
+        frame !== null &&
+        "event" in frame &&
+        frame.event === "terminals.output" &&
+        "payload" in frame &&
+        typeof frame.payload === "object" &&
+        frame.payload !== null &&
+        "id" in frame.payload &&
+        frame.payload.id === terminalId &&
+        "seq" in frame.payload &&
+        typeof frame.payload.seq === "number",
+    )
+    .map((frame) => frame.payload.seq);
+}
+
+class ShutdownFakePty implements TerminalPty {
+  readonly signals: string[] = [];
+  #exitListener: ((event: { exitCode: number; signal?: number }) => void) | undefined;
+
+  onData(): { dispose(): void } {
+    return { dispose: () => undefined };
+  }
+
+  onExit(listener: (event: { exitCode: number; signal?: number }) => void): { dispose(): void } {
+    this.#exitListener = listener;
+    return { dispose: () => undefined };
+  }
+
+  write(): void {}
+  resize(): void {}
+  pause(): void {}
+  resume(): void {}
+
+  kill(signal = "SIGHUP"): void {
+    this.signals.push(signal);
+    if (signal === "SIGHUP") this.#exitListener?.({ exitCode: 0, signal: 1 });
+  }
+}
+
+async function waitUntil(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + 3_000;
+  while (!condition() && Date.now() < deadline) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
+  assert.equal(condition(), true);
+}

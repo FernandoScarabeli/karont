@@ -7,6 +7,7 @@ import { ConnectionClosedError, FrameWriter } from "./connection.ts";
 import { openDatabase } from "./db.ts";
 import { createHandlers, type HandlerConnection, ServiceError } from "./handlers.ts";
 import { ensurePrivateDir, type ServicePaths } from "./paths.ts";
+import type { TerminalPtyFactory } from "./terminals/manager.ts";
 import { FrameDecoder } from "./wire.ts";
 
 export class ServiceAlreadyRunningError extends Error {
@@ -21,6 +22,10 @@ export type StartServiceOptions = {
   dev: boolean;
   log?: (message: string, error?: unknown) => void;
   authTimeoutMs?: number;
+  env?: NodeJS.ProcessEnv;
+  homeDir?: string;
+  ptyFactory?: TerminalPtyFactory;
+  exitProcess?: (code: number) => void;
 };
 
 type ConnectionState = {
@@ -40,6 +45,10 @@ export async function startService({
     else console.error(message, error);
   },
   authTimeoutMs = 5_000,
+  env = process.env,
+  homeDir,
+  ptyFactory,
+  exitProcess = (code) => process.exit(code),
 }: StartServiceOptions): Promise<{ close(): Promise<void> }> {
   await ensurePrivateDir(paths.runtimeDir);
   await ensurePrivateDir(paths.dataDir);
@@ -54,16 +63,25 @@ export async function startService({
     throw error;
   }
   const startedAt = new Date().toISOString();
+  const sockets = new Set<ConnectionState>();
+  let closing = false;
+  let closePromise: Promise<void> | undefined;
   const handlers = createHandlers({
     db,
     startedAt,
     dev,
+    env,
+    ...(homeDir ? { homeDir } : {}),
+    ...(ptyFactory ? { ptyFactory } : {}),
     emit: async (event: AnyEvent, conn) => {
       await conn.emit(event);
     },
+    broadcast,
+    shutdown: async () => {
+      await closeService();
+      exitProcess(0);
+    },
   });
-  const sockets = new Set<ConnectionState>();
-  let closing = false;
   const server: Server = createServer((socket) => {
     if (closing) {
       socket.destroy();
@@ -139,6 +157,46 @@ export async function startService({
       });
   }
 
+  async function broadcast(event: AnyEvent): Promise<void> {
+    const recipients = [...sockets].filter(
+      (state) => state.authenticated && !state.socket.destroyed,
+    );
+    await Promise.all(
+      recipients.map(async (state) => {
+        try {
+          await state.writer.send({ type: "event", event: event.event, payload: event.payload });
+        } catch (error) {
+          if (!(error instanceof ConnectionClosedError)) {
+            log("Falha ao enviar evento; a conexão será encerrada.", error);
+            state.socket.destroy();
+          }
+        }
+      }),
+    );
+  }
+
+  function closeService(): Promise<void> {
+    if (closePromise) return closePromise;
+    closing = true;
+    closePromise = (async () => {
+      const serverClosed = server.listening
+        ? new Promise<void>((resolve) => server.close(() => resolve()))
+        : Promise.resolve();
+      for (const state of sockets) {
+        clearTimeout(state.authTimer);
+        state.socket.destroy();
+      }
+      await handlers.closeTerminals();
+      await serverClosed;
+      db.close();
+      await Promise.all([
+        unlink(paths.socketPath).catch(() => undefined),
+        unlink(paths.secretPath).catch(() => undefined),
+      ]);
+    })();
+    return closePromise;
+  }
+
   async function handleAuthorizedFrame(state: ConnectionState, value: unknown): Promise<void> {
     const parsed = parseRequest(value);
     if (!parsed.ok) {
@@ -201,7 +259,9 @@ export async function startService({
     if (succeeded && conn.isOpen()) {
       for (const task of afterResponse) {
         try {
-          task();
+          void Promise.resolve(task()).catch((error: unknown) => {
+            log("Falha numa tarefa iniciada após a resposta.", error);
+          });
         } catch (error) {
           log("Falha ao iniciar uma tarefa após a resposta.", error);
         }
@@ -231,21 +291,7 @@ export async function startService({
   }
 
   return {
-    close: async () => {
-      if (closing) return;
-      closing = true;
-      const closed = new Promise<void>((resolve) => server.close(() => resolve()));
-      for (const state of sockets) {
-        clearTimeout(state.authTimer);
-        state.socket.destroy();
-      }
-      await closed;
-      db.close();
-      await Promise.all([
-        unlink(paths.socketPath).catch(() => undefined),
-        unlink(paths.secretPath).catch(() => undefined),
-      ]);
-    },
+    close: closeService,
   };
 }
 
