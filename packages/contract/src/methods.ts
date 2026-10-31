@@ -42,6 +42,35 @@ export const agentSchema = z.discriminatedUnion("kind", [
 
 export type Agent = z.infer<typeof agentSchema>;
 
+export const terminalInfoSchema = z.strictObject({
+  id: z.string().min(1),
+  title: z.string(),
+  cwd: z.string(),
+  shell: z.string(),
+  cols: z.number().int().min(2).max(1_000),
+  rows: z.number().int().min(2).max(500),
+  startedAt: isoDateTimeSchema,
+  exited: z.boolean(),
+  exitCode: z.number().int().nullable().optional(),
+});
+
+export type TerminalInfo = z.infer<typeof terminalInfoSchema>;
+
+const terminalIdSchema = z.string().min(1).max(80);
+const terminalSizeSchema = z.strictObject({
+  cols: z.number().int().min(2).max(1_000),
+  rows: z.number().int().min(2).max(500),
+});
+const terminalCwdSchema = z
+  .string()
+  .min(1)
+  .max(4_096)
+  .refine((cwd) => cwd.startsWith("/"), "O caminho do terminal deve ser absoluto.");
+const terminalWriteDataSchema = z.string().refine((data) => {
+  const bytes = new TextEncoder().encode(data).byteLength;
+  return bytes >= 1 && bytes <= 65_536;
+}, "A entrada do terminal deve ter de 1 a 65.536 bytes UTF-8.");
+
 const agentNameSchema = z
   .string()
   .min(1)
@@ -97,6 +126,38 @@ export const methods = {
   "agents.remove": {
     params: z.strictObject({ id: z.string().min(1).max(80) }),
     result: z.strictObject({ removed: z.literal(true) }),
+  },
+  "terminals.list": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ terminals: z.array(terminalInfoSchema) }),
+  },
+  "terminals.open": {
+    params: terminalSizeSchema.extend({ cwd: terminalCwdSchema.optional() }),
+    result: z.strictObject({ terminal: terminalInfoSchema }),
+  },
+  "terminals.attach": {
+    params: z.strictObject({ id: terminalIdSchema }),
+    result: z.strictObject({
+      terminal: terminalInfoSchema,
+      replay: z.string(),
+      seq: z.number().int().min(0),
+    }),
+  },
+  "terminals.write": {
+    params: z.strictObject({ id: terminalIdSchema, data: terminalWriteDataSchema }),
+    result: z.strictObject({ ok: z.literal(true) }),
+  },
+  "terminals.resize": {
+    params: terminalSizeSchema.extend({ id: terminalIdSchema }),
+    result: z.strictObject({ ok: z.literal(true) }),
+  },
+  "terminals.close": {
+    params: z.strictObject({ id: terminalIdSchema }),
+    result: z.strictObject({ ok: z.literal(true) }),
+  },
+  "service.shutdown": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ ok: z.literal(true) }),
   },
   // O serviço deve aceitar este método apenas em desenvolvimento; ele testa o streaming da ponte.
   "dev.streamTest": {

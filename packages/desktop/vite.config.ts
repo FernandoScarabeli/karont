@@ -25,7 +25,10 @@ export default defineConfig(({ mode }) => {
         fileName: target,
       },
       rollupOptions: {
-        external: (id: string) => id === "electron" || id.startsWith("node:"),
+        external: (id: string) =>
+          id === "electron" ||
+          id.startsWith("node:") ||
+          (target === "service" && id === "node-pty"),
       },
     },
   };

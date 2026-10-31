@@ -16,7 +16,10 @@ function request(method: string, params: unknown): ParsedRequest {
   return parsed.request;
 }
 
-function connection(events: AnyEvent[], afterResponse: Array<() => void> = []): HandlerConnection {
+function connection(
+  events: AnyEvent[],
+  afterResponse: Array<() => void | Promise<void>> = [],
+): HandlerConnection {
   return {
     emit: async (event) => {
       events.push(event);
@@ -25,6 +28,34 @@ function connection(events: AnyEvent[], afterResponse: Array<() => void> = []): 
     isOpen: () => true,
   };
 }
+
+test("service.shutdown agenda o encerramento depois da resposta", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const db = openDatabase(path.join(root, "karont.db"));
+  let shutdownCount = 0;
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    shutdown: async () => {
+      shutdownCount += 1;
+    },
+    env: { PATH: "" },
+    homeDir: root,
+  });
+  const afterResponse: Array<() => void | Promise<void>> = [];
+  const result = await handlers.handle(
+    request("service.shutdown", {}),
+    connection([], afterResponse),
+  );
+  assert.deepEqual(result, { ok: true });
+  assert.equal(shutdownCount, 0);
+  await afterResponse[0]?.();
+  assert.equal(shutdownCount, 1);
+  db.close();
+});
 
 test("ping, info e settings usam contrato e banco", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ks-"));

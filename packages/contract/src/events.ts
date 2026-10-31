@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { terminalInfoSchema } from "./methods.ts";
 
 export const events = {
   "dev.streamTest.delta": z.strictObject({
@@ -14,6 +15,19 @@ export const events = {
   "bridge.status": z.strictObject({
     state: z.enum(["connecting", "connected", "disconnected"]),
     detail: z.string().optional(),
+  }),
+  "terminals.output": z.strictObject({
+    id: z.string().min(1),
+    seq: z.number().int().min(0),
+    data: z.string(),
+  }),
+  "terminals.exit": z.strictObject({
+    id: z.string().min(1),
+    exitCode: z.number().int().nullable(),
+    signal: z.number().int().nullable(),
+  }),
+  "terminals.changed": z.strictObject({
+    terminals: z.array(terminalInfoSchema),
   }),
 } as const satisfies Record<string, z.ZodType>;
 

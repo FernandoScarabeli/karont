@@ -31,13 +31,22 @@ export {
 } from "./envelopes.ts";
 export type { AnyEvent, EventName, PayloadOf } from "./events.ts";
 export { events } from "./events.ts";
-export type { Agent, JsonValue, MethodName, ParamsOf, ResultOf, SettingKey } from "./methods.ts";
+export type {
+  Agent,
+  JsonValue,
+  MethodName,
+  ParamsOf,
+  ResultOf,
+  SettingKey,
+  TerminalInfo,
+} from "./methods.ts";
 export {
   agentSchema,
   jsonValueSchema,
   MAX_SETTING_BYTES,
   methods,
   settingKeySchema,
+  terminalInfoSchema,
 } from "./methods.ts";
 export type {
   ParsedRequest,
