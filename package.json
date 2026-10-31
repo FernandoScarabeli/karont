@@ -14,12 +14,13 @@
     "packages/ui"
   ],
   "scripts": {
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p e2e/tsconfig.json",
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "npm run test --workspaces --if-present",
     "preview:web": "npm run preview:web -w @karont/desktop",
-    "check": "npm run typecheck && npm run lint && npm run test"
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",
