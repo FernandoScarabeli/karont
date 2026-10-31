@@ -1,0 +1,22 @@
+{
+  "name": "@karont/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "vite build --mode main && vite build --mode preload && vite build --mode service",
+    "start": "electron dist/main.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "preview:web": "node src/preview/main.ts"
+  },
+  "dependencies": {
+    "@karont/contract": "0.0.0",
+    "@karont/service": "0.0.0"
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "vite": "8.3.5"
+  }
+}

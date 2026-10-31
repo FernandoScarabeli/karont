@@ -1,0 +1,33 @@
+{
+  "name": "karont",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "packages/contract",
+    "packages/service",
+    "packages/desktop",
+    "packages/ui"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p e2e/tsconfig.json",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build -w @karont/ui && npm run build -w @karont/desktop",
+    "start:desktop": "npm run build && npm run start -w @karont/desktop",
+    "preview:web": "npm run preview:web -w @karont/desktop",
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.4",
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
+  }
+}

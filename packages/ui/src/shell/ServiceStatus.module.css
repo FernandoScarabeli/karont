@@ -1,0 +1,43 @@
+.status {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--k-service-status-gap);
+  min-width: 0;
+  color: var(--k-color-text-secondary);
+}
+
+.dot {
+  flex: 0 0 var(--k-dot-size);
+  width: var(--k-dot-size);
+  height: var(--k-dot-size);
+  border-radius: var(--k-radius-full);
+}
+
+.connected {
+  background: var(--k-color-ok);
+}
+
+.connecting,
+.no-bridge {
+  background: var(--k-color-border-muted);
+}
+
+.disconnected {
+  background: var(--k-color-danger);
+}
+
+.label {
+  min-width: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}
+
+.version {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-11);
+  line-height: var(--k-leading-normal);
+}

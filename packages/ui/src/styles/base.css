@@ -1,0 +1,28 @@
+html {
+  box-sizing: border-box;
+  height: 100%;
+  background: var(--k-color-bg-app);
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-sans);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--k-color-bg-app);
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-sans);
+}
+
+#root {
+  height: 100%;
+  background: var(--k-color-bg-app);
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-sans);
+}

@@ -77,16 +77,16 @@ npm run preview:web    # UI in the browser with live reload, talking to the real
 
 ## Roadmap
 
-| Milestone | What you get |
-|---|---|
-| **M0** Skeleton | Secure app shell, local service, streaming bridge, browser preview |
-| **M1** Agents | Automatic CLI detection, add any CLI, built-in terminal |
-| **M2** Real chat | Streaming answers from Claude Code and Codex, actions, resume, stop |
-| **M3** Projects | Folders with optional Git, review changes, undo, agent queue |
-| **M4** Navigation | Workspaces, home, sidebar, search |
-| **M5** First run | Onboarding, profile, settings |
-| **M6** Tasks | Board linked to conversations |
-| **M7** Release 0.1.0 | AppImage / .deb |
+| Milestone            | What you get                                                        |
+| -------------------- | ------------------------------------------------------------------- |
+| **M0** Skeleton      | Secure app shell, local service, streaming bridge, browser preview  |
+| **M1** Agents        | Automatic CLI detection, add any CLI, built-in terminal             |
+| **M2** Real chat     | Streaming answers from Claude Code and Codex, actions, resume, stop |
+| **M3** Projects      | Folders with optional Git, review changes, undo, agent queue        |
+| **M4** Navigation    | Workspaces, home, sidebar, search                                   |
+| **M5** First run     | Onboarding, profile, settings                                       |
+| **M6** Tasks         | Board linked to conversations                                       |
+| **M7** Release 0.1.0 | AppImage / .deb                                                     |
 
 The full plan is in [docs/SPEC.md](docs/SPEC.md).
 

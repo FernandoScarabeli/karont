@@ -1,0 +1,105 @@
+:root {
+  --k-color-bg-app: #0f0f10;
+  --k-color-bg-sheet: #141415;
+  --k-color-bg-raised: #19191b;
+  --k-color-bg-control: #232325;
+  --k-color-bg-hover: #232325;
+  --k-color-border: #262627;
+  --k-color-border-strong: #2e2e30;
+  --k-color-border-muted: #3a3a3d;
+  --k-color-text-primary: #ededed;
+  --k-color-text-secondary: #a1a1a6;
+  --k-color-text-muted: #85858b;
+  --k-color-primary: #f3eee3;
+  --k-color-on-primary: #141415;
+  --k-color-primary-hover: #ffffff;
+  --k-color-working: #7db4e0;
+  --k-color-attention: #e5a93b;
+  --k-color-danger: #ef7b73;
+  --k-color-focus: #7db4e0;
+  --k-color-brand: #f3eee3;
+  --k-color-ok: #6fcf97;
+
+  --k-font-sans: "Geist Sans", system-ui, sans-serif;
+  --k-font-mono: "Geist Mono", ui-monospace, monospace;
+  --k-font-brand: "Instrument Serif", Georgia, serif;
+  --k-weight-brand: 400;
+
+  --k-text-11: 11px;
+  --k-text-12: 12px;
+  --k-text-13: 13px;
+  --k-text-14: 14px;
+  --k-text-15: 15px;
+  --k-text-16: 16px;
+  --k-text-20: 20px;
+  --k-text-24: 24px;
+  --k-text-28: 28px;
+  --k-text-32: 32px;
+
+  --k-weight-regular: 400;
+  --k-weight-medium: 500;
+  --k-weight-semibold: 600;
+
+  --k-leading-tight: 1.2;
+  --k-leading-normal: 1.5;
+
+  --k-space-1: 4px;
+  --k-space-2: 8px;
+  --k-space-3: 12px;
+  --k-space-4: 16px;
+  --k-space-5: 20px;
+  --k-space-6: 24px;
+  --k-space-8: 32px;
+  --k-space-10: 40px;
+
+  --k-radius-xs: 2px;
+  --k-radius-sm: 4px;
+  --k-radius-md: 8px;
+  --k-radius-lg: 10px;
+  --k-radius-xl: 12px;
+  --k-radius-2xl: 16px;
+  --k-radius-full: 999px;
+
+  --k-border-width: 1px;
+  --k-focus-ring-width: 2px;
+  --k-focus-ring-offset: 2px;
+  --k-control-height-sm: 28px;
+  --k-control-height-md: 32px;
+  --k-control-height-lg: 36px;
+  --k-duration-fast: 120ms;
+  --k-ease: cubic-bezier(0.2, 0, 0, 1);
+  --k-opacity-disabled: 0.5;
+
+  --k-topbar-height: 48px;
+  --k-sidebar-width: 232px;
+  --k-sidebar-item-height: 32px;
+  --k-sidebar-padding: 10px;
+  --k-sidebar-section-gap: 20px;
+  --k-sidebar-footer-gap: 8px;
+  --k-sheet-padding: 40px;
+  --k-dot-size: 8px;
+  --k-brand-mark-size: 14px;
+  --k-brand-mark-height: 22px;
+  --k-brand-reflection-width: 10px;
+  --k-brand-reflection-short-width: 6px;
+  --k-brand-reflection-height: 1px;
+  --k-brand-reflection-gap: 2px;
+  --k-search-width: 240px;
+  --k-window-min-width: 960px;
+  --k-window-min-height: 600px;
+  --k-topbar-brand-gap: 10px;
+  --k-topbar-tab-height: 40px;
+  --k-topbar-tab-padding: 12px;
+  --k-topbar-search-gap: 8px;
+  --k-section-heading-height: 28px;
+  --k-service-status-gap: 6px;
+  --k-service-footer-gap: 4px;
+  --k-empty-state-gap: 8px;
+  --k-empty-state-max-width: 360px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --k-duration-fast: 0ms;
+  }
+}
