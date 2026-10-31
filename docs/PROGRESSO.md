@@ -31,6 +31,13 @@ Repositório recriado do zero em 2026-10-31.
 10. Fluxo de trabalho: o orquestrador só coordena; todo código é feito pelo Codex `gpt-6-luna` em `xhigh` (2026-10-31).
 11. `main` protegida: só por PR com o CI "Checagens e testes" verde; sem force push nem exclusão; vale para admins (2026-10-31).
 
+12. Fluxos do M1 aprovados (2026-10-31):
+    - Engrenagem → **Configurações**, começando pela seção **Agentes** (lista ✓/✗, detectar de novo, adicionar/remover CLI). Outras seções virão.
+    - Não há botão "Novo terminal": **"Nova conversa" abre com um seletor** de agentes (Claude Code, Codex, Gemini…) **ou Terminal**. No M1 só o Terminal funciona; os agentes aparecem como "em breve" até o M2.
+    - **Fechar a janela pergunta**: "Fechar tudo" (encerra agentes, terminais e o serviço) ou "Deixar rodando em segundo plano" (esconde a janela, fica um ícone na bandeja). Caixa "Lembrar minha escolha"; dá para mudar nas Configurações.
+    - Terminais vivem no serviço: com o app em segundo plano ou a janela reaberta, o terminal continua e mostra as últimas linhas.
+    - `@xterm/addon-fit` aprovado (ajusta o terminal ao tamanho da área).
+
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
 - Node 24 roda `.ts` direto (type stripping): testes e serviço em dev rodam sem build. Por isso o TS usa `erasableSyntaxOnly` (sem `enum`/`namespace`) e imports com extensão `.ts`.
