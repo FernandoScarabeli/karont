@@ -9,7 +9,7 @@ Repositório recriado do zero em 2026-10-31.
   - [x] F1 Tokens, fonte e componentes base — executor front
   - [x] B2 Serviço: socket com streaming + SQLite com migrações — executor back
   - [x] F2 Moldura vazia — executor front
-  - [ ] B3 Ponte do preview web (HTTP + SSE) — executor back
+  - [x] B3 Ponte do preview web (HTTP + SSE) — executor back
   - [ ] B4 Electron seguro + ponte de canal único — executor back
   - [ ] E2E de fumaça + CI — orquestrador
 
@@ -37,3 +37,4 @@ Repositório recriado do zero em 2026-10-31.
 - Electron 45.2.1 traz Node 24.22.1 com `node:sqlite`: o serviço pode rodar como `ELECTRON_RUN_AS_NODE=1` no app empacotado.
 - Tokens de cor vêm da "Direção A · Lua" do `karont.pen`. Só `--k-color-danger` (`#EF7B73`) não estava no design: proposta do orquestrador, ajustável.
 - Biome usa `"preset": "recommended"` (o `biome migrate` tinha trocado para `none`, o que desliga as regras).
+- Preview web: `npm run preview:web` na raiz → http://127.0.0.1:5173/. Reaproveita um serviço já rodando; se não houver, inicia um em modo dev (`KARONT_DEV=1`) e o encerra ao sair.
