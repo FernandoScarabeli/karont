@@ -1,4 +1,5 @@
 import type {
+  Agent,
   AnyEvent,
   ClientFrame,
   ErrorCode,
@@ -25,6 +26,24 @@ function assertContractTypes(bridge: KarontBridge): void {
   const serverFrame: ServerFrame = hello;
   const clientFrame: ClientFrame = { type: "auth", mac: "0".repeat(64) };
   const anyEvent: AnyEvent = { event: "bridge.status", payload: { state: "connected" } };
+  const agent: Agent = {
+    id: "claude",
+    name: "Claude Code",
+    kind: "known",
+    structured: true,
+    found: false,
+  };
+  const customAgent: ResultOf<"agents.add"> = {
+    agent: {
+      id: "custom-id",
+      name: "Local",
+      kind: "custom",
+      structured: false,
+      found: true,
+      path: "/tmp/agent",
+      command: "agent",
+    },
+  };
   const bridgeResult: Promise<ResultOf<"settings.get">> = bridge.request("settings.get", {
     key: "theme",
   });
@@ -47,6 +66,8 @@ function assertContractTypes(bridge: KarontBridge): void {
     serverFrame,
     clientFrame,
     anyEvent,
+    agent,
+    customAgent,
     bridgeResult,
     invalidMethod,
     invalidResult,

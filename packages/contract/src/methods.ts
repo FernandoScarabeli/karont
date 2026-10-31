@@ -18,6 +18,45 @@ export const jsonValueSchema = z.json().refine((value) => {
 
 const emptyParamsSchema = z.strictObject({});
 const isoDateTimeSchema = z.iso.datetime({ offset: true });
+const controlCharacterPattern = /\p{Cc}/u;
+
+export const agentSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    id: z.string(),
+    name: z.string(),
+    kind: z.literal("known"),
+    structured: z.boolean(),
+    found: z.boolean(),
+    path: z.string().optional(),
+  }),
+  z.strictObject({
+    id: z.string(),
+    name: z.string(),
+    kind: z.literal("custom"),
+    structured: z.literal(false),
+    found: z.boolean(),
+    path: z.string().optional(),
+    command: z.string(),
+  }),
+]);
+
+export type Agent = z.infer<typeof agentSchema>;
+
+const agentNameSchema = z
+  .string()
+  .min(1)
+  .max(60)
+  .refine((name) => name.trim() === name && !controlCharacterPattern.test(name));
+
+const agentCommandSchema = z
+  .string()
+  .min(1)
+  .max(512)
+  .refine(
+    (command) =>
+      !controlCharacterPattern.test(command) &&
+      (command.startsWith("/") || /^[A-Za-z0-9._+-]+$/.test(command)),
+  );
 
 export const methods = {
   "system.ping": {
@@ -42,6 +81,22 @@ export const methods = {
   "settings.set": {
     params: z.strictObject({ key: settingKeySchema, value: jsonValueSchema }),
     result: z.strictObject({ key: settingKeySchema, value: jsonValueSchema }),
+  },
+  "agents.list": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ agents: z.array(agentSchema), detectedAt: isoDateTimeSchema }),
+  },
+  "agents.detect": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ agents: z.array(agentSchema), detectedAt: isoDateTimeSchema }),
+  },
+  "agents.add": {
+    params: z.strictObject({ name: agentNameSchema, command: agentCommandSchema }),
+    result: z.strictObject({ agent: agentSchema }),
+  },
+  "agents.remove": {
+    params: z.strictObject({ id: z.string().min(1).max(80) }),
+    result: z.strictObject({ removed: z.literal(true) }),
   },
   // O serviço deve aceitar este método apenas em desenvolvimento; ele testa o streaming da ponte.
   "dev.streamTest": {
