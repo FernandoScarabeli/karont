@@ -10,8 +10,30 @@ export function useRunDesk(chat: UiChatDetails['chat'] | undefined, previousOnly
     [loading, setLoading] = useState(true),
     [error, setError] = useState('');
   const [diff, setDiff] = useState<UiDiff>(),
+    [diffSummary, setDiffSummary] = useState<UiDiff>(),
     [rollback, setRollback] = useState<UiRollback>(),
     [busy, setBusy] = useState(false);
+  const diffSummaryRef = useRef<UiDiff | undefined>(undefined);
+  const diffFlight = useRef<{ runId: string; promise: Promise<UiDiff> } | undefined>(undefined);
+  const requestDiff = React.useCallback(async (runId: string, force = false) => {
+    if (!force && diffSummaryRef.current?.run.id === runId) return diffSummaryRef.current;
+    while (diffFlight.current) {
+      const current = diffFlight.current;
+      if (!force && current.runId === runId) return current.promise;
+      await current.promise.catch(() => undefined);
+      if (!force && diffSummaryRef.current?.run.id === runId) return diffSummaryRef.current;
+    }
+    const promise = window.karont.diff(runId);
+    diffFlight.current = { runId, promise };
+    try {
+      const next = await promise;
+      diffSummaryRef.current = next;
+      setDiffSummary(next);
+      return next;
+    } finally {
+      if (diffFlight.current?.promise === promise) diffFlight.current = undefined;
+    }
+  }, []);
   const rollbackDialog = useRef<HTMLDialogElement>(null);
   useEffect(
     () => () => {
@@ -143,11 +165,23 @@ export function useRunDesk(chat: UiChatDetails['chat'] | undefined, previousOnly
     setRollback(undefined);
     setDiff(undefined);
     try {
-      setDiff(await window.karont.diff(run.id));
+      // Ao abrir, sempre busca de novo: o resumo em cache pode ser de antes da Run terminar.
+      setDiff(await requestDiff(run.id, true));
     } catch {
       setError('O diff desta execução ainda não está disponível.');
     }
   }
+  const loadDiffSummary = React.useCallback(
+    async (runId: string, refresh = false) => {
+      setError('');
+      try {
+        await requestDiff(runId, refresh);
+      } catch {
+        setError('O resumo de mudanças desta execução ainda não está disponível.');
+      }
+    },
+    [requestDiff],
+  );
   async function previewRollback() {
     if (!diff) return;
     try {
@@ -162,7 +196,8 @@ export function useRunDesk(chat: UiChatDetails['chat'] | undefined, previousOnly
     try {
       const result = await window.karont.rollbackApply(rollback.run.id);
       setRollback(undefined);
-      setDiff(await window.karont.diff(rollback.run.id));
+      const nextDiff = await requestDiff(rollback.run.id, true);
+      setDiff(nextDiff);
       setNotice(
         result.applied
           ? 'Reversão registrada no histórico desta execução.'
@@ -209,10 +244,13 @@ export function useRunDesk(chat: UiChatDetails['chat'] | undefined, previousOnly
     busy,
     connectionError,
     diff,
+    diffSummary,
     dots,
     error,
     focusHistoryRun,
+    focusedRun,
     loading,
+    loadDiffSummary,
     modes,
     notice,
     openDiff,

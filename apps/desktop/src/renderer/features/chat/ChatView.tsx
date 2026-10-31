@@ -1,4 +1,5 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 import { TaskCreationDialog, type TaskSeed } from '../tasks/TaskDesk';
 import type { UiChatDetails, UiDot, UiMessage, UiWorkspaceProject } from '../../lib/api';
 import { ChatComposer } from './ChatComposer';
@@ -14,7 +15,6 @@ type Props = {
   initial: UiChatDetails;
   dots: UiDot[];
   projects: UiWorkspaceProject[];
-  onClose(): void;
   onChatChange(chat: UiChatDetails): void;
   onMoveComplete(chat: UiChatDetails): Promise<void>;
 };
@@ -23,6 +23,9 @@ export function ChatView(props: Props) {
   const [messageError, setMessageError] = useState('');
   const [saving, setSaving] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const runPanelRef = useRef<HTMLElement>(null);
+  const runPanelButtonRef = useRef<HTMLButtonElement>(null);
+  const [runPanelOpen, setRunPanelOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameTitle, setRenameTitle] = useState(props.initial.chat.title);
   const [taskSeed, setTaskSeed] = useState<TaskSeed>();
@@ -76,7 +79,7 @@ export function ChatView(props: Props) {
     confirmMove,
   } = move;
 
-  async function saveMessage(event: React.FormEvent) {
+  async function saveMessage(event: FormEvent) {
     event.preventDefault();
     if (
       !draft.trim() ||
@@ -201,7 +204,7 @@ export function ChatView(props: Props) {
     }
   }
 
-  async function renameChat(event: React.FormEvent) {
+  async function renameChat(event: FormEvent) {
     event.preventDefault();
     try {
       await persistDraft(draftRef.current);
@@ -213,11 +216,15 @@ export function ChatView(props: Props) {
   }
 
   const activeRun = runs.find((run) => run.state === 'running' && run.sessionId);
+  const dotName = props.dots.find((dot) => dot.id === chat.chat.dotId)?.name;
   return (
-    <section className="chat-workspace" aria-label={`Conversa ${chat.chat.title}`}>
+    <section
+      className={`chat-workspace kc-chat-layout${chat.chat.projectId ? '' : ' kc-chat-layout-free'}`}
+      aria-label={`Conversa ${chat.chat.title}`}
+    >
       <ChatHeader
         chat={chat}
-        dots={props.dots}
+        dotName={dotName}
         renaming={renaming}
         renameTitle={renameTitle}
         setRenameTitle={setRenameTitle}
@@ -225,36 +232,42 @@ export function ChatView(props: Props) {
         setRenaming={setRenaming}
         toggleFavorite={toggleFavorite}
         openMove={openMove}
-        onClose={props.onClose}
+        runPanelOpen={runPanelOpen}
+        onToggleRunPanel={() => setRunPanelOpen((open) => !open)}
+        runPanelButtonRef={runPanelButtonRef}
       />
 
-      <ChatMessages
-        chat={chat}
-        messages={messages}
-        deliveries={deliveries}
-        activeRun={activeRun}
-        saving={saving}
-        nextCursor={nextCursor}
-        loadNextMessages={loadNextMessages}
-        setMessageError={setMessageError}
-        composerRef={composerRef}
-        editDraft={editDraft}
-        startTaskFromMessage={startTaskFromMessage}
-        sendSavedMessage={sendSavedMessage}
-      />
-      <ChatComposer
-        chatId={chat.chat.id}
-        draft={draft}
-        saving={saving}
-        composerRef={composerRef}
-        composing={composing}
-        draftRef={draftRef}
-        saveMessage={saveMessage}
-        editDraft={editDraft}
-        persistDraft={persistDraft}
-      />
+      <div className="kc-chat-conversation">
+        <ChatMessages
+          chat={chat}
+          messages={messages}
+          deliveries={deliveries}
+          runs={runs}
+          activeRun={activeRun}
+          saving={saving}
+          nextCursor={nextCursor}
+          loadNextMessages={loadNextMessages}
+          setMessageError={setMessageError}
+          composerRef={composerRef}
+          editDraft={editDraft}
+          startTaskFromMessage={startTaskFromMessage}
+          sendSavedMessage={sendSavedMessage}
+        />
+        <ChatComposer
+          chatId={chat.chat.id}
+          dotName={dotName}
+          draft={draft}
+          saving={saving}
+          composerRef={composerRef}
+          composing={composing}
+          draftRef={draftRef}
+          saveMessage={saveMessage}
+          editDraft={editDraft}
+          persistDraft={persistDraft}
+        />
+      </div>
       {taskNotice && (
-        <p className="desk-notice" role="status">
+        <p className="desk-notice kc-chat-status" role="status">
           {taskNotice}
         </p>
       )}
@@ -274,7 +287,15 @@ export function ChatView(props: Props) {
           if (submitted !== null && draftRef.current === submitted) editDraft('');
         }}
       />
-      {chat.chat.projectId && <ChatRunTools chat={chat.chat} activeRun={activeRun} />}
+      {chat.chat.projectId && (
+        <ChatRunTools
+          chat={chat.chat}
+          open={runPanelOpen}
+          onClose={() => setRunPanelOpen(false)}
+          panelRef={runPanelRef}
+          triggerRef={runPanelButtonRef}
+        />
+      )}
       {messageError && (
         <p className="workspace-error" role="alert">
           {messageError}

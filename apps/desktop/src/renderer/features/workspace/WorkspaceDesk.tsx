@@ -196,7 +196,6 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: ReactNod
               initial={selectedChat}
               dots={dots}
               projects={projectIndex}
-              onClose={() => void home()}
               onChatChange={setSelectedChat}
               onMoveComplete={async (chat) => {
                 setSelectedChat(chat);

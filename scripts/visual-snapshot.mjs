@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import assert from 'node:assert/strict';
 import { daemon, openConversation, openDiagnostics, until, wait } from './harness.mjs';
 
 const base = path.resolve('artifacts/visual');
@@ -286,9 +287,19 @@ try {
   await capture(page, 'chat-1440');
   await resize(app, page, 840, 620);
   await capture(page, 'chat-840');
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  await page.getByRole('region', { name: 'Painel da Run', exact: true }).waitFor();
+  await capture(page, 'chat-840-terminal');
+  await page.keyboard.press('Escape');
+  assert.equal(
+    await page
+      .getByRole('button', { name: 'Terminal', exact: true })
+      .evaluate((button) => document.activeElement === button),
+    true,
+  );
   await resize(app, page, 1440, 900);
 
-  await page.locator('summary', { hasText: 'Terminal e execuções' }).click();
+  await page.getByRole('region', { name: 'Painel da Run', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Iniciar execução', exact: true }).click();
   const run = await until(async () => {
     const runs = (await request('chats.runs.list', { chatId: chat.id, limit: 100 })).items;
@@ -307,7 +318,7 @@ try {
     .getByText('Dot visual pronto')
     .waitFor({ state: 'attached' });
   await capture(page, 'chat-run');
-  await page.getByRole('button', { name: 'Diff', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Ver mudanças', exact: true }).click();
   await page.getByRole('heading', { name: 'Alterações desta execução', exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Alterações desta execução' }).scrollIntoViewIfNeeded();
   await capture(page, 'chat-diff');

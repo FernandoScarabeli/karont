@@ -1,4 +1,3 @@
-import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { LegacyWorkbench } from './app/LegacyWorkbench';
 import { WorkspaceDesk } from './features/workspace/WorkspaceDesk';
@@ -10,6 +9,7 @@ import './styles/style.css';
 import './styles/karont.css';
 import './styles/shell.css';
 import './styles/workspace-home.css';
+import './styles/chat.css';
 createRoot(document.getElementById('root')!).render(
   <WorkspaceDesk view="workspaces" tools={<LegacyWorkbench />} />,
 );

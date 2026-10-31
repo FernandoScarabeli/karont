@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import type { TerminalEvent } from '../../../../../../packages/contracts/src';
@@ -10,11 +10,13 @@ export function TerminalPane({
   dot,
   project,
   refreshRun,
+  compact = false,
 }: {
   run: UiRun;
   dot?: UiDot;
   project?: UiProject;
   refreshRun: (run: UiRun) => void;
+  compact?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const term = useRef<Terminal | undefined>(undefined);
@@ -22,24 +24,26 @@ export function TerminalPane({
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState('');
   useEffect(() => {
-    if (!host.current) return;
+    const terminalHost = host.current;
+    if (!terminalHost) return;
+    const token = (name: string) => getComputedStyle(terminalHost).getPropertyValue(name).trim();
     const terminal = new Terminal({
       cursorBlink: true,
       convertEol: true,
       scrollback: 3000,
-      fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace',
+      fontFamily: token('--k-font-mono'),
       fontSize: 12,
       theme: {
-        background: '#0e1311',
-        foreground: '#d7e1d8',
-        cursor: '#c1df85',
-        selectionBackground: '#53684c',
+        background: token('--k-well'),
+        foreground: token('--k-text'),
+        cursor: token('--k-primary'),
+        selectionBackground: token('--k-raised'),
       },
       screenReaderMode: true,
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
-    terminal.open(host.current);
+    terminal.open(terminalHost);
     fit.fit();
     term.current = terminal;
     let restoring = true,
@@ -99,7 +103,7 @@ export function TerminalPane({
         // fit() falha se o terminal já foi desmontado ou está oculto; o próximo resize ajusta.
       }
     });
-    observer.observe(host.current);
+    observer.observe(terminalHost);
     let retry: ReturnType<typeof setTimeout> | undefined,
       stopped = false;
     const attach = () =>
@@ -138,35 +142,40 @@ export function TerminalPane({
   return (
     <article
       id={`run-${run.id}`}
-      className="run-card"
+      className={compact ? 'run-card kc-terminal-pane kc-terminal-pane-compact' : 'run-card'}
       aria-label={`Execução ${dot?.name ?? run.dotId}`}
     >
-      <header className="run-card-head">
-        <div className="run-title">
-          <span className={`state-dot ${run.state}`} aria-hidden="true" />
-          <div>
-            <h3>{dot?.name ?? run.dotId}</h3>
-            <p>
-              {project?.name ?? run.projectId} · {run.branch ?? 'worktree preparando'}
-            </p>
+      {!compact && (
+        <header className="run-card-head">
+          <div className="run-title">
+            <span className={`state-dot ${run.state}`} aria-hidden="true" />
+            <div>
+              <h3>{dot?.name ?? run.dotId}</h3>
+              <p>
+                {project?.name ?? run.projectId} · {run.branch ?? 'worktree preparando'}
+              </p>
+            </div>
           </div>
-        </div>
-        <span className={`run-state ${run.state}`}>
-          {run.state} · inicial: {modeLabels[run.permissionMode]}
-        </span>
-      </header>
-      {dot?.role && (
+          <span className={`run-state ${run.state}`}>
+            {run.state} · inicial: {modeLabels[run.permissionMode]}
+          </span>
+        </header>
+      )}
+      {!compact && dot?.role && (
         <p className="dot-role" title={dot.role}>
           {dot.role}
         </p>
       )}
       <div
-        className="terminal-shell"
+        className={compact ? 'terminal-shell kc-terminal-shell' : 'terminal-shell'}
         ref={host}
         aria-label={`Terminal de ${dot?.name ?? run.dotId}`}
       />
       {run.state === 'running' && (
-        <form className="terminal-task" onSubmit={(e) => void sendTask(e)}>
+        <form
+          className={compact ? 'terminal-task kc-terminal-task' : 'terminal-task'}
+          onSubmit={(e) => void sendTask(e)}
+        >
           <label className="sr-only" htmlFor={`task-${run.id}`}>
             Instrução para {dot?.name ?? run.dotId}
           </label>
@@ -186,23 +195,26 @@ export function TerminalPane({
           {message}
         </p>
       )}
-      <footer className="run-actions">
-        <small>
-          PID {run.pid ?? '—'}
-          {run.exitCode !== null ? ` · código ${run.exitCode}` : ''}
-        </small>
-        <button className="quiet" onClick={() => refreshRun(run)}>
-          Ver diff
-        </button>
-        {run.state === 'running' && (
-          <button
-            className="danger-quiet"
-            onClick={() => void window.karont.cancelRun(run.id).then(refreshRun)}
-          >
-            Cancelar
+      {!compact && (
+        <footer className="run-actions">
+          <small>
+            PID {run.pid ?? '—'}
+            {run.exitCode !== null ? ` · código ${run.exitCode}` : ''}
+          </small>
+          <button type="button" className="quiet" onClick={() => refreshRun(run)}>
+            Ver diff
           </button>
-        )}
-      </footer>
+          {run.state === 'running' && (
+            <button
+              type="button"
+              className="danger-quiet"
+              onClick={() => void window.karont.cancelRun(run.id).then(refreshRun)}
+            >
+              Cancelar
+            </button>
+          )}
+        </footer>
+      )}
     </article>
   );
 }

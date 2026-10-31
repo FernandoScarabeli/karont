@@ -206,6 +206,38 @@ As listas agregadas percorrem páginas com limite 100 em sequência: conversas p
 
 Em área útil de até 640 px, ações de “Precisa de você” descem para uma linha sob o texto; o compositor pode quebrar as ações. A grade reduz as colunas conforme o espaço e as Tarefas passam a duas colunas. Foco visível, texto além de cor e `prefers-reduced-motion` permanecem ativos. A confirmação visual da janela mínima de 840 × 620 px e a leitura com tecnologia assistiva ainda dependem de revisão no Electron.
 
+### Tela do Chat (implementado)
+
+A conversa de Projeto usa duas colunas: mensagens flexíveis e Painel da Run de 560 px (`--k-chat-panel-width`), com `--k-page` e `--k-line`. Conversa livre não monta o painel e usa toda a largura. O cabeçalho tem 64 px, título Geist Sans 16/500, origem em 12 px e ações de 32 px; o Dot reaproveita `DotBadge` em 20 px. O botão “Terminal” aparece quando a janela entra na faixa compacta.
+
+Mensagens salvas e eventos de Run são intercalados por horário. Cada Run mostra modo e hora; cada mensagem mantém autor, horário Geist Mono, texto 14 px/1,55 e suas ações. A inicial do avatar vem de `systemUser()`; se a leitura falha, aparece “P” de Perfil local. Ações da mensagem aparecem com hover, foco ou sempre em telas sem hover. Estados de entrega combinam ícone e texto: “Salva, ainda não enviada”, “Enviada ao terminal” ou “Entrega incerta”. “Enviada” confirma somente escrita no PTY, não processamento pelo Dot. Com Run `running` e sessão conectada, “Enviar ao terminal” chama a operação existente; entrega incerta mantém a confirmação de revisão.
+
+O compositor usa `--k-card`, linha `--k-line`, raio `--k-radius-panel` e os nomes atuais “Nova mensagem” e “Salvar mensagem”. O comando `/kanban` continua no atalho `/ Criar tarefa`. **Enter salva** a mensagem local e Shift+Enter insere uma linha. Decisão pendente para produto: **com Run ativa, Enter salva e envia?** Até essa decisão, salvar e entregar ao terminal continuam ações separadas.
+
+O painel reutiliza o xterm real e aplica `--k-font-mono`; a captura aprovada contém saída demonstrativa, substituída na aplicação pela saída real da Run. A linha superior informa estado, tempo decorrido quando `running`, branch e modo de permissão. `LiveMoon` aparece só para `running`. “Parar” reutiliza `cancelRun`; `Pausar` aparece apenas para estado `queued`, porque `pauseRun` aceita somente agendamentos ainda não iniciados. A referência mostra “Pausar” também numa Run ativa; não foi reproduzido para evitar oferecer uma operação que o daemon rejeita. A área de instrução direta ao terminal foi mantida compacta para preservar o fluxo existente.
+
+Os números de mudanças vêm de `runs.diff`: o renderer carrega o resumo quando o painel fica visível e quando recebe evento de mudança de estado da Run selecionada. Não há polling de diff. “Ver mudanças” abre o `DiffView`; “Execuções anteriores” reutiliza o histórico atual, incluindo continuidade e rollback. O estado de aprovação é consultado para a Run selecionada e só aparece quando há pedido `pending` dela. Respostas/interações do Dot continuam exclusivamente no terminal; o chat não cria balões do agente.
+
+Em janelas de até 1100 px, o painel vira uma gaveta sobre a conversa, com largura máxima de 560 px; Esc fecha e devolve o foco ao botão “Terminal”. A faixa até 920 px reduz os paddings do chat para preservar o espaço de leitura. O xterm já usa `ResizeObserver` e `addon-fit`, então se ajusta ao abrir a gaveta e ao redimensionar a janela. Mensagens longas quebram dentro do cartão; saída e diff rolam dentro dos seus próprios painéis.
+
+O lançador de Dot e modo, mostrado quando não há Run atual, ainda **não foi desenhado**; recebeu estilo provisório com os cartões e controles existentes. O painel de aprovação contextual de rollback também **não foi desenhado**; reaproveita `Attention` e recebe estilo compacto provisório. Os estados de carregamento e falha do resumo aparecem no próprio painel. O texto terciário fica em `--k-page`, `--k-card` ou `--k-chrome`; sobre `--k-raised`, usa-se `--k-text-2`. Números positivos/negativos têm sinal textual além da cor. Foco por teclado usa `--k-focus`, e `prefers-reduced-motion` remove a transição da gaveta.
+
+#### Tokens da tela do Chat
+
+Os tokens ficam em `apps/desktop/src/renderer/styles/tokens.css`; `styles/chat.css` usa as superfícies, cores e tipografia semânticas já definidas acima.
+
+| Grupo | Tokens e valores | Regra de uso |
+| --- | --- | --- |
+| Colunas e cabeçalho | `--k-chat-panel-width: 560px`; cabeçalho `64px`; padding `0 24px 0 32px`; título `16px` | Painel fixo à direita em desktop; origem cabe em uma linha truncada |
+| Mensagens | padding `16px 32px 24px`; gap `20px`; cartão `16px 20px`; avatar `20px`; linha do texto `1.55` | Meta e ações não alteram o conteúdo da mensagem |
+| Compositor | padding `14px 16px 12px`; margem `0 32px 24px`; botão `32px`; atalho de tarefa `28px` | Enter salva; enviar ao terminal mantém ação separada |
+| Painel da Run | padding superior `16px 20px 14px`; ações `28px`; branch/modo em Geist Mono 12 | Linha superior distingue estado textual e lua viva |
+| Terminal e resumo | terminal `14px 20px`; dica `8px 20px`; resumo `14px 20px 16px` | Só terminal real; diff consultado ao abrir e em evento de estado |
+| Faixa compacta | gaveta até `560px`; breakpoint `1100px`; padding do chat reduzido até `920px` | Overlay sobre a conversa; Esc fecha e restaura foco |
+| Escala de espaçamento | `--k-chat-gap-2xs` a `--k-chat-gap-xl`: `2`, `4`, `6`, `8`, `10` e `12px` | Microespaçamentos, lacunas e padding de controles |
+
+`--k-chat-history-*`, `--k-chat-approval-max-height` e os tokens de avatar/atalho completam os limites dos painéis sobrepostos e controles. As classes antigas usadas pelo renderer e E2E (`.chat-heading`, `.saved-message`, `.run-desk`, `.run-card`, `.terminal-shell`) permanecem junto das classes `kc-*` desta tela.
+
 ### Contraste WCAG
 
 Contraste calculado pela fórmula WCAG para luminância relativa sRGB: `(Lmais clara + 0,05) / (Lmais escura + 0,05)`. Os valores estão arredondados a duas casas; AA para texto normal exige pelo menos 4,5:1.
@@ -223,6 +255,8 @@ Contraste calculado pela fórmula WCAG para luminância relativa sRGB: `(Lmais c
 | `--k-text-3` sobre `--k-chrome` | `5,22:1` | Passa |
 | `--k-text-2` sobre `--k-raised` | `6,10:1` | Passa |
 | `--k-text-3` sobre `--k-raised` | `4,28:1` | Não passa |
+| `--k-positive` sobre `--k-card` | `7,93:1` | Passa |
+| `--k-negative` sobre `--k-card` | `4,49:1` | Não passa por margem pequena |
 | `--k-on-primary` sobre `--k-primary` | `15,91:1` | Passa |
 | `--k-focus` sobre `--k-page` | `8,32:1` | Passa |
 
@@ -270,7 +304,7 @@ Os nomes abaixo correspondem às variáveis do pen.dev e às propriedades CSS co
 
 Hover, seleção, foco e execução são estados distintos. Estados não dependem apenas da cor: usar rótulo, ícone e semântica conforme o controle. Ação primária usa `text-primary` sobre o fundo do botão e `bg-canvas` no texto/ícone; foco usa contorno de 2 px e offset de 2 px. Bordas escuras organizam superfícies, sem substituir labels nem foco.
 
-Contrastes dos pares principais no canvas: principal/fundo 15,74:1; secundário/compositor 6,60:1; principal/balão 12,43:1; erro/compositor 7,13:1; foco/fundo 8,32:1. A revisão estática não certifica todos os estados do aplicativo.
+Contrastes dos pares principais no canvas: principal/fundo 15,74:1; secundário/compositor 6,60:1; principal/balão 12,43:1; erro/compositor 7,13:1; foco/fundo 8,32:1. Na tela do Chat, `--k-negative` sobre `--k-card` fica em 4,49:1 para o número de remoções de 12 px; a diferença de sinal (“−”) também comunica o estado, mas o contraste do número não alcança AA por margem pequena. A revisão estática não certifica todos os estados do aplicativo.
 
 ### Tipografia, ícones e identidade
 

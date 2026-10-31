@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Approval, DiagnosticItem } from '../../../../../../packages/contracts/src';
+import { AttentionDot } from '../../components/AttentionDot';
 import { decidePendingApproval } from './approvalActions';
 
-export function Attention() {
+export function Attention({ runId }: { runId?: string } = {}) {
   const [panel, setPanel] = useState<'approvals' | 'diagnostics' | 'report'>();
   const [approvals, setApprovals] = useState<Approval[]>([]),
     [items, setItems] = useState<DiagnosticItem[]>([]),
@@ -18,7 +19,15 @@ export function Attention() {
     setError('');
     setNotice('');
     try {
-      if (next === 'approvals') setApprovals(await window.karont.approvals());
+      if (next === 'approvals') {
+        const loaded = await window.karont.approvals();
+        setApprovals(
+          runId
+            ? loaded.filter((approval) => approval.runId === runId && approval.status === 'pending')
+            : loaded,
+        );
+        if (runId) setPanel('approvals');
+      }
       if (next === 'diagnostics') {
         setItems(await window.karont.diagnostics());
         const n = await window.karont.notifications();
@@ -38,60 +47,110 @@ export function Attention() {
     }
   }
   useEffect(() => {
-    if (panel) region.current?.focus();
+    if (panel && !runId) region.current?.focus();
+  }, [panel, runId]);
+  useEffect(() => {
+    if (runId) void load('approvals');
+  }, [runId]);
+  useEffect(() => {
     const dispose = window.karont.onEvent((event) => {
       if (event.type === 'approval.updated')
-        setApprovals((current) =>
-          [event.approval, ...current.filter((a) => a.id !== event.approval.id)].slice(0, 100),
-        );
+        setApprovals((current) => {
+          const rest = current.filter((approval) => approval.id !== event.approval.id);
+          if (runId)
+            return event.approval.runId === runId && event.approval.status === 'pending'
+              ? [event.approval, ...rest].slice(0, 100)
+              : rest;
+          return [event.approval, ...rest].slice(0, 100);
+        });
     });
     return dispose;
-  }, [panel]);
+  }, [runId]);
   async function decide(a: Approval, allow: boolean) {
     setBusy(true);
     setError('');
     try {
       if (!(await decidePendingApproval(a.id, allow))) return;
-      setApprovals(await window.karont.approvals());
+      const loaded = await window.karont.approvals();
+      setApprovals(
+        runId
+          ? loaded.filter((approval) => approval.runId === runId && approval.status === 'pending')
+          : loaded,
+      );
     } catch {
       setError(
         'A decisão não pôde ser aplicada. Atualize a prévia: pode haver conflito ou decisão anterior.',
       );
       void window.karont
         .approvals()
-        .then(setApprovals)
+        .then((loaded) =>
+          setApprovals(
+            runId
+              ? loaded.filter(
+                  (approval) => approval.runId === runId && approval.status === 'pending',
+                )
+              : loaded,
+          ),
+        )
         .catch(() => {});
     } finally {
       setBusy(false);
     }
   }
+  if (runId && !error && !approvals.some((approval) => approval.status === 'pending')) return null;
+
   return (
     <div className="attention">
-      <nav aria-label="Mission Control">
-        <button
-          type="button"
-          className="quiet"
-          aria-expanded={panel === 'approvals'}
-          onClick={() => void load('approvals')}
-        >
-          Central de Aprovações
-        </button>
-        <button
-          type="button"
-          className="quiet"
-          aria-expanded={panel === 'diagnostics'}
-          onClick={() => void load('diagnostics')}
-        >
-          Diagnóstico
-        </button>
-        <button
-          type="button"
-          className="quiet"
-          aria-expanded={panel === 'report'}
-          onClick={() => void load('report')}
-        >
-          Reportar problema
-        </button>
+      <nav aria-label={runId ? 'Aprovação pendente desta Run' : 'Mission Control'}>
+        {runId ? (
+          <button
+            type="button"
+            className="quiet"
+            aria-expanded={panel === 'approvals'}
+            aria-description={
+              approvals.some((approval) => approval.status === 'pending')
+                ? 'Há um pedido de rollback pendente desta Run.'
+                : 'Verificar pedidos de rollback desta Run.'
+            }
+            onClick={() => void load('approvals')}
+          >
+            {approvals.some((approval) => approval.status === 'pending') && (
+              <span aria-hidden="true">
+                <AttentionDot />
+              </span>
+            )}
+            {approvals.some((approval) => approval.status === 'pending')
+              ? 'Aprovação pendente'
+              : 'Verificar aprovação'}
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="quiet"
+              aria-expanded={panel === 'approvals'}
+              onClick={() => void load('approvals')}
+            >
+              Central de Aprovações
+            </button>
+            <button
+              type="button"
+              className="quiet"
+              aria-expanded={panel === 'diagnostics'}
+              onClick={() => void load('diagnostics')}
+            >
+              Diagnóstico
+            </button>
+            <button
+              type="button"
+              className="quiet"
+              aria-expanded={panel === 'report'}
+              onClick={() => void load('report')}
+            >
+              Reportar problema
+            </button>
+          </>
+        )}
       </nav>
       {panel && (
         <section

@@ -477,7 +477,7 @@ try {
     .fill('SPEC005_PRIVATE_TEST_MESSAGE');
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
   await page.getByText('SPEC005_PRIVATE_TEST_MESSAGE', { exact: true }).waitFor();
-  await page.locator('summary', { hasText: 'Terminal e execuções' }).click();
+  await page.getByRole('region', { name: 'Painel da Run', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Iniciar execução', exact: true }).click();
   let primaryRuns = await until(async () => {
     const pageOfRuns = await client.request({
@@ -491,8 +491,8 @@ try {
   const primaryRun = primaryRuns[0];
   startedRuns.push(primaryRun);
   assert.equal(primaryRun.chatId, primary.id);
-  await page.getByRole('button', { name: 'Enviar ao agente', exact: true }).click();
-  await page.getByText(/Enviado ao terminal/).waitFor();
+  await page.getByRole('button', { name: 'Enviar ao terminal', exact: true }).click();
+  await page.getByText(/Enviada ao terminal/).waitFor();
   await page
     .locator(`#run-${primaryRun.id} .terminal-shell [role="listitem"]`)
     .getByText(/SPEC005_INPUT SPEC005_PRIVATE_TEST_MESSAGE/)
@@ -535,7 +535,7 @@ try {
     return page;
   });
   assert.equal(secondMessages.items.length, 1);
-  await page.locator('summary', { hasText: 'Terminal e execuções' }).click();
+  await page.getByRole('region', { name: 'Painel da Run', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Iniciar execução', exact: true }).click();
   const secondRun = await until(async () => {
     const runs = (
@@ -862,6 +862,8 @@ try {
   await page.screenshot({ path: compactShot, fullPage: true });
   result.artifacts.push(compactShot);
   result.checks.push('layouts de 900px e 1440px sem overflow horizontal');
+  // Abaixo de 1100 px o painel da Run vira gaveta; o resto do teste usa o terminal visível.
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   await openConversation(page, 'Conversa principal', `${runWorkspace.name} / ${project.name}`);
   await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();

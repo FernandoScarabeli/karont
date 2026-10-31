@@ -8,9 +8,20 @@ export const require = createRequire(import.meta.url);
 export const { Client } = require('../dist/local/client.cjs');
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 export async function openDiagnostics(page) {
-  // A engrenagem do rodapé abre um menu; o item de mesmo nome leva à página.
-  await page.getByRole('button', { name: 'Configurações e ferramentas', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Configurações e ferramentas', exact: true }).click();
+  // A engrenagem do rodapé abre um menu; o item de mesmo nome leva à página. Logo após abrir o
+  // app, o rodapé pode ser recriado enquanto os dados chegam e o menu some (DIVIDAS #27):
+  // tenta de novo algumas vezes.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await page.getByRole('button', { name: 'Configurações e ferramentas', exact: true }).click();
+      await page
+        .getByRole('menuitem', { name: 'Configurações e ferramentas', exact: true })
+        .click({ timeout: 3000 });
+      break;
+    } catch (error) {
+      if (attempt >= 3) throw error;
+    }
+  }
   await page.getByText('Daemon conectado', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Diagnóstico e laboratório', exact: true }).click();
 }

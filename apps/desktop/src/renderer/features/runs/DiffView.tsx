@@ -1,18 +1,21 @@
 import type { UiDiff } from '../../lib/api';
+import { X } from 'lucide-react';
 
 export function DiffView({
   diff,
   onOpenDiff,
   onPreviewRollback,
   onRemoveWorktree,
+  onClose,
 }: {
   diff: UiDiff;
   onOpenDiff: (run: UiDiff['run']) => void;
   onPreviewRollback: () => void;
   onRemoveWorktree: () => void;
+  onClose?: () => void;
 }) {
   return (
-    <section className="diff-view" aria-labelledby="diff-title">
+    <section className="diff-view kc-diff-view" aria-labelledby="diff-title">
       <div className="diff-heading">
         <div>
           <div className="eyebrow">REVISÃO / {diff.run.id.slice(0, 8)}</div>
@@ -23,10 +26,22 @@ export function DiffView({
           </p>
         </div>
         <div className="diff-tools">
-          <button className="quiet" onClick={() => void onOpenDiff(diff.run)}>
+          {onClose && (
+            <button
+              type="button"
+              className="quiet kc-diff-close"
+              aria-label="Fechar mudanças"
+              title="Fechar mudanças"
+              onClick={onClose}
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          )}
+          <button type="button" className="quiet" onClick={() => void onOpenDiff(diff.run)}>
             Atualizar
           </button>
           <button
+            type="button"
             className="danger"
             onClick={() => void onPreviewRollback()}
             disabled={!diff.totalFiles}
@@ -34,7 +49,7 @@ export function DiffView({
             Desfazer alterações
           </button>
           {diff.totalFiles === 0 && (
-            <button className="danger-quiet" onClick={() => void onRemoveWorktree()}>
+            <button type="button" className="danger-quiet" onClick={() => void onRemoveWorktree()}>
               Remover worktree
             </button>
           )}

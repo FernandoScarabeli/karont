@@ -1,8 +1,9 @@
-import React from 'react';
+import type * as React from 'react';
 import { ArrowUp, Command } from 'lucide-react';
 
 type Props = {
   chatId: string;
+  dotName?: string;
   draft: string;
   saving: boolean;
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -15,7 +16,10 @@ type Props = {
 
 export function ChatComposer(props: Props) {
   return (
-    <form className="message-composer" onSubmit={(event) => void props.saveMessage(event)}>
+    <form
+      className="message-composer kc-chat-composer"
+      onSubmit={(event) => void props.saveMessage(event)}
+    >
       <label className="sr-only" htmlFor={`draft-${props.chatId}`}>
         Nova mensagem
       </label>
@@ -41,12 +45,12 @@ export function ChatComposer(props: Props) {
         onBlur={() => {
           void props.persistDraft(props.draftRef.current).catch(() => {});
         }}
-        placeholder="Escreva sua mensagem…"
+        placeholder={props.dotName ? `Escreva para o ${props.dotName}` : 'Escreva uma mensagem'}
       />
-      <div className="composer-footer">
+      <div className="composer-footer kc-composer-footer">
         <button
           type="button"
-          className="k-icon"
+          className="k-icon kc-task-command"
           title="Criar tarefa com /kanban"
           aria-label="Inserir comando criar tarefa"
           onClick={() => {
@@ -54,17 +58,25 @@ export function ChatComposer(props: Props) {
             props.composerRef.current?.focus();
           }}
         >
-          <Command size={16} />
+          <span className="kc-command-slash" aria-hidden="true">
+            /
+          </span>
+          <span>Criar tarefa</span>
+          <Command size={14} aria-hidden="true" />
         </button>
-        <small>
+        <small className="kc-composer-status" role="status">
           {new TextEncoder().encode(props.draft).byteLength > 8000
             ? 'Limite de 8.000 bytes excedido'
             : props.saving
               ? 'Salvando…'
               : 'Registro local · enviar ao terminal é uma ação separada'}
         </small>
+        <span className="kc-composer-hint">
+          <kbd>Enter</kbd> salva
+        </span>
         <button
-          className="k-icon k-send"
+          type="submit"
+          className="k-icon k-send kc-save-message"
           title="Salvar mensagem"
           aria-label="Salvar mensagem"
           disabled={
@@ -73,7 +85,7 @@ export function ChatComposer(props: Props) {
             props.saving
           }
         >
-          <ArrowUp size={18} />
+          <ArrowUp size={18} aria-hidden="true" />
         </button>
       </div>
     </form>
