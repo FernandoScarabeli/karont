@@ -1,4 +1,5 @@
-// Moldura da interface. Preenchida nas tarefas F1 e F2.
+import { Showcase } from "./dev/Showcase.tsx";
+
 export function App() {
-  return <main>Karont</main>;
+  return <Showcase />;
 }
