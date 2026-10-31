@@ -29,8 +29,8 @@ Leia antes de qualquer tarefa: [docs/SPEC.md](docs/SPEC.md) (o que construir) e,
 
 ## Para o executor da interface (front)
 - **Sempre** use a skill de frontend **taste** para construir as telas.
-- Ao terminar, faça uma passada de revisão com a skill **unslop** no que você fez e aplique as correções dentro dos arquivos permitidos.
-- Se alguma das duas skills não estiver disponível, diga no relatório.
+- A skill **unslop** não está no ambiente do executor: o orquestrador roda a revisão com ela e devolve os achados numa correção, que você aplica.
+- Se a **taste** não estiver disponível, diga no relatório.
 
 ## Relatório (resposta do executor)
 

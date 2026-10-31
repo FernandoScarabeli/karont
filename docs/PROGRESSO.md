@@ -40,7 +40,7 @@ Repositório recriado do zero em 2026-10-31.
     - Terminais vivem no serviço: com o app em segundo plano ou a janela reaberta, o terminal continua e mostra as últimas linhas.
     - `@xterm/addon-fit` aprovado (ajusta o terminal ao tamanho da área).
 
-13. Tarefas de front: o Codex usa a skill **taste** para construir e revisa com a skill **unslop** no fim (2026-10-31). Regra em `AGENTS.md`.
+13. Tarefas de front: o Codex usa a skill **taste** para construir; a revisão com a skill **unslop** é feita pelo orquestrador (o Codex não tem essa skill) e volta como correção para o Codex aplicar (2026-10-31). Regra em `AGENTS.md`.
 
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
