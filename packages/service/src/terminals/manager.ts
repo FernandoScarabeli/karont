@@ -11,6 +11,8 @@ import { ServiceError } from "../errors.ts";
 const MAX_REPLAY_BYTES = 256 * 1024;
 const MAX_TERMINALS = 16;
 const CLOSE_TIMEOUT_MS = 2_000;
+const INITIAL_COMMAND_IDLE_MS = 150;
+const INITIAL_COMMAND_STARTUP_TIMEOUT_MS = 2_000;
 
 export type TerminalPty = Pick<
   IPty,
@@ -22,6 +24,8 @@ export type TerminalPtyFactory = (
   args: string[],
   options: { name: string; cols: number; rows: number; cwd: string; env: NodeJS.ProcessEnv },
 ) => TerminalPty;
+
+export type TerminalScheduler = (callback: () => void, delayMs: number) => () => void;
 
 export type TerminalEvent =
   | { event: "terminals.output"; payload: { id: string; seq: number; data: string } }
@@ -38,6 +42,14 @@ export type TerminalManagerOptions = {
   homeDir?: string;
   isExecutable?: (filePath: string) => Promise<boolean>;
   now?: () => Date;
+  schedule?: TerminalScheduler;
+};
+
+type PendingInitialCommand = {
+  command: string;
+  hasOutput: boolean;
+  cancelStartupTimeout?: () => void;
+  cancelIdleTimeout?: () => void;
 };
 
 type ManagedTerminal = {
@@ -48,6 +60,7 @@ type ManagedTerminal = {
   coalescer: DeltaCoalescer;
   pendingAdds: Set<Promise<void>>;
   pendingFlushes: number;
+  pendingInitialCommand?: PendingInitialCommand;
   closePromise?: Promise<void>;
   resolveExit: () => void;
   exitPromise: Promise<void>;
@@ -60,6 +73,7 @@ export class TerminalManager {
   readonly #homeDir: string;
   readonly #isExecutable: (filePath: string) => Promise<boolean>;
   readonly #now: () => Date;
+  readonly #schedule: TerminalScheduler;
   readonly #terminals = new Map<string, ManagedTerminal>();
 
   constructor({
@@ -69,6 +83,7 @@ export class TerminalManager {
     homeDir = os.homedir(),
     isExecutable = defaultIsExecutable,
     now = () => new Date(),
+    schedule = scheduleTimeout,
   }: TerminalManagerOptions) {
     this.#broadcast = broadcast;
     this.#ptyFactory = ptyFactory;
@@ -76,6 +91,7 @@ export class TerminalManager {
     this.#homeDir = homeDir;
     this.#isExecutable = isExecutable;
     this.#now = now;
+    this.#schedule = schedule;
   }
 
   list(): { terminals: TerminalInfo[] } {
@@ -185,25 +201,15 @@ export class TerminalManager {
       },
     );
     this.#terminals.set(id, terminal);
-    pty.onData((data) => this.#queueOutput(terminal, data));
+    pty.onData((data) => {
+      this.#queueOutput(terminal, data);
+      this.#onOutputForInitialCommand(terminal, data);
+    });
     pty.onExit(({ exitCode, signal }) => {
       void this.#handleExit(terminal, exitCode, signal);
     });
     if (params.command !== undefined) {
-      try {
-        pty.write(`${params.command}\r`);
-      } catch {
-        try {
-          pty.kill("SIGHUP");
-        } catch {
-          // O processo pode ter encerrado antes do envio do comando.
-        }
-        this.#terminals.delete(id);
-        throw new ServiceError(
-          "unavailable",
-          "Não foi possível enviar o comando inicial ao shell.",
-        );
-      }
+      this.#scheduleInitialCommand(terminal, params.command);
     }
     await this.#emitChanged();
     return { terminal: { ...info } };
@@ -270,6 +276,7 @@ export class TerminalManager {
 
   async #handleExit(terminal: ManagedTerminal, exitCode: number, signal?: number): Promise<void> {
     if (terminal.info.exited) return;
+    this.#cancelInitialCommand(terminal);
     terminal.info.exited = true;
     terminal.info.exitCode = Number.isInteger(exitCode) ? exitCode : null;
     await Promise.allSettled([...terminal.pendingAdds]);
@@ -288,6 +295,7 @@ export class TerminalManager {
 
   async #closeTerminal(terminal: ManagedTerminal): Promise<void> {
     if (terminal.closePromise) return terminal.closePromise;
+    this.#cancelInitialCommand(terminal);
     terminal.closePromise = (async () => {
       if (!terminal.info.exited) {
         try {
@@ -318,6 +326,61 @@ export class TerminalManager {
 
   async #emitChanged(): Promise<void> {
     await this.#broadcast({ event: "terminals.changed", payload: this.list() });
+  }
+
+  #scheduleInitialCommand(terminal: ManagedTerminal, command: string): void {
+    const pending: PendingInitialCommand = { command, hasOutput: false };
+    terminal.pendingInitialCommand = pending;
+    pending.cancelStartupTimeout = this.#schedule(() => {
+      pending.cancelStartupTimeout = undefined;
+      this.#writeInitialCommand(terminal, pending);
+    }, INITIAL_COMMAND_STARTUP_TIMEOUT_MS);
+  }
+
+  #onOutputForInitialCommand(terminal: ManagedTerminal, data: string): void {
+    if (!data) return;
+    const pending = terminal.pendingInitialCommand;
+    if (!pending) return;
+
+    if (!pending.hasOutput) {
+      pending.hasOutput = true;
+      pending.cancelStartupTimeout?.();
+      pending.cancelStartupTimeout = undefined;
+    }
+    pending.cancelIdleTimeout?.();
+    pending.cancelIdleTimeout = this.#schedule(() => {
+      pending.cancelIdleTimeout = undefined;
+      this.#writeInitialCommand(terminal, pending);
+    }, INITIAL_COMMAND_IDLE_MS);
+  }
+
+  #writeInitialCommand(terminal: ManagedTerminal, pending: PendingInitialCommand): void {
+    if (terminal.pendingInitialCommand !== pending) return;
+    this.#cancelInitialCommand(terminal);
+    if (
+      terminal.info.exited ||
+      terminal.closePromise ||
+      this.#terminals.get(terminal.info.id) !== terminal
+    ) {
+      return;
+    }
+    try {
+      terminal.pty.write(`${pending.command}\r`);
+    } catch {
+      try {
+        terminal.pty.kill("SIGHUP");
+      } catch {
+        // O processo pode ter encerrado antes do envio do comando.
+      }
+    }
+  }
+
+  #cancelInitialCommand(terminal: ManagedTerminal): void {
+    const pending = terminal.pendingInitialCommand;
+    if (!pending) return;
+    pending.cancelStartupTimeout?.();
+    pending.cancelIdleTimeout?.();
+    terminal.pendingInitialCommand = undefined;
   }
 }
 
@@ -377,4 +440,9 @@ async function defaultIsExecutable(filePath: string): Promise<boolean> {
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function scheduleTimeout(callback: () => void, delayMs: number): () => void {
+  const timeout = setTimeout(callback, delayMs);
+  return () => clearTimeout(timeout);
 }

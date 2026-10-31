@@ -63,6 +63,38 @@ class FakePty implements TerminalPty {
   }
 }
 
+class FakeTimers {
+  #now = 0;
+  #nextId = 0;
+  readonly #tasks = new Map<number, { callback: () => void; at: number }>();
+
+  readonly schedule = (callback: () => void, delayMs: number): (() => void) => {
+    const id = this.#nextId++;
+    this.#tasks.set(id, { callback, at: this.#now + delayMs });
+    return () => this.#tasks.delete(id);
+  };
+
+  advanceBy(milliseconds: number): void {
+    const target = this.#now + milliseconds;
+    while (true) {
+      let nextId: number | undefined;
+      let nextAt = Number.POSITIVE_INFINITY;
+      for (const [id, task] of this.#tasks) {
+        if (task.at <= target && task.at < nextAt) {
+          nextId = id;
+          nextAt = task.at;
+        }
+      }
+      if (nextId === undefined) break;
+      const next = this.#tasks.get(nextId);
+      this.#tasks.delete(nextId);
+      this.#now = nextAt;
+      next?.callback();
+    }
+    this.#now = target;
+  }
+}
+
 function fakeFactory(
   created: FakePty[],
   capture?: (shell: string, args: string[], env: NodeJS.ProcessEnv) => void,
@@ -287,26 +319,102 @@ test("valida a pasta de trabalho e redimensiona terminal", async (context) => {
   await manager.close(terminal.id);
 });
 
-test("escreve o comando inicial no pty depois de criar o shell", async (context) => {
+test("escreve o comando inicial 150 ms depois da última saída do shell", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "karont-terminal-command-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const created: FakePty[] = [];
+  const timers = new FakeTimers();
   const manager = new TerminalManager({
     broadcast: async () => undefined,
     ptyFactory: fakeFactory(created),
     env: { SHELL: "/bin/bash" },
     homeDir: root,
     isExecutable: async () => true,
+    schedule: timers.schedule,
   });
 
   const command = "echo karont-$((2+3))";
   const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24, command });
-  assert.deepEqual(created[0]?.writes, [`${command}\r`]);
+  const pty = created[0];
+  assert.ok(pty);
+  assert.deepEqual(pty.writes, []);
+  timers.advanceBy(1_000);
+  assert.deepEqual(pty.writes, []);
+
+  pty.emitData("prompt");
+  timers.advanceBy(149);
+  assert.deepEqual(pty.writes, []);
+  pty.emitData(" more prompt");
+  timers.advanceBy(149);
+  assert.deepEqual(pty.writes, []);
+  timers.advanceBy(1);
+
+  assert.deepEqual(pty.writes, [`${command}\r`]);
   assert.equal(terminal.title, "bash · ~");
   await manager.close(terminal.id);
 });
 
-test("pty real abre shell, recebe entrada, redimensiona, reproduz e fecha", {
+test("envia o comando inicial após 2 s se o shell não produzir saída", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-terminal-command-timeout-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const created: FakePty[] = [];
+  const timers = new FakeTimers();
+  const manager = new TerminalManager({
+    broadcast: async () => undefined,
+    ptyFactory: fakeFactory(created),
+    env: { SHELL: "/bin/bash" },
+    homeDir: root,
+    isExecutable: async () => true,
+    schedule: timers.schedule,
+  });
+
+  const command = "echo pronto";
+  const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24, command });
+  const pty = created[0];
+  assert.ok(pty);
+  timers.advanceBy(1_999);
+  assert.deepEqual(pty.writes, []);
+  timers.advanceBy(1);
+  assert.deepEqual(pty.writes, [`${command}\r`]);
+  await manager.close(terminal.id);
+});
+
+test("não envia o comando inicial se o terminal sair ou for fechado antes", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-terminal-command-cancel-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+
+  for (const ending of ["exit", "close"] as const) {
+    const created: FakePty[] = [];
+    const timers = new FakeTimers();
+    const manager = new TerminalManager({
+      broadcast: async () => undefined,
+      ptyFactory: fakeFactory(created),
+      env: { SHELL: "/bin/bash" },
+      homeDir: root,
+      isExecutable: async () => true,
+      schedule: timers.schedule,
+    });
+    const { terminal } = await manager.open({
+      cwd: root,
+      cols: 80,
+      rows: 24,
+      command: "echo não-enviar",
+    });
+    const pty = created[0];
+    assert.ok(pty);
+    pty.emitData("prompt");
+    timers.advanceBy(100);
+
+    if (ending === "exit") pty.exit(0);
+    else await manager.close(terminal.id);
+    timers.advanceBy(1_000);
+
+    assert.deepEqual(pty.writes, []);
+    await manager.closeAll();
+  }
+});
+
+test("pty real espera o prompt e executa o comando inicial uma vez", {
   skip: skipNative,
 }, async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "karont-terminal-real-"));
@@ -316,14 +424,17 @@ test("pty real abre shell, recebe entrada, redimensiona, reproduz e fecha", {
     broadcast: async (event) => {
       if (event.event === "terminals.output") outputs.push(event.payload.data);
     },
-    env: { ...process.env, SHELL: "/bin/sh" },
+    env: { ...process.env, SHELL: "/bin/bash" },
     homeDir: root,
   });
-  const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24 });
-  manager.write(terminal.id, "echo karont-$((1+1))\n");
-  await waitUntil(() => outputs.join("").includes("karont-2"), 5_000);
+  const command = "echo karont-$((2+3)) && pwd";
+  const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24, command });
+  await waitUntil(() => outputs.join("").includes("karont-5"), 5_000);
+  const output = outputs.join("");
+  assert.equal(output.split(command).length - 1, 1);
+  assert.ok(output.indexOf(command) < output.indexOf("karont-5"));
   assert.deepEqual(manager.resize(terminal.id, 100, 40), { ok: true });
-  assert.equal(manager.attach(terminal.id).replay.includes("karont-2"), true);
+  assert.equal(manager.attach(terminal.id).replay.includes("karont-5"), true);
   await manager.close(terminal.id);
   assert.equal(manager.list().terminals.length, 0);
 });
