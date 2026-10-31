@@ -165,6 +165,9 @@ export class RunManager {
   private emit(event: unknown) {
     for (const listener of this.subscribers) listener(event);
   }
+  notifyAgentsUpdated() {
+    this.emit({ type: 'agents.updated' });
+  }
   listDots() {
     return this.configuredDots.map((dot) => ({
       id: dot.id,

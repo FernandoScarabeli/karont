@@ -56,6 +56,7 @@ export function environment() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-bench-'));
   const env = {
     ...process.env,
+    KARONT_DETECT_AGENTS: '0',
     KARONT_RUNTIME_DIR: path.join(root, 'run'),
     KARONT_DATA_DIR: path.join(root, 'data'),
     KARONT_DESKTOP_DATA: path.join(root, 'desktop'),
@@ -81,6 +82,7 @@ export async function daemon(env) {
   const errors = [];
   child.stderr.on('data', (v) => errors.push(v.toString()));
   Object.assign(process.env, {
+    KARONT_DETECT_AGENTS: '0',
     KARONT_RUNTIME_DIR: env.KARONT_RUNTIME_DIR,
     KARONT_DATA_DIR: env.KARONT_DATA_DIR,
   });

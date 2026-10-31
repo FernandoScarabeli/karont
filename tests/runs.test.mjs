@@ -59,6 +59,7 @@ test('duas execuções PTY, fila, reconexão, worktrees, diff, rollback e confli
   );
   const env = {
     ...process.env,
+    KARONT_DETECT_AGENTS: '0',
     KARONT_RUNTIME_DIR: runtime,
     KARONT_DATA_DIR: data,
     KARONT_CONFIG_DIR: path.join(temp, 'config-dir'),
@@ -71,6 +72,7 @@ test('duas execuções PTY, fila, reconexão, worktrees, diff, rollback e confli
   const errors = [];
   daemon.stderr.on('data', (chunk) => errors.push(chunk.toString()));
   Object.assign(process.env, {
+    KARONT_DETECT_AGENTS: '0',
     KARONT_RUNTIME_DIR: runtime,
     KARONT_DATA_DIR: data,
     KARONT_CONFIG_DIR: path.join(temp, 'config-dir'),
@@ -393,6 +395,7 @@ test('Run sem projeto usa HOME, entrega mensagens e recusa operações de worktr
   const env = {
     ...process.env,
     HOME: home,
+    KARONT_DETECT_AGENTS: '0',
     KARONT_RUNTIME_DIR: runtime,
     KARONT_DATA_DIR: data,
     KARONT_CONFIG_DIR: path.join(temp, 'config-dir'),

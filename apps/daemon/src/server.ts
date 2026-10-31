@@ -5,6 +5,7 @@ import { paths } from '../../../packages/local/src/paths';
 import { frames, send, proof, equal, LIMIT } from '../../../packages/local/src/wire';
 import { requestSchema, defaultLayout, layoutSchema } from '../../../packages/contracts/src';
 import { openDatabase, readDotConfig, syncConfig } from './database';
+import { AgentCatalog } from './agentCatalog';
 import { daemonDiagnostics } from './diagnostics';
 import { RunManager } from './runs';
 import { WorkspaceManager } from './workspaces';
@@ -46,9 +47,26 @@ try {
   if (!row)
     db.prepare("INSERT INTO settings(key,value) VALUES('layout',?)").run(JSON.stringify(layout));
   const config = readDotConfig(p.dots);
-  syncConfig(db, config.dots, config.projects);
-  manager = new RunManager(db, p.worktrees, config.dots);
-  work = new WorkspaceManager(db, config.dots);
+  const agentCatalog = new AgentCatalog(p.agents);
+  const runtimeDots = agentCatalog.dots(config.dots);
+  syncConfig(db, runtimeDots, config.projects);
+  manager = new RunManager(db, p.worktrees, runtimeDots);
+  work = new WorkspaceManager(db, runtimeDots);
+  const syncAgentDots = (
+    forceDetection = false,
+    previousAgents = agentCatalog.list(config.dots).agents,
+  ) => {
+    const next = agentCatalog.dots(config.dots, forceDetection);
+    const nextAgents = agentCatalog.list(config.dots).agents;
+    const dotsChanged = JSON.stringify(next) !== JSON.stringify(runtimeDots);
+    const agentsChanged = JSON.stringify(nextAgents) !== JSON.stringify(previousAgents);
+    if (!dotsChanged && !agentsChanged) return false;
+    if (!db || !manager) throw Error('Agente: daemon ainda não está pronto');
+    syncConfig(db, next, config.projects);
+    if (dotsChanged) runtimeDots.splice(0, runtimeDots.length, ...next);
+    manager.notifyAgentsUpdated();
+    return true;
+  };
   let streaming = false,
     sequence = 0,
     heartbeat = 0;
@@ -163,6 +181,30 @@ try {
             break;
           case 'dots.list':
             result = manager!.listDots();
+            break;
+          case 'agents.list':
+            result = agentCatalog.list(config.dots);
+            break;
+          case 'agents.add':
+            {
+              const previousAgents = agentCatalog.list(config.dots).agents;
+              result = agentCatalog.add(r.value, config.dots);
+              syncAgentDots(false, previousAgents);
+            }
+            break;
+          case 'agents.remove':
+            {
+              const previousAgents = agentCatalog.list(config.dots).agents;
+              result = agentCatalog.remove(r.value.id, config.dots);
+              syncAgentDots(false, previousAgents);
+            }
+            break;
+          case 'agents.refresh':
+            {
+              const previousAgents = agentCatalog.list(config.dots).agents;
+              syncAgentDots(true, previousAgents);
+            }
+            result = agentCatalog.list(config.dots);
             break;
           case 'projects.list':
             result = r.value
@@ -284,7 +326,7 @@ try {
             result = manager!.listRuns(r.value.limit, r.value.projectId);
             break;
           case 'diagnostics':
-            result = daemonDiagnostics(config.dots);
+            result = daemonDiagnostics(runtimeDots);
             break;
           case 'approvals.list':
             result = manager!.listApprovals();
@@ -374,7 +416,7 @@ try {
       } catch (error) {
         const known = error instanceof Error ? error.message : 'Falha na operação';
         const safe =
-          /^(Transição de execução|Retomada exige|Pausa disponível|Operação de|Chave de operação|Modo de permissão|Acesso total exige|Pedido de aprovação|Dot não autorizado|Dot da concessão|Dot não está|Projeto não encontrado|Projeto Git|Diretório inválido|Workspace não encontrado|Nome do |Título da |Descrição |Responsáveis |Tarefa |Mensagem |Mensagem vazia|Mensagem não |Rascunho |Conversa |Execução |Terminal |Cursor |Entrega incerta|Movimentação|Navegação |Somente conversas|Projeto não pertence|Conversa de origem|Mensagem de origem|Execução precisa|Histórico de tarefa|Repositório|Conflitos detectados|Não há alterações|Worktree desta execução|Worktree de execução ativa|Conflito de caminho|Caminho fora da worktree|Caminho Git inválido)/.test(
+          /^(Transição de execução|Retomada exige|Pausa disponível|Operação de|Chave de operação|Modo de permissão|Acesso total exige|Pedido de aprovação|Dot não autorizado|Dot da concessão|Dot não está|Agente[: ]|Projeto não encontrado|Projeto Git|Diretório inválido|Workspace não encontrado|Nome do |Título da |Descrição |Responsáveis |Tarefa |Mensagem |Mensagem vazia|Mensagem não |Rascunho |Conversa |Execução |Terminal |Cursor |Entrega incerta|Movimentação|Navegação |Somente conversas|Projeto não pertence|Conversa de origem|Mensagem de origem|Execução precisa|Histórico de tarefa|Repositório|Conflitos detectados|Não há alterações|Worktree desta execução|Worktree de execução ativa|Conflito de caminho|Caminho fora da worktree|Caminho Git inválido)/.test(
             known,
           )
             ? known

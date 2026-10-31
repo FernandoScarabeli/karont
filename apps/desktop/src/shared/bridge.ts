@@ -5,6 +5,7 @@ import type {
   PermissionMode,
   Approval,
   DiagnosticItem,
+  Agent,
   capabilitySchema,
   workspaceSchema,
   workspaceProjectSchema,
@@ -32,6 +33,7 @@ export type UiDot = {
   projectIds: string[];
   capabilities: import('zod').infer<typeof capabilitySchema>[];
 };
+export type UiAgent = Agent;
 export type UiProject = { id: string; name: string };
 export type UiWorkspace = import('zod').infer<typeof workspaceSchema>;
 export type UiWorkspaceProject = import('zod').infer<typeof workspaceProjectSchema>;
@@ -117,6 +119,10 @@ export type KarontBridge = {
   createWorkspace(name: string): Promise<UiWorkspace>;
   renameWorkspace(workspaceId: string, name: string): Promise<UiWorkspace>;
   dots(): Promise<UiDot[]>;
+  agents(): Promise<UiAgent[]>;
+  addAgent(name: string, command: string, args?: string[]): Promise<UiAgent>;
+  removeAgent(id: string): Promise<{ ok: true }>;
+  refreshAgents(): Promise<UiAgent[]>;
   projects: {
     (): Promise<UiProject[]>;
     (workspaceId: string, cursor?: string, limit?: number): Promise<UiPage<UiWorkspaceProject>>;

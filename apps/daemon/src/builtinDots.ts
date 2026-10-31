@@ -19,14 +19,17 @@ function isExecutable(file: string | undefined): file is string {
 const executable = [process.env.SHELL, '/bin/bash'].find(isExecutable) ?? '/bin/sh';
 
 export const builtinDots: DotConfig[] = [
-  dotSchema.parse({
-    id: TERMINAL_DOT_ID,
-    name: 'Terminal',
-    role: 'Terminal do sistema, sem IA. Você digita os comandos.',
-    executable,
-    args: [],
-    adapter: 'generic',
-    autoResume: false,
-    projectIds: [],
-  }),
+  {
+    ...dotSchema.parse({
+      id: TERMINAL_DOT_ID,
+      name: 'Terminal',
+      role: 'Terminal do sistema, sem IA. Você digita os comandos.',
+      executable,
+      args: [],
+      adapter: 'generic',
+      autoResume: false,
+      projectIds: [],
+    }),
+    source: 'builtin',
+  },
 ];

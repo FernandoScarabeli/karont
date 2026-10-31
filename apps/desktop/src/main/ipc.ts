@@ -134,6 +134,10 @@ export function channelHandlers(): Map<string, ChannelHandler> {
   });
 
   const commandHandlers: [string, Command['method'], (value: unknown) => object][] = [
+    ['karont:agents:list', 'agents.list', noValue],
+    ['karont:agents:add', 'agents.add', (value) => ({ value })],
+    ['karont:agents:remove', 'agents.remove', (value) => ({ value })],
+    ['karont:agents:refresh', 'agents.refresh', noValue],
     ['karont:workspaces:list', 'workspaces.list', (value) => ({ value })],
     ['karont:workspaces:create', 'workspaces.create', (value) => ({ value })],
     ['karont:workspaces:rename', 'workspaces.rename', (value) => ({ value })],

@@ -46,11 +46,13 @@ test('daemon: singleton concorrente, socket, handshake, limites, heartbeat, reco
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-test-'));
   const env = {
     ...process.env,
+    KARONT_DETECT_AGENTS: '0',
     KARONT_RUNTIME_DIR: path.join(root, 'run'),
     KARONT_DATA_DIR: path.join(root, 'data'),
     KARONT_CONFIG_DIR: path.join(root, 'config'),
   };
   Object.assign(process.env, {
+    KARONT_DETECT_AGENTS: '0',
     KARONT_RUNTIME_DIR: env.KARONT_RUNTIME_DIR,
     KARONT_DATA_DIR: env.KARONT_DATA_DIR,
     KARONT_CONFIG_DIR: env.KARONT_CONFIG_DIR,
@@ -195,6 +197,7 @@ test('cliente recusa prova de servidor inválida e confirmação antiga', async 
   fs.mkdirSync(runtime, { mode: 0o700 });
   fs.mkdirSync(data, { mode: 0o700 });
   Object.assign(process.env, {
+    KARONT_DETECT_AGENTS: '0',
     KARONT_RUNTIME_DIR: runtime,
     KARONT_DATA_DIR: data,
     KARONT_CONFIG_DIR: path.join(root, 'config'),

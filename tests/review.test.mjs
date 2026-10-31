@@ -18,11 +18,13 @@ test('fechar cliente durante handshake cancela a conexão imediatamente', async 
   fs.mkdirSync(runtime, { mode: 0o700 });
   fs.mkdirSync(data, { mode: 0o700 });
   const previous = {
+    KARONT_DETECT_AGENTS: '0',
     KARONT_RUNTIME_DIR: process.env.KARONT_RUNTIME_DIR,
     KARONT_DATA_DIR: process.env.KARONT_DATA_DIR,
     KARONT_CONFIG_DIR: process.env.KARONT_CONFIG_DIR,
   };
   Object.assign(process.env, {
+    KARONT_DETECT_AGENTS: '0',
     KARONT_RUNTIME_DIR: runtime,
     KARONT_DATA_DIR: data,
     KARONT_CONFIG_DIR: path.join(root, 'config'),

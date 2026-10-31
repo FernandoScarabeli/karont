@@ -108,6 +108,7 @@ export function paths() {
     session: path.join(runtime, 'session.json'),
     db: path.join(data, 'phase0.sqlite'),
     dots: env('DOTS_CONFIG') || path.join(config, 'dots.json'),
+    agents: path.join(config, 'agents.json'),
     worktrees: path.join(data, 'worktrees'),
   };
 }

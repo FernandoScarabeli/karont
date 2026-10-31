@@ -53,6 +53,7 @@ async function withDaemon(config, run) {
     { mode: 0o600 },
   );
   const envPaths = {
+    KARONT_DETECT_AGENTS: '0',
     KARONT_RUNTIME_DIR: path.join(temp, 'runtime'),
     KARONT_DATA_DIR: path.join(temp, 'data'),
     KARONT_CONFIG_DIR: path.join(temp, 'config-dir'),

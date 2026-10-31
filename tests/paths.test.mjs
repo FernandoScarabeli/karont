@@ -62,6 +62,7 @@ test('paths usa pastas Karont seguras, migra dados antigos e mantém EROS_* comp
       assert.equal(result.runtime, path.join(xdg.runtimeBase, `karont-${process.getuid()}`));
       assert.equal(result.data, path.join(xdg.dataBase, 'karont'));
       assert.equal(result.config, path.join(xdg.configBase, 'karont'));
+      assert.equal(result.agents, path.join(xdg.configBase, 'karont', 'agents.json'));
       assert.equal(mode(result.runtime), 0o700);
       assert.equal(mode(result.data), 0o700);
       assert.equal(mode(result.config), 0o700);

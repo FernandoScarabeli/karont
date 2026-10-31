@@ -334,10 +334,15 @@ export class WorkspaceManager {
   }
 
   private dotIds(project: ProjectRow) {
-    // dotIds são as concessões explícitas do projeto; o Terminal é permitido em todo projeto
-    // sem concessão (decisão 24) e por isso não aparece aqui.
+    // dotIds contém só Dots de dots.json com concessão explícita. Dots embutidos, detectados
+    // e adicionados são autorizados em qualquer projeto sem criar concessão.
     return this.configuredDots
-      .filter((dot) => dot.id !== TERMINAL_DOT_ID && this.isAuthorized(dot.id, project))
+      .filter(
+        (dot) =>
+          dot.id !== TERMINAL_DOT_ID &&
+          (dot.source === undefined || dot.source === 'config') &&
+          this.isAuthorized(dot.id, project),
+      )
       .map((dot) => dot.id);
   }
 

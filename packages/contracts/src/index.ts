@@ -92,6 +92,25 @@ export const dotSchema = z
     autoResume: z.boolean().default(true),
   })
   .strict();
+export const agentSourceSchema = z.enum(['detected', 'custom', 'config', 'builtin']);
+export const agentSchema = z
+  .object({
+    id: safeIdSchema,
+    name: z.string().min(1).max(80),
+    executable: z.string().min(1).max(4096),
+    source: agentSourceSchema,
+    available: z.boolean(),
+  })
+  .strict();
+export const agentListSchema = z.object({ agents: z.array(agentSchema).max(32) }).strict();
+export const agentAddSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    command: z.string().trim().min(1).max(4096),
+    args: z.array(z.string().max(2048)).max(32).optional(),
+    operationId: z.string().uuid().optional(),
+  })
+  .strict();
 export const projectSchema = z
   .object({
     id: safeIdSchema,
@@ -426,6 +445,7 @@ export const chatRunPageSchema = z
 
 export const terminalEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('workspace.updated'), workspaceId: idSchema }).strict(),
+  z.object({ type: z.literal('agents.updated') }).strict(),
   z
     .object({ type: z.literal('project.updated'), projectId: safeIdSchema, workspaceId: idSchema })
     .strict(),
@@ -509,8 +529,7 @@ export const dotListSchema = z
       })
       .strict(),
   )
-  // Até 8 Dots do dots.json + o Terminal embutido (decisão 24).
-  .max(9);
+  .max(32);
 export const projectListSchema = z
   .array(z.object({ id: safeIdSchema, name: z.string().min(1).max(120) }).strict())
   .max(100);
@@ -538,6 +557,7 @@ export const rollbackResultSchema = z
   })
   .strict();
 export type Dot = z.infer<typeof dotSchema>;
+export type Agent = z.infer<typeof agentSchema>;
 export type Project = z.infer<typeof projectSchema>;
 export type Run = z.infer<typeof runSchema>;
 export type TerminalEvent = z.infer<typeof terminalEventSchema>;
@@ -569,6 +589,22 @@ export const recoverySchema = z
   .strict();
 
 export const requestSchema = z.discriminatedUnion('method', [
+  z.object({ id: z.number().int().nonnegative(), method: z.literal('agents.list') }).strict(),
+  z
+    .object({
+      id: z.number().int().nonnegative(),
+      method: z.literal('agents.add'),
+      value: agentAddSchema,
+    })
+    .strict(),
+  z
+    .object({
+      id: z.number().int().nonnegative(),
+      method: z.literal('agents.remove'),
+      value: z.object({ id: safeIdSchema }).strict(),
+    })
+    .strict(),
+  z.object({ id: z.number().int().nonnegative(), method: z.literal('agents.refresh') }).strict(),
   z
     .object({
       id: z.number().int().nonnegative(),
@@ -1008,6 +1044,9 @@ export const requestSchema = z.discriminatedUnion('method', [
 ]);
 export type Request = z.infer<typeof requestSchema>;
 export type Command =
+  | { method: 'agents.list' | 'agents.refresh' }
+  | { method: 'agents.add'; value: z.infer<typeof agentAddSchema> }
+  | { method: 'agents.remove'; value: { id: string } }
   | { method: 'workspaces.list'; value: { cursor?: string; limit?: number } }
   | { method: 'workspaces.create'; value: { name: string; operationId: string } }
   | {

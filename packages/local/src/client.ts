@@ -7,6 +7,8 @@ import {
   checkpointSchema,
   recoverySchema,
   approvalSchema,
+  agentListSchema,
+  agentSchema,
   diagnosticSchema,
   snapshotSchema,
   terminalEventSchema,
@@ -43,6 +45,16 @@ const okSchema = z.object({ ok: z.literal(true) }).strict();
 function responseValidator(command: Command) {
   let schema: z.ZodType;
   switch (command.method) {
+    case 'agents.list':
+    case 'agents.refresh':
+      schema = agentListSchema;
+      break;
+    case 'agents.add':
+      schema = agentSchema;
+      break;
+    case 'agents.remove':
+      schema = okSchema;
+      break;
     case 'workspaces.list':
       schema = workspacePageSchema;
       break;

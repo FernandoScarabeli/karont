@@ -6,10 +6,9 @@ import type { DotConfig } from './database';
 import { builtinDots } from './builtinDots';
 import { APP_VERSION, type DiagnosticItem } from '../../../packages/contracts/src';
 export function daemonDiagnostics(allDots: DotConfig[]): DiagnosticItem[] {
-  // O Terminal embutido é o shell do sistema, não uma CLI configurada: fica fora da contagem
-  // para o diagnóstico não dizer que há ferramentas quando o dots.json está vazio.
-  const builtinIds = new Set(builtinDots.map((dot) => dot.id + '\0' + dot.executable));
-  const dots = allDots.filter((dot) => !builtinIds.has(dot.id + '\0' + dot.executable));
+  // O Terminal continua fora da contagem, mesmo se houver uma definição equivalente no dots.json.
+  const terminalIds = new Set(builtinDots.map((dot) => dot.id));
+  const dots = allDots.filter((dot) => !terminalIds.has(dot.id));
   const items: DiagnosticItem[] = [];
   const add = (category: string, label: string, status: DiagnosticItem['status'], value: string) =>
     items.push({ category, label, status, value: value.slice(0, 500) });

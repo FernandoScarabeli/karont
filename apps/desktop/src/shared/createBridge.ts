@@ -36,6 +36,11 @@ export function createKarontBridge(t: BridgeTransport): KarontBridge {
         operationId: crypto.randomUUID(),
       }),
     dots: () => t.invoke('karont:dots:list'),
+    agents: async () => (await t.invoke('karont:agents:list')).agents,
+    addAgent: (name: string, command: string, args?: string[]) =>
+      t.invoke('karont:agents:add', { name, command, args, operationId: crypto.randomUUID() }),
+    removeAgent: (id: string) => t.invoke('karont:agents:remove', { id }),
+    refreshAgents: async () => (await t.invoke('karont:agents:refresh')).agents,
     projects: (workspaceId?: string, cursor?: string, limit = 100) =>
       t.invoke('karont:projects:list', workspaceId ? { workspaceId, cursor, limit } : undefined),
     projectIndex: (cursor?: string, limit = 100) =>
