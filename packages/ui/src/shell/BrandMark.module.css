@@ -1,0 +1,41 @@
+.mark {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-brand-reflection-gap);
+  width: var(--k-brand-mark-size);
+  height: var(--k-brand-mark-height);
+  color: var(--k-color-brand);
+}
+
+.moon {
+  width: var(--k-brand-mark-size);
+  height: var(--k-brand-mark-size);
+  border-radius: var(--k-radius-full);
+  background: var(--k-color-brand);
+}
+
+.reflections {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--k-brand-reflection-gap);
+}
+
+.reflection,
+.reflectionShort {
+  display: block;
+  height: var(--k-brand-reflection-height);
+  border-radius: var(--k-radius-full);
+  background: currentcolor;
+}
+
+.reflection {
+  width: var(--k-brand-reflection-width);
+}
+
+.reflectionShort {
+  width: var(--k-brand-reflection-short-width);
+}
