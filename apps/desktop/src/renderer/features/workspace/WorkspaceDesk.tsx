@@ -3,12 +3,14 @@ import { TaskDesk } from '../tasks/TaskDesk';
 import { X } from 'lucide-react';
 import { ChatView } from '../chat/ChatView';
 import { HomeView } from './HomeView';
+import { HomeAllView } from './HomeAllView';
 import { ProjectDialog } from './ProjectDialog';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { WorkspaceDialog } from './WorkspaceDialog';
 import { WorkspacePages } from './WorkspacePages';
 import { useWorkspaceOverview } from './useWorkspaceOverview';
+import { useAllWorkspacesOverview } from './useAllWorkspacesOverview';
 import { useProjectForm } from './useProjectForm';
 import { useSidebarState } from './useSidebarState';
 import { useWorkspaceData } from './useWorkspaceData';
@@ -29,6 +31,11 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: ReactNod
     status.runs,
     data.refresh,
     data.page === 'home',
+  );
+  const allOverview = useAllWorkspacesOverview(
+    data.workspaces,
+    data.projectIndex,
+    data.page === 'start',
   );
   const {
     dots,
@@ -63,6 +70,12 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: ReactNod
     data.setFormError('');
     projectForm.setProjectDialog(true);
   }
+  function openNewWorkspace() {
+    workspaceForm.setWorkspaceName('');
+    workspaceForm.setWorkspaceTargetId(undefined);
+    data.setFormError('');
+    workspaceForm.setWorkspaceDialog('create');
+  }
   function focusProject(projectId: string) {
     sidebar.setCollapsed(false);
     data.setExpanded((old) => ({ ...old, [projectId]: true }));
@@ -85,6 +98,9 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: ReactNod
             sidebar={sidebar}
             projectForm={projectForm}
             runningChatIds={status.runningChatIds}
+            workspaceStatus={status.workspaceStatus}
+            onCreateWorkspace={openNewWorkspace}
+            onOpenWorkspace={(workspaceId) => void home(workspaceId)}
           />
         )}
         <main className="k-main ks-page-frame">
@@ -128,6 +144,8 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: ReactNod
             key={data.navigation.workspaceId ?? 'no-workspace'}
             page={page}
             workspaceName={workspace?.name ?? ''}
+            workspaceId={data.navigation.workspaceId}
+            workspaces={data.workspaces}
             projects={data.projects}
             overview={overview}
             runningCount={
@@ -151,6 +169,26 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: ReactNod
             newChat={newChat}
             busy={busy}
             loading={loading}
+          />
+          <HomeAllView
+            page={page}
+            workspaces={data.workspaces}
+            projects={projectIndex}
+            currentWorkspaceId={data.navigation.workspaceId}
+            status={status}
+            overview={allOverview}
+            draft={draft}
+            setDraft={setDraft}
+            draftRef={draftRef}
+            newChat={newChat}
+            busy={busy}
+            loading={loading}
+            dots={dots}
+            onCreateWorkspace={openNewWorkspace}
+            onOpenWorkspace={(workspaceId) => void home(workspaceId)}
+            onOpenChat={(id) => void openChat(id)}
+            onOpenTasks={() => setPage('tasks')}
+            onOpenSettings={() => setPage('settings')}
           />
           {page === 'chat' && selectedChat && (
             <ChatView

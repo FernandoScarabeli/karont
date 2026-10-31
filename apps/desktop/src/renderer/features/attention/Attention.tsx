@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Approval, DiagnosticItem } from '../../../../../../packages/contracts/src';
+import { decidePendingApproval } from './approvalActions';
 
 export function Attention() {
   const [panel, setPanel] = useState<'approvals' | 'diagnostics' | 'report'>();
@@ -47,17 +48,10 @@ export function Attention() {
     return dispose;
   }, [panel]);
   async function decide(a: Approval, allow: boolean) {
-    if (
-      allow &&
-      !window.confirm(
-        'Desfazer os arquivos registrados desta worktree? O daemon verificará novamente os conflitos. Efeitos externos não serão revertidos.',
-      )
-    )
-      return;
     setBusy(true);
     setError('');
     try {
-      await window.karont.decideApproval(a.id, allow);
+      if (!(await decidePendingApproval(a.id, allow))) return;
       setApprovals(await window.karont.approvals());
     } catch {
       setError(
@@ -75,6 +69,7 @@ export function Attention() {
     <div className="attention">
       <nav aria-label="Mission Control">
         <button
+          type="button"
           className="quiet"
           aria-expanded={panel === 'approvals'}
           onClick={() => void load('approvals')}
@@ -82,6 +77,7 @@ export function Attention() {
           Central de Aprovações
         </button>
         <button
+          type="button"
           className="quiet"
           aria-expanded={panel === 'diagnostics'}
           onClick={() => void load('diagnostics')}
@@ -89,6 +85,7 @@ export function Attention() {
           Diagnóstico
         </button>
         <button
+          type="button"
           className="quiet"
           aria-expanded={panel === 'report'}
           onClick={() => void load('report')}
@@ -121,10 +118,10 @@ export function Attention() {
                   : 'Reportar problema'}
             </h2>
             <div>
-              <button className="quiet" onClick={() => void load(panel)}>
+              <button type="button" className="quiet" onClick={() => void load(panel)}>
                 Atualizar
               </button>
-              <button className="quiet" onClick={() => setPanel(undefined)}>
+              <button type="button" className="quiet" onClick={() => setPanel(undefined)}>
                 Fechar painel
               </button>
             </div>
@@ -164,6 +161,7 @@ export function Attention() {
                       </small>
                       <div>
                         <button
+                          type="button"
                           className="quiet"
                           onClick={() => {
                             window.dispatchEvent(
@@ -177,6 +175,7 @@ export function Attention() {
                         {a.status === 'pending' && (
                           <>
                             <button
+                              type="button"
                               className="quiet"
                               disabled={busy}
                               onClick={() => void decide(a, false)}
@@ -184,6 +183,7 @@ export function Attention() {
                               Negar
                             </button>
                             <button
+                              type="button"
                               className="danger"
                               disabled={busy}
                               onClick={() => void decide(a, true)}
@@ -253,6 +253,7 @@ export function Attention() {
               <textarea aria-label="Prévia do relatório" readOnly value={report} rows={18} />
               <div className="dialog-actions">
                 <button
+                  type="button"
                   className="quiet"
                   onClick={() =>
                     void window.karont
@@ -264,6 +265,7 @@ export function Attention() {
                   Copiar relatório
                 </button>
                 <button
+                  type="button"
                   className="primary"
                   onClick={() =>
                     void window.karont

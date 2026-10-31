@@ -207,9 +207,9 @@ try {
     ),
     true,
   );
-  await page.getByRole('button', { name: 'Início', exact: true }).click();
   const activeWorkspaceTab = page.locator('.ks-workspace-tab.is-current');
   await activeWorkspaceTab.waitFor();
+  await activeWorkspaceTab.click();
   const activeWorkspaceName = await activeWorkspaceTab.getAttribute('aria-label');
   assert.ok(activeWorkspaceName);
   await page.getByRole('heading', { name: activeWorkspaceName, exact: true }).waitFor();
@@ -799,7 +799,10 @@ try {
     historyDetails = saved.chat;
     if (index % 15 === 14) await wait(250);
   }
-  await page.getByRole('button', { name: 'Início', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Workspaces', exact: true })
+    .getByRole('button', { name: runWorkspace.name, exact: true })
+    .click();
   await openConversation(page, 'Histórico paginado', `${runWorkspace.name} / ${project.name}`);
   await page.getByRole('heading', { name: 'Histórico paginado', exact: true }).waitFor();
   await until(async () => assert.equal(await page.locator('.saved-message').count(), 100));
@@ -925,7 +928,10 @@ try {
       (run) => run.id === primaryRun.id,
     ),
   );
-  await page.getByRole('button', { name: 'Início', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Workspaces', exact: true })
+    .getByRole('button', { name: runWorkspace.name, exact: true })
+    .click();
   await openConversation(page, 'Conversa principal', `${runWorkspace.name} / ${project.name}`);
   await page.getByRole('heading', { name: 'Conversa principal', exact: true }).waitFor();
   await page.getByRole('textbox', { name: 'Buscar projetos e conversas', exact: true }).focus();

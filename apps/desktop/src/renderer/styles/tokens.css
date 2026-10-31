@@ -236,3 +236,21 @@
   --k-home-disabled-opacity: 0.55;
   --k-home-unavailable-opacity: 0.8;
 }
+
+/* Componentes da tela Início (todos os workspaces). */
+:root {
+  --k-home-attention-gap: 12px;
+  --k-home-attention-padding-y: 14px;
+  --k-home-attention-padding-x: 16px;
+  --k-home-attention-badge-size: 28px;
+  --k-home-attention-badge-radius: 8px;
+  --k-home-attention-button-height: 30px;
+  --k-home-attention-button-padding-x: 12px;
+  --k-home-attention-actions-gap: 8px;
+  --k-home-attention-copy-gap: 4px;
+  --k-home-attention-meta-line-height: 1.35;
+  --k-home-workspace-count-line-height: 1.4;
+  --k-home-workspace-status-line-height: 1.3;
+  --k-home-sidebar-recent-gap: 4px;
+  --k-home-sidebar-recent-padding-y: 8px;
+}

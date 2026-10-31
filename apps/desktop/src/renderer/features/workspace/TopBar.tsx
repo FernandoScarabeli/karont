@@ -16,7 +16,16 @@ type Props = {
 };
 
 export function TopBar({ data, sidebar, workspaceForm, workspaceStatus }: Props) {
-  const { workspaces, navigation, page, home, recentChats, openChat } = data;
+  const {
+    workspaces,
+    navigation,
+    page,
+    home,
+    recentChats,
+    recentLoading,
+    openChat,
+    setRecentRequested,
+  } = data;
   const { collapsed, setCollapsed, query, setQuery, searchFocused, setSearchFocused } = sidebar;
   const { setWorkspaceName, setWorkspaceTargetId, setWorkspaceDialog } = workspaceForm;
   const searchAreaRef = useRef<HTMLDivElement>(null);
@@ -30,7 +39,16 @@ export function TopBar({ data, sidebar, workspaceForm, workspaceStatus }: Props)
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
-      if (!searchAreaRef.current?.contains(event.target as Node)) setSearchFocused(false);
+      if (!searchAreaRef.current?.contains(event.target as Node)) {
+        setSearchFocused(false);
+        if (page !== 'start') setRecentRequested(false);
+      }
+    };
+    const onFocusIn = (event: FocusEvent) => {
+      if (!searchAreaRef.current?.contains(event.target as Node)) {
+        setSearchFocused(false);
+        if (page !== 'start') setRecentRequested(false);
+      }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'k') {
@@ -40,16 +58,19 @@ export function TopBar({ data, sidebar, workspaceForm, workspaceStatus }: Props)
         event.preventDefault();
         setQuery('');
         setSearchFocused(false);
+        if (page !== 'start') setRecentRequested(false);
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       }
     };
     document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('focusin', onFocusIn);
     window.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('focusin', onFocusIn);
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [searchFocused, setQuery, setSearchFocused]);
+  }, [page, searchFocused, setQuery, setRecentRequested, setSearchFocused]);
 
   function renameWorkspace(workspace: UiWorkspace) {
     setWorkspaceTargetId(workspace.id);
@@ -61,6 +82,7 @@ export function TopBar({ data, sidebar, workspaceForm, workspaceStatus }: Props)
   function chooseResult(chat: UiChatSummary) {
     setQuery('');
     setSearchFocused(false);
+    if (page !== 'start') setRecentRequested(false);
     void openChat(chat.id);
   }
 
@@ -83,12 +105,14 @@ export function TopBar({ data, sidebar, workspaceForm, workspaceStatus }: Props)
       <div className="ks-tabs-area">
         <nav className="ks-workspace-tabs" aria-label="Workspaces">
           <button
-            className={`ks-tab ks-home-tab ${page === 'home' && !navigation.workspaceId ? 'is-current' : ''}`}
+            className={`ks-tab ks-home-tab ${page === 'start' || (page === 'home' && !navigation.workspaceId) ? 'is-current' : ''}`}
             type="button"
             aria-label="Início"
             title="Início"
-            aria-current={page === 'home' && !navigation.workspaceId ? 'page' : undefined}
-            onClick={() => void home()}
+            aria-current={
+              page === 'start' || (page === 'home' && !navigation.workspaceId) ? 'page' : undefined
+            }
+            onClick={data.start}
           >
             <House aria-hidden="true" />
           </button>
@@ -96,7 +120,7 @@ export function TopBar({ data, sidebar, workspaceForm, workspaceStatus }: Props)
             <WorkspaceTab
               key={workspace.id}
               workspace={workspace}
-              active={navigation.workspaceId === workspace.id}
+              active={page !== 'start' && navigation.workspaceId === workspace.id}
               status={workspaceStatus[workspace.id] ?? { running: 0, attention: 0 }}
               onSelect={() => void home(workspace.id)}
               onRename={() => renameWorkspace(workspace)}
@@ -128,7 +152,10 @@ export function TopBar({ data, sidebar, workspaceForm, workspaceStatus }: Props)
             aria-keyshortcuts="Control+K Meta+K"
             placeholder="Buscar"
             value={query}
-            onFocus={() => setSearchFocused(true)}
+            onFocus={() => {
+              setSearchFocused(true);
+              if (page !== 'start') setRecentRequested(true);
+            }}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'ArrowDown' && results.length) {
@@ -172,7 +199,11 @@ export function TopBar({ data, sidebar, workspaceForm, workspaceStatus }: Props)
                   </small>
                 </button>
               ))}
-              {!results.length && <p className="ks-search-empty">Nenhuma conversa encontrada.</p>}
+              {!results.length && (
+                <p className="ks-search-empty">
+                  {recentLoading ? 'Carregando conversas…' : 'Nenhuma conversa encontrada.'}
+                </p>
+              )}
             </div>
           </section>
         )}

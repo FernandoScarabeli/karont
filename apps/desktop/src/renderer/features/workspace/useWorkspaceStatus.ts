@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { TerminalEvent } from '../../../../../../packages/contracts/src';
+import type { Approval } from '../../../../../../packages/contracts/src';
 import type { UiRun, UiWorkspaceProject } from '../../lib/api';
+import { overviewRequest } from './workspaceShared';
 
 type WorkspaceStatus = Record<string, { running: number; attention: number }>;
 
@@ -8,8 +10,10 @@ export function useWorkspaceStatus(projectIndex: UiWorkspaceProject[]) {
   const [workspaceStatus, setWorkspaceStatus] = useState<WorkspaceStatus>({});
   const [runningChatIds, setRunningChatIds] = useState<Set<string>>(() => new Set());
   const [runs, setRuns] = useState<UiRun[]>();
+  const [approvals, setApprovals] = useState<Approval[]>();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<unknown>();
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -17,14 +21,19 @@ export function useWorkspaceStatus(projectIndex: UiWorkspaceProject[]) {
     let requestVersion = 0;
     setReady(false);
     setRuns(undefined);
+    setApprovals(undefined);
 
     async function refresh() {
       const currentVersion = ++requestVersion;
       try {
-        const [runList, approvals] = await Promise.all([
-          window.karont.runs(100),
-          window.karont.approvals(),
-        ]);
+        const runList = await overviewRequest(
+          () => window.karont.runs(100),
+          () => active,
+        );
+        const approvalList = await overviewRequest(
+          () => window.karont.approvals(),
+          () => active,
+        );
         if (!active || currentVersion !== requestVersion) return;
         const projectsById = new Map(
           projectIndex.map((project) => [project.id, project.workspaceId]),
@@ -51,7 +60,7 @@ export function useWorkspaceStatus(projectIndex: UiWorkspaceProject[]) {
             add(workspaceId, 'attention');
           }
         }
-        for (const approval of approvals) {
+        for (const approval of approvalList) {
           const workspaceId = projectsById.get(approval.projectId);
           if (workspaceId && approval.status === 'pending') add(workspaceId, 'attention');
         }
@@ -59,6 +68,7 @@ export function useWorkspaceStatus(projectIndex: UiWorkspaceProject[]) {
         setWorkspaceStatus(next);
         setRunningChatIds(runningChats);
         setRuns(runList);
+        setApprovals(approvalList);
         setReady(true);
         setError(undefined);
       } catch (cause) {
@@ -66,6 +76,7 @@ export function useWorkspaceStatus(projectIndex: UiWorkspaceProject[]) {
         setWorkspaceStatus({});
         setRunningChatIds(new Set());
         setRuns(undefined);
+        setApprovals(undefined);
         setReady(true);
         setError(cause);
       }
@@ -74,7 +85,7 @@ export function useWorkspaceStatus(projectIndex: UiWorkspaceProject[]) {
     const scheduleRefresh = (event: TerminalEvent) => {
       if (event.type !== 'run.updated' && event.type !== 'approval.updated') return;
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => void refresh(), 150);
+      timer = setTimeout(() => void refresh(), 250);
     };
 
     const unsubscribe = window.karont.onEvent(scheduleRefresh);
@@ -84,7 +95,15 @@ export function useWorkspaceStatus(projectIndex: UiWorkspaceProject[]) {
       if (timer) clearTimeout(timer);
       unsubscribe();
     };
-  }, [projectIndex]);
+  }, [projectIndex, reloadVersion]);
 
-  return { workspaceStatus, runningChatIds, runs, ready, error };
+  return {
+    workspaceStatus,
+    runningChatIds,
+    runs,
+    approvals,
+    ready,
+    error,
+    reload: () => setReloadVersion((version) => version + 1),
+  };
 }

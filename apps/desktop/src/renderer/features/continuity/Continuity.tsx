@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
-import type { Checkpoint, Recovery, UiRun } from '../../lib/api';
+import { useEffect, useState } from 'react';
+import type { Checkpoint, UiRun } from '../../lib/api';
+import { RecoveryDialog } from './RecoveryDialog';
 const labels: Record<UiRun['state'], string> = {
   queued: 'Na fila',
   running: 'Em execução',
@@ -19,12 +20,11 @@ export function ContinuityControls({
   refresh: (run: UiRun) => void;
 }) {
   const [latest, setLatest] = useState<Checkpoint>();
-  const [info, setInfo] = useState<Recovery>();
+  const [recoveryRun, setRecoveryRun] = useState<UiRun>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [resumeAllowed, setResumeAllowed] = useState(run.autoResumeEnabled);
   useEffect(() => setResumeAllowed(run.autoResumeEnabled), [run.autoResumeEnabled]);
-  const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     let current = true;
     void window.karont
@@ -37,9 +37,6 @@ export function ContinuityControls({
       current = false;
     };
   }, [run.id, run.state]);
-  useEffect(() => {
-    if (info) dialog.current?.showModal();
-  }, [info]);
   const act = async (fn: () => Promise<void>) => {
     if (busy) return;
     setBusy(true);
@@ -53,7 +50,11 @@ export function ContinuityControls({
     }
   };
   return (
-    <div className="continuity-controls" aria-label={`Continuidade ${run.id.slice(0, 8)}`}>
+    <div
+      className="continuity-controls"
+      role="group"
+      aria-label={`Continuidade ${run.id.slice(0, 8)}`}
+    >
       <div className="continuity-summary">
         <strong>{labels[run.state]}</strong>
         <span>
@@ -65,6 +66,7 @@ export function ContinuityControls({
       </div>
       <div className="continuity-actions">
         <button
+          type="button"
           className="quiet"
           disabled={busy}
           onClick={() =>
@@ -78,6 +80,7 @@ export function ContinuityControls({
         </button>
         {run.state === 'queued' && (
           <button
+            type="button"
             className="quiet"
             disabled={busy}
             onClick={() => void act(async () => refresh(await window.karont.pauseRun(run.id)))}
@@ -87,6 +90,7 @@ export function ContinuityControls({
         )}
         {run.state === 'paused' && (
           <button
+            type="button"
             className="quiet"
             disabled={busy}
             onClick={() =>
@@ -100,15 +104,17 @@ export function ContinuityControls({
         )}
         {['recovery_needed', 'failed'].includes(run.state) && (
           <button
+            type="button"
             className="quiet"
             disabled={busy}
-            onClick={() => void act(async () => setInfo(await window.karont.recovery(run.id)))}
+            onClick={() => setRecoveryRun(run)}
           >
             Retomar
           </button>
         )}
         {['queued', 'paused', 'waiting_quota', 'recovery_needed'].includes(run.state) && (
           <button
+            type="button"
             className="danger-quiet"
             disabled={busy}
             onClick={() => void act(async () => refresh(await window.karont.cancelRun(run.id)))}
@@ -147,85 +153,11 @@ export function ContinuityControls({
           {error}
         </p>
       )}
-      {info && (
-        <dialog
-          ref={dialog}
-          className="rollback-dialog recovery-dialog"
-          aria-labelledby={`recovery-${run.id}`}
-          onCancel={() => setInfo(undefined)}
-        >
-          <div className="eyebrow">CONTINUIDADE / {run.id.slice(0, 8)}</div>
-          <h3 id={`recovery-${run.id}`}>Revisar execução interrompida</h3>
-          <p>{info.reason ?? 'A execução terminou com erro.'}</p>
-          <dl>
-            <dt>Último checkpoint</dt>
-            <dd>
-              {info.lastCheckpoint
-                ? `${new Date(info.lastCheckpoint.createdAt).toLocaleString()} · ${info.lastCheckpoint.origin}`
-                : 'Indisponível'}
-            </dd>
-            <dt>Worktree</dt>
-            <dd>
-              {info.worktreeAvailable
-                ? info.worktreeChanged
-                  ? 'Modificada após checkpoint'
-                  : 'Disponível para inspeção'
-                : 'Indisponível'}
-            </dd>
-            <dt>Sessão</dt>
-            <dd>
-              {info.survivingProcess
-                ? 'Processo sobrevivente ou identidade não verificável. Revise antes de continuar.'
-                : 'PTY anterior indisponível. Continuação nativa não validada.'}
-            </dd>
-            <dt>Operações incertas</dt>
-            <dd>
-              {info.uncertainOperations.join(', ') ||
-                'Nenhuma operação controlada registrada; efeitos internos da CLI são desconhecidos.'}
-            </dd>
-          </dl>
-          <p className="conflict-note">{info.risk}</p>
-          {!info.canStartNewSession && (
-            <p>
-              Não há retomada segura disponível pelo Karont. Preserve e inspecione a worktree e o
-              histórico; nenhuma tarefa será reenviada.
-            </p>
-          )}
-          <p>
-            A nova sessão abre a CLI na mesma worktree, sem reenviar a tarefa. Revise o trabalho
-            antes de digitar novos comandos.
-          </p>
-          {error && (
-            <p className="inline-error" role="alert">
-              {error}
-            </p>
-          )}
-          <div className="dialog-actions">
-            <button className="quiet" onClick={() => setInfo(undefined)}>
-              Voltar
-            </button>
-            {info.canStartNewSession && (
-              <button
-                className="danger"
-                disabled={busy}
-                onClick={() =>
-                  void act(async () => {
-                    const resumed = await window.karont.resumeRun(
-                      run.id,
-                      crypto.randomUUID(),
-                      true,
-                    );
-                    setInfo(undefined);
-                    refresh(resumed);
-                  })
-                }
-              >
-                Confirmar nova sessão
-              </button>
-            )}
-          </div>
-        </dialog>
-      )}
+      <RecoveryDialog
+        run={recoveryRun}
+        onClose={() => setRecoveryRun(undefined)}
+        onResumed={refresh}
+      />
     </div>
   );
 }

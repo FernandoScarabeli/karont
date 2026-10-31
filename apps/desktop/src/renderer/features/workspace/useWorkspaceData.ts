@@ -8,9 +8,9 @@ import type {
   UiWorkspaceProject,
 } from '../../lib/api';
 import type { TerminalEvent } from '../../../../../../packages/contracts/src';
-import { allPages, emptyNavigation } from './workspaceShared';
+import { allPages, emptyNavigation, overviewRequest } from './workspaceShared';
 
-type WorkspacePage = 'home' | 'chat' | 'tasks' | 'agents' | 'automations' | 'settings';
+type WorkspacePage = 'start' | 'home' | 'chat' | 'tasks' | 'agents' | 'automations' | 'settings';
 
 export function useWorkspaceData() {
   const [workspaces, setWorkspaces] = useState<UiWorkspace[]>([]);
@@ -19,6 +19,9 @@ export function useWorkspaceData() {
   const [projectIndex, setProjectIndex] = useState<UiWorkspaceProject[]>([]);
   const [chats, setChats] = useState<UiChatSummary[]>([]);
   const [recentChats, setRecentChats] = useState<UiChatSummary[]>([]);
+  const [recentError, setRecentError] = useState('');
+  const [recentLoading, setRecentLoading] = useState(false);
+  const [recentRequested, setRecentRequested] = useState(false);
   const [navigation, setNavigation] = useState<UiNavigation>(emptyNavigation);
   const [selectedChat, setSelectedChat] = useState<UiChatDetails>();
   const [page, setPage] = useState<WorkspacePage>('home');
@@ -27,6 +30,8 @@ export function useWorkspaceData() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [refresh, setRefresh] = useState(0);
+  const [workspaceCatalogRefresh, setWorkspaceCatalogRefresh] = useState(0);
+  const [projectCatalogRefresh, setProjectCatalogRefresh] = useState(0);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -77,23 +82,31 @@ export function useWorkspaceData() {
   }, [restoreAttempt]);
   useEffect(() => {
     let active = true;
-    if (!navigation.workspaceId) {
+    if (page === 'start') {
+      return () => {
+        active = false;
+      };
+    }
+    const workspaceId = navigation.workspaceId;
+    if (!workspaceId) {
       setProjects([]);
       setChats([]);
       return;
     }
     void Promise.all([
-      allPages((cursor) => window.karont.projects(navigation.workspaceId!, cursor)),
-      allPages((cursor) =>
-        window.karont.chats({ scope: 'all', workspaceId: navigation.workspaceId!, cursor }),
+      allPages(
+        (cursor) => window.karont.projects(workspaceId, cursor),
+        () => active,
       ),
-      allPages((cursor) => window.karont.projectIndex(cursor)),
+      allPages(
+        (cursor) => window.karont.chats({ scope: 'all', workspaceId, cursor }),
+        () => active,
+      ),
     ])
-      .then(([ps, cs, index]) => {
+      .then(([ps, cs]) => {
         if (active) {
           setProjects(ps);
           setChats(cs);
-          setProjectIndex(index);
         }
       })
       .catch(() => {
@@ -105,23 +118,100 @@ export function useWorkspaceData() {
     return () => {
       active = false;
     };
-  }, [navigation.workspaceId, refresh]);
+  }, [navigation.workspaceId, page, refresh]);
   useEffect(() => {
+    if (!workspaceCatalogRefresh) return;
     let active = true;
-    void allPages((cursor) => window.karont.chats({ scope: 'recent', cursor }))
+    void allPages(
+      (cursor) =>
+        overviewRequest(
+          () => window.karont.workspaces(cursor),
+          () => active,
+        ),
+      () => active,
+    )
       .then((items) => {
-        if (active) setRecentChats(items);
+        if (active) setWorkspaces(items);
       })
       .catch(() => {
-        if (active) setError('Não foi possível carregar as conversas recentes. Tente novamente.');
+        if (active) setError('Não foi possível atualizar a lista de workspaces.');
       });
     return () => {
       active = false;
     };
-  }, [refresh]);
+  }, [workspaceCatalogRefresh]);
+  useEffect(() => {
+    if (!projectCatalogRefresh) return;
+    let active = true;
+    void allPages(
+      (cursor) =>
+        overviewRequest(
+          () => window.karont.projectIndex(cursor),
+          () => active,
+        ),
+      () => active,
+    )
+      .then((items) => {
+        if (active) setProjectIndex(items);
+      })
+      .catch(() => {
+        if (active) setError('Não foi possível atualizar a lista de projetos.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectCatalogRefresh]);
+  useEffect(() => {
+    if (page !== 'start' && !recentRequested) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = async () => {
+      setRecentLoading(true);
+      try {
+        const items =
+          page === 'start'
+            ? (
+                await overviewRequest(
+                  () => window.karont.chats({ scope: 'recent', limit: 20 }),
+                  () => active,
+                )
+              ).items
+            : await allPages(
+                (cursor) =>
+                  overviewRequest(
+                    () => window.karont.chats({ scope: 'recent', cursor }),
+                    () => active,
+                  ),
+                () => active,
+              );
+        if (active) {
+          setRecentChats(items);
+          setRecentError('');
+        }
+      } catch {
+        if (active) setRecentError('Não foi possível carregar as conversas recentes.');
+      } finally {
+        if (active) setRecentLoading(false);
+      }
+    };
+    const unsubscribe = window.karont.onEvent((event: TerminalEvent) => {
+      if (event.type !== 'chat.updated') return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void load(), 250);
+    });
+    void load();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+      setRecentLoading(false);
+    };
+  }, [page, recentRequested]);
   useEffect(
     () =>
       window.karont.onEvent((event: TerminalEvent) => {
+        if (event.type === 'project.updated') setProjectCatalogRefresh((n) => n + 1);
+        if (event.type === 'workspace.updated') setWorkspaceCatalogRefresh((n) => n + 1);
         if (
           ['project.updated', 'workspace.updated', 'chat.updated', 'task.updated'].includes(
             event.type,
@@ -148,6 +238,13 @@ export function useWorkspaceData() {
       setError('Não foi possível salvar a navegação. Tente novamente.');
     }
   }
+  function start() {
+    selection.current++;
+    setRecentRequested(false);
+    setPage('start');
+    setSelectedChat(undefined);
+    setError('');
+  }
   async function openChat(id: string) {
     const ticket = ++selection.current;
     try {
@@ -161,14 +258,19 @@ export function useWorkspaceData() {
       });
       setPage('chat');
       setError('');
-      if (chat.chat.projectId) setExpanded((old) => ({ ...old, [chat.chat.projectId!]: true }));
+      const projectId = chat.chat.projectId;
+      if (projectId) setExpanded((old) => ({ ...old, [projectId]: true }));
       setRefresh((n) => n + 1);
     } catch {
       if (ticket === selection.current)
         setError('Não foi possível abrir a conversa. Tente novamente.');
     }
   }
-  async function newChat(projectId: string | null = navigation.projectId, seed = '') {
+  async function newChat(
+    projectId: string | null = navigation.projectId,
+    seed = '',
+    workspaceId: string | null = navigation.workspaceId,
+  ) {
     if (opening.current || busy || loading) return;
     if (new TextEncoder().encode(seed).byteLength > 8000) {
       setError('Limite de 8.000 bytes excedido. Reduza o texto para abrir a conversa.');
@@ -179,14 +281,18 @@ export function useWorkspaceData() {
     setError('');
     try {
       let chat = await window.karont.createChat({
-        workspaceId: navigation.workspaceId,
+        workspaceId,
         projectId,
         dotId: null,
         title: 'Nova conversa',
       });
       if (seed) chat = await window.karont.saveDraft(chat.chat.id, seed, chat.chat.revision);
       setSelectedChat(chat);
-      setNavigation({ workspaceId: chat.chat.workspaceId, projectId, chatId: chat.chat.id });
+      setNavigation({
+        workspaceId: chat.chat.workspaceId,
+        projectId: chat.chat.projectId,
+        chatId: chat.chat.id,
+      });
       await window.karont.openChat(chat.chat.id);
       setPage('chat');
       setRefresh((n) => n + 1);
@@ -208,6 +314,9 @@ export function useWorkspaceData() {
     projectIndex,
     chats,
     recentChats,
+    recentError,
+    recentLoading,
+    setRecentRequested,
     navigation,
     setNavigation,
     selectedChat,
@@ -233,6 +342,7 @@ export function useWorkspaceData() {
     draftRef,
     workspace,
     home,
+    start,
     openChat,
     newChat,
   };

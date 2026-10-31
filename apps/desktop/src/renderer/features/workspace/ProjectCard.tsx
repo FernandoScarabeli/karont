@@ -2,7 +2,7 @@ import { AlertTriangle, Folder, SquarePen } from 'lucide-react';
 import { LiveMoon } from '../../components/LiveMoon';
 import type { UiWorkspaceProject } from '../../lib/api';
 import type { useWorkspaceOverview } from './useWorkspaceOverview';
-import { projectIcons } from './workspaceShared';
+import { formatActivityLabel, projectIcons } from './workspaceShared';
 
 type ProjectCounts = ReturnType<typeof useWorkspaceOverview>['projects'][string];
 
@@ -16,21 +16,6 @@ type Props = {
 
 function formatRoot(root: string) {
   return root.replace(/^\/home\/[^/]+(?=\/|$)/, '~');
-}
-
-function activityLabel(updatedAt: number) {
-  const elapsed = Math.max(0, Date.now() - updatedAt);
-  const minutes = Math.floor(elapsed / 60000);
-  if (minutes < 1) return 'agora';
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(elapsed / 3600000);
-  if (hours < 24) return `${hours} h`;
-  if (hours < 48) return 'ontem';
-  const days = Math.floor(elapsed / 86400000);
-  if (days < 7) return `${days} dias`;
-  return new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'short' })
-    .format(new Date(updatedAt))
-    .replace(' de ', ' ');
 }
 
 function conversationLabel(count: number | null) {
@@ -47,7 +32,7 @@ export function ProjectCard({ project, counts, busy, onNewChat, onFocusProject }
         ? counts.conversations === null
           ? '—'
           : undefined
-        : activityLabel(counts.lastActivity);
+        : formatActivityLabel(counts.lastActivity);
   const disabledReason = 'A pasta deste projeto está indisponível.';
 
   return (

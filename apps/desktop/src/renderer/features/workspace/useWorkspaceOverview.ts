@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { UiRun, UiTaskState, UiWorkspaceProject } from '../../lib/api';
-import { allPages } from './workspaceShared';
+import { allPages, overviewRequest } from './workspaceShared';
 
 const taskStates: UiTaskState[] = ['todo', 'in_progress', 'review', 'done'];
 
@@ -68,8 +68,13 @@ export function useWorkspaceOverview(
     >)[] = [
       ...projects.map((project) => async () => {
         try {
-          const chats = await allPages((cursor) =>
-            window.karont.chats({ projectId: project.id, limit: 100, cursor }),
+          const chats = await allPages(
+            (cursor) =>
+              overviewRequest(
+                () => window.karont.chats({ projectId: project.id, limit: 100, cursor }),
+                () => active,
+              ),
+            () => active,
           );
           return {
             type: 'project' as const,
@@ -87,8 +92,13 @@ export function useWorkspaceOverview(
       }),
       ...taskStates.map((taskState) => async () => {
         try {
-          const tasks = await allPages((cursor) =>
-            window.karont.tasks({ workspaceId, state: taskState, limit: 100, cursor }),
+          const tasks = await allPages(
+            (cursor) =>
+              overviewRequest(
+                () => window.karont.tasks({ workspaceId, state: taskState, limit: 100, cursor }),
+                () => active,
+              ),
+            () => active,
           );
           return { type: 'task' as const, taskState, count: tasks.length };
         } catch (error) {

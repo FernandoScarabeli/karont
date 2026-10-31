@@ -176,6 +176,36 @@ A contagem de conversas não existe no contrato: o renderer percorre todas as p�
 
 O resumo “precisam de você” abre Configurações e ferramentas, onde hoje vive o painel de atenção; esse destino é provisório e não representa uma tela própria de aprovações. O link “Abrir quadro” vai para Tarefas. Os estados indisponíveis têm texto além da cor. Foco usa o anel global `--k-focus`; `prefers-reduced-motion` mantém as transições da tela desligadas junto do shell. O cartão não é clicável no todo e controles usam nome/foco próprios. A revisão por captura deve conferir a largura mínima de 840 × 620 px, a grade em área útil estreita e o contorno do foco real.
 
+### Tela Início (implementado)
+
+A aba de casinha abre a visão global sem alterar a navegação persistida. A folha mantém o máximo de 1128 px, alinhamento à esquerda e intervalo de 32 px da home do workspace. O cabeçalho reaproveitado mostra “Início”, data local por extenso, quantidade de workspaces e Runs ativas; o estado vazio diz “Nada rodando”.
+
+O compositor compartilhado conserva o rascunho e as regras de envio da home do workspace. Na visão global, o seletor nativo agrupa projetos por Workspace e mostra no valor selecionado “Workspace / Projeto” ou “Workspace / Sem projeto”. Enviar cria a conversa no Workspace e Projeto escolhidos e abre o Chat. A home do workspace continua usando o mesmo componente com o seletor simples de Projeto.
+
+“Precisa de você” aparece somente com aprovações pendentes ou Runs `recovery_needed`. A lista usa uma superfície `--k-card`, linha `--k-line`, raio de 12 px e linhas com 14 × 16 px de padding. Cada linha mostra o Dot, título, contexto disponível e ações. Aprovações usam a mesma confirmação de rollback da Central de Aprovações. “Retomar” abre o mesmo diálogo de recuperação da tela de continuidade e só inicia uma nova sessão quando a recuperação permite e a pessoa confirma. “Ver o que mudou” abre o Chat da Run; sem Chat, abre Configurações e ferramentas.
+
+O selo de Dot mede 28 × 28 px, raio de 8 px, fonte 11/600 e aplica as cores existentes `--k-dot-codex-*`, `--k-dot-claude-*` ou `--k-dot-other-*`. A identidade é inferida temporariamente pelo nome do Dot; o contrato ainda não oferece provedor. Não deve ser tratada como identidade definitiva.
+
+A grade “Workspaces” reutiliza a base visual dos cartões de Projeto: colunas `auto-fill/minmax(280px, 1fr)`, ícone `layers`, contagem de Projetos e Conversas, última atividade, estado da Run/atenção e ação “Abrir”. A faixa “Tarefas de todos os workspaces” compartilha os mesmos quatro estados, valores e link para o quadro da home de workspace.
+
+Na sidebar global, “Nova conversa” cria um Chat livre no Workspace atual; “Tarefas” abre o quadro; o grupo “Workspaces” permite alternar para a home individual e criar Workspace; “Recentes” mostra até 20 Chats globais com o Workspace de origem. A sidebar anterior continua nas páginas de workspace.
+
+#### Tokens e limites da tela global
+
+Os componentes reaproveitam os tokens da página do workspace. As extensões ficam em `tokens.css` e seguem os valores da Direção A:
+
+| Grupo | Tokens e valores | Regra de uso |
+| --- | --- | --- |
+| Linha de atenção | `--k-home-attention-gap: 12px`; padding `14px 16px`; selo `28px` e raio `8px` | Lista de aprovação e recuperação |
+| Ações de atenção | altura `30px`; padding horizontal `12px`; intervalo `8px` | Botão secundário `--k-raised` + `--k-line`; principal `--k-primary` + `--k-on-primary` |
+| Texto de atenção | título 14 px; meta Geist Mono 12 px; intervalo vertical `4px`; linha da meta `1.35` | Contexto em Workspace · Projeto · branch · quando, omitindo campos ausentes |
+| Cartão de Workspace | tokens de cartão, grade, tipografia e footer da home de workspace | Contagens usam algarismos tabulares; erro aparece como “—” e aviso discreto |
+| Sidebar global | Workspace em 14 px; nome do Workspace nos Recentes em 12 px | A lua e o ponto ficam `aria-hidden` dentro do botão e o estado é passado por `aria-description` |
+
+As listas agregadas percorrem páginas com limite 100 em sequência: conversas por Workspace e Tarefas por estado, sem `workspaceId`. Só carregam quando Início está visível, compartilham uma fila serial, agrupam eventos em 250 ms e não fazem polling. Runs e aprovações vêm de `useWorkspaceStatus` (`runs(100)` e `approvals()`), já atualizado por `run.updated` e `approval.updated`. Recentes na sidebar usa `limit: 20`; a busca global preserva a lista paginada existente. Ambos recarregam por `chat.updated` somente enquanto Início ou a busca global estão abertos. Falhas preservam o erro e mostram “—” nas contagens indisponíveis. Workspaces e Projetos contam via catálogos; conversas e última atividade são calculadas no renderer a partir de todas as páginas do Workspace.
+
+Em área útil de até 640 px, ações de “Precisa de você” descem para uma linha sob o texto; o compositor pode quebrar as ações. A grade reduz as colunas conforme o espaço e as Tarefas passam a duas colunas. Foco visível, texto além de cor e `prefers-reduced-motion` permanecem ativos. A confirmação visual da janela mínima de 840 × 620 px e a leitura com tecnologia assistiva ainda dependem de revisão no Electron.
+
 ### Contraste WCAG
 
 Contraste calculado pela fórmula WCAG para luminância relativa sRGB: `(Lmais clara + 0,05) / (Lmais escura + 0,05)`. Os valores estão arredondados a duas casas; AA para texto normal exige pelo menos 4,5:1.
@@ -198,7 +228,6 @@ Contraste calculado pela fórmula WCAG para luminância relativa sRGB: `(Lmais c
 
 ### Ainda não implementado / ideias futuras
 
-- **Detalhes futuros da home:** ação para resolver pedidos de permissão via `approvals.decide`, ação Retomar e identificação do Dot nas conversas recentes ainda dependem de telas e fluxos próprios. A tela inicial já mostra resumos de Runs e atenção, Projetos e contagens de Tarefas.
 - **Uso restante por Dot no rodapé:** ainda não há fonte de dados; a API local não fornece esse dado e o app não pode ler credenciais das CLIs. É necessária uma spec antes de qualquer código.
 
 ---

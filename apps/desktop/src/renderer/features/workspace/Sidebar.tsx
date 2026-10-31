@@ -9,8 +9,10 @@ import {
   SquarePen,
   ChevronDown,
   ChevronRight,
+  Layers,
 } from 'lucide-react';
 import type { UiChatSummary } from '../../lib/api';
+import { AttentionDot } from '../../components/AttentionDot';
 import { LiveMoon } from '../../components/LiveMoon';
 import type { useProjectForm } from './useProjectForm';
 import type { useSidebarState } from './useSidebarState';
@@ -23,9 +25,20 @@ type Props = {
   sidebar: ReturnType<typeof useSidebarState>;
   projectForm: ReturnType<typeof useProjectForm>;
   runningChatIds: Set<string>;
+  workspaceStatus: Record<string, { running: number; attention: number }>;
+  onCreateWorkspace: () => void;
+  onOpenWorkspace: (workspaceId: string) => void;
 };
 
-export function Sidebar({ data, sidebar, projectForm, runningChatIds }: Props) {
+export function Sidebar({
+  data,
+  sidebar,
+  projectForm,
+  runningChatIds,
+  workspaceStatus,
+  onCreateWorkspace,
+  onOpenWorkspace,
+}: Props) {
   const {
     projects,
     chats,
@@ -69,6 +82,118 @@ export function Sidebar({ data, sidebar, projectForm, runningChatIds }: Props) {
   }
 
   const favorites = chats.filter((chat) => chat.favorite);
+
+  if (page === 'start') {
+    return (
+      <aside className="k-sidebar ks-sidebar" aria-label="Navegação principal">
+        <nav className="k-main-nav ks-sidebar-nav" aria-label="Áreas do workspace">
+          <button
+            type="button"
+            className="k-nav k-new-chat"
+            disabled={busy || loading}
+            onClick={() => void newChat(null, '', navigation.workspaceId)}
+          >
+            <SquarePen aria-hidden="true" />
+            Nova conversa
+          </button>
+          <button type="button" className="k-nav" onClick={() => setPage('tasks')}>
+            <ListTodo aria-hidden="true" />
+            Tarefas
+          </button>
+        </nav>
+        <div className="k-sidebar-scroll ks-sidebar-scroll kw-start-sidebar-scroll">
+          <section className="k-group">
+            <div className="k-group-heading">
+              <h2>Workspaces</h2>
+              <button
+                type="button"
+                className="k-icon ks-group-action"
+                title="Novo workspace na lista"
+                aria-label="Novo workspace na lista"
+                onClick={onCreateWorkspace}
+              >
+                <Plus aria-hidden="true" />
+              </button>
+            </div>
+            {data.workspaces.map((workspace) => {
+              const status = workspaceStatus[workspace.id] ?? { running: 0, attention: 0 };
+              const marker = status.running
+                ? 'running'
+                : status.attention
+                  ? 'attention'
+                  : undefined;
+              return (
+                <button
+                  type="button"
+                  className="kw-sidebar-workspace-row"
+                  key={workspace.id}
+                  aria-label={workspace.name}
+                  aria-description={
+                    marker === 'running'
+                      ? 'Rodando'
+                      : marker === 'attention'
+                        ? 'Precisa de você'
+                        : undefined
+                  }
+                  title={workspace.name}
+                  onClick={() => onOpenWorkspace(workspace.id)}
+                >
+                  <Layers size={16} aria-hidden="true" />
+                  <span className="kw-sidebar-workspace-name">{workspace.name}</span>
+                  {marker && (
+                    <span className="kw-sidebar-workspace-marker" aria-hidden="true">
+                      {marker === 'running' ? (
+                        <LiveMoon title="Rodando" />
+                      ) : (
+                        <AttentionDot title="Precisa de você" />
+                      )}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </section>
+          <section className="k-group kw-start-recent-group">
+            <div className="k-group-heading">
+              <h2>Recentes</h2>
+            </div>
+            {data.recentChats.map((chat) => {
+              const workspaceName =
+                chat.origin.workspaceName ??
+                data.workspaces.find((workspace) => workspace.id === chat.workspaceId)?.name ??
+                'Global';
+              return (
+                <button
+                  type="button"
+                  className="kw-sidebar-recent-row"
+                  key={chat.id}
+                  title={chat.title}
+                  onClick={() => void openChat(chat.id)}
+                >
+                  <span className="kw-sidebar-recent-title">{chat.title}</span>
+                  <span className="kw-sidebar-recent-workspace">{workspaceName}</span>
+                </button>
+              );
+            })}
+            {data.recentError && (
+              <p className="k-empty" role="status">
+                {data.recentError}
+              </p>
+            )}
+            {!data.recentChats.length && data.recentLoading && (
+              <p className="k-empty" role="status">
+                Carregando conversas…
+              </p>
+            )}
+            {!data.recentChats.length && !data.recentError && !data.recentLoading && (
+              <p className="k-empty">Nenhuma conversa recente</p>
+            )}
+          </section>
+        </div>
+        <SidebarFooter data={data} />
+      </aside>
+    );
+  }
 
   return (
     <aside className="k-sidebar ks-sidebar" aria-label="Navegação principal">
