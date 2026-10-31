@@ -52,6 +52,7 @@ export function useWorkspaceStatus(projectIndex: UiWorkspaceProject[]) {
         for (const run of runList) {
           if ((run.state === 'running' || run.state === 'queued') && run.chatId)
             runningChats.add(run.chatId);
+          if (run.projectId === null) continue;
           const workspaceId = projectsById.get(run.projectId);
           if (!workspaceId) continue;
           if (run.state === 'running' || run.state === 'queued') {

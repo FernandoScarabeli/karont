@@ -364,6 +364,225 @@ test('duas execuções PTY, fila, reconexão, worktrees, diff, rollback e confli
   }
 });
 
+test('Run sem projeto usa HOME, entrega mensagens e recusa operações de worktree', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'karont-home-run-'));
+  const home = path.join(temp, 'home');
+  fs.mkdirSync(home);
+  const runtime = path.join(temp, 'runtime');
+  const data = path.join(temp, 'data');
+  const config = path.join(temp, 'dots.json');
+  const script = `const fs=require('node:fs');const path=require('node:path');const readline=require('node:readline');console.log('HOME_CWD '+process.cwd());readline.createInterface({input:process.stdin}).on('line',line=>fs.appendFileSync(path.join(process.cwd(),'delivered.txt'),line+'\\n'));setInterval(()=>{},1000);`;
+  fs.writeFileSync(
+    config,
+    JSON.stringify({
+      version: 1,
+      projects: [],
+      dots: [
+        {
+          id: 'alpha',
+          name: 'Alpha',
+          role: 'Teste de execução sem projeto',
+          executable: process.execPath,
+          args: ['-e', script],
+          projectIds: [],
+        },
+      ],
+    }),
+    { mode: 0o600 },
+  );
+  const env = {
+    ...process.env,
+    HOME: home,
+    KARONT_RUNTIME_DIR: runtime,
+    KARONT_DATA_DIR: data,
+    KARONT_CONFIG_DIR: path.join(temp, 'config-dir'),
+    KARONT_DOTS_CONFIG: config,
+  };
+  const previousEnv = Object.fromEntries(
+    [
+      'HOME',
+      'KARONT_RUNTIME_DIR',
+      'KARONT_DATA_DIR',
+      'KARONT_CONFIG_DIR',
+      'KARONT_DOTS_CONFIG',
+    ].map((key) => [key, process.env[key]]),
+  );
+  Object.assign(process.env, env);
+  const daemon = spawn(process.execPath, ['dist/daemon/entry.cjs'], {
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const errors = [];
+  daemon.stdout.on('data', (chunk) => errors.push(chunk.toString()));
+  daemon.stderr.on('data', (chunk) => errors.push(chunk.toString()));
+  daemon.on('error', (error) => errors.push(error.message));
+  const client = new Client();
+  const expectNoWorktree = (request) =>
+    assert.rejects(
+      () => client.request(request),
+      (error) => error.message.startsWith('Execução sem projeto'),
+    );
+  try {
+    await until(() => client.request({ method: 'ping' }));
+    const db = new DatabaseSync(path.join(data, 'phase0.sqlite'));
+    const workspaceId = db
+      .prepare("SELECT value FROM settings WHERE key='default_workspace_id'")
+      .get().value;
+    db.prepare(
+      "INSERT INTO projects(id,name,root,git_root,created_at,workspace_id,origin,icon) VALUES('repo','Repo de teste',?,?,?,?,'ui','folder')",
+    ).run(home, home, Date.now(), workspaceId);
+    const projectChat = await client.request({
+      method: 'chats.create',
+      value: {
+        projectId: 'repo',
+        title: 'Conversa de projeto',
+        operationId: crypto.randomUUID(),
+      },
+    });
+    await assert.rejects(
+      () =>
+        client.request({
+          method: 'runs.start',
+          value: { dotId: 'alpha', chatId: projectChat.chat.id },
+        }),
+      /Conversa não corresponde/,
+    );
+
+    const freeChat = await client.request({
+      method: 'chats.create',
+      value: { title: 'Conversa sem projeto', operationId: crypto.randomUUID() },
+    });
+    const homeRun = await client.request({
+      method: 'runs.start',
+      value: { dotId: 'alpha', chatId: freeChat.chat.id },
+    });
+    assert.equal(homeRun.projectId, null);
+    assert.equal(homeRun.location, 'home');
+    assert.equal(homeRun.branch, null);
+    const runningHome = await until(async () => {
+      const run = (await client.request({ method: 'runs.list', value: { limit: 20 } })).find(
+        (item) => item.id === homeRun.id,
+      );
+      assert.equal(run.state, 'running');
+      return run;
+    });
+    assert.equal(runningHome.location, 'home');
+    const attached = await client.request({
+      method: 'terminal.attach',
+      value: { runId: homeRun.id },
+    });
+    assert.equal(attached.run.projectId, null);
+    await client.request({
+      method: 'terminal.resize',
+      value: { runId: homeRun.id, cols: 90, rows: 25 },
+    });
+    const boundChat = await client.request({
+      method: 'chats.get',
+      value: { chatId: freeChat.chat.id },
+    });
+
+    const saved = await client.request({
+      method: 'messages.save',
+      value: {
+        chatId: freeChat.chat.id,
+        body: 'mensagem na pasta pessoal',
+        expectedRevision: boundChat.chat.revision,
+        operationId: crypto.randomUUID(),
+      },
+    });
+    const delivery = await client.request({
+      method: 'messages.send',
+      value: {
+        chatId: freeChat.chat.id,
+        messageId: saved.message.id,
+        runId: homeRun.id,
+        operationId: crypto.randomUUID(),
+      },
+    });
+    assert.equal(delivery.status, 'sent');
+    await until(async () => {
+      assert.match(
+        fs.readFileSync(path.join(home, 'delivered.txt'), 'utf8'),
+        /mensagem na pasta pessoal/,
+      );
+      return true;
+    });
+    assert.equal(
+      (await client.request({ method: 'chats.runs.list', value: { chatId: freeChat.chat.id } }))
+        .items[0].location,
+      'home',
+    );
+    assert.ok(
+      (await client.request({ method: 'runs.list', value: { limit: 20 } })).some(
+        (run) => run.id === homeRun.id,
+      ),
+    );
+
+    const projectRunId = crypto.randomUUID();
+    db.prepare(
+      "INSERT INTO runs(id,dot_id,project_id,state,created_at,permission_mode,auto_resume,branch) VALUES(?,'alpha','repo','completed',?,'ask',1,?)",
+    ).run(projectRunId, Date.now(), `karont/run-${projectRunId}`);
+    const filtered = await client.request({
+      method: 'runs.list',
+      value: { limit: 20, projectId: 'repo' },
+    });
+    assert.ok(filtered.some((run) => run.id === projectRunId));
+    assert.ok(filtered.every((run) => run.projectId === 'repo'));
+
+    await expectNoWorktree({ method: 'runs.diff', value: { runId: homeRun.id } });
+    await expectNoWorktree({ method: 'rollback.preview', value: { runId: homeRun.id } });
+    await expectNoWorktree({
+      method: 'rollback.apply',
+      value: { runId: homeRun.id, confirmed: true },
+    });
+    await expectNoWorktree({ method: 'checkpoints.list', value: { runId: homeRun.id } });
+    await expectNoWorktree({
+      method: 'checkpoints.create',
+      value: { runId: homeRun.id, operationId: crypto.randomUUID() },
+    });
+    await expectNoWorktree({ method: 'worktree.remove', value: { runId: homeRun.id } });
+    await expectNoWorktree({ method: 'recovery.inspect', value: { runId: homeRun.id } });
+
+    await client.request({ method: 'runs.cancel', value: { runId: homeRun.id } });
+    await until(async () => {
+      const listed = await client.request({ method: 'runs.list', value: { limit: 20 } });
+      assert.equal(listed.find((run) => run.id === homeRun.id).state, 'cancelled');
+      return true;
+    });
+
+    assert.equal(
+      db.prepare('SELECT count(*) AS count FROM worktrees WHERE run_id=?').get(homeRun.id).count,
+      0,
+    );
+    assert.equal(
+      db.prepare('SELECT count(*) AS count FROM checkpoints WHERE run_id=?').get(homeRun.id).count,
+      0,
+    );
+    assert.equal(db.prepare('SELECT branch FROM runs WHERE id=?').get(homeRun.id).branch, null);
+    db.close();
+  } catch (error) {
+    error.message += `\nDaemon pid=${daemon.pid} exit=${daemon.exitCode} signal=${daemon.signalCode}; output: ${errors.join('')}`;
+    throw error;
+  } finally {
+    client.close();
+    try {
+      const stop = new Client();
+      await stop.request({ method: 'shutdown' });
+      stop.close();
+    } catch {}
+    if (daemon.exitCode === null && daemon.signalCode === null) {
+      const exited = once(daemon, 'exit').catch(() => {});
+      daemon.kill();
+      await exited;
+    }
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test('schemas de IPC recusam argumentos arbitrários e valores excessivos', () => {
   const base = { id: 1 };
   assert.equal(

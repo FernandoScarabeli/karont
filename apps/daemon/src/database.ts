@@ -50,7 +50,7 @@ export function openDatabase(file: string) {
   const version = Number(
     (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
   );
-  if (version > 7) throw Error('Banco de dados criado por uma versão mais nova do Karont');
+  if (version > 8) throw Error('Banco de dados criado por uma versão mais nova do Karont');
   if (version < 1) {
     db.exec(
       'BEGIN; CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE VIRTUAL TABLE IF NOT EXISTS phase0_search USING fts5(content); PRAGMA user_version=1; COMMIT;',
@@ -277,6 +277,61 @@ export function openDatabase(file: string) {
     db.exec(
       "BEGIN; ALTER TABLE projects ADD COLUMN icon TEXT NOT NULL DEFAULT 'folder'; PRAGMA user_version=7; COMMIT;",
     );
+  }
+  if ((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version < 8) {
+    db.exec('PRAGMA foreign_keys=OFF');
+    try {
+      db.exec(`BEGIN IMMEDIATE;
+        CREATE TABLE runs_v8(
+          id TEXT PRIMARY KEY,
+          dot_id TEXT NOT NULL REFERENCES dots(id),
+          project_id TEXT REFERENCES projects(id),
+          state TEXT NOT NULL CHECK(state IN ('queued','running','paused','waiting_quota','waiting_approval','recovery_needed','completed','failed','cancelled')),
+          created_at INTEGER NOT NULL,
+          started_at INTEGER,
+          finished_at INTEGER,
+          exit_code INTEGER,
+          error TEXT,
+          branch TEXT,
+          permission_mode TEXT NOT NULL DEFAULT 'ask',
+          auto_resume INTEGER NOT NULL DEFAULT 1,
+          chat_id TEXT REFERENCES chats(id)
+        );
+        INSERT INTO runs_v8(
+          id,dot_id,project_id,state,created_at,started_at,finished_at,exit_code,error,
+          branch,permission_mode,auto_resume,chat_id
+        ) SELECT
+          id,dot_id,project_id,state,created_at,started_at,finished_at,exit_code,error,
+          branch,permission_mode,auto_resume,chat_id
+        FROM runs;
+        DROP TRIGGER task_run_same_project_insert;
+        DROP TABLE runs;
+        ALTER TABLE runs_v8 RENAME TO runs;
+        CREATE INDEX runs_created_at ON runs(created_at DESC);
+        CREATE INDEX runs_chat_created ON runs(chat_id,created_at DESC,id DESC);
+        CREATE TRIGGER runs_chat_context_insert BEFORE INSERT ON runs
+        WHEN NEW.chat_id IS NOT NULL AND NOT EXISTS(
+          SELECT 1 FROM chats c WHERE c.id=NEW.chat_id AND c.project_id IS NEW.project_id AND c.dot_id=NEW.dot_id
+        ) BEGIN SELECT RAISE(ABORT,'Execução diverge do contexto da conversa'); END;
+        CREATE TRIGGER runs_chat_context_update BEFORE UPDATE OF chat_id,dot_id,project_id ON runs
+        WHEN NEW.chat_id IS NOT NULL AND NOT EXISTS(
+          SELECT 1 FROM chats c WHERE c.id=NEW.chat_id AND c.project_id IS NEW.project_id AND c.dot_id=NEW.dot_id
+        ) BEGIN SELECT RAISE(ABORT,'Execução diverge do contexto da conversa'); END;
+        CREATE TRIGGER task_run_same_project_insert BEFORE INSERT ON task_run_links
+        WHEN NOT EXISTS(
+          SELECT 1 FROM tasks t JOIN runs r ON r.id=NEW.run_id
+          WHERE t.id=NEW.task_id AND t.project_id=r.project_id
+        ) BEGIN SELECT RAISE(ABORT,'Tarefa e execução precisam pertencer ao mesmo projeto'); END;
+        PRAGMA user_version=8;
+        COMMIT;`);
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    } finally {
+      db.exec('PRAGMA foreign_keys=ON');
+    }
+    if (db.prepare('PRAGMA foreign_key_check').all().length)
+      throw Error('Migração v8 com referências inválidas');
   }
   return db;
 }

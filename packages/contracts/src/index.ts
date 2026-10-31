@@ -406,7 +406,8 @@ export const runSchema = z
     id: idSchema,
     chatId: idSchema.nullable(),
     dotId: safeIdSchema,
-    projectId: safeIdSchema,
+    projectId: safeIdSchema.nullable(),
+    location: z.enum(['worktree', 'home']),
     state: runStateSchema,
     createdAt: z.number(),
     startedAt: z.number().nullable(),
@@ -907,7 +908,12 @@ export const requestSchema = z.discriminatedUnion('method', [
     .object({
       id: z.number().int().nonnegative(),
       method: z.literal('runs.list'),
-      value: z.object({ limit: z.number().int().min(1).max(100).default(40) }).strict(),
+      value: z
+        .object({
+          limit: z.number().int().min(1).max(100).default(40),
+          projectId: safeIdSchema.optional(),
+        })
+        .strict(),
     })
     .strict(),
   z
@@ -917,7 +923,7 @@ export const requestSchema = z.discriminatedUnion('method', [
       value: z
         .object({
           dotId: safeIdSchema,
-          projectId: safeIdSchema,
+          projectId: safeIdSchema.optional(),
           chatId: idSchema.optional(),
           permissionMode: permissionModeSchema.default('ask'),
           elevatedConfirmed: z.boolean().default(false),
@@ -1173,12 +1179,12 @@ export type Command =
   | { method: 'approvals.decide'; value: { approvalId: string; allow: boolean } }
   | { method: 'layout'; value: Layout }
   | { method: 'stream'; value: boolean }
-  | { method: 'runs.list'; value: { limit: number } }
+  | { method: 'runs.list'; value: { limit: number; projectId?: string } }
   | {
       method: 'runs.start';
       value: {
         dotId: string;
-        projectId: string;
+        projectId?: string;
         chatId?: string;
         permissionMode?: PermissionMode;
         elevatedConfirmed?: boolean;

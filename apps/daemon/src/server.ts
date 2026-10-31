@@ -281,7 +281,7 @@ try {
             result = work!.setNavigation(r.value);
             break;
           case 'runs.list':
-            result = manager!.listRuns(r.value.limit);
+            result = manager!.listRuns(r.value.limit, r.value.projectId);
             break;
           case 'diagnostics':
             result = daemonDiagnostics(config.dots);

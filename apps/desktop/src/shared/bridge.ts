@@ -55,7 +55,8 @@ export type UiRun = {
   id: string;
   chatId: string | null;
   dotId: string;
-  projectId: string;
+  projectId: string | null;
+  location: 'worktree' | 'home';
   state: import('zod').infer<typeof runStateSchema>;
   createdAt: number;
   startedAt: number | null;

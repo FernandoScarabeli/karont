@@ -153,7 +153,7 @@ test('v4→v6 mantém dados de continuidade e cria workspace padrão com integri
     f.db.close();
     const migrated = openDatabase(f.dbFile);
     f.db = migrated;
-    assert.equal(migrated.prepare('PRAGMA user_version').get().user_version, 7);
+    assert.equal(migrated.prepare('PRAGMA user_version').get().user_version, 8);
     assert.equal(
       migrated.prepare('SELECT state FROM runs WHERE id=?').get(runId).state,
       'recovery_needed',
@@ -235,7 +235,7 @@ test('migração v5→v6 preserva workspaces, projetos, chats, mensagens e Runs 
     `);
     f.db.close();
     f.db = openDatabase(f.dbFile);
-    assert.equal(f.db.prepare('PRAGMA user_version').get().user_version, 7);
+    assert.equal(f.db.prepare('PRAGMA user_version').get().user_version, 8);
     assert.equal(
       f.db.prepare('SELECT name FROM workspaces WHERE id=?').get(f.workspaceId).name,
       'Meus projetos',

@@ -9,6 +9,7 @@ import {
 import { capabilities, permissionArgs } from './permissions';
 import type { PermissionMode } from '../../../packages/contracts/src';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -24,7 +25,7 @@ type RunRow = {
   id: string;
   chat_id: string | null;
   dot_id: string;
-  project_id: string;
+  project_id: string | null;
   state: State;
   created_at: number;
   started_at: number | null;
@@ -191,12 +192,16 @@ export class RunManager {
   listProjects() {
     return this.db.prepare('SELECT id,name FROM projects ORDER BY name').all();
   }
-  listRuns(limit: number) {
+  listRuns(limit: number, projectId?: string) {
+    const filtered = projectId !== undefined;
     const rows = this.db
       .prepare(
-        `SELECT r.*, s.id AS session_id,s.pid AS session_pid FROM runs r LEFT JOIN sessions s ON s.run_id=r.id ORDER BY r.created_at DESC LIMIT ?`,
+        `SELECT r.*, s.id AS session_id,s.pid AS session_pid FROM runs r LEFT JOIN sessions s ON s.run_id=r.id ${filtered ? 'WHERE r.project_id=?' : ''} ORDER BY r.created_at DESC LIMIT ?`,
       )
-      .all(limit) as (RunRow & { session_id: string | null; session_pid: number | null })[];
+      .all(...(filtered ? [projectId, limit] : [limit])) as (RunRow & {
+      session_id: string | null;
+      session_pid: number | null;
+    })[];
     return rows.map((row) => this.serialize(row));
   }
   private serialize(row: RunRow & { session_id?: string | null; session_pid?: number | null }) {
@@ -207,6 +212,7 @@ export class RunManager {
       chatId: row.chat_id ?? null,
       dotId: row.dot_id,
       projectId: row.project_id,
+      location: row.project_id === null ? 'home' : 'worktree',
       state: row.state,
       createdAt: row.created_at,
       startedAt: row.started_at,
@@ -253,25 +259,35 @@ export class RunManager {
   }
   async start(
     dotId: string,
-    projectId: string,
+    projectId: string | undefined,
     mode: PermissionMode = 'ask',
     confirmed = false,
     operationId?: string,
     chatId?: string,
   ) {
+    const projectKey = projectId ?? null;
     const dot = this.configuredDots.find((d) => d.id === dotId);
-    const project = this.db
-      .prepare('SELECT id,root,git_root,origin FROM projects WHERE id=?')
-      .get(projectId) as { id: string; root: string; git_root: string; origin: string } | undefined;
-    if (!dot || !project || !this.authorizedForProject(dot, project))
+    const project = projectKey
+      ? (this.db
+          .prepare('SELECT id,root,git_root,origin FROM projects WHERE id=?')
+          .get(projectKey) as
+          | { id: string; root: string; git_root: string; origin: string }
+          | undefined)
+      : undefined;
+    if (projectKey && (!dot || !project || !this.authorizedForProject(dot, project)))
       throw Error('Dot não autorizado para este projeto');
+    if (!dot) throw Error('Dot não está configurado');
     permissionArgs(dot, mode, confirmed);
-    this.validateProjectRoot(project.root);
+    if (project) this.validateProjectRoot(project.root);
     if (chatId) {
       const chat = this.db.prepare('SELECT project_id,dot_id FROM chats WHERE id=?').get(chatId) as
         | { project_id: string | null; dot_id: string | null }
         | undefined;
-      if (!chat || chat.project_id !== projectId || (chat.dot_id !== null && chat.dot_id !== dotId))
+      if (
+        !chat ||
+        chat.project_id !== projectKey ||
+        (chat.dot_id !== null && chat.dot_id !== dotId)
+      )
         throw Error('Conversa não corresponde ao Dot e projeto selecionados');
     }
     if (operationId) {
@@ -283,7 +299,7 @@ export class RunManager {
         if (
           previous.kind !== 'enqueue' ||
           old.dotId !== dotId ||
-          old.projectId !== projectId ||
+          old.projectId !== projectKey ||
           old.permissionMode !== mode ||
           old.chatId !== (chatId ?? null)
         )
@@ -312,10 +328,10 @@ export class RunManager {
         .prepare(
           "INSERT INTO runs(id,dot_id,project_id,chat_id,state,created_at,permission_mode,auto_resume) VALUES(?,?,?,?,'queued',?,?,?)",
         )
-        .run(id, dotId, projectId, chatId ?? null, now, mode, dot.autoResume === false ? 0 : 1);
+        .run(id, dotId, projectKey, chatId ?? null, now, mode, dot.autoResume === false ? 0 : 1);
       const key = operationId ?? randomUUID();
       this.continuity.begin(key, id, 'enqueue');
-      this.event(id, 'run.queued', { dotId, projectId, chatId: chatId ?? null });
+      this.event(id, 'run.queued', { dotId, projectId: projectKey, chatId: chatId ?? null });
       this.continuity.complete(key);
       this.continuity.checkpoint(id, 'before_start');
     });
@@ -348,58 +364,73 @@ export class RunManager {
   private async launch(id: string) {
     const { row } = this.getRun(id);
     const dot = this.configuredDots.find((d) => d.id === row.dot_id);
-    const project = this.db
-      .prepare('SELECT root,git_root,origin,id FROM projects WHERE id=?')
-      .get(row.project_id) as
-      | { root: string; git_root: string; origin: string; id: string }
-      | undefined;
-    if (!dot || !project || !this.authorizedForProject(dot, project))
-      throw Error('Dot não autorizado para este projeto');
-    const root = this.validateProjectRoot(project.root);
-    const gitRoot = String(git(root, ['rev-parse', '--show-toplevel'])).trim();
-    const isWorktree = String(git(root, ['rev-parse', '--is-inside-work-tree'])).trim() === 'true';
-    if (!isWorktree || fs.realpathSync(gitRoot) !== root)
-      throw Error('Projeto não é a raiz de um repositório Git válido');
-    execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd: root, stdio: 'ignore' });
+    if (!dot) {
+      if (row.project_id !== null) throw Error('Dot não autorizado para este projeto');
+      throw Error('Dot não está configurado');
+    }
+    let cwd = fs.realpathSync(os.homedir());
+    let branch: string | null = null;
+    if (row.project_id !== null) {
+      const project = this.db
+        .prepare('SELECT root,git_root,origin,id FROM projects WHERE id=?')
+        .get(row.project_id) as
+        | { root: string; git_root: string; origin: string; id: string }
+        | undefined;
+      if (!project || !this.authorizedForProject(dot, project))
+        throw Error('Dot não autorizado para este projeto');
+      const root = this.validateProjectRoot(project.root);
+      const gitRoot = String(git(root, ['rev-parse', '--show-toplevel'])).trim();
+      const isWorktree =
+        String(git(root, ['rev-parse', '--is-inside-work-tree'])).trim() === 'true';
+      if (!isWorktree || fs.realpathSync(gitRoot) !== root)
+        throw Error('Projeto não é a raiz de um repositório Git válido');
+      execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd: root, stdio: 'ignore' });
+      const runDir = path.join(this.worktreeRoot, row.project_id);
+      fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
+      const worktreePath = path.join(runDir, id);
+      branch = `karont/run-${id}`;
+      const existing = this.db
+        .prepare('SELECT path FROM worktrees WHERE run_id=? AND removed_at IS NULL')
+        .get(id) as { path: string } | undefined;
+      if (!existing) {
+        const op = `worktree:${id}`;
+        const status = this.continuity.begin(op, id, 'worktree');
+        if (status !== 'new') throw Error('Operação de worktree incerta; revisão necessária');
+        this.continuity.checkpoint(id, 'before_operation');
+        git(root, ['worktree', 'add', '--quiet', '-b', branch, worktreePath, 'HEAD']);
+        this.continuity.transaction(() => {
+          this.db
+            .prepare(
+              'INSERT INTO worktrees(run_id,path,branch,base_ref,created_at) VALUES(?,?,?,?,?)',
+            )
+            .run(id, worktreePath, branch, 'HEAD', Date.now());
+          this.continuity.complete(op);
+          this.continuity.checkpoint(id, 'after_operation');
+        });
+      } else {
+        if (fs.realpathSync(existing.path) !== path.resolve(worktreePath))
+          throw Error('Worktree inválida');
+        const commonDirectory = (worktreeCwd: string) =>
+          fs.realpathSync(
+            path.resolve(
+              worktreeCwd,
+              String(git(worktreeCwd, ['rev-parse', '--git-common-dir'])).trim(),
+            ),
+          );
+        if (
+          String(git(existing.path, ['symbolic-ref', '--short', 'HEAD'])).trim() !== branch ||
+          commonDirectory(existing.path) !== commonDirectory(root)
+        )
+          throw Error('Worktree inválida');
+      }
+      cwd = worktreePath;
+    } else {
+      // Escolher um Dot numa conversa sem projeto autoriza sua execução na pasta pessoal.
+    }
     const executable = fs.realpathSync(dot.executable);
     const execStat = fs.statSync(executable);
     fs.accessSync(executable, fs.constants.X_OK);
     if (!execStat.isFile()) throw Error('CLI configurada não é um executável regular');
-    const runDir = path.join(this.worktreeRoot, row.project_id);
-    fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
-    const worktreePath = path.join(runDir, id);
-    const branch = `karont/run-${id}`;
-    const existing = this.db
-      .prepare('SELECT path FROM worktrees WHERE run_id=? AND removed_at IS NULL')
-      .get(id) as { path: string } | undefined;
-    if (!existing) {
-      const op = `worktree:${id}`;
-      const status = this.continuity.begin(op, id, 'worktree');
-      if (status !== 'new') throw Error('Operação de worktree incerta; revisão necessária');
-      this.continuity.checkpoint(id, 'before_operation');
-      git(root, ['worktree', 'add', '--quiet', '-b', branch, worktreePath, 'HEAD']);
-      this.continuity.transaction(() => {
-        this.db
-          .prepare(
-            'INSERT INTO worktrees(run_id,path,branch,base_ref,created_at) VALUES(?,?,?,?,?)',
-          )
-          .run(id, worktreePath, branch, 'HEAD', Date.now());
-        this.continuity.complete(op);
-        this.continuity.checkpoint(id, 'after_operation');
-      });
-    } else {
-      if (fs.realpathSync(existing.path) !== path.resolve(worktreePath))
-        throw Error('Worktree inválida');
-      const commonDirectory = (cwd: string) =>
-        fs.realpathSync(
-          path.resolve(cwd, String(git(cwd, ['rev-parse', '--git-common-dir'])).trim()),
-        );
-      if (
-        String(git(existing.path, ['symbolic-ref', '--short', 'HEAD'])).trim() !== branch ||
-        commonDirectory(existing.path) !== commonDirectory(root)
-      )
-        throw Error('Worktree inválida');
-    }
     // Mark launch intent before spawn: a crash anywhere beyond here is uncertain.
     const launchOp = randomUUID();
     this.continuity.begin(launchOp, id, 'launch');
@@ -435,7 +466,7 @@ export class RunManager {
     const child = pty.spawn(
       executable,
       permissionArgs(dot, row.permission_mode, row.permission_mode === 'full'),
-      { name: env.TERM, cols, rows, cwd: worktreePath, env },
+      { name: env.TERM, cols, rows, cwd, env },
     );
     const active: Active = {
       process: child,
@@ -472,6 +503,7 @@ export class RunManager {
       sessionId,
       pid: child.pid,
       branch,
+      location: row.project_id === null ? 'home' : 'worktree',
       configFingerprint: this.configFingerprint(row.dot_id, row.project_id),
     });
     this.publishRun(id);
@@ -570,7 +602,8 @@ export class RunManager {
     return this.getRun(runId).run;
   }
   checkpoint(runId: string, operationId: string) {
-    this.getRun(runId);
+    const { run } = this.getRun(runId);
+    if (run.projectId === null) throw Error('Execução sem projeto não tem checkpoints.');
     return this.continuity.transaction(() => {
       const status = this.continuity.begin(operationId, runId, 'checkpoint');
       if (status === 'new') {
@@ -580,10 +613,14 @@ export class RunManager {
       return this.continuity.checkpoints(runId);
     });
   }
-  private configFingerprint(dotId: string, projectId: string) {
+  private configFingerprint(dotId: string, projectId: string | null) {
     const dot = this.configuredDots.find((d) => d.id === dotId);
-    const project = this.db.prepare('SELECT root FROM projects WHERE id=?').get(projectId);
-    if (!dot || !project) return null;
+    const project = projectId
+      ? (this.db.prepare('SELECT root FROM projects WHERE id=?').get(projectId) as
+          | { root: string }
+          | undefined)
+      : undefined;
+    if (!dot || (projectId !== null && !project)) return null;
     try {
       const executable = fs.realpathSync(dot.executable),
         stat = fs.statSync(executable);
@@ -595,7 +632,7 @@ export class RunManager {
             size: stat.size,
             args: dot.args,
             adapter: dot.adapter,
-            root: fs.realpathSync(String(project.root)),
+            root: fs.realpathSync(project?.root ?? os.homedir()),
           }),
         ),
       );
@@ -605,6 +642,8 @@ export class RunManager {
   }
   inspect(runId: string) {
     const { run } = this.getRun(runId);
+    if (run.projectId === null)
+      throw Error('Execução sem projeto não tem worktree para inspecionar.');
     const wt = this.db.prepare('SELECT path,removed_at FROM worktrees WHERE run_id=?').get(runId) as
       | { path: string; removed_at: number | null }
       | undefined;
@@ -669,8 +708,11 @@ export class RunManager {
     if (status?.status === 'completed') return this.getRun(runId).run;
     const { row } = this.getRun(runId);
     if (row.state !== 'paused') {
-      const info = this.inspect(runId);
-      if (!confirmed || !info.canStartNewSession)
+      const canStartNewSession =
+        row.project_id === null
+          ? this.canResumeHome(runId, row)
+          : this.inspect(runId).canStartNewSession;
+      if (!confirmed || !canStartNewSession)
         throw Error(
           'Retomada exige revisão e confirmação de nova sessão; processo ou operação incerta pode impedir',
         );
@@ -678,12 +720,14 @@ export class RunManager {
         throw Error('Acesso total exige nova execução e confirmação nativa');
     }
     const dot = this.configuredDots.find((d) => d.id === row.dot_id);
-    const project = this.db
-      .prepare('SELECT id,root,origin FROM projects WHERE id=?')
-      .get(row.project_id) as { id: string; root: string; origin: string } | undefined;
-    if (!dot || !project || !this.authorizedForProject(dot, project))
+    const project = row.project_id
+      ? (this.db.prepare('SELECT id,root,origin FROM projects WHERE id=?').get(row.project_id) as
+          | { id: string; root: string; origin: string }
+          | undefined)
+      : undefined;
+    if (!dot || (row.project_id !== null && (!project || !this.authorizedForProject(dot, project))))
       throw Error('Dot não autorizado para este projeto');
-    this.validateProjectRoot(project.root);
+    if (project) this.validateProjectRoot(project.root);
     permissionArgs(
       dot,
       row.permission_mode,
@@ -700,6 +744,33 @@ export class RunManager {
     this.publishRun(runId);
     void this.pump();
     return this.getRun(runId).run;
+  }
+  private canResumeHome(runId: string, row: RunRow) {
+    const session = this.db
+      .prepare('SELECT identity_json FROM sessions WHERE run_id=?')
+      .get(runId) as { identity_json: string | null } | undefined;
+    const survivor = session
+      ? survivingSession(session.identity_json ? JSON.parse(session.identity_json) : null)
+      : false;
+    const uncertain = this.db
+      .prepare("SELECT 1 FROM operations WHERE run_id=? AND status!='completed' LIMIT 1")
+      .get(runId);
+    const launched = this.db
+      .prepare(
+        "SELECT metadata_json FROM run_events WHERE run_id=? AND type='run.started' ORDER BY id DESC LIMIT 1",
+      )
+      .get(runId) as { metadata_json: string } | undefined;
+    const configMatches =
+      !!launched &&
+      JSON.parse(launched.metadata_json).configFingerprint ===
+        this.configFingerprint(row.dot_id, null);
+    return (
+      ['recovery_needed', 'failed'].includes(row.state) &&
+      !survivor &&
+      !uncertain &&
+      configMatches &&
+      row.permission_mode !== 'full'
+    );
   }
   autoResume(runId: string, enabled: boolean) {
     this.getRun(runId);
@@ -816,6 +887,8 @@ export class RunManager {
   }
   diff(runId: string) {
     const { row } = this.getRun(runId);
+    if (row.project_id === null)
+      throw Error('Execução sem projeto não tem worktree: não há mudanças para comparar.');
     const rolledBack = Boolean(
       this.db
         .prepare(
@@ -908,6 +981,8 @@ export class RunManager {
   }
   previewRollback(runId: string, createRequest = true) {
     const { run } = this.getRun(runId);
+    if (run.projectId === null)
+      throw Error('Execução sem projeto não tem worktree: não há mudanças para desfazer.');
     const wt = this.db
       .prepare('SELECT path FROM worktrees WHERE run_id=? AND removed_at IS NULL')
       .get(runId) as { path: string } | undefined;
@@ -1085,6 +1160,7 @@ export class RunManager {
   }
   cleanup(runId: string) {
     const { run } = this.getRun(runId);
+    if (run.projectId === null) throw Error('Execução sem projeto não tem worktree para remover.');
     if (!['completed', 'failed', 'cancelled'].includes(run.state))
       throw Error('Worktree de execução ativa não pode ser removida');
     const info = this.inspect(runId);

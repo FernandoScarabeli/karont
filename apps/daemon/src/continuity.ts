@@ -146,6 +146,7 @@ export class Continuity {
       .prepare('SELECT id,dot_id,project_id,state,permission_mode,auto_resume FROM runs WHERE id=?')
       .get(runId);
     if (!run) throw Error('Execução não encontrada');
+    if (run.project_id === null) return null;
     const worktree = this.db
       .prepare('SELECT path,branch,removed_at FROM worktrees WHERE run_id=?')
       .get(runId) as { path: string; removed_at: number | null } | undefined;

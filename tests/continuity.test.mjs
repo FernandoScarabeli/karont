@@ -118,7 +118,7 @@ test('migração v3→v6 preserva Runs, sessões, referências, checkpoints e WA
     const c = new Continuity(f.db);
     c.checkpoint(id, 'manual');
     assert.equal(f.db.prepare('SELECT run_id FROM sessions').get().run_id, id);
-    assert.equal(f.db.prepare('PRAGMA user_version').get().user_version, 7);
+    assert.equal(f.db.prepare('PRAGMA user_version').get().user_version, 8);
     assert.equal(f.db.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
     assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
     // Reopen is idempotent, including actual SQLite rollback/recovery.

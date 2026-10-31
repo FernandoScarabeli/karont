@@ -1163,7 +1163,7 @@ export class WorkspaceManager {
       id: string;
       chat_id: string | null;
       dot_id: string;
-      project_id: string;
+      project_id: string | null;
       state: string;
       created_at: number;
       started_at: number | null;
@@ -1184,6 +1184,7 @@ export class WorkspaceManager {
         chatId: row.chat_id,
         dotId: row.dot_id,
         projectId: row.project_id,
+        location: row.project_id === null ? 'home' : 'worktree',
         state: row.state,
         createdAt: row.created_at,
         startedAt: row.started_at,
