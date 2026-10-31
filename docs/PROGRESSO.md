@@ -11,7 +11,11 @@ Repositório recriado do zero em 2026-10-31.
   - [x] F2 Nova conversa com seletor (agentes "em breve" + Terminal) e Terminal na interface (xterm)
   - [x] B3 Fechar a janela: perguntar / segundo plano (bandeja) / fechar tudo
   - [x] F3 Configurações › Geral ("Ao fechar a janela")
-  - [ ] E2E + merge (orquestrador)
+  - [ ] B4 Escolher pasta (diálogo nativo), pastas recentes, terminal com comando inicial
+  - [ ] F4 Campo de mensagem único (composer) + botão de pasta + cabeçalho do terminal
+  - [ ] F5 Conversas lado a lado (dividir, redimensionar, arrastar para os cantos, layout salvo)
+  - [ ] Fonte de títulos no lugar da Instrument Serif (escolha do dono)
+  - [ ] E2E + PR (orquestrador)
 
 ## Decisões do dono
 
@@ -41,6 +45,13 @@ Repositório recriado do zero em 2026-10-31.
     - `@xterm/addon-fit` aprovado (ajusta o terminal ao tamanho da área).
 
 13. Tarefas de front: o Codex usa a skill **taste** para construir; a revisão com a skill **unslop** é feita pelo orquestrador (o Codex não tem essa skill) e volta como correção para o Codex aplicar (2026-10-31). Regra em `AGENTS.md`.
+
+14. Pedidos do dono antes do PR do M1 (2026-10-31):
+    - **Instrument Serif sai** (o dono não gostou); nova fonte de títulos a escolher numa página de comparação.
+    - **Campo de mensagem único** para tudo (agentes e Terminal), no estilo das referências: texto em cima; embaixo à esquerda seletor + pasta; à direita enviar redondo marfim. No Terminal o texto é um comando opcional que roda ao abrir. Sem botões que ainda não funcionam (microfone, anexar ficam para quando funcionarem; anexar no M2).
+    - **Botão de pasta** abre o seletor de pastas nativo do sistema; o app lembra as pastas recentes. Arquivos entram pelo "anexar" no M2.
+    - **Cabeçalho do terminal** redesenhado.
+    - **Conversas lado a lado**: botão "Dividir"; divisórias arrastáveis; arrastar uma conversa para um canto reorganiza a tela; layout salvo. Feito já no M1 com terminais. Dependência `react-resizable-panels` aprovada.
 
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
