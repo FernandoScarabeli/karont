@@ -26,6 +26,7 @@ import {
 } from '../../../packages/contracts/src';
 import type { DotConfig } from './database';
 import { dotAllowedInProject } from './dotAuthorization';
+import { TERMINAL_DOT_ID } from './builtinDots';
 
 const ACTIVE_STATES = [
   'queued',
@@ -333,8 +334,10 @@ export class WorkspaceManager {
   }
 
   private dotIds(project: ProjectRow) {
+    // dotIds são as concessões explícitas do projeto; o Terminal é permitido em todo projeto
+    // sem concessão (decisão 24) e por isso não aparece aqui.
     return this.configuredDots
-      .filter((dot) => this.isAuthorized(dot.id, project))
+      .filter((dot) => dot.id !== TERMINAL_DOT_ID && this.isAuthorized(dot.id, project))
       .map((dot) => dot.id);
   }
 

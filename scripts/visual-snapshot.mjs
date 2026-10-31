@@ -300,7 +300,12 @@ try {
   await resize(app, page, 1440, 900);
 
   await page.getByRole('region', { name: 'Painel da Run', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Iniciar execução', exact: true }).click();
+  // O Terminal embutido também aparece no painel; o teste inicia a CLI de fixture.
+  await page
+    .locator('.dot-launcher')
+    .filter({ hasNotText: 'Terminal do sistema' })
+    .getByRole('button', { name: 'Iniciar execução', exact: true })
+    .click();
   const run = await until(async () => {
     const runs = (await request('chats.runs.list', { chatId: chat.id, limit: 100 })).items;
     if (runs[0]?.state !== 'running') throw Error('Run ainda não iniciou');

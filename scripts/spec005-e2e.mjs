@@ -478,7 +478,12 @@ try {
   await page.getByRole('button', { name: 'Salvar mensagem', exact: true }).click();
   await page.getByText('SPEC005_PRIVATE_TEST_MESSAGE', { exact: true }).waitFor();
   await page.getByRole('region', { name: 'Painel da Run', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Iniciar execução', exact: true }).click();
+  // O Terminal embutido também aparece no painel; o teste inicia a CLI de fixture.
+  await page
+    .locator('.dot-launcher')
+    .filter({ hasNotText: 'Terminal do sistema' })
+    .getByRole('button', { name: 'Iniciar execução', exact: true })
+    .click();
   let primaryRuns = await until(async () => {
     const pageOfRuns = await client.request({
       method: 'chats.runs.list',
@@ -536,7 +541,12 @@ try {
   });
   assert.equal(secondMessages.items.length, 1);
   await page.getByRole('region', { name: 'Painel da Run', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Iniciar execução', exact: true }).click();
+  // O Terminal embutido também aparece no painel; o teste inicia a CLI de fixture.
+  await page
+    .locator('.dot-launcher')
+    .filter({ hasNotText: 'Terminal do sistema' })
+    .getByRole('button', { name: 'Iniciar execução', exact: true })
+    .click();
   const secondRun = await until(async () => {
     const runs = (
       await client.request({
