@@ -103,6 +103,7 @@ export type KarontBridge = {
   approvals(): Promise<Approval[]>;
   decideApproval(approvalId: string, allow: boolean): Promise<Approval>;
   diagnostics(): Promise<DiagnosticItem[]>;
+  systemUser(): Promise<{ name: string }>;
   report(): Promise<string>;
   saveReport(): Promise<boolean>;
   copyReport(): Promise<boolean>;

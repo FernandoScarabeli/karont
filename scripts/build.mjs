@@ -6,6 +6,7 @@ await build({
     'daemon/entry': 'apps/daemon/src/entry.ts',
     'daemon/server': 'apps/daemon/src/server.ts',
     'desktop/main': 'apps/desktop/src/main/index.ts',
+    'desktop/systemUser': 'apps/desktop/src/main/systemUser.ts',
     'desktop/preview-bridge': 'apps/desktop/src/preview/bridge.ts',
     'desktop/preload': 'apps/desktop/src/preload/preload.ts',
     'local/client': 'packages/local/src/client.ts',

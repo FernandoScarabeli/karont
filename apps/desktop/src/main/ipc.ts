@@ -9,6 +9,7 @@ import { attachedRuns, client, state } from './state';
 import { authorize } from './window';
 import { diagnostics } from './diagnostics';
 import { notifications, preferencesPath } from './notify';
+import { localUserName } from './systemUser';
 
 export type ChannelHandler = (value: unknown, recheck: () => void) => Promise<unknown> | unknown;
 
@@ -66,6 +67,10 @@ export function channelHandlers(): Map<string, ChannelHandler> {
   handlers.set('karont:diagnostics', (value) => {
     noValue(value);
     return diagnostics();
+  });
+  handlers.set('karont:system:user', (value) => {
+    noValue(value);
+    return { name: localUserName() };
   });
   handlers.set('karont:report', async (value) => {
     noValue(value);

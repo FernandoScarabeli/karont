@@ -18,6 +18,7 @@ export function createKarontBridge(t: BridgeTransport): KarontBridge {
     decideApproval: (approvalId: string, allow: boolean) =>
       t.invoke('karont:approvals:decide', { approvalId, allow }),
     diagnostics: () => t.invoke('karont:diagnostics'),
+    systemUser: () => t.invoke('karont:system:user'),
     report: () => t.invoke('karont:report'),
     saveReport: () => t.invoke('karont:report:save'),
     copyReport: () => t.invoke('karont:report:copy'),
