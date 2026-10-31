@@ -55,6 +55,30 @@ test("limites do teste de streaming são aplicados", () => {
   assert.equal(schema.safeParse({ chunks: 10_000, chunkSize: 65_536 }).success, true);
 });
 
+test("métodos de agentes validam parâmetros", () => {
+  assert.equal(methods["agents.list"].params.safeParse({}).success, true);
+  assert.equal(methods["agents.detect"].params.safeParse({}).success, true);
+  assert.equal(
+    methods["agents.add"].params.safeParse({ name: "Local", command: "agent-cli" }).success,
+    true,
+  );
+  assert.equal(
+    methods["agents.add"].params.safeParse({ name: "Local", command: "/opt/My CLI/agent" }).success,
+    true,
+  );
+  for (const command of ["", "./x", "agent cli", "agent\ncli", "agent\u0000cli"]) {
+    assert.equal(methods["agents.add"].params.safeParse({ name: "Local", command }).success, false);
+  }
+  for (const name of ["", " Nome", "Nome ", "Nome\tAgente", "n".repeat(61)]) {
+    assert.equal(
+      methods["agents.add"].params.safeParse({ name, command: "agent-cli" }).success,
+      false,
+    );
+  }
+  assert.equal(methods["agents.remove"].params.safeParse({ id: "custom-id" }).success, true);
+  assert.equal(methods["agents.remove"].params.safeParse({ id: "" }).success, false);
+});
+
 test("SettingKey aceita apenas o formato previsto", () => {
   assert.equal(settingKeySchema.safeParse("a").success, true);
   assert.equal(settingKeySchema.safeParse("a1.B2").success, true);

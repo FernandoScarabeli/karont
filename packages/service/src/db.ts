@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { chmodSync, closeSync, lstatSync, openSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import type { JsonValue } from "@karont/contract";
@@ -7,7 +8,18 @@ export const migrations: { version: number; up: string }[] = [
     version: 1,
     up: "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;",
   },
+  {
+    version: 2,
+    up: "CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, command TEXT NOT NULL, created_at TEXT NOT NULL) STRICT;",
+  },
 ];
+
+export type CustomAgentRecord = {
+  id: string;
+  name: string;
+  command: string;
+  createdAt: string;
+};
 
 export function openDatabase(dbPath: string): DatabaseSync {
   try {
@@ -66,6 +78,41 @@ export function setSetting(db: DatabaseSync, key: string, value: JsonValue): voi
   db.prepare(
     "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
   ).run(key, serialized, new Date().toISOString());
+}
+
+export function listCustomAgents(db: DatabaseSync): CustomAgentRecord[] {
+  const rows = db
+    .prepare("SELECT id, name, command, created_at FROM agents ORDER BY created_at ASC, rowid ASC")
+    .all() as { id: string; name: string; command: string; created_at: string }[];
+  return rows.map(({ id, name, command, created_at }) => ({
+    id,
+    name,
+    command,
+    createdAt: created_at,
+  }));
+}
+
+export function addCustomAgent(
+  db: DatabaseSync,
+  { name, command }: { name: string; command: string },
+): CustomAgentRecord {
+  const agent = {
+    id: `custom-${randomUUID()}`,
+    name,
+    command,
+    createdAt: new Date().toISOString(),
+  };
+  db.prepare("INSERT INTO agents (id, name, command, created_at) VALUES (?, ?, ?, ?)").run(
+    agent.id,
+    agent.name,
+    agent.command,
+    agent.createdAt,
+  );
+  return agent;
+}
+
+export function removeCustomAgent(db: DatabaseSync, id: string): boolean {
+  return db.prepare("DELETE FROM agents WHERE id = ?").run(id).changes > 0;
 }
 
 function readUserVersion(db: DatabaseSync): number {

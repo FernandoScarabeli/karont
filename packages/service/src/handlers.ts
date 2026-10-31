@@ -1,26 +1,21 @@
 import { randomUUID } from "node:crypto";
+import os from "node:os";
 import type { DatabaseSync } from "node:sqlite";
 import {
   type AnyEvent,
   CONTRACT_VERSION,
-  type ErrorCode,
   type JsonValue,
   type ParsedRequest,
 } from "@karont/contract";
+import type { AgentDetectionFs } from "./agents/detect.ts";
+import { AgentRegistry } from "./agents/registry.ts";
 import { DeltaCoalescer } from "./coalescer.ts";
 import { getSetting, setSetting } from "./db.ts";
+import { ServiceError } from "./errors.ts";
+
+export { ServiceError } from "./errors.ts";
 
 export const SERVICE_VERSION = "0.0.0";
-
-export class ServiceError extends Error {
-  readonly code: ErrorCode;
-
-  constructor(code: ErrorCode, message: string) {
-    super(message);
-    this.name = "ServiceError";
-    this.code = code;
-  }
-}
 
 export type HandlerConnection = {
   emit(event: AnyEvent): Promise<void>;
@@ -33,9 +28,28 @@ export type HandlerOptions = {
   startedAt: string;
   dev: boolean;
   emit: (event: AnyEvent, conn: HandlerConnection) => Promise<void>;
+  env?: NodeJS.ProcessEnv;
+  homeDir?: string;
+  platform?: NodeJS.Platform;
+  agentFs?: AgentDetectionFs;
 };
 
-export function createHandlers({ db, startedAt, dev, emit }: HandlerOptions) {
+export function createHandlers({
+  db,
+  startedAt,
+  dev,
+  emit,
+  env = process.env,
+  homeDir = os.homedir(),
+  platform = process.platform,
+  agentFs,
+}: HandlerOptions) {
+  const agentRegistry = new AgentRegistry(db, {
+    env,
+    homeDir,
+    platform,
+    ...(agentFs ? { fs: agentFs } : {}),
+  });
   const handle = async (request: ParsedRequest, conn: HandlerConnection): Promise<unknown> => {
     switch (request.method) {
       case "system.ping":
@@ -54,6 +68,14 @@ export function createHandlers({ db, startedAt, dev, emit }: HandlerOptions) {
       case "settings.set":
         setSetting(db, request.params.key, request.params.value as JsonValue);
         return { key: request.params.key, value: request.params.value };
+      case "agents.list":
+        return agentRegistry.list();
+      case "agents.detect":
+        return agentRegistry.detect();
+      case "agents.add":
+        return agentRegistry.add(request.params);
+      case "agents.remove":
+        return agentRegistry.remove(request.params.id);
       case "dev.streamTest": {
         if (!dev)
           throw new ServiceError(
