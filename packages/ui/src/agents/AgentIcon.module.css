@@ -1,0 +1,26 @@
+.icon {
+  display: block;
+  width: var(--k-icon-size-md);
+  height: var(--k-icon-size-md);
+  flex: 0 0 var(--k-icon-size-md);
+  object-fit: contain;
+}
+
+.monochrome {
+  background-color: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.codex {
+  mask-image: url("../assets/agents/openai-icon.svg");
+}
+
+.goose {
+  mask-image: url("../assets/agents/goose-icon.svg");
+}
+
+.opencode {
+  mask-image: url("../assets/agents/opencode-icon.svg");
+}
