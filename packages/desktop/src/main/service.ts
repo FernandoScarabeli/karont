@@ -1,9 +1,15 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AnyEvent } from "@karont/contract";
-import { connectService, resolvePaths, type ServiceClient } from "@karont/service";
+import {
+  connectService,
+  resolvePaths,
+  type ServiceClient,
+  type ServicePaths,
+} from "@karont/service";
 import { backoffDelay } from "./backoff.ts";
 
 const serviceEntry = path.join(path.dirname(fileURLToPath(import.meta.url)), "service.js");
@@ -15,8 +21,7 @@ const startupRetryWindowMs = 10_000;
 // canais do processo pai). Um serviço destacado herdaria todos e os seguraria por horas.
 // O Node não tem "closefrom" no spawn, então um bash mínimo fecha tudo acima de 2 e faz exec.
 // (O dash, /bin/sh do Ubuntu, não aceita descritores com dois dígitos.)
-const CLOSE_INHERITED_FDS_AND_EXEC =
-  'for p in /proc/$$/fd/*; do n=${p##*/}; [ "$n" -gt 2 ] 2>/dev/null && eval "exec $n>&-"; done; exec "$0" "$@"';
+const CLOSE_INHERITED_FDS_AND_EXEC = `for p in /proc/$$/fd/*; do n=\${p##*/}; [ "$n" -gt 2 ] 2>/dev/null && eval "exec $n>&-"; done; exec "$0" "$@"`;
 
 export function detachedServiceCommand(
   platform: NodeJS.Platform = process.platform,
@@ -36,26 +41,44 @@ export type ServiceManager = {
   getClient(): ServiceClient | null;
   getStatus(): "connecting" | "connected" | "disconnected";
   publishCurrentStatus(): void;
+  shutdown(timeoutMs?: number): Promise<void>;
   close(): void;
 };
 
-export function createServiceManager(publish: (event: AnyEvent) => void): ServiceManager {
-  const paths = resolvePaths();
+export function createServiceManager(
+  publish: (event: AnyEvent) => void,
+  options: {
+    connect?: (timeoutMs: number) => Promise<ServiceClient>;
+    paths?: ServicePaths;
+    socketIdentity?: (socketPath: string) => Promise<string | undefined>;
+    processExists?: (pid: number) => boolean;
+    signalProcess?: (pid: number, signal: NodeJS.Signals) => void;
+  } = {},
+): ServiceManager {
+  const paths = options.paths ?? resolvePaths();
+  const socketIdentity = options.socketIdentity ?? getSocketIdentity;
+  const processExists = options.processExists ?? isProcessAlive;
+  const signalProcess = options.signalProcess ?? ((pid, signal) => process.kill(pid, signal));
   let client: ServiceClient | null = null;
+  let lastServicePid: number | undefined;
+  let lastServiceSocketPath: string | undefined;
+  let lastServiceSocketIdentity: string | undefined;
   let state: "connecting" | "connected" | "disconnected" = "connecting";
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let retryAttempt = 0;
   let spawnAttemptedForOutage = false;
   let removeClientListeners: (() => void) | undefined;
   let closed = false;
+  let shuttingDown = false;
+  let shutdownPromise: Promise<void> | undefined;
 
   function publishStatus(nextState: typeof state): void {
     state = nextState;
     publish({ event: "bridge.status", payload: { state: nextState } });
   }
 
-  function attach(nextClient: ServiceClient): void {
-    if (closed) {
+  async function attach(nextClient: ServiceClient): Promise<void> {
+    if (closed || shuttingDown) {
       nextClient.close();
       return;
     }
@@ -69,7 +92,22 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
       removeEventListener();
       removeCloseListener();
     };
-    publishStatus("connected");
+    await rememberService(nextClient);
+    if (client === nextClient) publishStatus("connected");
+  }
+
+  async function rememberService(serviceClient: ServiceClient): Promise<void> {
+    try {
+      const info = await serviceClient.request("system.info", {});
+      const identity = await socketIdentity(paths.socketPath);
+      if (Number.isInteger(info.pid)) {
+        lastServicePid = info.pid;
+        lastServiceSocketPath = paths.socketPath;
+        lastServiceSocketIdentity = identity;
+      }
+    } catch {
+      // A failed diagnostic request does not make a connected service unavailable.
+    }
   }
 
   function detachListeners(): void {
@@ -84,15 +122,16 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
     retryAttempt = 0;
     spawnAttemptedForOutage = false;
     publishStatus("disconnected");
-    scheduleReconnect();
+    if (!shuttingDown) scheduleReconnect();
   }
 
   async function connect(timeoutMs: number): Promise<ServiceClient> {
+    if (options.connect) return options.connect(timeoutMs);
     return connectService({ paths, timeoutMs });
   }
 
   function startDetachedService(): void {
-    if (spawnAttemptedForOutage || closed) return;
+    if (spawnAttemptedForOutage || closed || shuttingDown) return;
     spawnAttemptedForOutage = true;
     try {
       const { command, args } = detachedServiceCommand();
@@ -114,9 +153,9 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
   }
 
   async function reconnect(): Promise<void> {
-    if (closed || client) return;
+    if (closed || shuttingDown || client) return;
     try {
-      attach(await connect(reconnectTimeoutMs));
+      await attach(await connect(reconnectTimeoutMs));
     } catch {
       startDetachedService();
       publishStatus("disconnected");
@@ -125,7 +164,7 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
   }
 
   function scheduleReconnect(): void {
-    if (closed || client || retryTimer !== undefined) return;
+    if (closed || shuttingDown || client || retryTimer !== undefined) return;
     const delayMs = backoffDelay(retryAttempt);
     retryAttempt += 1;
     retryTimer = setTimeout(() => {
@@ -136,8 +175,9 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
 
   return {
     async start(): Promise<void> {
+      if (closed || shuttingDown) return;
       try {
-        attach(await connect(initialConnectTimeoutMs));
+        await attach(await connect(initialConnectTimeoutMs));
         return;
       } catch {
         publishStatus("connecting");
@@ -146,21 +186,21 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
 
       const deadline = Date.now() + startupRetryWindowMs;
       let attempt = 0;
-      while (!closed && Date.now() < deadline) {
+      while (!closed && !shuttingDown && Date.now() < deadline) {
         const remainingMs = deadline - Date.now();
         await delay(Math.min(backoffDelay(attempt), remainingMs));
         attempt += 1;
         const connectTimeRemaining = deadline - Date.now();
-        if (closed || connectTimeRemaining <= 0) break;
+        if (closed || shuttingDown || connectTimeRemaining <= 0) break;
         try {
-          attach(await connect(Math.min(reconnectTimeoutMs, connectTimeRemaining)));
+          await attach(await connect(Math.min(reconnectTimeoutMs, connectTimeRemaining)));
           return;
         } catch {
           // Tenta novamente até o prazo de inicialização e depois mantém a reconexão ativa.
         }
       }
 
-      if (closed) return;
+      if (closed || shuttingDown) return;
       retryAttempt = attempt;
       publishStatus("disconnected");
       scheduleReconnect();
@@ -169,6 +209,39 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
     getStatus: () => state,
     publishCurrentStatus(): void {
       publishStatus(state);
+    },
+    shutdown(timeoutMs = 3_000): Promise<void> {
+      if (shutdownPromise) return shutdownPromise;
+      shuttingDown = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+      retryTimer = undefined;
+      shutdownPromise = (async () => {
+        let shutdownClient = client;
+        const reconnectingForShutdown = shutdownClient === null;
+        if (!shutdownClient) {
+          try {
+            shutdownClient = await connect(initialConnectTimeoutMs);
+          } catch {
+            shutdownClient = null;
+          }
+        }
+
+        if (shutdownClient) {
+          if (reconnectingForShutdown) {
+            await settleWithin(
+              rememberService(shutdownClient),
+              Math.min(initialConnectTimeoutMs, timeoutMs),
+            );
+          }
+          const stopped = await settleWithin(
+            Promise.resolve().then(() => shutdownClient?.request("service.shutdown", {})),
+            timeoutMs,
+          );
+          if (stopped) return;
+        }
+        await signalKnownService();
+      })();
+      return shutdownPromise;
     },
     close(): void {
       if (closed) return;
@@ -181,6 +254,67 @@ export function createServiceManager(publish: (event: AnyEvent) => void): Servic
       activeClient?.close();
     },
   };
+
+  async function signalKnownService(): Promise<void> {
+    const pid = lastServicePid;
+    const socketPath = lastServiceSocketPath;
+    const expectedIdentity = lastServiceSocketIdentity;
+    if (
+      pid === undefined ||
+      socketPath === undefined ||
+      socketPath !== paths.socketPath ||
+      expectedIdentity === undefined
+    ) {
+      return;
+    }
+    let currentIdentity: string | undefined;
+    try {
+      currentIdentity = await socketIdentity(socketPath);
+    } catch {
+      return;
+    }
+    if (currentIdentity !== expectedIdentity || !processExists(pid)) return;
+    try {
+      signalProcess(pid, "SIGTERM");
+    } catch {
+      // The process may have exited after the existence check.
+    }
+  }
+}
+
+function settleWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(false), timeoutMs);
+    promise.then(
+      () => {
+        clearTimeout(timeout);
+        resolve(true);
+      },
+      () => {
+        clearTimeout(timeout);
+        resolve(false);
+      },
+    );
+  });
+}
+
+async function getSocketIdentity(socketPath: string): Promise<string | undefined> {
+  try {
+    const socketInfo = await lstat(socketPath);
+    if (!socketInfo.isSocket()) return undefined;
+    return `${socketInfo.dev}:${socketInfo.ino}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "EPERM";
+  }
 }
 
 function delay(milliseconds: number): Promise<void> {

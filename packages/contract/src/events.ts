@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { recentFolderSchema, terminalInfoSchema } from "./methods.ts";
 
 export const events = {
   "dev.streamTest.delta": z.strictObject({
@@ -15,6 +16,21 @@ export const events = {
     state: z.enum(["connecting", "connected", "disconnected"]),
     detail: z.string().optional(),
   }),
+  "terminals.output": z.strictObject({
+    id: z.string().min(1),
+    seq: z.number().int().min(0),
+    data: z.string(),
+  }),
+  "terminals.resync": z.strictObject({ id: z.string().min(1) }),
+  "terminals.exit": z.strictObject({
+    id: z.string().min(1),
+    exitCode: z.number().int().nullable(),
+    signal: z.number().int().nullable(),
+  }),
+  "terminals.changed": z.strictObject({
+    terminals: z.array(terminalInfoSchema),
+  }),
+  "folders.changed": z.strictObject({ folders: z.array(recentFolderSchema).max(8) }),
 } as const satisfies Record<string, z.ZodType>;
 
 export type EventName = keyof typeof events;

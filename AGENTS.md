@@ -27,6 +27,11 @@ Leia antes de qualquer tarefa: [docs/SPEC.md](docs/SPEC.md) (o que construir) e,
 - Ícone com rótulo (`role="img"`) dentro de botão: esconda com `aria-hidden` e passe o estado no botão com `aria-description`, senão o nome do botão muda.
 - Você não consegue rodar Electron, E2E nem sockets Unix no seu sandbox: rode o que der, registre o resto e não tente contornar o sandbox.
 
+## Para o executor da interface (front)
+- **Sempre** use a skill de frontend **taste** para construir as telas.
+- A skill **unslop** não está no ambiente do executor: o orquestrador roda a revisão com ela e devolve os achados numa correção, que você aplica.
+- Se a **taste** não estiver disponível, diga no relatório.
+
 ## Relatório (resposta do executor)
 
 1. Resumo. 2. Arquivos alterados. 3. Comandos rodados **de verdade** e resultados. 4. O que não rodou e por quê. 5. Dúvidas e problemas.

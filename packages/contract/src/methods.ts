@@ -18,6 +18,91 @@ export const jsonValueSchema = z.json().refine((value) => {
 
 const emptyParamsSchema = z.strictObject({});
 const isoDateTimeSchema = z.iso.datetime({ offset: true });
+const controlCharacterPattern = /\p{Cc}/u;
+
+export const agentSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    id: z.string(),
+    name: z.string(),
+    kind: z.literal("known"),
+    structured: z.boolean(),
+    found: z.boolean(),
+    path: z.string().optional(),
+  }),
+  z.strictObject({
+    id: z.string(),
+    name: z.string(),
+    kind: z.literal("custom"),
+    structured: z.literal(false),
+    found: z.boolean(),
+    path: z.string().optional(),
+    command: z.string(),
+  }),
+]);
+
+export type Agent = z.infer<typeof agentSchema>;
+
+export const recentFolderSchema = z.strictObject({
+  path: z.string().min(1).max(4_096),
+  name: z.string().min(1).max(4_096),
+  usedAt: z.iso.datetime({ offset: true }),
+});
+
+export type RecentFolder = z.infer<typeof recentFolderSchema>;
+
+export const terminalInfoSchema = z.strictObject({
+  id: z.string().min(1),
+  title: z.string(),
+  cwd: z.string(),
+  shell: z.string(),
+  cols: z.number().int().min(2).max(1_000),
+  rows: z.number().int().min(2).max(500),
+  startedAt: isoDateTimeSchema,
+  exited: z.boolean(),
+  exitCode: z.number().int().nullable().optional(),
+});
+
+export type TerminalInfo = z.infer<typeof terminalInfoSchema>;
+
+const terminalIdSchema = z.string().min(1).max(80);
+const terminalSizeSchema = z.strictObject({
+  cols: z.number().int().min(2).max(1_000),
+  rows: z.number().int().min(2).max(500),
+});
+const terminalCwdSchema = z
+  .string()
+  .min(1)
+  .max(4_096)
+  .refine((cwd) => cwd.startsWith("/"), "O caminho do terminal deve ser absoluto.");
+const terminalCommandSchema = z.string().refine((command) => {
+  const bytes = new TextEncoder().encode(command).byteLength;
+  return bytes >= 1 && bytes <= 4_096 && !command.includes("\u0000");
+}, "O comando inicial deve ter de 1 a 4.096 bytes UTF-8 e não pode conter NUL.");
+const folderPathSchema = z
+  .string()
+  .min(1)
+  .max(4_096)
+  .refine((folderPath) => !folderPath.includes("\u0000"));
+const terminalWriteDataSchema = z.string().refine((data) => {
+  const bytes = new TextEncoder().encode(data).byteLength;
+  return bytes >= 1 && bytes <= 65_536;
+}, "A entrada do terminal deve ter de 1 a 65.536 bytes UTF-8.");
+
+const agentNameSchema = z
+  .string()
+  .min(1)
+  .max(60)
+  .refine((name) => name.trim() === name && !controlCharacterPattern.test(name));
+
+const agentCommandSchema = z
+  .string()
+  .min(1)
+  .max(512)
+  .refine(
+    (command) =>
+      !controlCharacterPattern.test(command) &&
+      (command.startsWith("/") || /^[A-Za-z0-9._+-]+$/.test(command)),
+  );
 
 export const methods = {
   "system.ping": {
@@ -33,6 +118,7 @@ export const methods = {
       startedAt: isoDateTimeSchema,
       nodeVersion: z.string(),
       platform: z.string(),
+      homeDir: z.string(),
     }),
   },
   "settings.get": {
@@ -42,6 +128,69 @@ export const methods = {
   "settings.set": {
     params: z.strictObject({ key: settingKeySchema, value: jsonValueSchema }),
     result: z.strictObject({ key: settingKeySchema, value: jsonValueSchema }),
+  },
+  "agents.list": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ agents: z.array(agentSchema), detectedAt: isoDateTimeSchema }),
+  },
+  "agents.detect": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ agents: z.array(agentSchema), detectedAt: isoDateTimeSchema }),
+  },
+  "agents.add": {
+    params: z.strictObject({ name: agentNameSchema, command: agentCommandSchema }),
+    result: z.strictObject({ agent: agentSchema }),
+  },
+  "agents.remove": {
+    params: z.strictObject({ id: z.string().min(1).max(80) }),
+    result: z.strictObject({ removed: z.literal(true) }),
+  },
+  "folders.recent": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ folders: z.array(recentFolderSchema).max(8) }),
+  },
+  "folders.validate": {
+    params: z.strictObject({ path: folderPathSchema }),
+    result: z.strictObject({
+      path: z.string().min(1).max(4_096),
+      exists: z.boolean(),
+      isDirectory: z.boolean(),
+    }),
+  },
+  "terminals.list": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ terminals: z.array(terminalInfoSchema) }),
+  },
+  "terminals.open": {
+    params: terminalSizeSchema.extend({
+      cwd: terminalCwdSchema.optional(),
+      command: terminalCommandSchema.optional(),
+    }),
+    result: z.strictObject({ terminal: terminalInfoSchema }),
+  },
+  "terminals.attach": {
+    params: z.strictObject({ id: terminalIdSchema }),
+    result: z.strictObject({
+      terminal: terminalInfoSchema,
+      replay: z.string(),
+      seq: z.number().int().min(0),
+    }),
+  },
+  "terminals.write": {
+    params: z.strictObject({ id: terminalIdSchema, data: terminalWriteDataSchema }),
+    result: z.strictObject({ ok: z.literal(true) }),
+  },
+  "terminals.resize": {
+    params: terminalSizeSchema.extend({ id: terminalIdSchema }),
+    result: z.strictObject({ ok: z.literal(true) }),
+  },
+  "terminals.close": {
+    params: z.strictObject({ id: terminalIdSchema }),
+    result: z.strictObject({ ok: z.literal(true) }),
+  },
+  "service.shutdown": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ ok: z.literal(true) }),
   },
   // O serviço deve aceitar este método apenas em desenvolvimento; ele testa o streaming da ponte.
   "dev.streamTest": {

@@ -21,12 +21,13 @@ Você é o Claude Code que vai construir o Karont do zero a partir da [SPEC.md](
 
 ```bash
 W=~/karont-worktrees/<tarefa>
-cd "$W" && codex exec -m gpt-6-luna -c model_reasoning_effort="xhigh" \
+cd "$W" && codex exec -m gpt-6-luna -c model_reasoning_effort="xhigh" -c service_tier="fast" \
   -c approval_policy="never" -C "$W" -s workspace-write \
   --add-dir "<repo>/.git/worktrees/<tarefa>" \
   -o <ref>/resposta.md - < <ref>/tarefa.md > <ref>/codex.log 2>&1
 ```
 
+- `service_tier="fast"`: modo rápido do Codex, pedido do dono (2026-10-31). O `ultrafast` não é suportado pelo `gpt-6-luna`.
 - `approval_policy="never"` é obrigatório: a config do dono tem `approvals_reviewer = "auto_review"`, que aprovaria comandos fora do sandbox.
 - `--add-dir` da pasta git da worktree, para `git mv`/`git add` funcionarem.
 - O Codex **não tem rede**: rode `npm ci` (e o download do Electron) na worktree antes de chamá-lo.

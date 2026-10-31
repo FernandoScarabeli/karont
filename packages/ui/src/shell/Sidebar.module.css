@@ -36,10 +36,15 @@
   color: var(--k-color-text-muted);
 }
 
+.navigationAction[aria-current="page"] {
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+}
+
 .section {
   display: flex;
   flex-direction: column;
-  gap: var(--k-space-1);
+  gap: var(--k-space-2);
 }
 
 .sectionHeader {
@@ -61,13 +66,129 @@
 
 .emptyList {
   display: flex;
+  min-width: 0;
   min-height: var(--k-sidebar-item-height);
   align-items: center;
   margin: 0;
+  overflow: hidden;
   padding-inline: var(--k-space-2);
   color: var(--k-color-text-muted);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emptyList > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.closeError {
+  margin: 0;
+  color: var(--k-color-danger);
   font-size: var(--k-text-13);
   line-height: var(--k-leading-normal);
+}
+
+.conversationItem {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.endTerminalButton {
+  position: absolute;
+  z-index: var(--k-layer-menu);
+  top: 50%;
+  inset-inline-end: 0;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity var(--k-duration-fast) var(--k-ease);
+}
+
+.conversationItem:focus-within .endTerminalButton,
+.conversationItem:hover .endTerminalButton,
+.endTerminalButton:focus-visible {
+  opacity: 1;
+}
+
+.conversationList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversationButton {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--k-sidebar-item-height);
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: var(--k-space-1) var(--k-space-2);
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-md);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-13);
+  text-align: left;
+  cursor: pointer;
+}
+
+.conversationButton:hover,
+.conversationButton[aria-current="page"] {
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+}
+
+.conversationButton:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.conversationButton svg {
+  flex: 0 0 auto;
+}
+
+.conversationTitle {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  font-family: var(--k-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runningMarker {
+  width: var(--k-dot-size);
+  height: var(--k-dot-size);
+  flex: 0 0 auto;
+  margin-inline-end: var(--k-space-1);
+  border-radius: var(--k-radius-full);
+  background: var(--k-color-text-secondary);
+}
+
+.exitedMarker {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-11);
+}
+
+.conversationItem:hover .conversationButton,
+.conversationItem:focus-within .conversationButton {
+  padding-inline-end: calc(var(--k-control-height-sm) + var(--k-space-1));
+}
+
+.conversationItem:hover .runningMarker,
+.conversationItem:focus-within .runningMarker {
+  visibility: hidden;
 }
 
 .footer {
@@ -78,4 +199,9 @@
   margin-block-start: var(--k-space-2);
   padding-block-start: var(--k-space-2);
   border-top: var(--k-border-width) solid var(--k-color-border);
+}
+
+.settingsButton[aria-current="page"] {
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
 }

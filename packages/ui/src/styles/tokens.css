@@ -16,14 +16,18 @@
   --k-color-working: #7db4e0;
   --k-color-attention: #e5a93b;
   --k-color-danger: #ef7b73;
-  --k-color-focus: #7db4e0;
+  --k-color-focus: var(--k-color-primary);
   --k-color-brand: #f3eee3;
   --k-color-ok: #6fcf97;
+  --k-color-terminal-selection: rgb(243 238 227 / 30%);
+  --k-color-dialog-backdrop: rgb(0 0 0 / 72%);
+  --k-color-drop-zone: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
+  --k-shadow-dialog: 0 var(--k-space-8) var(--k-space-10) rgb(0 0 0 / 32%);
 
   --k-font-sans: "Geist Sans", system-ui, sans-serif;
   --k-font-mono: "Geist Mono", ui-monospace, monospace;
-  --k-font-brand: "Instrument Serif", Georgia, serif;
-  --k-weight-brand: 400;
+  --k-font-brand: "Sora Variable", var(--k-font-sans);
+  --k-weight-brand: 600;
 
   --k-text-11: 11px;
   --k-text-12: 12px;
@@ -31,6 +35,7 @@
   --k-text-14: 14px;
   --k-text-15: 15px;
   --k-text-16: 16px;
+  --k-text-17: 17px;
   --k-text-20: 20px;
   --k-text-24: 24px;
   --k-text-28: 28px;
@@ -73,11 +78,12 @@
   --k-topbar-height: 48px;
   --k-sidebar-width: 232px;
   --k-sidebar-item-height: 32px;
-  --k-sidebar-padding: 10px;
-  --k-sidebar-section-gap: 20px;
+  --k-sidebar-padding: 12px;
+  --k-sidebar-section-gap: 24px;
   --k-sidebar-footer-gap: 8px;
   --k-sheet-padding: 40px;
   --k-dot-size: 8px;
+  --k-icon-size-md: 16px;
   --k-brand-mark-size: 14px;
   --k-brand-mark-height: 22px;
   --k-brand-reflection-width: 10px;
@@ -87,15 +93,46 @@
   --k-search-width: 240px;
   --k-window-min-width: 960px;
   --k-window-min-height: 600px;
-  --k-topbar-brand-gap: 10px;
+  --k-topbar-brand-gap: 8px;
   --k-topbar-tab-height: 40px;
   --k-topbar-tab-padding: 12px;
   --k-topbar-search-gap: 8px;
   --k-section-heading-height: 28px;
-  --k-service-status-gap: 6px;
+  --k-service-status-gap: 8px;
   --k-service-footer-gap: 4px;
   --k-empty-state-gap: 8px;
   --k-empty-state-max-width: 360px;
+  --k-dialog-width-sm: 420px;
+  --k-dialog-width-md: 520px;
+  --k-menu-min-width: 200px;
+  --k-pane-menu-max-width: 360px;
+  --k-menu-max-height: 480px;
+  --k-splitter-target: 8px;
+  --k-layer-separator: 1;
+  --k-layer-drop-zone: 2;
+  --k-layer-menu: 3;
+  --k-settings-nav-width: 160px;
+  --k-settings-content-max-width: 960px;
+  --k-settings-prose-width: 68ch;
+  --k-new-conversation-width: 760px;
+  --k-new-conversation-prompt-height: 180px;
+  --k-terminal-header-height: 52px;
+  --k-composer-textarea-min-height: 56px;
+  --k-composer-textarea-max-height: 224px;
+  --k-composer-submit-size: 36px;
+}
+
+@container new-conversation (max-width: 520px) {
+  [data-k-new-conversation-title] {
+    font-size: var(--k-text-24);
+  }
+}
+
+/* Breakpoints são literais na gramática de @container e ficam centralizados nos tokens. */
+@container terminal-pane (max-width: 420px) {
+  .k-terminal-pane [data-k-terminal-folder] {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

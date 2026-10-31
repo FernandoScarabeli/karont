@@ -18,7 +18,7 @@
 .brandName {
   color: var(--k-color-text-primary);
   font-family: var(--k-font-brand);
-  font-size: var(--k-text-20);
+  font-size: var(--k-text-17);
   font-weight: var(--k-weight-brand);
   line-height: var(--k-leading-tight);
 }
@@ -60,7 +60,38 @@
   white-space: nowrap;
 }
 
+.inactiveArea {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  height: var(--k-topbar-tab-height);
+  padding-inline: var(--k-topbar-tab-padding);
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-lg) var(--k-radius-lg) 0 0;
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  font-weight: var(--k-weight-medium);
+  font-family: var(--k-font-sans);
+  cursor: pointer;
+  line-height: var(--k-leading-tight);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.inactiveArea:hover {
+  background: var(--k-color-bg-raised);
+  color: var(--k-color-text-primary);
+}
+
 .activeArea:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.inactiveArea:focus-visible {
   position: relative;
   z-index: 1;
   outline: var(--k-focus-ring-width) solid var(--k-color-focus);
@@ -69,6 +100,10 @@
 
 .activeArea svg {
   color: var(--k-color-text-secondary);
+}
+
+.inactiveArea svg {
+  color: var(--k-color-text-muted);
 }
 
 .searchButton {

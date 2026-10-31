@@ -1,7 +1,8 @@
 import { BridgeError } from "@karont/contract";
 import type { ServiceClient } from "@karont/service";
-import { type BrowserWindow, type IpcMainInvokeEvent, ipcMain } from "electron";
+import { type BrowserWindow, dialog, type IpcMainInvokeEvent, ipcMain } from "electron";
 import { validateIpcPayload } from "./ipc-validate.ts";
+import { validatePickFolderOptions } from "./pick-folder.ts";
 import { isAllowedSender } from "./sender.ts";
 
 export type IpcHandlerOptions = {
@@ -10,6 +11,26 @@ export type IpcHandlerOptions = {
 };
 
 export function registerIpcHandlers(options: IpcHandlerOptions): void {
+  ipcMain.handle("karont:pickFolder", async (event, payload?: unknown) => {
+    const mainWindow = options.getWindow();
+    if (validateSender(event, mainWindow) || !mainWindow) return null;
+
+    const validation = validatePickFolderOptions(payload);
+    if (!validation.ok) return null;
+
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: "Escolher pasta",
+        properties: ["openDirectory", "createDirectory", "dontAddToRecent"],
+        defaultPath: validation.options.defaultPath,
+      });
+      const selectedPath = result.filePaths[0];
+      return result.canceled || !selectedPath ? null : { path: selectedPath };
+    } catch {
+      return null;
+    }
+  });
+
   ipcMain.handle("karont:request", async (event, payload) => {
     const senderError = validateSender(event, options.getWindow());
     if (senderError) return { ok: false, error: senderError };

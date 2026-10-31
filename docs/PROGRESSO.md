@@ -3,15 +3,22 @@
 Repositório recriado do zero em 2026-10-31.
 
 ## Estado
-- **M0 (esqueleto)** — em andamento na branch `m0-esqueleto`.
-  - [x] T0 Base do repositório (workspaces, TypeScript, Biome, pastas) — orquestrador
-  - [x] B1 Contrato (schemas zod) — executor back
-  - [x] F1 Tokens, fonte e componentes base — executor front
-  - [x] B2 Serviço: socket com streaming + SQLite com migrações — executor back
-  - [x] F2 Moldura vazia — executor front
-  - [x] B3 Ponte do preview web (HTTP + SSE) — executor back
-  - [x] B4 Electron seguro + ponte de canal único — executor back
-  - [x] E2E de fumaça + CI (CI no GitHub ainda não rodou) — orquestrador
+- **M0 (esqueleto)** — concluído e na `main` (PR #1, 2026-10-31).
+- **M1 (agentes)** — concluído na branch `m1-agentes`; PR aberto para a `main` (2026-10-31).
+  - [x] B1 Detecção de agentes + CLIs do usuário (serviço e contrato)
+  - [x] B2 Terminal no serviço (`node-pty`, eventos com backpressure, sobrevive à janela)
+  - [x] F1 Configurações › Agentes (lista, detectar de novo, adicionar/remover CLI)
+  - [x] F2 Nova conversa com seletor (agentes "em breve" + Terminal) e Terminal na interface (xterm)
+  - [x] B3 Fechar a janela: perguntar / segundo plano (bandeja) / fechar tudo
+  - [x] F3 Configurações › Geral ("Ao fechar a janela")
+  - [x] B4 Escolher pasta (diálogo nativo), pastas recentes, terminal com comando inicial
+  - [x] F4 Campo de mensagem único (composer) + botão de pasta + cabeçalho do terminal
+  - [x] F5 Conversas lado a lado (dividir, redimensionar, arrastar para os cantos, layout salvo)
+  - [x] Fonte de títulos: **Sora** no lugar da Instrument Serif (entra no F4)
+  - [x] F6 Ajustes do dono (pasta direto no seletor do sistema, "Vamos trabalhar", sem textos de ajuda, ícones das CLIs)
+  - [x] B6 Correções da revisão de código (cliente lento, fechar tudo, limite de terminais, homeDir, detecção, open mais rápido)
+  - [x] F7 Correções da revisão na interface (resize, resync/replay, foco ao encerrar, homeDir)
+  - [x] E2E + PR (orquestrador)
 
 ## Decisões do dono
 
@@ -28,7 +35,32 @@ Repositório recriado do zero em 2026-10-31.
 6. `lucide-react` aprovado para ícones (2026-10-31). Motivo: o design do `karont.pen` já usa os ícones Lucide; são SVGs locais.
 7. Fonte não fica presa só à Geist: pode haver uma segunda fonte (ex.: títulos/marca), escolhida pelo dono (2026-10-31).
 8. Cor de marca: o padrão é o **marfim** (`#F3EEE3`, "branco papel"), e a pessoa escolhe outra cor de destaque numa lista pronta (aprovado em 2026-10-31). Lista: marfim `#F3EEE3`, magenta `#FF4F8B`, turquesa `#2DD4C4`, lima `#C6F135`, azul elétrico `#5B8CFF`, coral `#FF7A59` (todas com contraste AA com texto `#0F0F10` e sobre o fundo). A escolha fica salva em `settings` e a tela entra no M5. No M0 basta o token `--k-color-brand` ser único e trocável. Estados nunca dependem só da cor (sempre texto ou ícone junto).
-9. Segunda fonte: **Instrument Serif** na marca e nos títulos grandes; o resto em Geist (2026-10-31). Dependência `@fontsource/instrument-serif` aprovada.
+9. Segunda fonte: **Sora** na marca e nos títulos grandes; o resto em Geist (escolhida em 2026-10-31, no lugar da Instrument Serif, que o dono não gostou). Dependência `@fontsource-variable/sora` aprovada; `@fontsource/instrument-serif` removida.
+
+10. Fluxo de trabalho: o orquestrador só coordena; todo código é feito pelo Codex `gpt-6-luna` em `xhigh` (2026-10-31).
+11. `main` protegida: só por PR com o CI "Checagens e testes" verde; sem force push nem exclusão; vale para admins (2026-10-31).
+
+12. Fluxos do M1 aprovados (2026-10-31):
+    - Engrenagem → **Configurações**, começando pela seção **Agentes** (lista ✓/✗, detectar de novo, adicionar/remover CLI). Outras seções virão.
+    - Não há botão "Novo terminal": **"Nova conversa" abre com um seletor** de agentes (Claude Code, Codex, Gemini…) **ou Terminal**. No M1 só o Terminal funciona; os agentes aparecem como "em breve" até o M2.
+    - **Fechar a janela pergunta**: "Fechar tudo" (encerra agentes, terminais e o serviço) ou "Deixar rodando em segundo plano" (esconde a janela, fica um ícone na bandeja). Caixa "Lembrar minha escolha"; dá para mudar nas Configurações.
+    - Terminais vivem no serviço: com o app em segundo plano ou a janela reaberta, o terminal continua e mostra as últimas linhas.
+    - `@xterm/addon-fit` aprovado (ajusta o terminal ao tamanho da área).
+
+13. Tarefas de front: o Codex usa a skill **taste** para construir; a revisão com a skill **unslop** é feita pelo orquestrador (o Codex não tem essa skill) e volta como correção para o Codex aplicar (2026-10-31). Regra em `AGENTS.md`.
+
+14. Pedidos do dono antes do PR do M1 (2026-10-31):
+    - **Instrument Serif sai** (o dono não gostou); nova fonte de títulos a escolher numa página de comparação.
+    - **Campo de mensagem único** para tudo (agentes e Terminal), no estilo das referências: texto em cima; embaixo à esquerda seletor + pasta; à direita enviar redondo marfim. No Terminal o texto é um comando opcional que roda ao abrir. Sem botões que ainda não funcionam (microfone, anexar ficam para quando funcionarem; anexar no M2).
+    - **Botão de pasta** abre o seletor de pastas nativo do sistema; o app lembra as pastas recentes. Arquivos entram pelo "anexar" no M2.
+    - **Cabeçalho do terminal** redesenhado.
+    - **Conversas lado a lado**: botão "Dividir"; divisórias arrastáveis; arrastar uma conversa para um canto reorganiza a tela; layout salvo. Feito já no M1 com terminais. Dependência `react-resizable-panels` aprovada.
+
+15. Codex sempre no **modo rápido** (`-c service_tier="fast"`), pedido do dono (2026-10-31).
+
+16. Painéis, depois de ver a tela (2026-10-31): sem menu "⋯" no cabeçalho; "Encerrar terminal" vira um `X` no item da sidebar (no hover/foco); o `X` do painel só fecha o painel; mover painel por teclado com `Ctrl+Alt+Shift+setas`. O "Rodando" sai do cabeçalho; a bolinha de status fica ao lado do item na sidebar (cinza = terminal rodando; azul fica para agente trabalhando no M2).
+
+17. Ajustes do dono antes do PR do M1 (2026-10-31): o botão de pasta abre **direto** o seletor de pastas do sistema (sem menu); a Nova conversa ganha uma frase grande ("Vamos trabalhar"); placeholder do Terminal "Digite seu comando"; **sem textos de ajuda** embaixo do campo (nada de "Enter abre…"); ícones reais das CLIs (devicons, MIT) no seletor e nas Configurações. Para depois: placeholder com frases engraçadas que vão trocando ("faz meu café", "domine o mundo").
 
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
@@ -41,3 +73,5 @@ Repositório recriado do zero em 2026-10-31.
 - Rodar o app: `npm run start:desktop` (com `CHROME_DEVEL_SANDBOX=/usr/local/lib/karont-dev/chrome-sandbox`). E2E: `npm run test:e2e` (mesma variável). Rodada completa local: ~6 s de checagens + ~2 s de E2E.
 - O E2E usa `chromiumSandbox: true`: o Playwright passa `--no-sandbox` ao Electron por padrão.
 - O serviço destacado é iniciado por um `bash` mínimo que fecha os descritores herdados acima de 2. O Chromium deixa caches da GPU e sockets internos sem CLOEXEC, e o serviço os seguraria por horas (isso também travava o `app.close()` do Playwright).
+- `node-pty` 1.1.0 usa N-API: o mesmo binário roda no Node 24 e no Electron (`ELECTRON_RUN_AS_NODE`). O npm 12 bloqueia scripts de instalação; `node-pty` está liberado em `allowScripts` no `package.json` da raiz (precisa de python3, make e g++).
+- Terminal e CSP: o xterm 6 injeta `<style>` (Viewport, DomRenderer) e um `setAttribute("style")`. Com `style-src 'self'` isso é bloqueado. `packages/ui/src/terminal/cspStyles.ts` desvia esses estilos para `adoptedStyleSheets` (não passam pelo `style-src`) sem afrouxar a CSP. Validado no Electron: zero violações. Ao atualizar o xterm, refazer essa checagem.

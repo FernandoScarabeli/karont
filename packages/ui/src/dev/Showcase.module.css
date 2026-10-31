@@ -69,6 +69,29 @@
   line-height: var(--k-leading-tight);
 }
 
+.brandSamples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--k-space-8);
+}
+
+.brandTitle,
+.brandWordmark {
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-brand);
+  font-weight: var(--k-weight-brand);
+  line-height: var(--k-leading-tight);
+}
+
+.brandTitle {
+  font-size: var(--k-text-28);
+}
+
+.brandWordmark {
+  font-size: var(--k-text-17);
+}
+
 .palette {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

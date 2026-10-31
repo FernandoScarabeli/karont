@@ -7,6 +7,7 @@ import {
   responseEnvelopeSchema,
   serverFrameSchema,
 } from "./envelopes.ts";
+import { events } from "./events.ts";
 
 test("envelopes exigem campos e rejeitam chaves extras", () => {
   assert.equal(
@@ -77,4 +78,31 @@ test("frames cliente e servidor são discriminados pelo tipo", () => {
     true,
   );
   assert.equal(serverFrameSchema.safeParse({ type: "bogus" }).success, false);
+});
+
+test("eventos do terminal validam saída, encerramento e lista", () => {
+  const terminal = {
+    id: "t1",
+    title: "bash · ~",
+    cwd: "/tmp",
+    shell: "/bin/bash",
+    cols: 80,
+    rows: 24,
+    startedAt: "2026-10-31T00:00:00.000Z",
+    exited: false,
+  };
+  assert.equal(
+    events["terminals.output"].safeParse({ id: "t1", seq: 0, data: "saída" }).success,
+    true,
+  );
+  assert.equal(
+    events["terminals.output"].safeParse({ id: "t1", seq: -1, data: "saída" }).success,
+    false,
+  );
+  assert.equal(
+    events["terminals.exit"].safeParse({ id: "t1", exitCode: null, signal: 1 }).success,
+    true,
+  );
+  assert.equal(events["terminals.resync"].safeParse({ id: "t1" }).success, true);
+  assert.equal(events["terminals.changed"].safeParse({ terminals: [terminal] }).success, true);
 });

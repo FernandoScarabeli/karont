@@ -1,10 +1,17 @@
+import type { PickFolderOptions, PickFolderResult } from "./bridge.ts";
 import type { ErrorCode } from "./envelopes.ts";
 import type { AnyEvent } from "./events.ts";
 import type { MethodName, ParamsOf, ResultOf } from "./methods.ts";
 
 export const CONTRACT_VERSION = 1;
 
-export type { NativeBridge, NativeResult } from "./bridge.ts";
+export type {
+  NativeBridge,
+  NativeResult,
+  PickFolderOptions,
+  PickFolderResult,
+} from "./bridge.ts";
+export { pickFolderOptionsSchema } from "./bridge.ts";
 export type {
   AuthFrame,
   ClientFrame,
@@ -31,8 +38,25 @@ export {
 } from "./envelopes.ts";
 export type { AnyEvent, EventName, PayloadOf } from "./events.ts";
 export { events } from "./events.ts";
-export type { JsonValue, MethodName, ParamsOf, ResultOf, SettingKey } from "./methods.ts";
-export { jsonValueSchema, MAX_SETTING_BYTES, methods, settingKeySchema } from "./methods.ts";
+export type {
+  Agent,
+  JsonValue,
+  MethodName,
+  ParamsOf,
+  RecentFolder,
+  ResultOf,
+  SettingKey,
+  TerminalInfo,
+} from "./methods.ts";
+export {
+  agentSchema,
+  jsonValueSchema,
+  MAX_SETTING_BYTES,
+  methods,
+  recentFolderSchema,
+  settingKeySchema,
+  terminalInfoSchema,
+} from "./methods.ts";
 export type {
   ParsedRequest,
   ParseEventResult,
@@ -46,6 +70,7 @@ export { isEventName, isMethodName, parseEvent, parseRequest, parseResult } from
 export interface KarontBridge {
   request<M extends MethodName>(method: M, params: ParamsOf<M>): Promise<ResultOf<M>>;
   onEvent(listener: (event: AnyEvent) => void): () => void;
+  pickFolder?(options?: PickFolderOptions): Promise<PickFolderResult>;
 }
 
 export class BridgeError extends Error {

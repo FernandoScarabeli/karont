@@ -1,0 +1,198 @@
+.page {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.header {
+  display: flex;
+  min-height: var(--k-terminal-header-height);
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-4);
+  padding-inline: var(--k-space-5);
+  border-bottom: var(--k-border-width) solid var(--k-color-border);
+}
+
+.title {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  max-width: 100%;
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-14);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+}
+
+.title:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.title:active {
+  cursor: grabbing;
+}
+
+.composerSection {
+  width: min(calc(100% - var(--k-space-6) - var(--k-space-6)), var(--k-new-conversation-width));
+  margin: auto;
+  container-name: new-conversation;
+  container-type: inline-size;
+  transform: translateY(calc(-1 * var(--k-space-6)));
+}
+
+.welcome {
+  margin: 0 0 var(--k-space-5);
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-brand);
+  font-size: var(--k-text-32);
+  font-weight: var(--k-weight-brand);
+  line-height: var(--k-leading-tight);
+  text-align: center;
+}
+
+.controls {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.choiceWrap,
+.folderWrap {
+  position: relative;
+  min-width: 0;
+}
+
+.selectorButton,
+.folderButton {
+  display: inline-flex;
+  min-width: 0;
+  min-height: var(--k-control-height-lg);
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: 0 var(--k-space-3);
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-md);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-13);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+  cursor: pointer;
+}
+
+.selectorButton {
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+}
+
+.folderButton {
+  max-width: var(--k-new-conversation-width);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+}
+
+.folderButton > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folderButton svg {
+  flex: 0 0 auto;
+}
+
+.selectorButton:hover,
+.folderButton:hover {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
+.selectorButton:focus-visible,
+.folderButton:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.listbox {
+  position: absolute;
+  z-index: 2;
+  bottom: calc(100% + var(--k-space-2));
+  left: 0;
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(var(--k-new-conversation-width), calc(100vw - var(--k-space-8)));
+  flex-direction: column;
+  padding: var(--k-space-1);
+  border: var(--k-border-width) solid var(--k-color-border-strong);
+  border-radius: var(--k-radius-lg);
+  background: var(--k-color-bg-raised);
+  box-shadow: var(--k-shadow-dialog);
+}
+
+.option {
+  display: flex;
+  min-width: 0;
+  min-height: var(--k-control-height-lg);
+  align-items: center;
+  gap: var(--k-space-3);
+  padding: var(--k-space-2);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
+  cursor: pointer;
+}
+
+.option[aria-selected="true"],
+.option:hover {
+  background: var(--k-color-bg-hover);
+}
+
+.option:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: calc(-1 * var(--k-focus-ring-width));
+}
+
+.soonMarker {
+  margin-inline-start: auto;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-11);
+}
+
+.actionOption {
+  margin-block-start: var(--k-space-1);
+  padding-block-start: var(--k-space-2);
+}
+
+.soonAgent {
+  opacity: var(--k-opacity-disabled);
+}
+
+.error,
+.connectionMessage {
+  display: flex;
+  max-width: var(--k-new-conversation-width);
+  align-items: center;
+  gap: var(--k-space-2);
+  margin: 0;
+  color: var(--k-color-danger);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+.connectionMessage {
+  color: var(--k-color-text-secondary);
+}

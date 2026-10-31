@@ -1,30 +1,27 @@
 import { randomUUID } from "node:crypto";
+import os from "node:os";
 import type { DatabaseSync } from "node:sqlite";
 import {
   type AnyEvent,
   CONTRACT_VERSION,
-  type ErrorCode,
   type JsonValue,
   type ParsedRequest,
 } from "@karont/contract";
+import type { AgentDetectionFs } from "./agents/detect.ts";
+import { AgentRegistry } from "./agents/registry.ts";
 import { DeltaCoalescer } from "./coalescer.ts";
-import { getSetting, setSetting } from "./db.ts";
+import { getSetting, recordRecentFolder, setSetting } from "./db.ts";
+import { ServiceError } from "./errors.ts";
+import { listRecentFolders, validateFolder } from "./folders.ts";
+import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
+
+export { ServiceError } from "./errors.ts";
 
 export const SERVICE_VERSION = "0.0.0";
 
-export class ServiceError extends Error {
-  readonly code: ErrorCode;
-
-  constructor(code: ErrorCode, message: string) {
-    super(message);
-    this.name = "ServiceError";
-    this.code = code;
-  }
-}
-
 export type HandlerConnection = {
   emit(event: AnyEvent): Promise<void>;
-  afterResponse(task: () => void): void;
+  afterResponse(task: () => void | Promise<void>): void;
   isOpen(): boolean;
 };
 
@@ -33,9 +30,40 @@ export type HandlerOptions = {
   startedAt: string;
   dev: boolean;
   emit: (event: AnyEvent, conn: HandlerConnection) => Promise<void>;
+  env?: NodeJS.ProcessEnv;
+  homeDir?: string;
+  platform?: NodeJS.Platform;
+  agentFs?: AgentDetectionFs;
+  broadcast?: (event: AnyEvent) => Promise<void>;
+  ptyFactory?: TerminalPtyFactory;
+  shutdown?: () => Promise<void>;
 };
 
-export function createHandlers({ db, startedAt, dev, emit }: HandlerOptions) {
+export function createHandlers({
+  db,
+  startedAt,
+  dev,
+  emit,
+  env = process.env,
+  homeDir = os.homedir(),
+  platform = process.platform,
+  agentFs,
+  broadcast = async () => undefined,
+  ptyFactory,
+  shutdown,
+}: HandlerOptions) {
+  const agentRegistry = new AgentRegistry(db, {
+    env,
+    homeDir,
+    platform,
+    ...(agentFs ? { fs: agentFs } : {}),
+  });
+  const terminalManager = new TerminalManager({
+    broadcast,
+    env,
+    homeDir,
+    ...(ptyFactory ? { ptyFactory } : {}),
+  });
   const handle = async (request: ParsedRequest, conn: HandlerConnection): Promise<unknown> => {
     switch (request.method) {
       case "system.ping":
@@ -48,12 +76,54 @@ export function createHandlers({ db, startedAt, dev, emit }: HandlerOptions) {
           startedAt,
           nodeVersion: process.versions.node,
           platform: process.platform,
+          homeDir,
         };
       case "settings.get":
         return { key: request.params.key, value: getSetting(db, request.params.key) };
       case "settings.set":
         setSetting(db, request.params.key, request.params.value as JsonValue);
         return { key: request.params.key, value: request.params.value };
+      case "agents.list":
+        return agentRegistry.list();
+      case "agents.detect":
+        return agentRegistry.detect();
+      case "agents.add":
+        return agentRegistry.add(request.params);
+      case "agents.remove":
+        return agentRegistry.remove(request.params.id);
+      case "folders.recent":
+        return listRecentFolders(db, homeDir);
+      case "folders.validate":
+        return validateFolder(request.params.path);
+      case "terminals.list":
+        return terminalManager.list();
+      case "terminals.open": {
+        const result = await terminalManager.open(request.params);
+        conn.afterResponse(async () => {
+          recordRecentFolder(db, {
+            path: result.terminal.cwd,
+            usedAt: new Date().toISOString(),
+          });
+          await broadcast({
+            event: "folders.changed",
+            payload: await listRecentFolders(db, homeDir),
+          });
+        });
+        return result;
+      }
+      case "terminals.attach":
+        return terminalManager.attach(request.params.id);
+      case "terminals.write":
+        return terminalManager.write(request.params.id, request.params.data);
+      case "terminals.resize":
+        return terminalManager.resize(request.params.id, request.params.cols, request.params.rows);
+      case "terminals.close":
+        return terminalManager.close(request.params.id);
+      case "service.shutdown":
+        conn.afterResponse(async () => {
+          await shutdown?.();
+        });
+        return { ok: true };
       case "dev.streamTest": {
         if (!dev)
           throw new ServiceError(
@@ -72,7 +142,7 @@ export function createHandlers({ db, startedAt, dev, emit }: HandlerOptions) {
     }
   };
 
-  return { handle };
+  return { handle, closeTerminals: () => terminalManager.closeAll() };
 }
 
 async function produceStream(

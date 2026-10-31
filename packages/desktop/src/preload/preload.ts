@@ -1,9 +1,12 @@
-import type { NativeBridge, NativeResult } from "@karont/contract";
+import type { NativeBridge, NativeResult, PickFolderResult } from "@karont/contract";
 import { contextBridge, ipcRenderer } from "electron";
 
 const bridge: NativeBridge = {
   request(method, params): Promise<NativeResult> {
     return ipcRenderer.invoke("karont:request", { method, params }) as Promise<NativeResult>;
+  },
+  pickFolder(options): Promise<PickFolderResult> {
+    return ipcRenderer.invoke("karont:pickFolder", options) as Promise<PickFolderResult>;
   },
   onEvent(listener): () => void {
     const handler = (_event: Electron.IpcRendererEvent, event: unknown): void => listener(event);

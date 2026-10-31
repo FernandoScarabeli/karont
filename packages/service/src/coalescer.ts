@@ -7,6 +7,8 @@ export type TimerFunctions = {
 export type DeltaCoalescerOptions = TimerFunctions & {
   intervalMs?: number;
   maxChunkBytes?: number;
+  onFlushPending?: () => void;
+  onFlushComplete?: () => void;
 };
 
 export class DeltaCoalescer {
@@ -15,6 +17,8 @@ export class DeltaCoalescer {
   readonly #maxChunkBytes: number;
   readonly #setTimeout: (callback: () => void, delayMs: number) => TimerHandle;
   readonly #clearTimeout: (timer: TimerHandle) => void;
+  readonly #onFlushPending: () => void;
+  readonly #onFlushComplete: () => void;
   #pending = "";
   #pendingBytes = 0;
   #timer: TimerHandle | undefined;
@@ -32,6 +36,8 @@ export class DeltaCoalescer {
     }
     this.#setTimeout = options.setTimeout ?? setTimeout;
     this.#clearTimeout = options.clearTimeout ?? clearTimeout;
+    this.#onFlushPending = options.onFlushPending ?? (() => undefined);
+    this.#onFlushComplete = options.onFlushComplete ?? (() => undefined);
   }
 
   async add(text: string): Promise<void> {
@@ -92,6 +98,7 @@ export class DeltaCoalescer {
   }
 
   #enqueueFlush(text: string): Promise<void> {
+    this.#onFlushPending();
     this.#flushChain = this.#flushChain
       .then(async () => {
         this.#throwFailure();
@@ -100,7 +107,8 @@ export class DeltaCoalescer {
       .catch((error: unknown) => {
         this.#failure ??= error;
         throw error;
-      });
+      })
+      .finally(() => this.#onFlushComplete());
     // Timer callbacks have no caller to observe a rejection; end() still reports it.
     void this.#flushChain.catch(() => undefined);
     return this.#flushChain;
