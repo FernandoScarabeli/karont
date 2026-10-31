@@ -8,3 +8,4 @@
 6. **Bundle da interface com ~700 kB** (aviso do Vite acima de 500 kB), principalmente xterm. Carregar o terminal sob demanda (`import()` dinâmico) quando fizer sentido. (M1-F2)
 7. **`cspStyles.ts` intercepta `appendChild`/`insertBefore`/`append` enquanto há terminal montado.** Funciona e é restrito ao contêiner do terminal, mas depende de detalhes internos do xterm 6. Atualizar o xterm exige repetir a checagem de CSP no Electron. (M1-F2)
 8. **Teclas digitadas no instante em que o terminal abre se perdem** (antes do `attach`/foco do xterm). Raro para uma pessoa, mas apareceu no E2E. Guardar a entrada até o terminal ficar pronto. (M1-F5)
+9. **Placeholder com frases engraçadas que trocam sozinhas** no campo de mensagem ("faz meu café", "domine o mundo"…). Pedido do dono para depois do M1.
