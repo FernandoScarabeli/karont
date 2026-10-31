@@ -14,6 +14,14 @@ import {
 import { getBridge } from "../bridge/index.ts";
 import { t } from "../i18n/pt-BR.ts";
 import { connectXtermCspStyles, createXtermCspDocument } from "./cspStyles.ts";
+import { createResizeQueueState, flushResize, queueResize } from "./resizeQueue.ts";
+import {
+  completeTerminalAttach,
+  consumePendingReconnect,
+  createTerminalSyncState,
+  decideTerminalEvent,
+  failTerminalAttach,
+} from "./terminalSync.ts";
 import "@xterm/xterm/css/xterm.css";
 import styles from "./TerminalView.module.css";
 
@@ -53,16 +61,13 @@ export function TerminalView({
     const serviceBridge = bridge;
 
     let mounted = true;
-    let attached = false;
     let replayReady = false;
     let terminalHasExited = false;
-    let lastSeq = -1;
+    let syncState = createTerminalSyncState();
     let exitBeforeAttach: { exitCode: number | null } | null = null;
     let animationFrame: number | undefined;
     let resizeTimeout: number | undefined;
-    let lastResizeAt = 0;
-    let queuedSize: { cols: number; rows: number } | null = null;
-    let lastSentSize: { cols: number; rows: number } | null = null;
+    let resizeQueueState = createResizeQueueState();
     let inputQueue: string[] = [];
     let outputQueue: Array<{ seq: number; data: string }> = [];
     let writeQueue = Promise.resolve();
@@ -88,17 +93,75 @@ export function TerminalView({
     terminal.open(host);
     terminalRef.current = terminal;
 
-    function applyOutput(event: { seq: number; data: string }) {
-      if (event.seq <= lastSeq) return;
-      lastSeq = event.seq;
-      terminal.write(event.data);
+    function applyOutput(event: { seq: number; data: string }): boolean {
+      const result = decideTerminalEvent(syncState, { type: "output", id, seq: event.seq }, id);
+      syncState = result.state;
+      if (result.decision === "apply") {
+        terminal.write(event.data);
+        return true;
+      }
+      if (result.decision === "reattach") {
+        requestAttach(true);
+        return false;
+      }
+      return true;
     }
 
     function drainOutput() {
       if (!replayReady) return;
       const pending = outputQueue;
       outputQueue = [];
-      for (const event of pending) applyOutput(event);
+      for (const event of pending) {
+        if (!applyOutput(event)) break;
+      }
+    }
+
+    function requestAttach(isReattach: boolean) {
+      if (isReattach) {
+        terminal.reset();
+        replayReady = false;
+        outputQueue = [];
+      }
+
+      void serviceBridge.request("terminals.attach", { id }).then(
+        ({ terminal: attachedTerminal, replay, seq }) => {
+          if (!mounted) return;
+          setTerminalInfo(
+            exitBeforeAttach
+              ? { ...attachedTerminal, exited: true, exitCode: exitBeforeAttach.exitCode }
+              : attachedTerminal,
+          );
+          inputActive = !attachedTerminal.exited && !exitBeforeAttach;
+          terminalHasExited = !inputActive;
+          terminal.write(replay, () => {
+            if (!mounted) return;
+            syncState = completeTerminalAttach(syncState, seq);
+            const pendingReconnect = consumePendingReconnect(syncState);
+            syncState = pendingReconnect.state;
+            if (pendingReconnect.decision === "reattach") {
+              requestAttach(true);
+              return;
+            }
+            replayReady = true;
+            drainOutput();
+            requestResize();
+            terminal.focus();
+          });
+        },
+        (error: unknown) => {
+          if (!mounted) return;
+          syncState = failTerminalAttach(syncState);
+          const pendingReconnect = consumePendingReconnect(syncState);
+          syncState = pendingReconnect.state;
+          if (pendingReconnect.decision === "reattach") {
+            requestAttach(true);
+            return;
+          }
+          setTerminalError(
+            error instanceof BridgeError && error.message ? error.message : t.terminal.attachFailed,
+          );
+        },
+      );
     }
 
     function writeInputChunks(data: string) {
@@ -161,21 +224,22 @@ export function TerminalView({
       }
       const size = { cols: terminal.cols, rows: terminal.rows };
       if (size.cols < 2 || size.rows < 2) return;
-      if (lastSentSize?.cols === size.cols && lastSentSize.rows === size.rows) return;
-      queuedSize = size;
-      if (resizeTimeout !== undefined) window.clearTimeout(resizeTimeout);
-      const wait = Math.max(0, 100 - (Date.now() - lastResizeAt));
+      const update = queueResize(resizeQueueState, size, Date.now());
+      resizeQueueState = update.state;
+      if (update.cancelTimer && resizeTimeout !== undefined) {
+        window.clearTimeout(resizeTimeout);
+      }
+      resizeTimeout = undefined;
+      if (update.scheduleAfter === null) return;
       resizeTimeout = window.setTimeout(() => {
         resizeTimeout = undefined;
-        const next = queuedSize;
-        queuedSize = null;
-        if (!next || !mounted) return;
-        lastResizeAt = Date.now();
-        lastSentSize = next;
-        void serviceBridge.request("terminals.resize", { id, ...next }).catch(() => {
+        const flushed = flushResize(resizeQueueState, Date.now());
+        resizeQueueState = flushed.state;
+        if (!flushed.size || !mounted) return;
+        void serviceBridge.request("terminals.resize", { id, ...flushed.size }).catch(() => {
           if (mounted) setTerminalError(t.terminal.resizeFailed);
         });
-      }, wait);
+      }, update.scheduleAfter);
     }
 
     const resizeObserver = new ResizeObserver(requestResize);
@@ -183,11 +247,24 @@ export function TerminalView({
 
     const unsubscribe = serviceBridge.onEvent((event) => {
       if (event.event === "terminals.output" && event.payload.id === id) {
-        if (!attached || !replayReady) {
+        if (syncState.attached && syncState.attaching) return;
+        if (!syncState.attached || !replayReady) {
           outputQueue.push(event.payload);
         } else {
           applyOutput(event.payload);
         }
+      } else if (event.event === "terminals.resync" && event.payload.id === id) {
+        const result = decideTerminalEvent(syncState, { type: "resync", id: event.payload.id }, id);
+        syncState = result.state;
+        if (result.decision === "reattach") requestAttach(true);
+      } else if (event.event === "bridge.status") {
+        const result = decideTerminalEvent(
+          syncState,
+          { type: "bridge.status", state: event.payload.state },
+          id,
+        );
+        syncState = result.state;
+        if (result.decision === "reattach") requestAttach(true);
       } else if (event.event === "terminals.exit" && event.payload.id === id) {
         exitBeforeAttach = { exitCode: event.payload.exitCode };
         terminalHasExited = true;
@@ -198,33 +275,7 @@ export function TerminalView({
       }
     });
 
-    void serviceBridge.request("terminals.attach", { id }).then(
-      ({ terminal: attachedTerminal, replay, seq }) => {
-        if (!mounted) return;
-        attached = true;
-        lastSeq = seq;
-        setTerminalInfo(
-          exitBeforeAttach
-            ? { ...attachedTerminal, exited: true, exitCode: exitBeforeAttach.exitCode }
-            : attachedTerminal,
-        );
-        inputActive = !attachedTerminal.exited && !exitBeforeAttach;
-        terminalHasExited = !inputActive;
-        terminal.write(replay, () => {
-          if (!mounted) return;
-          replayReady = true;
-          drainOutput();
-          requestResize();
-          terminal.focus();
-        });
-      },
-      (error: unknown) => {
-        if (!mounted) return;
-        setTerminalError(
-          error instanceof BridgeError && error.message ? error.message : t.terminal.attachFailed,
-        );
-      },
-    );
+    requestAttach(false);
 
     return () => {
       mounted = false;

@@ -97,8 +97,8 @@ export function NewConversationView({
       bridge.request("agents.list", {}),
       bridge.request("settings.get", { key: LAST_AGENT_SETTING }),
       bridge.request("settings.get", { key: LAST_FOLDER_SETTING }),
-      bridge.request("folders.recent", {}),
-    ]).then(async ([agentsResult, agentSettingResult, folderSettingResult, foldersResult]) => {
+      bridge.request("system.info", {}),
+    ]).then(async ([agentsResult, agentSettingResult, folderSettingResult, systemInfoResult]) => {
       if (!mounted) return;
 
       if (agentsResult.status === "fulfilled") {
@@ -117,10 +117,8 @@ export function NewConversationView({
         setAgentsError(true);
       }
 
-      if (foldersResult.status === "fulfilled") {
-        setHomePath(
-          foldersResult.value.folders.find((folder) => folder.name === PERSONAL_FOLDER)?.path,
-        );
+      if (systemInfoResult.status === "fulfilled") {
+        setHomePath(systemInfoResult.value.homeDir);
       }
 
       if (folderSettingResult.status !== "fulfilled") return;

@@ -86,6 +86,13 @@
   white-space: nowrap;
 }
 
+.closeError {
+  margin: 0;
+  color: var(--k-color-danger);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
 .conversationItem {
   position: relative;
   width: 100%;
