@@ -48,16 +48,16 @@ Depois: orquestração (um agente dividindo o trabalho com outros), aprovações
 
 ## Marcos
 
-| Marco | O que entrega |
-|---|---|
-| **M0** Esqueleto | App seguro, serviço local, ponte com streaming, preview no navegador |
-| **M1** Agentes | Detecção das CLIs, adicionar qualquer CLI, terminal embutido |
-| **M2** Chat de verdade | Respostas ao vivo do Claude Code e do Codex, ações, continuar, parar |
-| **M3** Projetos | Pastas com Git opcional, ver mudanças, desfazer, fila de agentes |
-| **M4** Navegação | Workspaces, Início, sidebar, busca |
-| **M5** Primeira abertura | Onboarding, perfil, configurações |
-| **M6** Tarefas | Quadro ligado às conversas |
-| **M7** Versão 0.1.0 | AppImage / .deb |
+| Marco                    | O que entrega                                                        |
+| ------------------------ | -------------------------------------------------------------------- |
+| **M0** Esqueleto         | App seguro, serviço local, ponte com streaming, preview no navegador |
+| **M1** Agentes           | Detecção das CLIs, adicionar qualquer CLI, terminal embutido         |
+| **M2** Chat de verdade   | Respostas ao vivo do Claude Code e do Codex, ações, continuar, parar |
+| **M3** Projetos          | Pastas com Git opcional, ver mudanças, desfazer, fila de agentes     |
+| **M4** Navegação         | Workspaces, Início, sidebar, busca                                   |
+| **M5** Primeira abertura | Onboarding, perfil, configurações                                    |
+| **M6** Tarefas           | Quadro ligado às conversas                                           |
+| **M7** Versão 0.1.0      | AppImage / .deb                                                      |
 
 ## Licença
 

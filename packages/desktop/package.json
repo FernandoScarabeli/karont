@@ -1,0 +1,16 @@
+{
+  "name": "@karont/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@karont/contract": "0.0.0"
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "vite": "8.3.5"
+  }
+}

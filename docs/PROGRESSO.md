@@ -1,6 +1,17 @@
 # Progresso
 
-Repositório recriado do zero em 2026-10-31. Nenhum marco iniciado.
+Repositório recriado do zero em 2026-10-31.
+
+## Estado
+- **M0 (esqueleto)** — em andamento na branch `m0-esqueleto`.
+  - [x] T0 Base do repositório (workspaces, TypeScript, Biome, pastas) — orquestrador
+  - [ ] B1 Contrato (schemas zod) — executor back
+  - [ ] F1 Tokens, fonte e componentes base — executor front
+  - [ ] B2 Serviço: socket com streaming + SQLite com migrações — executor back
+  - [ ] F2 Moldura vazia — executor front
+  - [ ] B3 Ponte do preview web (HTTP + SSE) — executor back
+  - [ ] B4 Electron seguro + ponte de canal único — executor back
+  - [ ] E2E de fumaça + CI — orquestrador
 
 ## Decisões do dono
 
@@ -8,3 +19,14 @@ Repositório recriado do zero em 2026-10-31. Nenhum marco iniciado.
 2. Licença MIT, repositório público.
 3. Chat de verdade (resposta da IA no chat, não no terminal); agente trabalha direto na pasta, com desfazer pelo Git; "Agente" no lugar de "Dot"; banco novo; ponte feita para streaming; markdown seguro (dependência a aprovar no M2).
 4. Referências visuais ficam fora do repositório (`karont.pen` do dono, no pen.dev).
+5. Plano do M0 aprovado (2026-10-31), com estas escolhas:
+   - CSS Modules para escopo (já vem no Vite).
+   - Fonte Geist via `@fontsource/geist-sans` e `@fontsource/geist-mono` (arquivos locais, sem rede).
+   - Build: Vite para interface, preload e main; `tsc` só para checagem de tipos; sem `electron-vite`; empacotador só no M7.
+   - Banco no M0: só mecanismo de migrações + tabela `settings`; demais tabelas nos marcos que usarem.
+
+## Notas técnicas
+- Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
+- Node 24 roda `.ts` direto (type stripping): testes e serviço em dev rodam sem build. Por isso o TS usa `erasableSyntaxOnly` (sem `enum`/`namespace`) e imports com extensão `.ts`.
+- TypeScript 7.0.2 (compilador nativo).
+- Electron 45.2.1 traz Node 24.22.1 com `node:sqlite`: o serviço pode rodar como `ELECTRON_RUN_AS_NODE=1` no app empacotado.

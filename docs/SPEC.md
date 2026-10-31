@@ -23,21 +23,22 @@ Idioma da interface no v1: **português do Brasil**. Código, identificadores e 
 
 ## 3. Conceitos (vocabulário fixo)
 
-| Termo | O que é |
-|---|---|
-| **Agente** | Uma CLI de IA instalada no computador (Claude Code, Codex, Gemini CLI…). Detectada sozinha ou adicionada pelo usuário pelo comando. |
-| **Terminal** | Um shell comum do usuário, sem IA. Também aparece no seletor. |
-| **Workspace** | Uma área que agrupa projetos (ex.: Pessoal, Trabalho). Aparece como aba no topo. |
-| **Projeto** | Uma pasta do computador. Com Git ganha "ver mudanças" e "desfazer". |
-| **Conversa** | Um chat com um agente, dentro de um projeto ou solta (na pasta pessoal). |
-| **Mensagem** | Do usuário ou do agente. A do agente tem partes: texto, ações (leu arquivo, editou, rodou comando) e erros. |
-| **Tarefa** | Item do quadro (A fazer, Em andamento, Revisão, Feito). |
+| Termo         | O que é                                                                                                                             |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Agente**    | Uma CLI de IA instalada no computador (Claude Code, Codex, Gemini CLI…). Detectada sozinha ou adicionada pelo usuário pelo comando. |
+| **Terminal**  | Um shell comum do usuário, sem IA. Também aparece no seletor.                                                                       |
+| **Workspace** | Uma área que agrupa projetos (ex.: Pessoal, Trabalho). Aparece como aba no topo.                                                    |
+| **Projeto**   | Uma pasta do computador. Com Git ganha "ver mudanças" e "desfazer".                                                                 |
+| **Conversa**  | Um chat com um agente, dentro de um projeto ou solta (na pasta pessoal).                                                            |
+| **Mensagem**  | Do usuário ou do agente. A do agente tem partes: texto, ações (leu arquivo, editou, rodou comando) e erros.                         |
+| **Tarefa**    | Item do quadro (A fazer, Em andamento, Revisão, Feito).                                                                             |
 
 Não usar outros nomes para essas coisas na interface ("Dot", "Run", "sessão" etc. não aparecem para o usuário).
 
 ## 4. Fluxos do v1
 
 ### 4.1 Primeira abertura (onboarding)
+
 1. Tela de boas-vindas curta.
 2. **Agentes encontrados:** lista as CLIs detectadas ("Claude Code ✓", "Codex ✓", outras ✗) e permite "Adicionar outra CLI" (nome + comando). Explica, em uma linha, que o login é feito na própria CLI.
 3. **Você:** nome (vem preenchido com o nome do sistema) e foto opcional (arquivo local).
@@ -47,6 +48,7 @@ Não usar outros nomes para essas coisas na interface ("Dot", "Run", "sessão" e
 O onboarding pode ser reaberto pelas configurações.
 
 ### 4.2 Conversar com um agente (o fluxo principal)
+
 1. "Nova conversa" (na sidebar, no Início ou num projeto) abre uma conversa vazia, sem modal.
 2. No composer, o usuário escolhe o **agente** (seletor) e o **modo** (ver 4.6). O padrão é o último usado.
 3. Escreve e aperta **Enter** (Shift+Enter quebra linha). A mensagem aparece como balão do usuário.
@@ -57,36 +59,43 @@ O onboarding pode ser reaberto pelas configurações.
 8. Erros (CLI não encontrada, não logada, falha no meio) aparecem como mensagem de erro clara no chat, com "tentar de novo".
 
 ### 4.3 Projetos
+
 - Criar projeto: modal com **nome, ícone e pasta**. Só isso.
 - Projeto com Git: depois de uma resposta que mudou arquivos, o chat mostra "N arquivos alterados · ver mudanças · desfazer". "Ver mudanças" abre o diff; "desfazer" volta os arquivos ao estado de antes daquela mensagem (ver 6.4).
 - Projeto sem Git: o agente trabalha direto na pasta; o chat avisa, uma vez, que não há "desfazer".
 - Conversa sem projeto: roda na pasta pessoal (`~`), com o mesmo aviso.
 
 ### 4.4 Workspaces, Início e navegação
+
 - Barra do topo: abas de workspace (com marca de "trabalhando" e de "precisa de você"), aba Início (casinha), "+", busca (Ctrl K).
 - Sidebar: Nova conversa, Tarefas, Projetos (com as conversas de cada um), Conversas soltas, rodapé com o perfil e a engrenagem.
 - **Tela do workspace:** resumo do dia, composer com escolha de projeto, cartões de projeto (conversas, última atividade, agentes trabalhando), contagem de tarefas.
 - **Início:** tudo junto — o que precisa de você, cartões de workspace, tarefas de todos.
 
 ### 4.5 Vários agentes ao mesmo tempo
+
 - O usuário pode ter várias conversas com agentes trabalhando em paralelo (projetos diferentes ou o mesmo).
 - Limite configurável (padrão 4). Acima do limite, a nova mensagem fica **na fila**, com aviso visível ("na fila: 4 agentes trabalhando").
 - Abas, sidebar e Início mostram onde há agente trabalhando e onde algo precisa do usuário.
 - No mesmo projeto, dois agentes ao mesmo tempo podem pisar um no outro: o app avisa antes de começar o segundo.
 
 ### 4.6 Modos e aprovações
+
 - v1: três modos por conversa, mapeados para as flags de cada CLI: **Só leitura**, **Pode editar** (padrão), **Liberado** (pede confirmação clara antes de ativar, porque o agente pode rodar qualquer comando).
 - Depois do v1: pedidos de permissão do agente aparecendo no chat com "Permitir / Negar".
 
 ### 4.7 Terminal
+
 - "Terminal" no seletor abre uma conversa que é um terminal de verdade (xterm), no projeto ou na pasta pessoal.
 - Em conversas com agente, o botão "ver terminal" é opcional e só existe se a implementação precisar (não é obrigatório no v1).
 
 ### 4.8 Tarefas (kanban)
+
 - Quadro com quatro colunas, filtro por projeto e workspace.
 - Criar tarefa (título, descrição, projeto). Mensagem do chat → tarefa. Tarefa → "abrir conversa com agente" já com o texto da tarefa.
 
 ### 4.9 Perfil e configurações
+
 - Perfil: nome e foto.
 - Agentes: lista, detectar de novo, adicionar/remover CLI.
 - Limite de agentes simultâneos.
@@ -94,6 +103,7 @@ O onboarding pode ser reaberto pelas configurações.
 - Diagnóstico: versões, caminhos, estado do serviço, CLIs encontradas.
 
 ### 4.10 Depois do v1 (fora do escopo agora)
+
 Orquestração (um agente que divide trabalho para outros, com página de acompanhamento em linha do tempo/fluxo), aprovações no chat, bloco de notas, agentes personalizados (com papel/prompt), macOS/Windows, tema claro, tradução.
 
 ## 5. Princípios não negociáveis
@@ -108,22 +118,26 @@ Orquestração (um agente que divide trabalho para outros, com página de acompa
 ## 6. Arquitetura
 
 ### 6.1 Peças
+
 ```
 Electron (janela)                Serviço local (daemon Node)
   renderer React  ──IPC──► main ──socket local──►  agentes (CLIs), terminais,
   (sem acesso ao sistema)  (valida tudo)           SQLite, Git
 ```
+
 - **Renderer:** React + TypeScript + Vite. Sem acesso a Node. Fala só com a ponte (`window.karont`).
 - **Main (Electron):** janela, menu, bandeja, diálogos nativos (escolher pasta, confirmar modo Liberado). Valida cada mensagem da UI com o mesmo schema do contrato e repassa ao serviço.
 - **Serviço local (daemon):** processo Node separado, iniciado pelo app e que **continua rodando com a janela fechada** (agentes não morrem ao fechar a janela). Dono do banco, dos processos das CLIs, dos terminais e do Git.
 - **Contrato:** um pacote compartilhado com schemas zod de todas as requisições, respostas e eventos. Tipos do TS derivados do zod (nunca escritos à mão em dois lugares).
 
 ### 6.2 Ponte UI ↔ serviço
+
 - **Um canal genérico** de requisição (`request(method, params)`) validado no main pelo schema do contrato, mais um canal de **eventos** (o serviço empurra: mensagens chegando, estado dos agentes, fila). Diálogos nativos têm canais próprios.
 - Socket local (Unix domain socket na pasta de runtime do usuário, permissão 0700), autenticado com segredo por sessão (HMAC) — só o mesmo usuário conecta.
-- **Feito para streaming:** respeita *backpressure* (espera o `drain`, nunca derruba o cliente por buffer cheio), limite por mensagem (não por buffer), e o serviço **junta** pedaços de texto (ex.: a cada 50 ms) antes de enviar.
+- **Feito para streaming:** respeita _backpressure_ (espera o `drain`, nunca derruba o cliente por buffer cheio), limite por mensagem (não por buffer), e o serviço **junta** pedaços de texto (ex.: a cada 50 ms) antes de enviar.
 
 ### 6.3 Executores de agente
+
 - **Modo chat (padrão):** cada mensagem do usuário roda a CLI no modo estruturado e transforma a saída em partes da mensagem do agente:
   - **Claude Code** (testado com 2.1.316): `claude -p --output-format stream-json --verbose` (`--include-partial-messages` para texto ao vivo), `--session-id <uuid>` na primeira mensagem e `--resume <id>` nas seguintes, `--permission-mode` para os modos. Alternativa a avaliar: um processo por conversa com `--input-format stream-json` (várias mensagens pelo stdin).
   - **Codex** (testado com 0.166.0): `codex exec --json`, `codex exec resume <id>` para continuar, `-s/--sandbox` para os modos, `-C` para a pasta, `--skip-git-repo-check` fora de Git.
@@ -134,6 +148,7 @@ Electron (janela)                Serviço local (daemon Node)
 - **Interrupção:** "Parar" encerra o processo da CLI; se o app/serviço cair no meio de uma resposta, a mensagem fica marcada como interrompida, com "tentar de novo". Sem maquinaria de recuperação de processo.
 
 ### 6.4 Git: ver mudanças e desfazer
+
 - O agente trabalha **direto na pasta do projeto** (não em cópia).
 - Antes de cada mensagem num projeto com Git, o serviço guarda um **ponto de restauração** sem mexer na branch nem no stash do usuário (ex.: `git stash create` + ref própria em `refs/karont/…`, ou árvore temporária equivalente).
 - Depois da resposta: lista os arquivos alterados desde o ponto; "ver mudanças" mostra o diff; "desfazer" restaura os arquivos alterados para o ponto (com confirmação e aviso se o usuário mexeu nos mesmos arquivos depois).
@@ -141,17 +156,20 @@ Electron (janela)                Serviço local (daemon Node)
 - Cópia separada (git worktree) para dois agentes no mesmo projeto fica para depois do v1.
 
 ### 6.5 Dados
+
 - SQLite (`node:sqlite`, sem dependência), um arquivo na pasta de dados do usuário, permissões privadas.
 - Tabelas do v1 (sugestão): `workspaces`, `projects`, `conversations`, `messages` (autor, partes em JSON, estado), `agent_sessions` (id da sessão da CLI por conversa), `restore_points`, `tasks`, `settings`, `agents` (CLIs adicionadas pelo usuário).
 - Migrações versionadas desde o v1.
 
 ### 6.6 Detecção de agentes
+
 - Catálogo de CLIs conhecidas (claude, codex, gemini, opencode, aider, cursor-agent, qwen, goose, amp, crush).
 - Procurar no `PATH` **e** em pastas comuns (`~/.local/bin`, `~/bin`, `~/.npm-global/bin`, `~/.bun/bin`, `~/.cargo/bin`, `~/.claude/local`, `/usr/local/bin`, `/usr/bin`, `~/.nvm/versions/node/*/bin`), porque o app iniciado pela interface gráfica tem `PATH` curto.
 - Só verificar se o arquivo existe e é executável. Nunca rodar a CLI para "testar login".
 - Variável para desligar a detecção nos testes (os testes não podem depender das CLIs da máquina).
 
 ### 6.7 Interface e design
+
 - Direção visual: tema escuro, grafite quase preto, uma cor de destaque para "trabalhando" e outra para "precisa de você", tipografia Geist (Sans e Mono). Tokens CSS centralizados desde o primeiro dia; nada de cor/medida solta.
 - **CSS com escopo** desde o começo (CSS Modules ou `@layer` com prefixo por componente). Nada de regra global em `header`, `h1`, `select`, `button`.
 - Componentes base reutilizáveis: botão, botão-ícone, campo, diálogo, menu, seletor, tooltip, badge/estado, cartão, estado vazio, toast.
@@ -159,10 +177,12 @@ Electron (janela)                Serviço local (daemon Node)
 - Markdown das respostas: renderizador que **não injeta HTML cru** (ex.: `react-markdown` + `remark-gfm`; links abrem no navegador do sistema pelo main, nunca dentro do app).
 
 ### 6.8 Preview no navegador (ferramenta de desenvolvimento)
+
 - `npm run preview:web`: o Vite serve a interface no navegador com recarga automática, falando com o serviço real por uma ponte HTTP + SSE em `127.0.0.1`, protegida por token por sessão e checagem de Host/Origin. Só existe em desenvolvimento; não entra no build.
 - Serve para o dono ver e pedir ajustes de tela em tempo real.
 
 ### 6.9 Pilha
+
 Node 24 · TypeScript · Electron (última estável) · React 19 · Vite · zod · `node:sqlite` · `node-pty` · `@xterm/xterm` · Playwright (E2E) · Biome (lint/format) · `node:test`. Gerenciador: npm (workspaces). Qualquer coisa além disso: pedir.
 
 ## 7. Qualidade e testes
@@ -174,13 +194,13 @@ Node 24 · TypeScript · Electron (última estável) · React 19 · Vite · zod 
 
 ## 8. Marcos
 
-| Marco | Entrega | Pronto quando |
-|---|---|---|
-| M0 | Esqueleto: Electron seguro, serviço, socket com streaming, contrato, banco, ponte de canal único, preview web, tokens e moldura vazia | App abre; preview abre; teste de fumaça do esqueleto passa no CI |
-| M1 | Agentes: detecção, adicionar CLI, Terminal | Configurações listam as CLIs reais; Terminal abre |
-| M2 | **Chat de verdade** com Claude Code e Codex (streaming, ações, continuar sessão, parar, erros) | O dono conversa com os dois no preview e as respostas aparecem no chat |
-| M3 | Projetos (pasta, Git opcional, ver mudanças, desfazer) + fila de agentes | Desfazer funciona num projeto Git real |
-| M4 | Workspaces, Início, sidebar, busca | Navegação completa |
-| M5 | Onboarding, perfil, configurações | Primeira abertura guiada |
-| M6 | Tarefas | Quadro com os fluxos de 4.8 |
-| M7 | Release 0.1.0 (AppImage/deb) | Instala e roda num Ubuntu limpo |
+| Marco | Entrega                                                                                                                               | Pronto quando                                                          |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| M0    | Esqueleto: Electron seguro, serviço, socket com streaming, contrato, banco, ponte de canal único, preview web, tokens e moldura vazia | App abre; preview abre; teste de fumaça do esqueleto passa no CI       |
+| M1    | Agentes: detecção, adicionar CLI, Terminal                                                                                            | Configurações listam as CLIs reais; Terminal abre                      |
+| M2    | **Chat de verdade** com Claude Code e Codex (streaming, ações, continuar sessão, parar, erros)                                        | O dono conversa com os dois no preview e as respostas aparecem no chat |
+| M3    | Projetos (pasta, Git opcional, ver mudanças, desfazer) + fila de agentes                                                              | Desfazer funciona num projeto Git real                                 |
+| M4    | Workspaces, Início, sidebar, busca                                                                                                    | Navegação completa                                                     |
+| M5    | Onboarding, perfil, configurações                                                                                                     | Primeira abertura guiada                                               |
+| M6    | Tarefas                                                                                                                               | Quadro com os fluxos de 4.8                                            |
+| M7    | Release 0.1.0 (AppImage/deb)                                                                                                          | Instala e roda num Ubuntu limpo                                        |
