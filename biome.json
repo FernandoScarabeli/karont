@@ -9,7 +9,8 @@
       "!**/coverage",
       "!**/test-results",
       "!**/playwright-report",
-      "!**/*.md"
+      "!**/*.md",
+      "!packages/ui/src/assets/**"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
