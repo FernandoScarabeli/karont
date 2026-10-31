@@ -119,6 +119,8 @@ Registradas em 2026-10-31, para a Fase 3 (o usuário aprovou as mudanças de dae
 24. **Seletor no composer: Terminal ou CLI** (Claude, Codex… os Dots configurados). Substitui a regra antiga "sem seletor de Dot no fluxo de nova conversa" do `AGENTS.md`. O app passa a ter um Dot **Terminal** embutido (o shell do usuário), sem configuração, autorizado em qualquer projeto.
 25. **Conversa sem projeto roda na pasta pessoal (`~`)**, direto, sem worktree: sem "Ver mudanças", sem "Desfazer", sem checkpoints. A tela avisa isso de forma clara antes e durante. Exige mudança no daemon e no contrato (`runs.start` sem `projectId`) e, se preciso, migração aditiva do SQLite.
 
+26. **Rumo "v1 usável"** ([PLANO_V1.md](PLANO_V1.md)): a ferramenta liga os agentes de CLI que o usuário já usa (Claude, Codex e qualquer outro), sem configuração; agentes personalizados (`dots.json`) ficam para o futuro e saem da vista. Ordem: CLIs sem configuração → chat de ponta a ponta → projetos sem Git → onboarding → perfil → kanban bonito → orquestração (página desenhada a partir das referências image-7, image-10 e image-6 do `karont.pen`).
+
 ## Ambiente local
 
 - Node 24 via fnm em `~/.local/share/fnm` (shell do usuário não foi alterado). No PC `scarabeliDesktop` (a partir da Fase 2), Node 24.21 via nvm, já no `PATH`.
