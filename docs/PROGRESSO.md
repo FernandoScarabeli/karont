@@ -27,7 +27,7 @@ Repositório recriado do zero em 2026-10-31.
 
 6. `lucide-react` aprovado para ícones (2026-10-31). Motivo: o design do `karont.pen` já usa os ícones Lucide; são SVGs locais.
 7. Fonte não fica presa só à Geist: pode haver uma segunda fonte (ex.: títulos/marca), escolhida pelo dono (2026-10-31).
-8. Cor de marca: o padrão é o **marfim** (`#F3EEE3`, "branco papel"), e a pessoa poderá escolher outra cor de destaque (2026-10-31). Proposta do orquestrador, aguardando ok: lista curta de cores prontas (marfim, magenta, turquesa, lima…), com contraste garantido; salva em `settings`; tela no M5. No M0 basta o token `--k-color-brand` ser único e trocável.
+8. Cor de marca: o padrão é o **marfim** (`#F3EEE3`, "branco papel"), e a pessoa escolhe outra cor de destaque numa lista pronta (aprovado em 2026-10-31). Lista: marfim `#F3EEE3`, magenta `#FF4F8B`, turquesa `#2DD4C4`, lima `#C6F135`, azul elétrico `#5B8CFF`, coral `#FF7A59` (todas com contraste AA com texto `#0F0F10` e sobre o fundo). A escolha fica salva em `settings` e a tela entra no M5. No M0 basta o token `--k-color-brand` ser único e trocável. Estados nunca dependem só da cor (sempre texto ou ícone junto).
 9. Segunda fonte: **Instrument Serif** na marca e nos títulos grandes; o resto em Geist (2026-10-31). Dependência `@fontsource/instrument-serif` aprovada.
 
 ## Notas técnicas
