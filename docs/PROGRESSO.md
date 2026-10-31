@@ -8,7 +8,9 @@ Repositório recriado do zero em 2026-10-31.
   - [x] B1 Detecção de agentes + CLIs do usuário (serviço e contrato)
   - [x] B2 Terminal no serviço (`node-pty`, eventos com backpressure, sobrevive à janela)
   - [x] F1 Configurações › Agentes (lista, detectar de novo, adicionar/remover CLI)
-  - [ ] F2 Terminal na interface (xterm)
+  - [ ] F2 Nova conversa com seletor (agentes "em breve" + Terminal) e Terminal na interface (xterm)
+  - [ ] B3 Fechar a janela: perguntar / segundo plano (bandeja) / fechar tudo
+  - [ ] F3 Configurações › Geral ("Ao fechar a janela")
   - [ ] E2E + merge (orquestrador)
 
 ## Decisões do dono
