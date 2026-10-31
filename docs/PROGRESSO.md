@@ -3,15 +3,13 @@
 Repositório recriado do zero em 2026-10-31.
 
 ## Estado
-- **M0 (esqueleto)** — em andamento na branch `m0-esqueleto`.
-  - [x] T0 Base do repositório (workspaces, TypeScript, Biome, pastas) — orquestrador
-  - [x] B1 Contrato (schemas zod) — executor back
-  - [x] F1 Tokens, fonte e componentes base — executor front
-  - [x] B2 Serviço: socket com streaming + SQLite com migrações — executor back
-  - [x] F2 Moldura vazia — executor front
-  - [x] B3 Ponte do preview web (HTTP + SSE) — executor back
-  - [x] B4 Electron seguro + ponte de canal único — executor back
-  - [x] E2E de fumaça + CI (CI no GitHub ainda não rodou) — orquestrador
+- **M0 (esqueleto)** — concluído e na `main` (PR #1, 2026-10-31).
+- **M1 (agentes)** — em andamento na branch `m1-agentes`.
+  - [ ] B1 Detecção de agentes + CLIs do usuário (serviço e contrato)
+  - [ ] B2 Terminal no serviço (`node-pty`, eventos com backpressure, sobrevive à janela)
+  - [ ] F1 Configurações › Agentes (lista, detectar de novo, adicionar/remover CLI)
+  - [ ] F2 Terminal na interface (xterm)
+  - [ ] E2E + merge (orquestrador)
 
 ## Decisões do dono
 
@@ -30,6 +28,9 @@ Repositório recriado do zero em 2026-10-31.
 8. Cor de marca: o padrão é o **marfim** (`#F3EEE3`, "branco papel"), e a pessoa escolhe outra cor de destaque numa lista pronta (aprovado em 2026-10-31). Lista: marfim `#F3EEE3`, magenta `#FF4F8B`, turquesa `#2DD4C4`, lima `#C6F135`, azul elétrico `#5B8CFF`, coral `#FF7A59` (todas com contraste AA com texto `#0F0F10` e sobre o fundo). A escolha fica salva em `settings` e a tela entra no M5. No M0 basta o token `--k-color-brand` ser único e trocável. Estados nunca dependem só da cor (sempre texto ou ícone junto).
 9. Segunda fonte: **Instrument Serif** na marca e nos títulos grandes; o resto em Geist (2026-10-31). Dependência `@fontsource/instrument-serif` aprovada.
 
+10. Fluxo de trabalho: o orquestrador só coordena; todo código é feito pelo Codex `gpt-6-luna` em `xhigh` (2026-10-31).
+11. `main` protegida: só por PR com o CI "Checagens e testes" verde; sem force push nem exclusão; vale para admins (2026-10-31).
+
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
 - Node 24 roda `.ts` direto (type stripping): testes e serviço em dev rodam sem build. Por isso o TS usa `erasableSyntaxOnly` (sem `enum`/`namespace`) e imports com extensão `.ts`.
@@ -41,3 +42,4 @@ Repositório recriado do zero em 2026-10-31.
 - Rodar o app: `npm run start:desktop` (com `CHROME_DEVEL_SANDBOX=/usr/local/lib/karont-dev/chrome-sandbox`). E2E: `npm run test:e2e` (mesma variável). Rodada completa local: ~6 s de checagens + ~2 s de E2E.
 - O E2E usa `chromiumSandbox: true`: o Playwright passa `--no-sandbox` ao Electron por padrão.
 - O serviço destacado é iniciado por um `bash` mínimo que fecha os descritores herdados acima de 2. O Chromium deixa caches da GPU e sockets internos sem CLOEXEC, e o serviço os seguraria por horas (isso também travava o `app.close()` do Playwright).
+- `node-pty` 1.1.0 usa N-API: o mesmo binário roda no Node 24 e no Electron (`ELECTRON_RUN_AS_NODE`). O npm 12 bloqueia scripts de instalação; `node-pty` está liberado em `allowScripts` no `package.json` da raiz (precisa de python3, make e g++).
