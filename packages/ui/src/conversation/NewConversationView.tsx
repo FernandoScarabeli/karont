@@ -1,6 +1,6 @@
-import type { Agent, RecentFolder } from "@karont/contract";
+import type { Agent } from "@karont/contract";
 import { BridgeError } from "@karont/contract";
-import { Check, ChevronDown, Folder, SquareTerminal, TriangleAlert } from "lucide-react";
+import { ChevronDown, Folder, TriangleAlert } from "lucide-react";
 import {
   type DragEventHandler,
   type KeyboardEvent,
@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
 import { Composer } from "../components/Composer/Composer.tsx";
@@ -27,7 +28,7 @@ const TERMINAL_CHOICE = "terminal";
 const PERSONAL_FOLDER = "~";
 
 type AgentChoice = typeof TERMINAL_CHOICE | string;
-type ActiveMenu = "choice" | "folder" | null;
+type ActiveMenu = "choice" | null;
 type MenuOption = {
   id: string;
   content: ReactNode;
@@ -54,7 +55,7 @@ export function NewConversationView({
   const [agents, setAgents] = useState<Agent[]>([]);
   const [choice, setChoice] = useState<AgentChoice>(TERMINAL_CHOICE);
   const [folderPath, setFolderPath] = useState(PERSONAL_FOLDER);
-  const [recentFolders, setRecentFolders] = useState<RecentFolder[]>([]);
+  const [homePath, setHomePath] = useState<string>();
   const [command, setCommand] = useState("");
   const [activeMenu, setActiveMenu] = useState<ActiveMenu>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -64,22 +65,17 @@ export function NewConversationView({
   const [folderDialogError, setFolderDialogError] = useState("");
   const [error, setError] = useState("");
   const [agentsError, setAgentsError] = useState(false);
-  const [foldersError, setFoldersError] = useState(false);
   const choiceTriggerRef = useRef<HTMLButtonElement>(null);
-  const folderTriggerRef = useRef<HTMLButtonElement>(null);
   const menuRootRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const folderPathRef = useRef(folderPath);
   const choiceTouchedRef = useRef(false);
   const folderTouchedRef = useRef(false);
   const titleId = useId();
   const choiceListboxId = useId();
-  const folderListboxId = useId();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const folderDialogFormId = useId();
 
   const updateFolderPath = useCallback((path: string) => {
-    folderPathRef.current = path;
     setFolderPath(path);
   }, []);
 
@@ -93,43 +89,9 @@ export function NewConversationView({
     [bridge],
   );
 
-  const setRecentFolderList = useCallback(
-    (folders: RecentFolder[]) => {
-      setRecentFolders(folders);
-      const selectedPath = folderPathRef.current;
-      if (
-        selectedPath === PERSONAL_FOLDER ||
-        folders.some((folder) => folder.path === selectedPath)
-      ) {
-        return;
-      }
-
-      void bridge?.request("folders.validate", { path: selectedPath }).then(
-        (result) => {
-          if (folderPathRef.current === selectedPath && (!result.exists || !result.isDirectory)) {
-            updateFolderPath(PERSONAL_FOLDER);
-            saveSetting(
-              LAST_FOLDER_SETTING,
-              PERSONAL_FOLDER,
-              t.conversation.settingsFolderSaveFailed,
-            );
-          }
-        },
-        () => undefined,
-      );
-    },
-    [bridge, saveSetting, updateFolderPath],
-  );
-
   useEffect(() => {
     if (!bridge) return;
     let mounted = true;
-    const unsubscribe = bridge.onEvent((event) => {
-      if (event.event === "folders.changed" && mounted) {
-        setFoldersError(false);
-        setRecentFolderList(event.payload.folders);
-      }
-    });
 
     void Promise.allSettled([
       bridge.request("agents.list", {}),
@@ -156,10 +118,9 @@ export function NewConversationView({
       }
 
       if (foldersResult.status === "fulfilled") {
-        setFoldersError(false);
-        setRecentFolderList(foldersResult.value.folders);
-      } else {
-        setFoldersError(true);
+        setHomePath(
+          foldersResult.value.folders.find((folder) => folder.name === PERSONAL_FOLDER)?.path,
+        );
       }
 
       if (folderSettingResult.status !== "fulfilled") return;
@@ -187,9 +148,8 @@ export function NewConversationView({
 
     return () => {
       mounted = false;
-      unsubscribe();
     };
-  }, [bridge, saveSetting, setRecentFolderList, updateFolderPath]);
+  }, [bridge, saveSetting, updateFolderPath]);
 
   useEffect(() => {
     if (activeMenu === null) return;
@@ -207,29 +167,23 @@ export function NewConversationView({
 
   const selectedAgent = agents.find((agent) => agent.id === choice);
   const selectedTitle = selectedAgent?.name ?? t.conversation.terminal;
-  const homePath = recentFolders.find((folder) => folder.name === PERSONAL_FOLDER)?.path;
   const isPersonalFolderSelected = folderPath === PERSONAL_FOLDER || folderPath === homePath;
-  const selectedRecentFolder = recentFolders.find((folder) => folder.path === folderPath);
-  const folderName = isPersonalFolderSelected
-    ? PERSONAL_FOLDER
-    : (selectedRecentFolder?.name ?? getFolderName(folderPath));
+  const folderName = isPersonalFolderSelected ? PERSONAL_FOLDER : getFolderName(folderPath);
   const accessibleFolderPath = isPersonalFolderSelected
     ? (homePath ?? PERSONAL_FOLDER)
     : folderPath;
   const folderButtonLabel = `${t.conversation.folderAccessibleName(accessibleFolderPath)}`;
 
-  function closeMenu(kind: ActiveMenu = activeMenu, returnFocus = true) {
+  function closeMenu(returnFocus = true) {
     setActiveMenu(null);
-    if (!returnFocus) return;
-    if (kind === "choice") choiceTriggerRef.current?.focus();
-    if (kind === "folder") folderTriggerRef.current?.focus();
+    if (returnFocus) choiceTriggerRef.current?.focus();
   }
 
   function chooseAgent(option: AgentChoice) {
     choiceTouchedRef.current = true;
     setChoice(option);
     setError("");
-    closeMenu("choice");
+    closeMenu();
     saveSetting(LAST_AGENT_SETTING, option, t.conversation.settingsSaveFailed);
   }
 
@@ -238,7 +192,6 @@ export function NewConversationView({
     const selectedPath = path === homePath ? PERSONAL_FOLDER : path;
     updateFolderPath(selectedPath);
     setError("");
-    closeMenu("folder");
     saveSetting(LAST_FOLDER_SETTING, selectedPath, t.conversation.settingsFolderSaveFailed);
   }
 
@@ -249,7 +202,8 @@ export function NewConversationView({
         selected: agent.id === choice,
         content: (
           <>
-            <span>{agent.name}</span>
+            <AgentIcon agentId={agent.id} className={styles.soonAgent} />
+            <span className={styles.soonAgent}>{agent.name}</span>
             <span className={styles.soonMarker}>{t.conversation.soon}</span>
           </>
         ),
@@ -260,7 +214,7 @@ export function NewConversationView({
         selected: choice === TERMINAL_CHOICE,
         content: (
           <>
-            <SquareTerminal aria-hidden="true" size={16} strokeWidth={1.8} />
+            <AgentIcon agentId={TERMINAL_CHOICE} />
             <span>{t.conversation.terminal}</span>
           </>
         ),
@@ -278,57 +232,17 @@ export function NewConversationView({
     ];
   }
 
-  function buildFolderOptions(): MenuOption[] {
-    const selectedFolderIsRecent = recentFolders.some((folder) => folder.path === folderPath);
-    const selectedFolderOption: MenuOption[] =
-      folderPath !== PERSONAL_FOLDER && !isPersonalFolderSelected && !selectedFolderIsRecent
-        ? [
-            {
-              id: folderPath,
-              selected: true,
-              content: folderOptionContent(folderName, folderPath, homePath),
-              onSelect: () => chooseFolder(folderPath),
-            },
-          ]
-        : [];
-
-    return [
-      ...selectedFolderOption,
-      ...recentFolders
-        .filter((folder) => folder.name !== PERSONAL_FOLDER)
-        .map((folder) => ({
-          id: folder.path,
-          selected: folder.path === folderPath,
-          content: folderOptionContent(folder.name, folder.path, homePath),
-          onSelect: () => chooseFolder(folder.path),
-        })),
-      {
-        id: PERSONAL_FOLDER,
-        selected: isPersonalFolderSelected,
-        content: <span>{t.conversation.personalFolder}</span>,
-        onSelect: () => chooseFolder(PERSONAL_FOLDER),
-      },
-      {
-        id: "choose-folder",
-        selected: false,
-        content: <span>{t.conversation.chooseFolder}</span>,
-        onSelect: () => void openFolderChooser(),
-      },
-    ];
-  }
-
-  function openMenu(kind: Exclude<ActiveMenu, null>) {
-    const options = kind === "choice" ? buildChoiceOptions() : buildFolderOptions();
+  function openMenu() {
+    const options = buildChoiceOptions();
     const currentIndex = options.findIndex((option) => option.selected);
     setActiveIndex(Math.max(currentIndex, 0));
-    setActiveMenu(kind);
+    setActiveMenu("choice");
   }
 
   function handleOptionKeyDown(
     event: KeyboardEvent<HTMLDivElement>,
     index: number,
     options: MenuOption[],
-    kind: Exclude<ActiveMenu, null>,
   ) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -347,12 +261,12 @@ export function NewConversationView({
       options[index]?.onSelect();
     } else if (event.key === "Escape") {
       event.preventDefault();
-      closeMenu(kind);
+      closeMenu();
     }
   }
 
   async function openFolderChooser() {
-    closeMenu("folder");
+    setActiveMenu(null);
     if (!bridge?.pickFolder) {
       setFolderDialogPath(folderPath === PERSONAL_FOLDER ? "" : folderPath);
       setFolderDialogError("");
@@ -363,7 +277,7 @@ export function NewConversationView({
     setError("");
     try {
       const selected = await bridge.pickFolder({
-        defaultPath: folderPath === PERSONAL_FOLDER ? undefined : folderPath,
+        defaultPath: folderPath === PERSONAL_FOLDER ? homePath : folderPath,
       });
       if (selected) await validateAndChooseFolder(selected.path, false);
     } catch (pickError) {
@@ -436,25 +350,17 @@ export function NewConversationView({
   }
 
   const choiceOptions = buildChoiceOptions();
-  const folderOptions = buildFolderOptions();
 
-  function renderListbox(kind: Exclude<ActiveMenu, null>) {
-    const options = kind === "choice" ? choiceOptions : folderOptions;
-    const listboxId = kind === "choice" ? choiceListboxId : folderListboxId;
-    const listboxLabel =
-      kind === "choice" ? t.conversation.agentLabel : t.conversation.folderMenuLabel;
+  function renderListbox() {
+    const options = choiceOptions;
+    const listboxId = choiceListboxId;
+    const listboxLabel = t.conversation.agentLabel;
     return (
       <div aria-label={listboxLabel} className={styles.listbox} id={listboxId} role="listbox">
         {options.map((option, index) => (
           <div
             aria-selected={option.selected}
-            className={[
-              styles.option,
-              option.id === "manage-agents" ? styles.actionOption : "",
-              kind === "folder" && (option.id === PERSONAL_FOLDER || option.id === "choose-folder")
-                ? styles.separatorOption
-                : "",
-            ]
+            className={[styles.option, option.id === "manage-agents" ? styles.actionOption : ""]
               .filter(Boolean)
               .join(" ")}
             id={`${listboxId}-${index}`}
@@ -465,7 +371,7 @@ export function NewConversationView({
               }
             }}
             onClick={option.onSelect}
-            onKeyDown={(event) => handleOptionKeyDown(event, index, options, kind)}
+            onKeyDown={(event) => handleOptionKeyDown(event, index, options)}
             onMouseMove={() => setActiveIndex(index)}
             ref={(element) => {
               optionRefs.current[index] = element;
@@ -474,14 +380,6 @@ export function NewConversationView({
             tabIndex={activeIndex === index ? 0 : -1}
           >
             {option.content}
-            {kind === "folder" && option.selected ? (
-              <Check
-                aria-hidden="true"
-                className={styles.selectedCheck}
-                size={16}
-                strokeWidth={2}
-              />
-            ) : null}
           </div>
         ))}
       </div>
@@ -498,13 +396,12 @@ export function NewConversationView({
       </header>
 
       <section aria-labelledby={titleId} className={styles.composerSection}>
+        <p className={styles.welcome} data-k-new-conversation-title>
+          {t.conversation.welcomeTitle}
+        </p>
         <Composer
           disabled={choice !== TERMINAL_CHOICE}
-          hint={
-            choice === TERMINAL_CHOICE
-              ? t.conversation.terminalComposerHint
-              : t.conversation.agentChatSoon
-          }
+          ariaDescription={t.conversation.composerKeyboardDescription}
           leading={
             <div className={styles.controls} ref={menuRootRef}>
               <div className={styles.choiceWrap}>
@@ -514,49 +411,39 @@ export function NewConversationView({
                   aria-haspopup="listbox"
                   aria-label={`${t.conversation.agentLabel}: ${selectedTitle}`}
                   className={styles.selectorButton}
-                  onClick={() =>
-                    activeMenu === "choice" ? closeMenu("choice", false) : openMenu("choice")
-                  }
+                  onClick={() => (activeMenu === "choice" ? closeMenu(false) : openMenu())}
                   onKeyDown={(event) => {
                     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                       event.preventDefault();
-                      openMenu("choice");
+                      openMenu();
                     }
                   }}
                   ref={choiceTriggerRef}
                   type="button"
                 >
-                  <span>{selectedTitle}</span>
+                  <AgentIcon
+                    agentId={choice}
+                    className={selectedAgent ? styles.soonAgent : undefined}
+                  />
+                  <span className={selectedAgent ? styles.soonAgent : undefined}>
+                    {selectedTitle}
+                  </span>
                   <ChevronDown aria-hidden="true" size={15} strokeWidth={1.8} />
                 </button>
-                {activeMenu === "choice" ? renderListbox("choice") : null}
+                {activeMenu === "choice" ? renderListbox() : null}
               </div>
 
               <div className={styles.folderWrap}>
                 <button
-                  aria-controls={folderListboxId}
-                  aria-expanded={activeMenu === "folder"}
-                  aria-haspopup="listbox"
                   aria-label={folderButtonLabel}
                   className={styles.folderButton}
-                  onClick={() =>
-                    activeMenu === "folder" ? closeMenu("folder", false) : openMenu("folder")
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                      event.preventDefault();
-                      openMenu("folder");
-                    }
-                  }}
-                  ref={folderTriggerRef}
-                  title={accessibleFolderPath}
+                  onClick={() => void openFolderChooser()}
+                  title={folderButtonLabel}
                   type="button"
                 >
                   <Folder aria-hidden="true" size={16} strokeWidth={1.8} />
                   <span>{folderName}</span>
-                  <ChevronDown aria-hidden="true" size={14} strokeWidth={1.8} />
                 </button>
-                {activeMenu === "folder" ? renderListbox("folder") : null}
               </div>
             </div>
           }
@@ -579,11 +466,6 @@ export function NewConversationView({
       {agentsError ? (
         <p className={styles.error} role="alert">
           {t.conversation.agentsLoadFailed}
-        </p>
-      ) : null}
-      {foldersError ? (
-        <p className={styles.error} role="alert">
-          {t.conversation.foldersLoadFailed}
         </p>
       ) : null}
       {!bridge ? (
@@ -644,22 +526,6 @@ export function NewConversationView({
 function getFolderName(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts.at(-1) ?? path;
-}
-
-function folderOptionContent(name: string, path: string, homePath?: string): ReactNode {
-  return (
-    <span className={styles.folderOptionContent} title={path}>
-      <span className={styles.folderOptionName}>{name}</span>
-      <span className={styles.folderOptionPath}>{shortenFolderPath(path, homePath)}</span>
-    </span>
-  );
-}
-
-function shortenFolderPath(path: string, homePath?: string): string {
-  if (path === homePath) return PERSONAL_FOLDER;
-  if (homePath && path.startsWith(`${homePath}/`)) return `~${path.slice(homePath.length)}`;
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : path;
 }
 
 function isAbsolutePath(path: string): boolean {

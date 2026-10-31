@@ -8,6 +8,7 @@ export type ComposerProps = {
   onSubmit: () => void;
   placeholder: string;
   submitLabel: string;
+  ariaDescription?: string;
   submitDisabled?: boolean;
   leading: ReactNode;
   trailing?: ReactNode;
@@ -22,6 +23,7 @@ export function Composer({
   onSubmit,
   placeholder,
   submitLabel,
+  ariaDescription,
   submitDisabled = false,
   leading,
   trailing,
@@ -67,6 +69,7 @@ export function Composer({
     <div className={styles.wrapper}>
       <form className={styles.card} onSubmit={submit}>
         <textarea
+          aria-description={ariaDescription}
           aria-label={placeholder}
           className={`${styles.textarea} ${mono ? styles.mono : ""}`}
           disabled={disabled}

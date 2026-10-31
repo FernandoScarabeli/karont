@@ -1,6 +1,7 @@
 import { type Agent, methods } from "@karont/contract";
 import { CircleCheck, CircleDashed, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
 import { Dialog } from "../components/Dialog/Dialog.tsx";
@@ -222,6 +223,7 @@ export function AgentsSection() {
                   <li className={styles.agentItem} key={agent.id}>
                     <div className={styles.agentDetails}>
                       <div className={styles.agentHeading}>
+                        <AgentIcon agentId={agent.id} />
                         <span
                           className={
                             agent.found

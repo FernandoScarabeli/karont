@@ -47,6 +47,19 @@
 .composerSection {
   width: min(calc(100% - var(--k-space-6) - var(--k-space-6)), var(--k-new-conversation-width));
   margin: auto;
+  container-name: new-conversation;
+  container-type: inline-size;
+  transform: translateY(calc(-1 * var(--k-space-6)));
+}
+
+.welcome {
+  margin: 0 0 var(--k-space-5);
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-brand);
+  font-size: var(--k-text-32);
+  font-weight: var(--k-weight-brand);
+  line-height: var(--k-leading-tight);
+  text-align: center;
 }
 
 .controls {
@@ -155,7 +168,7 @@
 
 .soonMarker {
   margin-inline-start: auto;
-  color: var(--k-color-text-muted);
+  color: var(--k-color-text-secondary);
   font-size: var(--k-text-11);
 }
 
@@ -164,41 +177,8 @@
   padding-block-start: var(--k-space-2);
 }
 
-.separatorOption {
-  margin-block-start: var(--k-space-1);
-  padding-block-start: var(--k-space-2);
-  border-top: var(--k-border-width) solid var(--k-color-border);
-  border-radius: 0;
-}
-
-.folderOptionContent {
-  display: grid;
-  min-width: 0;
-  flex: 1 1 auto;
-  gap: var(--k-space-1);
-}
-
-.folderOptionName {
-  overflow: hidden;
-  color: var(--k-color-text-primary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.folderOptionPath {
-  overflow: hidden;
-  color: var(--k-color-text-muted);
-  font-family: var(--k-font-mono);
-  font-size: var(--k-text-11);
-  font-weight: var(--k-weight-regular);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.selectedCheck {
-  flex: 0 0 auto;
-  margin-inline-start: var(--k-space-3);
-  color: var(--k-color-text-secondary);
+.soonAgent {
+  opacity: var(--k-opacity-disabled);
 }
 
 .error,

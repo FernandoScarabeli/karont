@@ -83,6 +83,7 @@
   --k-sidebar-footer-gap: 8px;
   --k-sheet-padding: 40px;
   --k-dot-size: 8px;
+  --k-icon-size-md: 16px;
   --k-brand-mark-size: 14px;
   --k-brand-mark-height: 22px;
   --k-brand-reflection-width: 10px;
@@ -119,6 +120,12 @@
   --k-composer-textarea-min-height: 56px;
   --k-composer-textarea-max-height: 224px;
   --k-composer-submit-size: 36px;
+}
+
+@container new-conversation (max-width: 520px) {
+  [data-k-new-conversation-title] {
+    font-size: var(--k-text-24);
+  }
 }
 
 /* Breakpoints são literais na gramática de @container e ficam centralizados nos tokens. */
