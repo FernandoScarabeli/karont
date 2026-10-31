@@ -208,9 +208,11 @@ try {
     true,
   );
   await page.getByRole('button', { name: 'Início', exact: true }).click();
-  await page
-    .getByRole('heading', { name: /^(Bom dia|Boa tarde|Boa noite)\.$/, exact: true })
-    .waitFor();
+  const activeWorkspaceTab = page.locator('.ks-workspace-tab.is-current');
+  await activeWorkspaceTab.waitFor();
+  const activeWorkspaceName = await activeWorkspaceTab.getAttribute('aria-label');
+  assert.ok(activeWorkspaceName);
+  await page.getByRole('heading', { name: activeWorkspaceName, exact: true }).waitFor();
   if (process.env.KARONT_TEST_SKIP_SPEC005_METRICS !== '1') await recordSeries('idle');
   result.checks.push(
     process.env.KARONT_TEST_SKIP_SPEC005_METRICS === '1'

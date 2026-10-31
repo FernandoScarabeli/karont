@@ -8,6 +8,7 @@ import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { WorkspaceDialog } from './WorkspaceDialog';
 import { WorkspacePages } from './WorkspacePages';
+import { useWorkspaceOverview } from './useWorkspaceOverview';
 import { useProjectForm } from './useProjectForm';
 import { useSidebarState } from './useSidebarState';
 import { useWorkspaceData } from './useWorkspaceData';
@@ -22,6 +23,13 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: ReactNod
   const projectForm = useProjectForm(data);
   const workspaceForm = useWorkspaceForm(data);
   const status = useWorkspaceStatus(data.projectIndex);
+  const overview = useWorkspaceOverview(
+    data.navigation.workspaceId,
+    data.projects,
+    status.runs,
+    data.refresh,
+    data.page === 'home',
+  );
   const {
     dots,
     projectIndex,
@@ -47,9 +55,21 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: ReactNod
     newChat,
   } = data;
   const { collapsed } = sidebar;
-  const hour = new Date().getHours();
-  const greeting =
-    hour >= 5 && hour < 12 ? 'Bom dia' : hour >= 12 && hour < 18 ? 'Boa tarde' : 'Boa noite';
+  function openNewProject() {
+    projectForm.setEditingProject(undefined);
+    projectForm.setProjectName('');
+    projectForm.setProjectRoot('');
+    projectForm.setProjectIcon('folder');
+    data.setFormError('');
+    projectForm.setProjectDialog(true);
+  }
+  function focusProject(projectId: string) {
+    sidebar.setCollapsed(false);
+    data.setExpanded((old) => ({ ...old, [projectId]: true }));
+    window.requestAnimationFrame(() => {
+      document.getElementById(`sidebar-project-${projectId}`)?.focus();
+    });
+  }
   return (
     <div className={`karont-app ks-shell ${collapsed ? 'is-sidebar-collapsed' : ''}`}>
       <TopBar
@@ -105,14 +125,32 @@ export function WorkspaceDesk({ tools }: { view: WorkspaceView; tools?: ReactNod
             </div>
           )}
           <HomeView
+            key={data.navigation.workspaceId ?? 'no-workspace'}
             page={page}
+            workspaceName={workspace?.name ?? ''}
+            projects={data.projects}
+            overview={overview}
+            runningCount={
+              status.ready && !status.error
+                ? (status.workspaceStatus[workspace?.id ?? '']?.running ?? 0)
+                : null
+            }
+            attentionCount={
+              status.ready && !status.error
+                ? (status.workspaceStatus[workspace?.id ?? '']?.attention ?? 0)
+                : null
+            }
+            hasStatusError={status.ready && Boolean(status.error)}
+            onOpenAttention={() => setPage('settings')}
+            onNewProject={openNewProject}
+            onFocusProject={focusProject}
+            onOpenTasks={() => setPage('tasks')}
             draft={draft}
             setDraft={setDraft}
             draftRef={draftRef}
             newChat={newChat}
             busy={busy}
             loading={loading}
-            greeting={greeting}
           />
           {page === 'chat' && selectedChat && (
             <ChatView

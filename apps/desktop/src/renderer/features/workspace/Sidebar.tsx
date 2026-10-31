@@ -144,6 +144,7 @@ export function Sidebar({ data, sidebar, projectForm, runningChatIds }: Props) {
                     <button
                       type="button"
                       className="k-project-toggle"
+                      id={`sidebar-project-${project.id}`}
                       aria-expanded={isOpen}
                       title={
                         project.available ? project.name : `${project.name} — pasta indisponível`

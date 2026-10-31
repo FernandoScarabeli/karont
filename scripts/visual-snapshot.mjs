@@ -248,7 +248,7 @@ try {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.getByRole('button', { name: 'Nova conversa', exact: true }).first().waitFor();
-  // Relógio fixo no renderer: a saudação da home depende da hora.
+  // Relógio fixo no renderer: a data da home depende do horário local.
   await page.clock.setFixedTime(new Date('2026-01-15T10:00:00-03:00'));
   await page.reload();
   await page.getByRole('button', { name: 'Nova conversa', exact: true }).first().waitFor();

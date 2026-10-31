@@ -145,6 +145,37 @@ Os tokens existentes continuam definidos em `tokens.css`; `--k-topbar-height: 52
 
 Agentes e Automações no menu da engrenagem, assim como a busca em painel flutuante, são decisões do orquestrador para esta tarefa e precisam ser validadas com o usuário.
 
+### Tela do workspace (implementado)
+
+A página inicial usa `--k-page`, com folha centralizada de até 1128 px, padding lateral de 40 px, topo `clamp(40px, 12vh, 140px)`, base de 72 px e intervalos de 32 px entre grupos. O título é Geist Sans 28/500; o resumo usa 14 px e separa a data, Runs em andamento e atenção. A data segue o horário local em pt-BR. Última atividade de Projeto usa Geist Mono 12 px: “agora”, minutos, horas, “ontem”, dias ou data curta.
+
+O compositor reutiliza `--k-card`, `--k-line`, raio 16 px e altura mínima 104 px. O campo de texto tem 15 px; a linha de ações tem 36 px. O seletor de Projeto nativo tem 30 px, fundo `--k-raised` e nome acessível “Projeto da nova conversa”; começa em “Sem projeto”. Projetos com pasta indisponível continuam visíveis, mas a opção fica desabilitada. A tecla Enter usa Geist Mono 11 px sobre `--k-raised`. Enter envia, Shift+Enter quebra a linha, composição IME não envia e o limite de 8.000 bytes UTF-8 mantém a mensagem de erro existente. O rascunho continua em `localStorage`.
+
+A grade de Projetos usa cartões de 12 px de raio, padding 16/16/14 px, gap 14 px e colunas de no mínimo 280 px; três cabem em 1128 px. O caminho usa Geist Mono 12 px, troca `/home/<usuário>` por `~` e mostra o final quando falta espaço, mantendo o caminho integral em `title`. O botão com o nome do Projeto expande e foca a linha dele na sidebar. O cartão não abre ao clicar no fundo. “Nova conversa” abre um Chat diretamente nesse Projeto; o nome acessível do botão inclui o nome do Projeto. Para pasta indisponível, a contagem dá lugar a aviso textual com ícone; a ação fica desabilitada e explica o motivo.
+
+A faixa de Tarefas tem quatro colunas iguais com padding vertical de 16 px e horizontal de 20 px. Usa 13 px para rótulos e 24/500 com algarismos tabulares para valores. Em área útil de até 720 px, passa a duas colunas por duas linhas. A grade dos Projetos adapta a quantidade de colunas pelo espaço restante. No estado vazio, um contorno tracejado mostra “Nenhum projeto ainda” e a ação “Novo projeto”; ela abre o mesmo `ProjectDialog` da sidebar, sem criar outro fluxo.
+
+#### Tokens da tela do workspace
+
+Os valores estão centralizados em `apps/desktop/src/renderer/styles/tokens.css` e aplicados por `styles/workspace-home.css`. A composição usa os tokens de cor, fonte, foco, raio, ícone e motion existentes; não adiciona cores fora da escala semântica.
+
+| Grupo | Tokens e valores | Uso |
+| --- | --- | --- |
+| Página | `--k-home-max-width: 1128px`; topo `clamp(40px, 12vh, 140px)`; base `72px`; gap `32px` | Folha da home |
+| Resumo | gaps `6px` e `8px`; altura mínima da ação `32px` | Data, Runs e atenção |
+| Compositor | padding `16px 14px 14px 20px`; gap `12px`; texto `15px`; textarea `24px` vazia, `64px` com rascunho, máximo `200px`; ações `36px`; botão auxiliar `32px` | Campo, seletor e envio |
+| Seletor | altura `30px`; padding horizontal `10px`; gap `6px`; largura máxima `320px` ou `45vw` | Projeto da nova conversa |
+| Projetos | gap `16px`; largura mínima `280px`; cartão com padding `16px 16px 14px`; gap interno `14px`; cabeçalho `10px`; base `10px` | Grade e cartões |
+| Ação do cartão | altura `28px`; padding horizontal `10px` | Nova conversa |
+| Tarefas e vazio | faixa `16px 20px`; gap interno `6px`; bloco vazio com `24px` e gap `12px` | Contagens e ausência de Projetos |
+| Tipografia auxiliar | linhas `1.25`, `1.4`, `1.2`; tecla com padding `2px 6px`, linha `1.3` | Título, resumo, compositor, contagem e tecla |
+
+Runs por Projeto e no resumo reutilizam a lista que já alimenta `useWorkspaceStatus`, filtrada em estados `running` e `queued`. O ícone `LiveMoon` é decorativo para leitores de tela nesses resumos: texto acompanha o estado. O ícone de atenção também fica `aria-hidden` dentro do botão, que recebe descrição acessível própria. Erros de carregamento ficam guardados pelo hook; o número correspondente aparece como “—” e a home mostra uma mensagem discreta de estado.
+
+A contagem de conversas não existe no contrato: o renderer percorre todas as páginas de Chats por Projeto com limite 100 por chamada e calcula o total e a maior `updatedAt`. Projetos com muitos Chats podem exigir várias chamadas e demorar mais. Tarefas usam quatro consultas separadas (uma por estado, também paginadas com limite 100). Não há polling: projetos e workspace recarregam quando mudam, Chats/Tarefas quando chega `chat.updated`/`task.updated`, e Runs pela atualização de `useWorkspaceStatus` após `run.updated`. Os cartões mostram Runs em execução a partir dessa lista existente, não um total histórico.
+
+O resumo “precisam de você” abre Configurações e ferramentas, onde hoje vive o painel de atenção; esse destino é provisório e não representa uma tela própria de aprovações. O link “Abrir quadro” vai para Tarefas. Os estados indisponíveis têm texto além da cor. Foco usa o anel global `--k-focus`; `prefers-reduced-motion` mantém as transições da tela desligadas junto do shell. O cartão não é clicável no todo e controles usam nome/foco próprios. A revisão por captura deve conferir a largura mínima de 840 × 620 px, a grade em área útil estreita e o contorno do foco real.
+
 ### Contraste WCAG
 
 Contraste calculado pela fórmula WCAG para luminância relativa sRGB: `(Lmais clara + 0,05) / (Lmais escura + 0,05)`. Os valores estão arredondados a duas casas; AA para texto normal exige pelo menos 4,5:1.
@@ -167,7 +198,7 @@ Contraste calculado pela fórmula WCAG para luminância relativa sRGB: `(Lmais c
 
 ### Ainda não implementado / ideias futuras
 
-- **Nova home:** mostrar Runs em andamento via `runs.list`, pedido de permissão para desfazer via `approvals.decide`, ação Retomar, recentes com o Dot e contagens de tarefas. São capacidades a implementar nas telas, não parte desta tarefa de tokens.
+- **Detalhes futuros da home:** ação para resolver pedidos de permissão via `approvals.decide`, ação Retomar e identificação do Dot nas conversas recentes ainda dependem de telas e fluxos próprios. A tela inicial já mostra resumos de Runs e atenção, Projetos e contagens de Tarefas.
 - **Uso restante por Dot no rodapé:** ainda não há fonte de dados; a API local não fornece esse dado e o app não pode ler credenciais das CLIs. É necessária uma spec antes de qualquer código.
 
 ---

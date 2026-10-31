@@ -1,23 +1,27 @@
 import { useEffect, useState } from 'react';
 import type { TerminalEvent } from '../../../../../../packages/contracts/src';
-import type { UiWorkspaceProject } from '../../lib/api';
+import type { UiRun, UiWorkspaceProject } from '../../lib/api';
 
 type WorkspaceStatus = Record<string, { running: number; attention: number }>;
 
 export function useWorkspaceStatus(projectIndex: UiWorkspaceProject[]) {
   const [workspaceStatus, setWorkspaceStatus] = useState<WorkspaceStatus>({});
   const [runningChatIds, setRunningChatIds] = useState<Set<string>>(() => new Set());
+  const [runs, setRuns] = useState<UiRun[]>();
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState<unknown>();
 
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let requestVersion = 0;
+    setReady(false);
+    setRuns(undefined);
 
     async function refresh() {
       const currentVersion = ++requestVersion;
       try {
-        const [runs, approvals] = await Promise.all([
+        const [runList, approvals] = await Promise.all([
           window.karont.runs(100),
           window.karont.approvals(),
         ]);
@@ -36,7 +40,7 @@ export function useWorkspaceStatus(projectIndex: UiWorkspaceProject[]) {
           status[kind] += 1;
         };
 
-        for (const run of runs) {
+        for (const run of runList) {
           if ((run.state === 'running' || run.state === 'queued') && run.chatId)
             runningChats.add(run.chatId);
           const workspaceId = projectsById.get(run.projectId);
@@ -54,11 +58,15 @@ export function useWorkspaceStatus(projectIndex: UiWorkspaceProject[]) {
 
         setWorkspaceStatus(next);
         setRunningChatIds(runningChats);
+        setRuns(runList);
+        setReady(true);
         setError(undefined);
       } catch (cause) {
         if (!active || currentVersion !== requestVersion) return;
         setWorkspaceStatus({});
         setRunningChatIds(new Set());
+        setRuns(undefined);
+        setReady(true);
         setError(cause);
       }
     }
@@ -78,5 +86,5 @@ export function useWorkspaceStatus(projectIndex: UiWorkspaceProject[]) {
     };
   }, [projectIndex]);
 
-  return { workspaceStatus, runningChatIds, error };
+  return { workspaceStatus, runningChatIds, runs, ready, error };
 }

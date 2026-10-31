@@ -9,6 +9,7 @@ import './styles/tokens.css';
 import './styles/style.css';
 import './styles/karont.css';
 import './styles/shell.css';
+import './styles/workspace-home.css';
 createRoot(document.getElementById('root')!).render(
   <WorkspaceDesk view="workspaces" tools={<LegacyWorkbench />} />,
 );

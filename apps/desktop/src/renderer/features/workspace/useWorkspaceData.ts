@@ -122,7 +122,11 @@ export function useWorkspaceData() {
   useEffect(
     () =>
       window.karont.onEvent((event: TerminalEvent) => {
-        if (['project.updated', 'workspace.updated', 'chat.updated'].includes(event.type))
+        if (
+          ['project.updated', 'workspace.updated', 'chat.updated', 'task.updated'].includes(
+            event.type,
+          )
+        )
           setRefresh((n) => n + 1);
       }),
     [],
@@ -216,6 +220,7 @@ export function useWorkspaceData() {
     setError,
     notice,
     setNotice,
+    refresh,
     setRefresh,
     expanded,
     setExpanded,
