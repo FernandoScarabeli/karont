@@ -1,5 +1,9 @@
+import { BridgeError, type TerminalInfo } from "@karont/contract";
 import { ListTodo, Plus, Settings, SquarePen, SquareTerminal } from "lucide-react";
+import { type RefObject, useRef, useState } from "react";
+import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
+import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
@@ -15,9 +19,54 @@ import styles from "./Sidebar.module.css";
 
 export function Sidebar() {
   const { closeTerminalWorkspacePane, navigate, view, layout, activePaneId } = useNavigation();
+  const bridge = getBridge();
   const activePane = findPane(layout, activePaneId);
   const { terminals, error } = useTerminals();
   const terminalTitles = getTerminalDisplayTitles(terminals);
+  const [terminalToClose, setTerminalToClose] = useState<TerminalInfo | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
+  const [closeError, setCloseError] = useState("");
+  const cancelCloseRef = useRef<HTMLButtonElement>(null);
+  const focusAfterCloseRef = useRef<HTMLElement>(null);
+  const terminalButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const newLooseConversationRef = useRef<HTMLButtonElement>(null);
+
+  function requestClose(terminal: TerminalInfo) {
+    focusAfterCloseRef.current = null;
+    setCloseError("");
+    setTerminalToClose(terminal);
+  }
+
+  function cancelClose() {
+    if (isClosing) return;
+    focusAfterCloseRef.current = null;
+    setTerminalToClose(null);
+  }
+
+  async function closeTerminal() {
+    if (!bridge || !terminalToClose || isClosing) return;
+    const closingTerminal = terminalToClose;
+    const closingIndex = terminals.findIndex((terminal) => terminal.id === closingTerminal.id);
+    const focusTerminal = terminals[closingIndex + 1] ?? terminals[closingIndex - 1];
+    focusAfterCloseRef.current = focusTerminal
+      ? (terminalButtonRefs.current.get(focusTerminal.id) ?? null)
+      : newLooseConversationRef.current;
+
+    setCloseError("");
+    setIsClosing(true);
+    try {
+      await bridge.request("terminals.close", { id: closingTerminal.id });
+      setTerminalToClose(null);
+      closeTerminalWorkspacePane(closingTerminal.id);
+    } catch (error) {
+      focusAfterCloseRef.current = null;
+      setCloseError(
+        error instanceof BridgeError && error.message ? error.message : t.terminal.closeFailed,
+      );
+    } finally {
+      setIsClosing(false);
+    }
+  }
 
   return (
     <aside aria-label={t.shell.sidebar} className={styles.sidebar}>
@@ -74,6 +123,7 @@ export function Sidebar() {
               icon={<Plus aria-hidden="true" size={14} strokeWidth={1.75} />}
               label={t.shell.newLooseConversation}
               onClick={() => navigate({ name: "new-conversation" })}
+              ref={newLooseConversationRef}
               size="sm"
             />
           </div>
@@ -101,6 +151,10 @@ export function Sidebar() {
                       aria-label={accessibleName}
                       className={styles.conversationButton}
                       onClick={() => navigate({ name: "terminal", id: terminal.id })}
+                      ref={(element) => {
+                        if (element) terminalButtonRefs.current.set(terminal.id, element);
+                        else terminalButtonRefs.current.delete(terminal.id);
+                      }}
                       title={accessibleName}
                       type="button"
                     >
@@ -114,10 +168,8 @@ export function Sidebar() {
                     </button>
                     <TerminalCloseButton
                       className={styles.endTerminalButton}
-                      exited={terminal.exited}
                       label={title}
-                      onClosed={() => closeTerminalWorkspacePane(terminal.id)}
-                      terminalId={terminal.id}
+                      onRequestClose={() => requestClose(terminal)}
                     />
                   </li>
                 );
@@ -142,6 +194,38 @@ export function Sidebar() {
           size="sm"
         />
       </footer>
+      <Dialog
+        description={
+          terminalToClose?.exited ? t.terminal.closeExitedDescription : t.terminal.closeDescription
+        }
+        initialFocusRef={cancelCloseRef as RefObject<HTMLElement | null>}
+        onClose={cancelClose}
+        open={terminalToClose !== null}
+        returnFocusRef={focusAfterCloseRef as RefObject<HTMLElement | null>}
+        title={t.terminal.closeTitle}
+        footer={
+          <>
+            <Button
+              disabled={isClosing}
+              onClick={cancelClose}
+              ref={cancelCloseRef}
+              variant="secondary"
+            >
+              {t.terminal.cancel}
+            </Button>
+            <Button disabled={isClosing} onClick={() => void closeTerminal()} variant="danger">
+              <SquareTerminal aria-hidden="true" size={15} strokeWidth={1.8} />
+              {isClosing ? t.terminal.closing : t.terminal.close}
+            </Button>
+          </>
+        }
+      >
+        {closeError ? (
+          <p className={styles.closeError} role="alert">
+            {closeError}
+          </p>
+        ) : null}
+      </Dialog>
     </aside>
   );
 }
