@@ -53,6 +53,8 @@ Repositório recriado do zero em 2026-10-31.
     - **Cabeçalho do terminal** redesenhado.
     - **Conversas lado a lado**: botão "Dividir"; divisórias arrastáveis; arrastar uma conversa para um canto reorganiza a tela; layout salvo. Feito já no M1 com terminais. Dependência `react-resizable-panels` aprovada.
 
+15. Codex sempre no **modo rápido** (`-c service_tier="fast"`), pedido do dono (2026-10-31).
+
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
 - Node 24 roda `.ts` direto (type stripping): testes e serviço em dev rodam sem build. Por isso o TS usa `erasableSyntaxOnly` (sem `enum`/`namespace`) e imports com extensão `.ts`.
