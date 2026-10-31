@@ -21,6 +21,7 @@
   --k-color-ok: #6fcf97;
   --k-color-terminal-selection: rgb(243 238 227 / 30%);
   --k-color-dialog-backdrop: rgb(0 0 0 / 72%);
+  --k-color-drop-zone: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
   --k-shadow-dialog: 0 var(--k-space-8) var(--k-space-10) rgb(0 0 0 / 32%);
 
   --k-font-sans: "Geist Sans", system-ui, sans-serif;
@@ -102,6 +103,13 @@
   --k-empty-state-max-width: 360px;
   --k-dialog-width-sm: 420px;
   --k-dialog-width-md: 520px;
+  --k-menu-min-width: 200px;
+  --k-pane-menu-max-width: 360px;
+  --k-menu-max-height: 480px;
+  --k-splitter-target: 8px;
+  --k-layer-separator: 1;
+  --k-layer-drop-zone: 2;
+  --k-layer-menu: 3;
   --k-settings-nav-width: 160px;
   --k-settings-content-max-width: 960px;
   --k-settings-prose-width: 68ch;
@@ -111,6 +119,13 @@
   --k-composer-textarea-min-height: 56px;
   --k-composer-textarea-max-height: 224px;
   --k-composer-submit-size: 36px;
+}
+
+/* Breakpoints são literais na gramática de @container e ficam centralizados nos tokens. */
+@container terminal-pane (max-width: 420px) {
+  .k-terminal-pane [data-k-terminal-folder] {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

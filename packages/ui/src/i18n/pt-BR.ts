@@ -71,6 +71,25 @@ export const t = {
     agentsLoadFailed: "Não foi possível carregar os agentes encontrados.",
     settingsSaveFailed: "Não foi possível salvar o agente escolhido.",
   },
+  workspace: {
+    panels: "Painéis de conversas",
+    split: "Dividir",
+    splitRight: "Dividir à direita",
+    splitBelow: "Dividir abaixo",
+    closePane: (title: string) => `Fechar painel ${title}`,
+    panelLimit: "O limite de seis painéis foi atingido.",
+    panelActions: "Ações do painel",
+    panelShortcuts:
+      "Ctrl+Alt+←/→/↑/↓ ativa o painel vizinho; Ctrl+Alt+Shift+←/→/↑/↓ move o painel ativo.",
+    resizeColumns: "Redimensionar painéis lado a lado",
+    resizeRows: "Redimensionar painéis empilhados",
+    chatTitle: "Conversa",
+    layoutSaveFailed: "Não foi possível salvar o arranjo dos painéis.",
+    navigationSaveFailed: "Não foi possível salvar a última tela.",
+    paneSplit: "Painel dividido",
+    paneMoved: "Painel movido",
+    paneClosed: "Painel fechado",
+  },
   terminal: {
     namePrefix: "Terminal ",
     loadingTitle: "Conectando ao terminal…",
@@ -83,8 +102,10 @@ export const t = {
         ? "Processo encerrado (código desconhecido)"
         : `Processo encerrado (código ${code})`,
     close: "Fechar terminal",
+    endTerminal: (title: string) => `Encerrar ${title}`,
     closeTitle: "Fechar este terminal?",
     closeDescription: "O processo que está rodando nele será encerrado.",
+    closeExitedDescription: "O terminal encerrado será removido da lista.",
     cancel: "Cancelar",
     closing: "Fechando…",
     closeFailed: "Não foi possível fechar o terminal.",
@@ -92,7 +113,8 @@ export const t = {
     writeFailed: "Não foi possível enviar a entrada ao terminal.",
     resizeFailed: "Não foi possível ajustar o tamanho do terminal.",
     inaccessibleName: (title: string) => `Terminal ${title}`,
-    sidebarAccessibleName: (shell: string, path: string) => `Terminal ${shell} em ${path}`,
+    sidebarAccessibleName: (title: string, state: string) =>
+      `${title}, ${state.toLocaleLowerCase("pt-BR")}`,
   },
   settings: {
     title: "Configurações",

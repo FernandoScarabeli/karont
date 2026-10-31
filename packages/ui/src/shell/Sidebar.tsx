@@ -3,16 +3,19 @@ import { Button } from "../components/Button/Button.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
+import { TerminalCloseButton } from "../terminal/TerminalCloseButton.tsx";
 import {
   getTerminalDisplayDetails,
   getTerminalDisplayTitles,
   useTerminals,
 } from "../terminal/useTerminals.ts";
+import { findPane } from "../workspace/layout.ts";
 import { ServiceStatus } from "./ServiceStatus.tsx";
 import styles from "./Sidebar.module.css";
 
 export function Sidebar() {
-  const { navigate, view } = useNavigation();
+  const { closeTerminalWorkspacePane, navigate, view, layout, activePaneId } = useNavigation();
+  const activePane = findPane(layout, activePaneId);
   const { terminals, error } = useTerminals();
   const terminalTitles = getTerminalDisplayTitles(terminals);
 
@@ -21,7 +24,11 @@ export function Sidebar() {
       <nav aria-label={t.shell.primaryNavigation} className={styles.navigation}>
         <div className={styles.primaryActions}>
           <Button
-            aria-current={view.name === "new-conversation" ? "page" : undefined}
+            aria-current={
+              view.name === "workspace" && activePane?.view.kind === "new-conversation"
+                ? "page"
+                : undefined
+            }
             className={styles.navigationAction}
             iconStart={<SquarePen aria-hidden="true" size={16} strokeWidth={1.75} />}
             onClick={() => navigate({ name: "new-conversation" })}
@@ -78,15 +85,18 @@ export function Sidebar() {
             <ul aria-label={t.shell.conversations} className={styles.conversationList}>
               {terminals.map((terminal) => {
                 const details = getTerminalDisplayDetails(terminal);
-                const accessibleName = t.terminal.sidebarAccessibleName(
-                  details.shell,
-                  details.path,
-                );
+                const title = terminalTitles.get(terminal.id) ?? details.shortTitle;
+                const terminalState = terminal.exited ? t.shell.exited : t.terminal.running;
+                const accessibleName = t.terminal.sidebarAccessibleName(title, terminalState);
                 return (
                   <li className={styles.conversationItem} key={terminal.id}>
                     <button
                       aria-current={
-                        view.name === "terminal" && view.id === terminal.id ? "page" : undefined
+                        view.name === "workspace" &&
+                        activePane?.view.kind === "terminal" &&
+                        activePane.view.terminalId === terminal.id
+                          ? "page"
+                          : undefined
                       }
                       aria-label={accessibleName}
                       className={styles.conversationButton}
@@ -95,13 +105,20 @@ export function Sidebar() {
                       type="button"
                     >
                       <SquareTerminal aria-hidden="true" size={15} strokeWidth={1.8} />
-                      <span className={styles.conversationTitle}>
-                        {terminalTitles.get(terminal.id) ?? details.shortTitle}
-                      </span>
+                      <span className={styles.conversationTitle}>{title}</span>
                       {terminal.exited ? (
                         <span className={styles.exitedMarker}>{t.shell.exited}</span>
-                      ) : null}
+                      ) : (
+                        <span aria-hidden="true" className={styles.runningMarker} />
+                      )}
                     </button>
+                    <TerminalCloseButton
+                      className={styles.endTerminalButton}
+                      exited={terminal.exited}
+                      label={title}
+                      onClosed={() => closeTerminalWorkspacePane(terminal.id)}
+                      terminalId={terminal.id}
+                    />
                   </li>
                 );
               })}

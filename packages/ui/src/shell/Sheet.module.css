@@ -9,7 +9,7 @@
   background: var(--k-color-bg-sheet);
 }
 
-.terminalSheet {
+.workspaceSheet {
   overflow: hidden;
   padding: 0;
 }

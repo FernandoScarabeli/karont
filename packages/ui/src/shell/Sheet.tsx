@@ -1,9 +1,8 @@
 import { useEffect, useRef } from "react";
-import { NewConversationView } from "../conversation/NewConversationView.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { SettingsView } from "../settings/SettingsView.tsx";
-import { TerminalView } from "../terminal/TerminalView.tsx";
+import { WorkspacePanels } from "../workspace/WorkspacePanels.tsx";
 import styles from "./Sheet.module.css";
 
 export function Sheet() {
@@ -17,18 +16,16 @@ export function Sheet() {
       (previousView.current.name === "settings" &&
         view.name === "settings" &&
         previousView.current.section !== view.section);
-    if (changed && view.name !== "terminal") titleRef.current?.focus();
+    if (changed) titleRef.current?.focus();
     previousView.current = view;
   }, [view]);
 
   return (
-    <main className={`${styles.sheet} ${view.name === "terminal" ? styles.terminalSheet : ""}`}>
+    <main className={`${styles.sheet} ${view.name === "workspace" ? styles.workspaceSheet : ""}`}>
       {view.name === "settings" ? (
         <SettingsView titleRef={titleRef} />
-      ) : view.name === "new-conversation" ? (
-        <NewConversationView titleRef={titleRef} />
-      ) : view.name === "terminal" ? (
-        <TerminalView id={view.id} />
+      ) : view.name === "workspace" ? (
+        <WorkspacePanels titleRef={titleRef} />
       ) : (
         <>
           <h1 className={styles.pageTitle} ref={titleRef} tabIndex={-1}>
