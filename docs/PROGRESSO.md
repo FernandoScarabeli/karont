@@ -7,7 +7,7 @@ Repositório recriado do zero em 2026-10-31.
   - [x] T0 Base do repositório (workspaces, TypeScript, Biome, pastas) — orquestrador
   - [x] B1 Contrato (schemas zod) — executor back
   - [x] F1 Tokens, fonte e componentes base — executor front
-  - [ ] B2 Serviço: socket com streaming + SQLite com migrações — executor back
+  - [x] B2 Serviço: socket com streaming + SQLite com migrações — executor back
   - [ ] F2 Moldura vazia — executor front
   - [ ] B3 Ponte do preview web (HTTP + SSE) — executor back
   - [ ] B4 Electron seguro + ponte de canal único — executor back
