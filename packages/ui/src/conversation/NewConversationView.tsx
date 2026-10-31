@@ -2,6 +2,7 @@ import type { Agent, RecentFolder } from "@karont/contract";
 import { BridgeError } from "@karont/contract";
 import { Check, ChevronDown, Folder, SquareTerminal, TriangleAlert } from "lucide-react";
 import {
+  type DragEventHandler,
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
@@ -36,8 +37,17 @@ type MenuOption = {
 
 export function NewConversationView({
   titleRef,
+  headerActions,
+  dragHandleProps,
 }: {
-  titleRef: RefObject<HTMLHeadingElement | null>;
+  titleRef?: RefObject<HTMLHeadingElement | null>;
+  headerActions?: ReactNode;
+  dragHandleProps?: {
+    draggable: boolean;
+    onDragEnd: DragEventHandler<HTMLHeadingElement>;
+    onDragStart: DragEventHandler<HTMLHeadingElement>;
+    tabIndex: number;
+  };
 }) {
   const bridge = getBridge();
   const { navigate } = useNavigation();
@@ -480,9 +490,12 @@ export function NewConversationView({
 
   return (
     <div className={styles.page}>
-      <h1 className={styles.title} id={titleId} ref={titleRef} tabIndex={-1}>
-        {t.conversation.title}
-      </h1>
+      <header className={styles.header}>
+        <h1 className={styles.title} id={titleId} ref={titleRef} tabIndex={-1} {...dragHandleProps}>
+          {t.conversation.title}
+        </h1>
+        {headerActions}
+      </header>
 
       <section aria-labelledby={titleId} className={styles.composerSection}>
         <Composer

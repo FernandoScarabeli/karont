@@ -1,31 +1,45 @@
 import { BridgeError, type TerminalInfo } from "@karont/contract";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import { CircleDashed, Square, SquareTerminal, TriangleAlert, X } from "lucide-react";
-import { type RefObject, useEffect, useId, useRef, useState } from "react";
+import { Square, SquareTerminal, TriangleAlert } from "lucide-react";
+import {
+  type DragEventHandler,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { getBridge } from "../bridge/index.ts";
-import { Button } from "../components/Button/Button.tsx";
-import { Dialog } from "../components/Dialog/Dialog.tsx";
-import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { t } from "../i18n/pt-BR.ts";
-import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { connectXtermCspStyles, createXtermCspDocument } from "./cspStyles.ts";
 import "@xterm/xterm/css/xterm.css";
 import styles from "./TerminalView.module.css";
 
 const MAX_WRITE_BYTES = 65_536;
 
-export function TerminalView({ id }: { id: string }) {
+export function TerminalView({
+  id,
+  titleRef,
+  dragHandleProps,
+  headerActions,
+}: {
+  id: string;
+  titleRef?: RefObject<HTMLHeadingElement | null>;
+  headerActions?: ReactNode;
+  dragHandleProps?: {
+    draggable: boolean;
+    onDragEnd: DragEventHandler<HTMLHeadingElement>;
+    onDragStart: DragEventHandler<HTMLHeadingElement>;
+    tabIndex: number;
+  };
+}) {
   const bridge = getBridge();
-  const { navigate } = useNavigation();
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
-  const cancelCloseRef = useRef<HTMLButtonElement>(null);
   const [terminalInfo, setTerminalInfo] = useState<TerminalInfo | null>(null);
   const [terminalError, setTerminalError] = useState("");
-  const [closeError, setCloseError] = useState("");
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
   const titleId = useId();
 
   useEffect(() => {
@@ -232,13 +246,7 @@ export function TerminalView({ id }: { id: string }) {
       ? t.terminal.unknownTitle
       : t.terminal.loadingTitle;
   const exited = terminalInfo?.exited ?? false;
-  const stateLabel = terminalInfo
-    ? exited
-      ? t.terminal.exited(terminalInfo.exitCode ?? null)
-      : t.terminal.running
-    : terminalError
-      ? t.terminal.statusUnavailable
-      : t.terminal.connecting;
+  const exitedLabel = exited ? t.terminal.exited(terminalInfo?.exitCode ?? null) : "";
   const shellName = terminalInfo
     ? (terminalInfo.shell.split(/[\\/]/).filter(Boolean).at(-1) ?? terminalInfo.shell)
     : "";
@@ -248,25 +256,8 @@ export function TerminalView({ id }: { id: string }) {
       ? terminalInfo.title.slice(separatorIndex + 3)
       : (terminalInfo?.cwd ?? "");
 
-  async function closeTerminal() {
-    if (!bridge || isClosing) return;
-    setCloseError("");
-    setIsClosing(true);
-    try {
-      await bridge.request("terminals.close", { id });
-      setIsConfirmOpen(false);
-      navigate({ name: "new-conversation" });
-    } catch (error) {
-      setCloseError(
-        error instanceof BridgeError && error.message ? error.message : t.terminal.closeFailed,
-      );
-    } finally {
-      setIsClosing(false);
-    }
-  }
-
   return (
-    <div className={styles.page}>
+    <div className={`${styles.page} k-terminal-pane`}>
       <header className={styles.header}>
         <div className={styles.headingGroup}>
           <SquareTerminal
@@ -275,7 +266,13 @@ export function TerminalView({ id }: { id: string }) {
             size={18}
             strokeWidth={1.8}
           />
-          <h1 className={styles.title} id={titleId}>
+          <h1
+            className={styles.title}
+            id={titleId}
+            ref={titleRef}
+            tabIndex={-1}
+            {...dragHandleProps}
+          >
             {terminalInfo ? (
               <>
                 <span className={styles.visuallyHidden}>{t.terminal.namePrefix}</span>
@@ -283,38 +280,21 @@ export function TerminalView({ id }: { id: string }) {
                 <span aria-hidden="true" className={styles.titleSeparator}>
                   ·
                 </span>
-                <span className={styles.folderTitle}>{folderTitle}</span>
+                <span className={styles.folderTitle} data-k-terminal-folder="">
+                  {folderTitle}
+                </span>
               </>
             ) : null}
             {!terminalInfo ? title : null}
           </h1>
-          <p
-            className={`${styles.state} ${exited ? styles.exited : terminalInfo ? styles.running : ""}`}
-          >
-            {terminalInfo ? (
-              exited ? (
-                <Square aria-hidden="true" size={15} strokeWidth={1.8} />
-              ) : (
-                <span aria-hidden="true" className={styles.runningDot} />
-              )
-            ) : (
-              <CircleDashed aria-hidden="true" size={15} strokeWidth={1.8} />
-            )}
-            <span>{stateLabel}</span>
-          </p>
+          {exited ? (
+            <p className={`${styles.state} ${styles.exited}`} title={exitedLabel}>
+              <Square aria-hidden="true" size={14} strokeWidth={1.75} />
+              <span>{exitedLabel}</span>
+            </p>
+          ) : null}
         </div>
-        <div className={styles.actions}>
-          <IconButton
-            icon={<X aria-hidden="true" size={16} strokeWidth={1.8} />}
-            label={t.terminal.close}
-            onClick={() => {
-              setCloseError("");
-              if (exited) void closeTerminal();
-              else setIsConfirmOpen(true);
-            }}
-            size="md"
-          />
-        </div>
+        {headerActions ? <div className={styles.actions}>{headerActions}</div> : null}
       </header>
 
       {terminalError ? (
@@ -323,12 +303,6 @@ export function TerminalView({ id }: { id: string }) {
           <span>{terminalError}</span>
         </p>
       ) : null}
-      {closeError && !isConfirmOpen ? (
-        <p className={styles.error} role="alert">
-          {closeError}
-        </p>
-      ) : null}
-
       <section
         aria-labelledby={titleId}
         aria-label={t.terminal.inaccessibleName(title)}
@@ -336,36 +310,6 @@ export function TerminalView({ id }: { id: string }) {
       >
         <div className={styles.terminalHost} ref={hostRef} />
       </section>
-
-      <Dialog
-        description={t.terminal.closeDescription}
-        initialFocusRef={cancelCloseRef as RefObject<HTMLElement | null>}
-        onClose={() => setIsConfirmOpen(false)}
-        open={isConfirmOpen}
-        title={t.terminal.closeTitle}
-        footer={
-          <>
-            <Button
-              disabled={isClosing}
-              onClick={() => setIsConfirmOpen(false)}
-              ref={cancelCloseRef}
-              variant="secondary"
-            >
-              {t.terminal.cancel}
-            </Button>
-            <Button disabled={isClosing} onClick={() => void closeTerminal()} variant="danger">
-              <SquareTerminal aria-hidden="true" size={15} strokeWidth={1.8} />
-              {isClosing ? t.terminal.closing : t.terminal.close}
-            </Button>
-          </>
-        }
-      >
-        {closeError ? (
-          <p className={styles.error} role="alert">
-            {closeError}
-          </p>
-        ) : null}
-      </Dialog>
     </div>
   );
 }

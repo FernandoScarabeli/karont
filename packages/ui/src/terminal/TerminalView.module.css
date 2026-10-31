@@ -1,4 +1,6 @@
 .page {
+  container-name: terminal-pane;
+  container-type: inline-size;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -9,12 +11,13 @@
 
 .header {
   display: flex;
+  min-width: 0;
   min-height: var(--k-terminal-header-height);
   flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
-  gap: var(--k-space-4);
-  padding-inline: var(--k-space-5);
+  gap: var(--k-space-2);
+  padding-inline: var(--k-space-3);
   border-bottom: var(--k-border-width) solid var(--k-color-border);
   background: var(--k-color-bg-sheet);
 }
@@ -23,9 +26,9 @@
   display: flex;
   min-width: 0;
   flex: 1 1 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: var(--k-space-3);
+  gap: var(--k-space-2);
 }
 
 .headerIcon {
@@ -36,6 +39,7 @@
 .title {
   display: inline-flex;
   min-width: 0;
+  flex: 1 1 auto;
   align-items: baseline;
   gap: var(--k-space-2);
   margin: 0;
@@ -47,6 +51,16 @@
   line-height: var(--k-leading-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: grab;
+}
+
+.title:active {
+  cursor: grabbing;
+}
+
+.title:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
 }
 
 .shellName {
@@ -61,6 +75,7 @@
 
 .folderTitle {
   min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   color: var(--k-color-text-muted);
   font-family: var(--k-font-mono);
@@ -71,30 +86,32 @@
 
 .state {
   display: inline-flex;
-  flex: 0 0 auto;
+  min-width: 0;
+  flex: 0 1 auto;
   align-items: center;
   gap: var(--k-space-1);
   margin: 0;
-  font-size: var(--k-text-12);
+  overflow: hidden;
+  font-size: var(--k-text-11);
   line-height: var(--k-leading-normal);
+  white-space: nowrap;
+}
+
+.state svg {
+  flex: 0 0 auto;
+}
+
+.state span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .actions {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: var(--k-space-2);
-}
-
-.runningDot {
-  width: var(--k-dot-size);
-  height: var(--k-dot-size);
-  border-radius: var(--k-radius-full);
-  background: var(--k-color-text-secondary);
-}
-
-.running {
-  color: var(--k-color-text-secondary);
+  gap: 0;
 }
 
 .exited {

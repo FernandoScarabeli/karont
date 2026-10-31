@@ -86,6 +86,28 @@
   white-space: nowrap;
 }
 
+.conversationItem {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.endTerminalButton {
+  position: absolute;
+  z-index: var(--k-layer-menu);
+  top: 50%;
+  inset-inline-end: 0;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity var(--k-duration-fast) var(--k-ease);
+}
+
+.conversationItem:focus-within .endTerminalButton,
+.conversationItem:hover .endTerminalButton,
+.endTerminalButton:focus-visible {
+  opacity: 1;
+}
+
 .conversationList {
   display: flex;
   flex-direction: column;
@@ -98,6 +120,7 @@
 .conversationButton {
   display: flex;
   width: 100%;
+  min-width: 0;
   min-height: var(--k-sidebar-item-height);
   align-items: center;
   gap: var(--k-space-2);
@@ -136,10 +159,29 @@
   white-space: nowrap;
 }
 
+.runningMarker {
+  width: var(--k-dot-size);
+  height: var(--k-dot-size);
+  flex: 0 0 auto;
+  margin-inline-end: var(--k-space-1);
+  border-radius: var(--k-radius-full);
+  background: var(--k-color-text-secondary);
+}
+
 .exitedMarker {
   flex: 0 0 auto;
   color: var(--k-color-text-muted);
   font-size: var(--k-text-11);
+}
+
+.conversationItem:hover .conversationButton,
+.conversationItem:focus-within .conversationButton {
+  padding-inline-end: calc(var(--k-control-height-sm) + var(--k-space-1));
+}
+
+.conversationItem:hover .runningMarker,
+.conversationItem:focus-within .runningMarker {
+  visibility: hidden;
 }
 
 .footer {
