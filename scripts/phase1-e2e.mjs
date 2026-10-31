@@ -265,6 +265,9 @@ try {
     daemonPid,
     runs.map((run) => run.pid),
   );
+  // O xterm só desenha o que está visível: com mais cartões de Dot acima, os terminais podem
+  // ficar fora da tela e o DOM não reflete a saída até rolarem para a vista.
+  await page.locator('.terminal-shell').first().scrollIntoViewIfNeeded();
   const initialOutput = await until(async () => {
     const cards = await page.locator('.terminal-shell').evaluateAll((nodes) =>
       nodes.map((node) =>
@@ -488,6 +491,7 @@ try {
   await restored.getByText('Daemon conectado', { exact: true }).waitFor();
   assert.equal((await client.request({ method: 'ping' })).pid, daemonPid);
   await restored.evaluate((id) => window.karont.writeTerminal(id, 'write\r'), reconnectRun.id);
+  await restored.locator(`#run-${reconnectRun.id} .terminal-shell`).scrollIntoViewIfNeeded();
   await until(async () => {
     const text = await restored.locator(`#run-${reconnectRun.id} .terminal-shell`).innerText();
     assert.ok(text.includes('PTY_WROTE'));
