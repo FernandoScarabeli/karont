@@ -4,10 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "preview:web": "node src/preview/main.ts"
   },
   "dependencies": {
-    "@karont/contract": "0.0.0"
+    "@karont/contract": "0.0.0",
+    "@karont/service": "0.0.0"
   },
   "devDependencies": {
     "electron": "45.2.1",
