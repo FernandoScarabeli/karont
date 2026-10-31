@@ -12,6 +12,7 @@
     "test": "node --test \"src/**/*.test.ts\""
   },
   "dependencies": {
-    "@karont/contract": "0.0.0"
+    "@karont/contract": "0.0.0",
+    "node-pty": "1.1.0"
   }
 }
