@@ -1,6 +1,7 @@
 import { type AgentErrorAgent, describeAgentError } from "@karont/contract";
 import {
   AlertTriangle,
+  Bot,
   Brain,
   Check,
   CheckCircle2,
@@ -18,6 +19,7 @@ import {
   LockKeyhole,
   Pencil,
   Play,
+  Plug,
   Search,
   SquareTerminal,
   Wrench,
@@ -44,8 +46,10 @@ import { countDiffLines, parseFileChanges } from "./actionDiff.ts";
 import {
   type ConversationAction,
   categoryForAction,
+  groupActionsByParentId,
   groupConsecutiveActions,
   summarizeAction,
+  summarizeActionDiff,
   summarizeActionGroup,
 } from "./actionSummary.ts";
 import { formatAttachmentSize } from "./attachmentUtils.ts";
@@ -463,6 +467,32 @@ function renderParts(
   });
   const hasQuestionCard = parts.some((part) => part.type === "question");
   const hasPlanCard = parts.some((part) => part.type === "plan");
+  const allActionEntries = parts.flatMap((part) => {
+    if (part.type !== "action") return [];
+    return [{ action: part, permitted: permittedActionIds.has(part.id) }];
+  });
+  const eligibleActionEntries = allActionEntries.filter(
+    ({ action }) =>
+      !duplicatesPendingPermission(action, pendingPermissionCommands) &&
+      !duplicatesPendingCard(action, hasQuestionCard, hasPlanCard),
+  );
+  const parentGroups = groupActionsByParentId(eligibleActionEntries.map(({ action }) => action));
+  const rootActionIds = new Set(parentGroups.map(({ action }) => action.id));
+  const entriesByActionId = new Map(
+    eligibleActionEntries.map((entry) => [entry.action.id, entry] as const),
+  );
+  const childrenByParentId = new Map(
+    parentGroups.map(
+      ({ action, children }) =>
+        [
+          action.id,
+          children.flatMap((child) => {
+            const entry = entriesByActionId.get(child.id);
+            return entry ? [entry] : [];
+          }),
+        ] as const,
+    ),
+  );
   let index = 0;
   while (index < parts.length) {
     const part = parts[index];
@@ -501,9 +531,12 @@ function renderParts(
           !duplicatesPendingCard(action, hasQuestionCard, hasPlanCard),
       );
       if (visibleActions.length > 0) {
+        const rootActions = visibleActions.filter(({ action }) => rootActionIds.has(action.id));
+        if (rootActions.length === 0) continue;
         elements.push(
           <ActionGroup
-            actions={visibleActions}
+            actions={rootActions}
+            childrenByParentId={childrenByParentId}
             cwd={cwd}
             key={actions[0]?.action.id ?? index}
             messageId={messageId}
@@ -919,6 +952,7 @@ const ThinkingPart = memo(function ThinkingPart({
 const ActionGroup = memo(
   function ActionGroup({
     actions,
+    childrenByParentId,
     messageId,
     cwd,
   }: {
@@ -926,6 +960,7 @@ const ActionGroup = memo(
       action: Extract<MessagePart, { type: "action" }>;
       permitted: boolean;
     }>;
+    childrenByParentId: Map<string, Array<{ action: ConversationAction; permitted: boolean }>>;
     messageId: string;
     cwd: string;
   }) {
@@ -946,6 +981,7 @@ const ActionGroup = memo(
                 key={item.action.id}
                 messageId={messageId}
                 permitted={item.permitted}
+                nestedActions={childrenByParentId.get(item.action.id) ?? []}
                 summary={label}
               />
             ) : null;
@@ -967,16 +1003,39 @@ const ActionGroup = memo(
     previous.actions.length === next.actions.length &&
     previous.messageId === next.messageId &&
     previous.cwd === next.cwd &&
+    sameNestedActionEntries(previous.childrenByParentId, next.childrenByParentId) &&
     previous.actions.every(
       ({ action, permitted }, index) =>
         action === next.actions[index]?.action && permitted === next.actions[index]?.permitted,
     ),
 );
 
+function sameNestedActionEntries(
+  previous: Map<string, Array<{ action: ConversationAction; permitted: boolean }>>,
+  next: Map<string, Array<{ action: ConversationAction; permitted: boolean }>>,
+): boolean {
+  if (previous.size !== next.size) return false;
+  for (const [parentId, children] of previous) {
+    const nextChildren = next.get(parentId);
+    if (
+      !nextChildren ||
+      children.length !== nextChildren.length ||
+      children.some(
+        ({ action, permitted }, index) =>
+          action !== nextChildren[index]?.action || permitted !== nextChildren[index]?.permitted,
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export const ActionItem = memo(function ActionItem({
   action,
   messageId,
   permitted,
+  nestedActions = [],
   cwd,
   summary,
   initialExpanded = false,
@@ -984,6 +1043,7 @@ export const ActionItem = memo(function ActionItem({
   action: ConversationAction;
   messageId: string;
   permitted: boolean;
+  nestedActions?: Array<{ action: ConversationAction; permitted: boolean }>;
   cwd: string;
   summary: string;
   initialExpanded?: boolean;
@@ -1010,6 +1070,21 @@ export const ActionItem = memo(function ActionItem({
       </button>
       <div hidden={!expanded} id={detailsId}>
         <ActionDetails action={action} cwd={cwd} />
+        {nestedActions.length > 0 ? (
+          <fieldset className={styles.actionChildren}>
+            <legend className={styles.srOnly}>{t.chat.subagentActions}</legend>
+            {nestedActions.map((child) => (
+              <ActionItem
+                action={child.action}
+                cwd={cwd}
+                key={child.action.id}
+                messageId={messageId}
+                permitted={child.permitted}
+                summary={summarizeAction(child.action, cwd)}
+              />
+            ))}
+          </fieldset>
+        ) : null}
       </div>
     </div>
   );
@@ -1137,6 +1212,44 @@ function ActionDetails({ action, cwd }: { action: ConversationAction; cwd: strin
     );
   }
 
+  if (category === "image") {
+    return (
+      <div className={styles.actionDetails}>
+        {action.output ? (
+          <div>
+            <span className={styles.detailLabel}>{t.chat.savedPath}</span>
+            <pre>{withTruncation(action.output, action.truncated)}</pre>
+          </div>
+        ) : null}
+        {action.input ? (
+          <div>
+            <span className={styles.detailLabel}>{t.chat.revisedPrompt}</span>
+            <pre>{withTruncation(action.input, action.truncated)}</pre>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (category === "mcp") {
+    return (
+      <div className={styles.actionDetails}>
+        {action.input ? (
+          <div>
+            <span className={styles.detailLabel}>{t.chat.input}</span>
+            <pre>{formatRawValue(action.input)}</pre>
+          </div>
+        ) : null}
+        {action.output ? (
+          <div>
+            <span className={styles.detailLabel}>{t.chat.output}</span>
+            <pre>{withTruncation(formatRawValue(action.output), action.truncated)}</pre>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   if (category === "command" || category === "test" || category === "list") {
     const command = actionCommand(action);
     const { output, exitCode } = commandOutput(action.output);
@@ -1182,27 +1295,16 @@ function ActionDetails({ action, cwd }: { action: ConversationAction; cwd: strin
 }
 
 function actionRowLabel(action: ConversationAction, cwd: string, fallback?: string): string {
-  const changes = parseFileChanges(action.output).filter((change) => change.diff.trim());
-  if (!changes.length) {
-    const category = categoryForAction(action);
-    if (category === "edit" || category === "write") {
-      const paths = actionPaths(action, cwd);
-      const verb = category === "write" ? "Criou" : "Editou";
-      if (paths.length === 1) return `${verb} ${paths[0]}`;
-      if (paths.length > 1) return `${verb} ${paths.length} arquivos`;
-    }
-    return fallback ?? summarizeAction(action, cwd);
+  const diffSummary = summarizeActionDiff(action, cwd);
+  if (diffSummary) return diffSummary;
+  const category = categoryForAction(action);
+  if (category === "edit" || category === "write") {
+    const paths = actionPaths(action, cwd);
+    const verb = category === "write" ? "Criou" : "Editou";
+    if (paths.length === 1) return `${verb} ${paths[0]}`;
+    if (paths.length > 1) return `${verb} ${paths.length} arquivos`;
   }
-  const paths = [
-    ...new Set(changes.map((change) => displayPath(change.path, cwd)).filter(Boolean)),
-  ];
-  const added = changes.reduce((total, change) => total + countDiffLines(change.diff).added, 0);
-  const removed = changes.reduce((total, change) => total + countDiffLines(change.diff).removed, 0);
-  const createsFiles =
-    action.actionType === "write" || changes.every((change) => change.kind === "add");
-  const verb = createsFiles ? "Criou" : "Editou";
-  const target = paths.length === 1 ? paths[0] : `${paths.length} arquivos`;
-  return `${verb} ${target} +${added} −${removed}`;
+  return fallback ?? summarizeAction(action, cwd);
 }
 
 function actionBatchLabel(
@@ -2112,6 +2214,12 @@ function actionIcon(type: Extract<MessagePart, { type: "action" }>["actionType"]
       return Search;
     case "web":
       return Globe2;
+    case "subagent":
+      return Bot;
+    case "mcp":
+      return Plug;
+    case "image":
+      return ImageIcon;
     case "other":
       return Wrench;
   }
@@ -2133,6 +2241,12 @@ function actionCategoryIcon(action: ConversationAction | undefined) {
       return Search;
     case "web":
       return Globe2;
+    case "subagent":
+      return Bot;
+    case "mcp":
+      return Plug;
+    case "image":
+      return ImageIcon;
     case "other":
       return Wrench;
   }

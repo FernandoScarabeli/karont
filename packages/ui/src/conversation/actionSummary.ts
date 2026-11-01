@@ -1,4 +1,5 @@
 import type { MessagePart } from "@karont/contract";
+import { countDiffLines, parseFileChanges } from "./actionDiff.ts";
 
 export type ConversationAction = Extract<MessagePart, { type: "action" }>;
 export type ActionSummaryCategory =
@@ -10,11 +11,19 @@ export type ActionSummaryCategory =
   | "search"
   | "web"
   | "command"
+  | "subagent"
+  | "mcp"
+  | "image"
   | "other";
 
 export type ActionSummaryGroup = {
   category: ActionSummaryCategory;
   actions: ConversationAction[];
+};
+
+export type ParentActionGroup = {
+  action: ConversationAction;
+  children: ConversationAction[];
 };
 
 export function summarizeAction(action: ConversationAction, cwd: string): string {
@@ -43,9 +52,51 @@ export function summarizeAction(action: ConversationAction, cwd: string): string
       return "Pesquisou na web";
     case "command":
       return "Rodou um comando";
+    case "subagent":
+      return `Subagente · ${action.title}`;
+    case "mcp":
+      return mcpActionLabel(action);
+    case "image":
+      return "Gerou uma imagem";
     case "other":
       return "Executou uma ação";
   }
+}
+
+export function summarizeActionDiff(action: ConversationAction, cwd: string): string | null {
+  const changes = parseFileChanges(action.output).filter((change) => change.diff.trim());
+  if (changes.length === 0) return null;
+  const paths = [
+    ...new Set(changes.map((change) => diffDisplayPath(change.path, cwd)).filter(Boolean)),
+  ];
+  const added = changes.reduce((total, change) => total + countDiffLines(change.diff).added, 0);
+  const removed = changes.reduce((total, change) => total + countDiffLines(change.diff).removed, 0);
+  const createsFiles =
+    action.actionType === "write" || changes.every((change) => change.kind === "add");
+  const verb = createsFiles ? "Criou" : "Editou";
+  const target = paths.length === 1 ? paths[0] : `${paths.length} arquivos`;
+  return `${verb} ${target} +${added} −${removed}`;
+}
+
+export function mcpActionLabel(action: ConversationAction): string {
+  const { server, tool } = mcpActionParts(action);
+  return `${server} · ${tool}`;
+}
+
+export function mcpActionParts(action: ConversationAction): { server: string; tool: string } {
+  let parsedTitle: { server: string; tool: string } | undefined;
+  if (action.title.startsWith("mcp__")) {
+    const separator = action.title.indexOf("__", 5);
+    if (separator > 5) {
+      parsedTitle = {
+        server: action.title.slice(5, separator),
+        tool: action.title.slice(separator + 2),
+      };
+    }
+  }
+  const server = action.server || parsedTitle?.server || "MCP";
+  const tool = action.tool || parsedTitle?.tool || action.title;
+  return { server, tool };
 }
 
 export function summarizeActionGroup(group: ActionSummaryGroup, cwd: string): string {
@@ -69,6 +120,12 @@ export function summarizeActionGroup(group: ActionSummaryGroup, cwd: string): st
       return `Fez ${count} buscas na web`;
     case "command":
       return `Rodou ${count} comandos`;
+    case "subagent":
+      return `Rodou ${count} subagentes`;
+    case "mcp":
+      return `Chamou ${count} ferramentas MCP`;
+    case "image":
+      return `Gerou ${count} imagens`;
     case "other":
       return `Executou ${count} ações`;
   }
@@ -79,10 +136,27 @@ export function groupConsecutiveActions(actions: ConversationAction[]): ActionSu
   for (const action of actions) {
     const category = categoryForAction(action);
     const previous = groups.at(-1);
-    if (previous?.category === category) previous.actions.push(action);
+    if (
+      category !== "subagent" &&
+      category !== "mcp" &&
+      category !== "image" &&
+      previous?.category === category
+    )
+      previous.actions.push(action);
     else groups.push({ category, actions: [action] });
   }
   return groups;
+}
+
+export function groupActionsByParentId(actions: ConversationAction[]): ParentActionGroup[] {
+  const roots = actions.filter((action) => !action.parentId);
+  return roots.map((action) => ({
+    action,
+    children:
+      action.actionType === "subagent"
+        ? actions.filter((child) => child.parentId === action.id)
+        : [],
+  }));
 }
 
 export function categoryForAction(action: ConversationAction): ActionSummaryCategory {
@@ -104,6 +178,9 @@ export function categoryForAction(action: ConversationAction): ActionSummaryCate
   if (action.actionType === "write") return "write";
   if (action.actionType === "search") return "search";
   if (action.actionType === "web") return "web";
+  if (action.actionType === "subagent") return "subagent";
+  if (action.actionType === "mcp") return "mcp";
+  if (action.actionType === "image") return "image";
   return "other";
 }
 
@@ -183,4 +260,13 @@ function looksLikePath(value: string): boolean {
   return /(?:^|[\s'"`])(?:\.{0,2}\/|\/)?[\w.@-][\w./@-]*\.[A-Za-z0-9_-]+(?:\s|$|['"`])/u.test(
     value,
   );
+}
+
+function diffDisplayPath(path: string, cwd: string): string {
+  const normalizedCwd = cwd.replace(/\/+$/u, "");
+  if (normalizedCwd && path.startsWith(`${normalizedCwd}/`)) {
+    return path.slice(normalizedCwd.length + 1);
+  }
+  if (path.startsWith("/")) return path.split("/").at(-1) ?? path;
+  return path;
 }

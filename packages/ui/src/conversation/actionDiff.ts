@@ -42,9 +42,11 @@ function fileChangeItem(value: unknown, fallbackPath = ""): FileChangeDetail[] {
       kind:
         typeof value.kind === "string"
           ? value.kind
-          : typeof value.type === "string"
-            ? value.type
-            : "",
+          : isRecord(value.kind) && typeof value.kind.type === "string"
+            ? value.kind.type
+            : typeof value.type === "string"
+              ? value.type
+              : "",
       diff:
         typeof value.diff === "string"
           ? value.diff

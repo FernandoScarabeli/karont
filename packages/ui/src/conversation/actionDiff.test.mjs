@@ -28,6 +28,17 @@ test("lê o mapa de alterações emitido pelo adaptador Codex", () => {
   );
 });
 
+test("lê o tipo de mudança Claude quando kind é estruturado", () => {
+  assert.deepEqual(
+    parseFileChanges(
+      JSON.stringify([
+        { path: "src/app.ts", kind: { type: "update" }, diff: "@@ -1 +1 @@\n-old\n+new" },
+      ]),
+    ),
+    [{ path: "src/app.ts", kind: "update", diff: "@@ -1 +1 @@\n-old\n+new" }],
+  );
+});
+
 test("conta linhas sem incluir os cabeçalhos do diff unificado", () => {
   assert.deepEqual(
     countDiffLines(

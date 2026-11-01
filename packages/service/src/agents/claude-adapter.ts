@@ -11,6 +11,7 @@ import {
 } from "@karont/contract";
 import type { AdapterEvent, AdapterFactory, AdapterResponse, AgentAdapter } from "./adapter.ts";
 import { resolveAgentCommand } from "./detect.ts";
+import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
 
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
 const CONTROL_REQUEST_TIMEOUT_MS = 10_000;
@@ -463,7 +464,10 @@ export class ClaudeAdapter implements AgentAdapter {
       const content = Array.isArray(message?.content) ? message.content : [];
       for (const item of content) {
         if (!isRecord(item) || item.type !== "tool_use" || typeof item.name !== "string") continue;
-        this.#handleToolUse(item);
+        this.#handleToolUse(
+          item,
+          typeof value.parent_tool_use_id === "string" ? value.parent_tool_use_id : undefined,
+        );
       }
       return;
     }
@@ -504,7 +508,7 @@ export class ClaudeAdapter implements AgentAdapter {
     }
   }
 
-  #handleToolUse(item: Record<string, unknown>): void {
+  #handleToolUse(item: Record<string, unknown>, parentToolUseId?: string): void {
     const name = item.name as string;
     const input = isRecord(item.input) ? item.input : {};
     const id = typeof item.id === "string" ? item.id : randomUUID();
@@ -550,14 +554,19 @@ export class ClaudeAdapter implements AgentAdapter {
       return;
     }
     const partId = randomUUID();
+    const parentId = parentToolUseId ? this.#actions.get(parentToolUseId)?.partId : undefined;
+    const mapped = mapClaudeToolAction(name, input, parentId);
     const action: MessagePart = {
       id: partId,
       type: "action",
-      actionType: actionType(name),
-      title: actionTitle(name, input),
-      input: summarizeInput(input, name === "Bash"),
-      output: "",
-      truncated: false,
+      actionType: mapped.actionType,
+      title: mapped.title.slice(0, 240),
+      input: mapped.input,
+      output: mapped.output,
+      ...(mapped.parentId ? { parentId: mapped.parentId } : {}),
+      ...(mapped?.server ? { server: mapped.server } : {}),
+      ...(mapped?.tool ? { tool: mapped.tool } : {}),
+      truncated: mapped.truncated,
       state: "running",
       durationMs: null,
     };
@@ -573,14 +582,17 @@ export class ClaudeAdapter implements AgentAdapter {
     const output = contentToText(item.content);
     const bounded = truncateUtf8(output, MAX_ACTION_OUTPUT_BYTES);
     const existing = this.#pendingPart(actionInfo.partId);
-    if (existing?.type === "action")
+    if (existing?.type === "action") {
+      const keepStructuredDiff =
+        (existing.actionType === "edit" || existing.actionType === "write") && existing.output;
       this.#part({
         ...existing,
-        output: bounded.text,
-        truncated: bounded.truncated,
+        output: keepStructuredDiff ? existing.output : bounded.text,
+        truncated: existing.truncated || (!keepStructuredDiff && bounded.truncated),
         state: item.is_error === true ? "error" : "ok",
         durationMs: Math.max(0, Date.now() - actionInfo.startedAt),
       });
+    }
     this.#actions.delete(toolId);
   }
 
@@ -883,47 +895,6 @@ function classifyErrorText(text: string): "cli-not-found" | "not-logged-in" | "f
     ? "not-logged-in"
     : "failed";
 }
-function actionType(
-  tool: string,
-): "read" | "edit" | "write" | "command" | "search" | "web" | "other" {
-  if (tool === "Read") return "read";
-  if (tool === "Edit" || tool === "NotebookEdit") return "edit";
-  if (tool === "Write") return "write";
-  if (tool === "Bash") return "command";
-  if (tool === "Glob" || tool === "Grep") return "search";
-  if (tool === "WebSearch" || tool === "WebFetch") return "web";
-  return "other";
-}
-function actionTitle(tool: string, input: Record<string, unknown>): string {
-  const detail =
-    typeof input.file_path === "string"
-      ? input.file_path
-      : typeof input.command === "string"
-        ? input.command
-        : typeof input.pattern === "string"
-          ? input.pattern
-          : "";
-  return `${tool}${detail ? ` · ${detail}` : ""}`.slice(0, 240);
-}
-function summarizeInput(input: Record<string, unknown>, preferCommand = false): string {
-  const raw = [
-    ...(preferCommand ? [input.command] : []),
-    input.description,
-    input.file_path,
-    input.pattern,
-    input.query,
-    input.url,
-    input.command,
-    input.subject,
-  ].find((value) => typeof value === "string" && value.length > 0);
-  const summary =
-    typeof raw === "string"
-      ? raw
-      : Object.keys(input).length
-        ? `Parâmetros: ${Object.keys(input).join(", ")}`
-        : "Sem entrada resumida.";
-  return truncateUtf8(summary, 8 * 1024).text;
-}
 function contentToText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return content == null ? "" : JSON.stringify(content);
@@ -933,16 +904,22 @@ function contentToText(content: unknown): string {
     )
     .join("\n");
 }
-function truncateUtf8(text: string, maxBytes: number): { text: string; truncated: boolean } {
-  if (Buffer.byteLength(text, "utf8") <= maxBytes) return { text, truncated: false };
-  const marker = "\n… [truncado]";
-  const budget = maxBytes - Buffer.byteLength(marker, "utf8");
-  let output = "";
-  for (const char of text) {
-    if (Buffer.byteLength(output, "utf8") + Buffer.byteLength(char, "utf8") > budget) break;
-    output += char;
-  }
-  return { text: output + marker, truncated: true };
+function summarizeInput(input: Record<string, unknown>): string {
+  const raw = [
+    input.description,
+    input.file_path,
+    input.pattern,
+    input.query,
+    input.url,
+    input.command,
+  ].find((value) => typeof value === "string" && value.length > 0);
+  const summary =
+    typeof raw === "string"
+      ? raw
+      : Object.keys(input).length
+        ? `Parâmetros: ${Object.keys(input).join(", ")}`
+        : "Sem entrada resumida.";
+  return truncateUtf8(summary, 8 * 1024).text;
 }
 function isAllowSuggestion(value: unknown): boolean {
   return isRecord(value) && value.behavior === "allow";

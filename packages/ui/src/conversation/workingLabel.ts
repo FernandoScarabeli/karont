@@ -1,5 +1,6 @@
 import type { MessagePart } from "@karont/contract";
 import { t } from "../i18n/pt-BR.ts";
+import { mcpActionParts } from "./actionSummary.ts";
 
 export type WorkingActionPart = Extract<MessagePart, { type: "action" }>;
 type ThinkingPart = Extract<MessagePart, { type: "thinking" }>;
@@ -52,6 +53,14 @@ export function deriveWorkingLabel(
       return t.chat.searchingAction(searchDetail(lastPart.title));
     case "web":
       return t.chat.researchingAction(searchDetail(lastPart.title));
+    case "subagent":
+      return t.chat.runningSubagent;
+    case "mcp": {
+      const { server, tool } = mcpActionParts(lastPart);
+      return t.chat.callingMcp(server, tool);
+    }
+    case "image":
+      return t.chat.generatingImage;
     case "other":
       return lastPart.title.trim() || t.chat.working;
   }
