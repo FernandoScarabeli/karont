@@ -20,6 +20,7 @@ import type {
 } from "./adapter.ts";
 import { AgentCliError } from "./claude-adapter.ts";
 import { resolveAgentCommand } from "./detect.ts";
+import { mapCodexSpecialAction, truncateUtf8 } from "./tool-actions.ts";
 
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
 const RPC_TIMEOUT_MS = 30_000;
@@ -601,17 +602,21 @@ export class CodexAdapter implements AgentAdapter {
       stage === "running"
         ? (prior?.observedStartedAt ?? performance.now())
         : (prior?.observedStartedAt ?? null);
-    const actionType = actionTypeFor(item);
+    const mapped = mapCodexSpecialAction(item);
+    const actionType = mapped?.actionType ?? actionTypeFor(item);
     const action = Array.isArray(item.commandActions)
       ? item.commandActions.find(isRecord)
       : undefined;
     const command = unwrapCodexShellCommand(stringValue(item.command));
     const actionCommand = unwrapCodexShellCommand(stringValue(action?.command));
     const displayCommand = command || actionCommand;
-    const input = actionInput(item, displayCommand);
-    const title = actionTitle(item, actionType, displayCommand);
-    const rawOutput = actionOutput(item);
-    const { output, truncated } = truncateOutput(rawOutput);
+    const boundedInput = mapped
+      ? { text: mapped.input, truncated: mapped.truncated }
+      : truncateUtf8(actionInput(item, displayCommand), 8 * 1024);
+    const title = mapped?.title ?? actionTitle(item, actionType, displayCommand);
+    const boundedOutput = mapped
+      ? { text: mapped.output, truncated: mapped.truncated }
+      : truncateUtf8(actionOutput(item), MAX_ACTION_OUTPUT_BYTES);
     const status = stringValue(item.status);
     const successful =
       status === "completed" &&
@@ -641,9 +646,11 @@ export class CodexAdapter implements AgentAdapter {
       type: "action",
       actionType,
       title: truncateCharacters(title, 240),
-      input: truncateCharacters(input, 8_192),
-      output,
-      truncated,
+      input: boundedInput.text,
+      output: boundedOutput.text,
+      ...(mapped?.server ? { server: mapped.server } : {}),
+      ...(mapped?.tool ? { tool: mapped.tool } : {}),
+      truncated: boundedInput.truncated || boundedOutput.truncated,
       state,
       durationMs,
     };
@@ -905,6 +912,9 @@ function actionTitle(
     return command || "Executou um comando";
   }
   if (type === "fileChange") return actionType === "write" ? "Criou arquivos" : "Editou arquivos";
+  if (type === "collabAgentToolCall") return "Usou um subagente";
+  if (type === "imageGeneration") return "Gerou uma imagem";
+  if (type === "mcpToolCall") return stringValue(item.tool) || "Ferramenta MCP";
   if (type === "webSearch")
     return stringValue(item.query) ? `Buscou ${stringValue(item.query)}` : "Buscou na web";
   return stringValue(item.tool) || "Usou uma ferramenta";
@@ -944,15 +954,6 @@ function actionOutput(item: JsonRecord): string {
 function fileChangeSummary(value: unknown): string {
   if (!isRecord(value)) return "";
   return Object.keys(value).join("\n");
-}
-
-function truncateOutput(value: string): { output: string; truncated: boolean } {
-  const bytes = Buffer.from(value, "utf8");
-  if (bytes.byteLength <= MAX_ACTION_OUTPUT_BYTES) return { output: value, truncated: false };
-  const output = new TextDecoder("utf-8", { fatal: false }).decode(
-    bytes.subarray(0, MAX_ACTION_OUTPUT_BYTES),
-  );
-  return { output, truncated: true };
 }
 
 function truncateCharacters(value: string, max: number): string {

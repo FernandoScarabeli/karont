@@ -27,6 +27,13 @@ const messagePartBase = {
   startedAt: z.number().int().nonnegative().optional(),
   endedAt: z.number().int().nonnegative().optional(),
 };
+const actionTypeSchema = z
+  .enum(["read", "edit", "write", "command", "search", "web", "subagent", "mcp", "image", "other"])
+  .transform((actionType) =>
+    actionType === "subagent" || actionType === "mcp" || actionType === "image"
+      ? "other"
+      : actionType,
+  );
 export const questionOptionSchema = z.strictObject({
   label: z.string(),
   description: z.string().optional(),
@@ -37,10 +44,13 @@ export const messagePartSchema = z.discriminatedUnion("type", [
   z.strictObject({
     ...messagePartBase,
     type: z.literal("action"),
-    actionType: z.enum(["read", "edit", "write", "command", "search", "web", "other"]),
+    actionType: actionTypeSchema,
     title: z.string().max(240),
     input: z.string().max(8_192),
     output: z.string().max(65_600),
+    parentId: z.string().min(1).optional(),
+    server: z.string().max(240).optional(),
+    tool: z.string().max(240).optional(),
     truncated: z.boolean(),
     state: z.enum(["running", "waiting", "ok", "error"]),
     durationMs: z.number().int().min(0).nullable(),

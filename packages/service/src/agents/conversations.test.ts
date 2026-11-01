@@ -252,6 +252,74 @@ test("Claude transmite texto em deltas e converte leitura em ação", async () =
   }
 });
 
+test("Claude registra diff, subagente com ações filhas e resultado MCP", async () => {
+  const harness = await createHarness("acoes-especiais");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Registre ações especiais");
+    await waitForState(harness, conversation.id, "idle");
+
+    const actions =
+      latestAgent(harness, conversation.id)?.parts.filter(
+        (part): part is Extract<MessagePart, { type: "action" }> => part.type === "action",
+      ) ?? [];
+    const subagent = actions.find((action) => String(action.actionType) === "subagent");
+    const childRead = actions.find((action) => action.title === "Read · src/modulo.ts");
+    assert.ok(subagent);
+    assert.equal(subagent.title, "Revisar o módulo");
+    assert.equal(subagent.input, "Leia o módulo e registre os achados.");
+    assert.ok(childRead);
+    assert.equal(childRead.parentId, subagent.id);
+
+    const edit = actions.find((action) => action.title.startsWith("Edit ·"));
+    const multiEdit = actions.find((action) => action.title.startsWith("MultiEdit ·"));
+    const write = actions.find((action) => action.title.startsWith("Write ·"));
+    assert.equal(edit?.actionType, "edit");
+    assert.equal(multiEdit?.actionType, "edit");
+    assert.equal(write?.actionType, "write");
+    assert.ok(edit);
+    assert.ok(multiEdit);
+    assert.ok(write);
+    const editRecord = JSON.parse(edit.output) as Array<{
+      path: string;
+      kind: unknown;
+      diff: string;
+    }>;
+    const multiEditRecord = JSON.parse(multiEdit.output) as Array<{
+      path: string;
+      kind: unknown;
+      diff: string;
+    }>;
+    const writeRecord = JSON.parse(write.output) as Array<{
+      path: string;
+      kind: unknown;
+      diff: string;
+    }>;
+    assert.deepEqual(
+      editRecord.map(({ path, kind }) => ({ path, kind })),
+      [{ path: "src/modulo.ts", kind: { type: "update" } }],
+    );
+    assert.match(editRecord[0]?.diff ?? "", /-const antigo = 1;/);
+    assert.match(editRecord[0]?.diff ?? "", /\+const novo = 2;/);
+    assert.equal(multiEditRecord[0]?.diff.match(/^@@ /gm)?.length, 2);
+    assert.match(multiEditRecord[0]?.diff ?? "", /\+1º/);
+    assert.deepEqual(
+      writeRecord.map(({ path, kind }) => ({ path, kind })),
+      [{ path: "docs/novo.md", kind: { type: "add" } }],
+    );
+    assert.match(writeRecord[0]?.diff ?? "", /\+linha um\n\+linha dois/);
+
+    const mcp = actions.find((action) => String(action.actionType) === "mcp");
+    assert.ok(mcp);
+    assert.equal(mcp.server, "docs");
+    assert.equal(mcp.tool, "lookup");
+    assert.deepEqual(JSON.parse(mcp.input), { query: "guia de instalação", limit: 2 });
+    assert.equal(mcp.output, "Dois resultados");
+  } finally {
+    await harness.close();
+  }
+});
+
 test("fluxo da UI create + send gera e transmite título após resposta concluída", async () => {
   let captured: { agent: string; userMessage: string; agentResponse: string } | undefined;
   const titleCli = createFakeTitleCli('### **Título:** `"Karont: app desktop de chat"`\n');

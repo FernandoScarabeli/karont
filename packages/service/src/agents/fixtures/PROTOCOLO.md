@@ -138,6 +138,17 @@ O host interrompe com `turn/interrupt` e `{threadId,turnId}`. A resposta real fo
 | `parar` | `control_request/interrupt` e resultado interrompido. | `turn/interrupt` e status `interrupted`. |
 | `erro` | Falha de início `ENOENT`, sem geração. | Falha de início `ENOENT`, sem geração. |
 
+## Dados de edição e ferramentas especiais
+
+As fixtures reais disponíveis não contêm chamadas Claude `Edit`, `MultiEdit`, `Write`, `Task` com ações filhas ou ferramentas MCP, nem itens Codex `fileChange`, `mcpToolCall`, `collabAgentToolCall` ou `imageGeneration`. `claude/acoes-especiais.jsonl` e `codex/acoes-especiais.jsonl` são fixtures de teste construídas com os formatos documentados no adaptador Claude e nos schemas Codex desta pasta; elas não são gravações de CLI.
+
+- Claude `Edit` usa `input.file_path`, `old_string` e `new_string`; `MultiEdit` usa `input.file_path` e `input.edits[]`; `Write` usa `input.file_path` e `content`. O serviço converte esses dados em `output` JSON no formato `[{ path, kind, diff }]`, com diff unificado. `Write` representa criação com `kind: "add"` e todas as linhas prefixadas com `+`.
+- Claude `Task` usa `description` como título e `prompt` como entrada. Chamadas com `parent_tool_use_id` igual ao ID da ferramenta `Task` recebem o `parentId` da parte do subagente. Ferramentas MCP seguem `mcp__<servidor>__<ferramenta>`; o serviço separa servidor/ferramenta, conserva os valores de entrada e registra o resultado da ferramenta.
+- Codex `fileChange.changes[]` contém `FileUpdateChange { path, kind, diff }`, com `kind` como variante marcada (`{ type: "add" | "update" | "delete" }`); o serviço conserva essa forma no JSON. Também aceita o formato legado indexado por caminho.
+- Codex `mcpToolCall` fornece `server`, `tool`, `arguments` e `result`; `collabAgentToolCall` fornece `tool` e `prompt`; `imageGeneration` fornece `savedPath` e `revisedPrompt`. A imagem guarda apenas o caminho e o prompt revisado; leitura e validação do arquivo ficam para outra tarefa.
+- Entradas e saídas são limitadas a 8 KiB e 64 KiB, respectivamente. Quando há truncamento, `truncated` fica `true`; a lista JSON de diffs continua válida.
+- O schema aceita `actionType: "subagent" | "mcp" | "image"`, mas normaliza esses valores para `other` ao validar partes destinadas à UI existente. A UI continua tipada e renderiza essas ações como genéricas até uma tarefa de interface consumir os tipos e campos novos.
+
 ## Armadilhas
 
 - Claude precisa de `--permission-prompt-tool stdio` com `--permission-prompts host`; sem a primeira flag, pode negar antes de enviar `can_use_tool`.

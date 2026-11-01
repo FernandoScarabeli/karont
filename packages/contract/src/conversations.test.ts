@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { messagePartSchema } from "./conversations.ts";
 import { events } from "./events.ts";
 import { methods } from "./methods.ts";
 import { parseEvent, parseRequest } from "./validate.ts";
@@ -199,6 +200,27 @@ test("contratos guardam partes interativas ordenadas e estados explícitos", () 
     }).success,
     false,
   );
+});
+
+test("aceita ações especiais e preserva compatibilidade convertendo-as em other na leitura", () => {
+  for (const actionType of ["subagent", "mcp", "image"] as const) {
+    const parsed = messagePartSchema.safeParse({
+      id: `a-${actionType}`,
+      type: "action",
+      actionType,
+      title: "Ação especial",
+      input: "{}",
+      output: "resultado",
+      truncated: false,
+      state: "ok",
+      durationMs: 1,
+      ...(actionType === "mcp" ? { server: "docs", tool: "lookup" } : {}),
+      ...(actionType === "subagent" ? { parentId: "task-parent" } : {}),
+    });
+    assert.equal(parsed.success, true);
+    if (parsed.success && parsed.data.type === "action")
+      assert.equal(parsed.data.actionType, "other");
+  }
 });
 
 test("eventos de texto levam só o delta; eventos de método e parte passam pela validação", () => {

@@ -17,6 +17,7 @@ import {
 import { CodexAdapter, unwrapCodexShellCommand } from "./codex-adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
 import { createFakeCodexSpawn, type FakeCodexSpawn } from "./testing/fake-codex-process.ts";
+import { mapCodexSpecialAction } from "./tool-actions.ts";
 
 const fixtureDir = new URL("./fixtures/codex/", import.meta.url);
 
@@ -200,6 +201,54 @@ function latestAgent(harness: Harness, id: string) {
     .reverse()
     .find((message) => message.author === "agent");
 }
+
+test("mapeia fileChange, MCP, subagente e imagem dos fixtures Codex", () => {
+  const records = readFileSync(new URL("acoes-especiais.jsonl", fixtureDir), "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { line: string });
+  const items = records.map((record) => {
+    const event = JSON.parse(record.line) as { params: { item: Record<string, unknown> } };
+    return event.params.item;
+  });
+  const mapped = items.map((item) => mapCodexSpecialAction(item));
+  const fileChange = mapped[0];
+  const mcp = mapped[1];
+  const subagent = mapped[2];
+  const image = mapped[3];
+  assert.equal(fileChange?.actionType, "edit");
+  assert.deepEqual(JSON.parse(fileChange?.output ?? ""), [
+    {
+      path: "src/modulo.ts",
+      kind: { type: "update" },
+      diff: "--- src/modulo.ts\n+++ src/modulo.ts\n@@ -1,1 +1,1 @@\n-const antigo = 1;\n+const novo = 2;",
+    },
+  ]);
+  assert.equal(mcp?.actionType, "mcp");
+  assert.equal(mcp?.server, "docs");
+  assert.equal(mcp?.tool, "lookup");
+  assert.deepEqual(JSON.parse(mcp?.input ?? ""), { query: "guia de instalação", limit: 2 });
+  assert.match(mcp?.output ?? "", /Dois resultados/);
+  assert.equal(subagent?.actionType, "subagent");
+  assert.equal(subagent?.title, "Iniciou um subagente");
+  assert.equal(subagent?.input, "Revise o módulo src/modulo.ts e resuma os achados.");
+  assert.equal(image?.actionType, "image");
+  assert.equal(image?.title, "Gerou uma imagem");
+  assert.equal(image?.input, "Ilustração técnica de uma aplicação desktop");
+  assert.equal(image?.output, "/tmp/karont/generated.png");
+});
+
+test("Codex respeita limites em bytes e mantém o JSON do diff válido ao truncar", () => {
+  const action = mapCodexSpecialAction({
+    type: "fileChange",
+    changes: [{ path: "a.ts", kind: { type: "update" }, diff: "+á\n".repeat(40_000) }],
+  });
+  assert.ok(action);
+  assert.equal(Buffer.byteLength(action.input, "utf8") <= 8 * 1024, true);
+  assert.equal(Buffer.byteLength(action.output, "utf8") <= 64 * 1024, true);
+  assert.equal(action.truncated, true);
+  assert.equal(JSON.parse(action.output)[0]?.path, "a.ts");
+});
 
 test("Codex transmite texto, converte leitura em ação e carrega os modelos reais", async (t) => {
   await t.test("texto", async () => {
