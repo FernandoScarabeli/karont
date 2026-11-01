@@ -1,8 +1,9 @@
 import type { AnyEvent, Conversation, ConversationMessage, MessagePart } from "@karont/contract";
 import { BridgeError } from "@karont/contract";
-import { useCallback, useEffect, useReducer } from "react";
+import { useCallback, useEffect, useMemo, useReducer } from "react";
 import { getBridge } from "../bridge/index.ts";
 import { t } from "../i18n/pt-BR.ts";
+import { cacheConversationSnapshot, getConversationSnapshot } from "./conversationCache.ts";
 
 type State = {
   conversation: Conversation | null;
@@ -17,7 +18,6 @@ type State = {
 type Action =
   | { type: "conversation"; conversation: Conversation }
   | { type: "message"; message: ConversationMessage }
-  | { type: "reset" }
   | { type: "loaded"; conversation: Conversation; messages: ConversationMessage[] }
   | { type: "event"; event: AnyEvent }
   | {
@@ -43,10 +43,22 @@ const initialState: State = {
 };
 
 export function useConversation(conversationId: string) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, dispatch] = useReducer(reducer, conversationId, createInitialState);
+
+  const messages = useMemo(
+    () =>
+      state.messageIds
+        .map((id) => state.messagesById[id])
+        .filter((message): message is ConversationMessage => message !== undefined),
+    [state.messageIds, state.messagesById],
+  );
 
   useEffect(() => {
-    dispatch({ type: "reset" });
+    if (!state.conversation) return;
+    cacheConversationSnapshot({ conversation: state.conversation, messages });
+  }, [messages, state.conversation]);
+
+  useEffect(() => {
     const bridge = getBridge();
     if (!bridge) {
       dispatch({ type: "failed", error: t.conversation.noBridge });
@@ -133,10 +145,6 @@ export function useConversation(conversationId: string) {
     };
   }, [conversationId]);
 
-  const messages = state.messageIds
-    .map((id) => state.messagesById[id])
-    .filter((message): message is ConversationMessage => message !== undefined);
-
   const addMessage = useCallback(
     (message: ConversationMessage) => dispatch({ type: "message", message }),
     [],
@@ -149,8 +157,24 @@ export function useConversation(conversationId: string) {
   return { ...state, messages, addMessage, updateConversation };
 }
 
+function createInitialState(conversationId: string): State {
+  const snapshot = getConversationSnapshot(conversationId);
+  if (!snapshot) return initialState;
+  const messagesById: Record<string, ConversationMessage> = {};
+  const messageIds: string[] = [];
+  for (const message of snapshot.messages) {
+    messagesById[message.id] = message;
+    messageIds.push(message.id);
+  }
+  return {
+    ...initialState,
+    conversation: snapshot.conversation,
+    messageIds,
+    messagesById,
+  };
+}
+
 function reducer(state: State, action: Action): State {
-  if (action.type === "reset") return initialState;
   if (action.type === "message") return upsertMessage(state, action.message);
   if (action.type === "conversation") return { ...state, conversation: action.conversation };
   if (action.type === "loaded") {

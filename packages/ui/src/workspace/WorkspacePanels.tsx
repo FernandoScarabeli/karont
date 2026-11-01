@@ -1,5 +1,6 @@
 import {
   type DragEvent,
+  type DragEventHandler,
   lazy,
   type ReactNode,
   type RefObject,
@@ -10,6 +11,7 @@ import {
   useState,
 } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
+import { ConversationLoadingFallback } from "../conversation/ConversationLoadingFrame.tsx";
 import { NewConversationView } from "../conversation/NewConversationView.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
@@ -32,6 +34,40 @@ const TerminalView = lazy(async () => {
   const module = await import("../terminal/TerminalView.tsx");
   return { default: module.TerminalView };
 });
+
+function LazyConversationPanel({
+  id,
+  isActivePane,
+  headerActions,
+  dragHandleProps,
+}: {
+  id: string;
+  isActivePane: boolean;
+  headerActions?: ReactNode;
+  dragHandleProps?: {
+    draggable: boolean;
+    onDragEnd: DragEventHandler<HTMLHeadingElement>;
+    onDragStart: DragEventHandler<HTMLHeadingElement>;
+    tabIndex: number;
+  };
+}) {
+  const openedAt = useRef(Date.now()).current;
+
+  return (
+    <Suspense
+      fallback={<ConversationLoadingFallback headerActions={headerActions} openedAt={openedAt} />}
+    >
+      <ConversationView
+        dragHandleProps={dragHandleProps}
+        headerActions={headerActions}
+        id={id}
+        isActivePane={isActivePane}
+        key={id}
+        openedAt={openedAt}
+      />
+    </Suspense>
+  );
+}
 
 type DragTarget = { paneId: string; edge: PaneEdge } | null;
 
@@ -253,21 +289,13 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
     }
 
     return (
-      <Suspense
-        fallback={
-          <div className={styles.chatLoading} role="status">
-            {t.chat.loading}
-          </div>
-        }
-      >
-        <ConversationView
-          dragHandleProps={dragHandleProps}
-          headerActions={renderToolbar(pane)}
-          id={pane.view.conversationId}
-          isActivePane={isActive}
-          key={pane.view.conversationId}
-        />
-      </Suspense>
+      <LazyConversationPanel
+        dragHandleProps={dragHandleProps}
+        headerActions={renderToolbar(pane)}
+        id={pane.view.conversationId}
+        isActivePane={isActive}
+        key={pane.view.conversationId}
+      />
     );
   }
 

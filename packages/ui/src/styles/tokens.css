@@ -138,6 +138,8 @@
   --k-composer-submit-size: 36px;
   --k-composer-select-max-width: 180px;
   --k-composer-agent-max-width: 160px;
+  --k-composer-agent-width: 7rem;
+  --k-composer-model-width: 8rem;
   --k-composer-radio-size: 16px;
   --k-composer-radio-dot-size: 8px;
   --k-composer-switch-width: 34px;

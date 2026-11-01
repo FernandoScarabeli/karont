@@ -6,6 +6,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -31,8 +32,14 @@ import {
   effortsForModel,
   modelSettingKey,
 } from "./ComposerPreferences.tsx";
+import {
+  ConversationBranchPlaceholder,
+  ConversationLoadingControls,
+  ConversationLoadingStrip,
+} from "./ConversationLoadingFrame.tsx";
 import { MessageRow, type ResponseInput, TodosPart } from "./ConversationParts.tsx";
 import styles from "./ConversationView.module.css";
+import { cacheAgentModels, getCachedAgentModels } from "./conversationCache.ts";
 import { formatFolderPath } from "./displayText.ts";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import { useConversation } from "./useConversation.ts";
@@ -51,10 +58,12 @@ export function ConversationView({
   isActivePane,
   headerActions,
   dragHandleProps,
+  openedAt,
 }: {
   id: string;
   isActivePane: boolean;
   headerActions?: ReactNode;
+  openedAt: number;
   dragHandleProps?: {
     draggable: boolean;
     onDragEnd: DragEventHandler<HTMLHeadingElement>;
@@ -86,6 +95,10 @@ export function ConversationView({
   const [isStopping, setIsStopping] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isRenamingTitle, setIsRenamingTitle] = useState(false);
+  const [showSlowLoading, setShowSlowLoading] = useState(
+    () => !conversation && loading && Date.now() - openedAt >= 300,
+  );
+  const [revealLoadedData, setRevealLoadedData] = useState(false);
 
   const markSeen = useCallback(async () => {
     if (
@@ -128,6 +141,7 @@ export function ConversationView({
   const [titleDraft, setTitleDraft] = useState("");
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const previousConversationIdRef = useRef(id);
+  const initiallyHadConversationRef = useRef(Boolean(conversation));
   const messageListRef = useRef<HTMLDivElement>(null);
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const composerSectionRef = useRef<HTMLElement>(null);
@@ -147,7 +161,8 @@ export function ConversationView({
   const optimisticConversationIdRef = useRef(id);
   activeConversationIdRef.current = id;
   const agent = conversation?.agent;
-  const currentModels = models?.agent === agent ? models : null;
+  const currentModels =
+    models?.agent === agent ? models : agent ? (getCachedAgentModels(agent) ?? null) : null;
   const visibleOptions = optimisticConversationIdRef.current === id ? optimisticOptions : {};
   const visibleConversation = conversation ? { ...conversation, ...visibleOptions } : null;
   const planMode = visibleConversation?.plan ?? false;
@@ -158,19 +173,43 @@ export function ConversationView({
       return;
     }
     let mounted = true;
-    setModels(null);
     void bridge
       .request("agent.models", { agent })
       .then((result) => {
+        cacheAgentModels(result);
         if (mounted) setModels(result);
       })
       .catch(() => {
-        if (mounted) setModels({ agent, models: [], efforts: [] });
+        if (mounted) {
+          setModels(getCachedAgentModels(agent) ?? { agent, models: [], efforts: [] });
+        }
       });
     return () => {
       mounted = false;
     };
   }, [agent, bridge]);
+
+  useEffect(() => {
+    if (!loading || conversation) {
+      setShowSlowLoading(false);
+      return;
+    }
+    const remaining = 300 - (Date.now() - openedAt);
+    if (remaining <= 0) {
+      setShowSlowLoading(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowSlowLoading(true), remaining);
+    return () => window.clearTimeout(timer);
+  }, [conversation, loading, openedAt]);
+
+  useLayoutEffect(() => {
+    if (!conversation || initiallyHadConversationRef.current) return;
+    initiallyHadConversationRef.current = true;
+    setRevealLoadedData(true);
+    const timer = window.setTimeout(() => setRevealLoadedData(false), 120);
+    return () => window.clearTimeout(timer);
+  }, [conversation]);
 
   const orderedMessages = messages;
   const visibleMessages = orderedMessages.slice(-visibleMessageCount);
@@ -188,10 +227,10 @@ export function ConversationView({
   const isWorking = conversation?.state === "working";
   const isWaiting = conversation?.state === "waiting";
   const composerAttachments = useComposerAttachments(
-    Boolean(conversation && bridge && !loading && !isWaiting && !isResponding && !isSending),
+    Boolean(conversation && bridge && !isWaiting && !isResponding && !isSending),
     id,
   );
-  const gitInfo = useGitInfo(conversation?.cwd, id);
+  const { info: gitInfo, loading: gitInfoLoading } = useGitInfo(conversation?.cwd, id);
   useEffect(() => {
     if (previousConversationIdRef.current === id) return;
     previousConversationIdRef.current = id;
@@ -549,14 +588,14 @@ export function ConversationView({
     }
   }
 
-  const title = conversation?.title ?? t.chat.loading;
+  const title = conversation?.title ?? t.conversation.title;
   const homeTodos = isWorking ? lastTodos : null;
   const folderPath = useMemo(
     () => (conversation ? formatFolderPath(conversation.cwd) : null),
     [conversation],
   );
   const canAttachFiles = Boolean(
-    conversation && bridge && !loading && !isWaiting && !isResponding && !isSending,
+    conversation && bridge && !isWaiting && !isResponding && !isSending,
   );
   const changeEffort = useCallback(
     (value: AgentEffort | "") => {
@@ -593,15 +632,15 @@ export function ConversationView({
   const composerLeading = useMemo(
     () =>
       conversation ? (
-        <div className={styles.composerControls}>
+        <div className={`${styles.composerControls} ${revealLoadedData ? styles.dataReveal : ""}`}>
           <AttachmentPicker disabled={!canAttachFiles} onFiles={composerAttachments.addFiles} />
           <span className={styles.agentTag}>
             <AgentIcon agentId={conversation.agent} />
-            {agentDisplayName(conversation.agent)}
+            <span className={styles.agentName}>{agentDisplayName(conversation.agent)}</span>
           </span>
           <ComposerPreferences
             activePopover={activePopover}
-            disabled={isWorking || isWaiting || isResponding || isSending || loading || !bridge}
+            disabled={isWorking || isWaiting || isResponding || isSending || !bridge}
             effort={visibleConversation?.effort ?? ""}
             mode={visibleConversation?.mode ?? "edit"}
             model={visibleConversation?.model ?? null}
@@ -614,7 +653,9 @@ export function ConversationView({
             onPlanModeChange={changePlanMode}
           />
         </div>
-      ) : null,
+      ) : (
+        <ConversationLoadingControls />
+      ),
     [
       bridge,
       activePopover,
@@ -629,12 +670,12 @@ export function ConversationView({
       isSending,
       isWaiting,
       isWorking,
-      loading,
       currentModels,
       planMode,
       visibleConversation?.effort,
       visibleConversation?.mode,
       visibleConversation?.model,
+      revealLoadedData,
     ],
   );
   const composerAttachmentsNode = useMemo(
@@ -659,12 +700,27 @@ export function ConversationView({
             type="button"
           >
             <Folder aria-hidden="true" size={15} />
-            <span title={folderPath?.title}>{folderPath?.text}</span>
+            <span
+              className={revealLoadedData ? styles.dataReveal : undefined}
+              title={folderPath?.title}
+            >
+              {folderPath?.text}
+            </span>
           </button>
-          <GitBranchLabel info={gitInfo} />
+          <span className={styles.branchSlot}>
+            {gitInfo ? (
+              <span className={revealLoadedData ? styles.dataReveal : undefined}>
+                <GitBranchLabel info={gitInfo} />
+              </span>
+            ) : gitInfoLoading ? (
+              <ConversationBranchPlaceholder />
+            ) : null}
+          </span>
         </div>
-      ) : null,
-    [conversation, copyFolderPath, folderPath, gitInfo],
+      ) : (
+        <ConversationLoadingStrip />
+      ),
+    [conversation, copyFolderPath, folderPath, gitInfo, gitInfoLoading, revealLoadedData],
   );
   const composerStop = useCallback(() => void stopAgent(), [stopAgent]);
   const composerSubmit = useCallback(
@@ -730,7 +786,7 @@ export function ConversationView({
               value={titleDraft}
             />
           ) : (
-            title
+            <span className={revealLoadedData ? styles.dataReveal : undefined}>{title}</span>
           )}
         </h1>
         {isRenamingTitle ? (
@@ -757,9 +813,12 @@ export function ConversationView({
       <section
         aria-label={t.chat.messageList}
         className={`${styles.messageList} ${scrollAreaStyles.scrollArea}`}
+        data-reveal={revealLoadedData ? "true" : undefined}
         ref={messageListRef}
       >
-        {loading ? <p className={styles.loading}>{t.chat.loading}</p> : null}
+        {loading && !conversation && showSlowLoading ? (
+          <p className={styles.loading}>{t.chat.loading}</p>
+        ) : null}
         {error ? (
           <p className={styles.error} role="alert">
             <TriangleAlert aria-hidden="true" size={16} />
@@ -838,7 +897,7 @@ export function ConversationView({
           ariaDescription={t.conversation.composerKeyboardDescription}
           below={composerBelow}
           busy={isWorking}
-          disabled={!conversation || loading || isWaiting || isResponding || isSending}
+          disabled={isWaiting || isResponding || isSending}
           leading={composerLeading}
           attachments={composerAttachmentsNode}
           onChange={setDraft}
@@ -852,6 +911,7 @@ export function ConversationView({
           placeholder={t.chat.messageInput}
           submitDisabled={
             !bridge ||
+            !conversation ||
             loading ||
             composerAttachments.isPreparing ||
             (!draft.trim() && composerAttachments.attachments.length === 0) ||
