@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const conversationAgentSchema = z.enum(["claude", "codex"]);
 export const conversationModeSchema = z.enum(["read-only", "edit", "full"]);
+export const reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh", "max"]);
 export const conversationStateSchema = z.enum(["idle", "working", "waiting", "error"]);
 export const conversationSchema = z.strictObject({
   id: z.string().min(1),
@@ -10,7 +11,7 @@ export const conversationSchema = z.strictObject({
   cwd: z.string().min(1).max(4_096),
   mode: conversationModeSchema,
   model: z.string().min(1).max(80).optional(),
-  effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
+  effort: reasoningEffortSchema.optional(),
   state: conversationStateSchema,
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
@@ -33,7 +34,7 @@ export const messagePartSchema = z.discriminatedUnion("type", [
     input: z.string().max(8_192),
     output: z.string().max(65_600),
     truncated: z.boolean(),
-    state: z.enum(["running", "ok", "error"]),
+    state: z.enum(["running", "waiting", "ok", "error"]),
     durationMs: z.number().int().min(0).nullable(),
   }),
   z.strictObject({
@@ -41,6 +42,7 @@ export const messagePartSchema = z.discriminatedUnion("type", [
     type: z.literal("permission"),
     tool: z.string().max(120),
     summary: z.string().max(8_192),
+    description: z.string().max(8_192).optional(),
     options: z.array(z.enum(["allow", "always", "deny"])).min(1),
     state: z.enum(["pending", "allowed", "denied"]),
   }),
@@ -103,10 +105,18 @@ export type ConversationMessage = z.infer<typeof messageSchema>;
 export const conversationOptionsSchema = z.strictObject({
   mode: conversationModeSchema.optional(),
   model: z.string().min(1).max(80).nullable().optional(),
-  effort: z.enum(["low", "medium", "high", "xhigh", "max"]).nullable().optional(),
+  effort: reasoningEffortSchema.nullable().optional(),
 });
 export const agentModelsSchema = z.strictObject({
   agent: conversationAgentSchema,
-  models: z.array(z.strictObject({ id: z.string(), name: z.string() })),
-  efforts: z.array(z.enum(["low", "medium", "high", "xhigh", "max"])),
+  models: z.array(
+    z.strictObject({
+      id: z.string(),
+      name: z.string(),
+      efforts: z.array(reasoningEffortSchema).optional(),
+      defaultEffort: reasoningEffortSchema.optional(),
+    }),
+  ),
+  efforts: z.array(reasoningEffortSchema),
+  fetchedAt: z.iso.datetime({ offset: true }).optional(),
 });

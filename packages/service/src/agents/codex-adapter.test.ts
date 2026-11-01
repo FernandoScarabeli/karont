@@ -10,10 +10,11 @@ import {
   addMessage,
   createConversation as createConversationRecord,
   getMessage,
+  getSetting,
   openDatabase,
   setAgentSession,
 } from "../db.ts";
-import { CodexAdapter } from "./codex-adapter.ts";
+import { CodexAdapter, unwrapCodexShellCommand } from "./codex-adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
 import { createFakeCodexSpawn, type FakeCodexSpawn } from "./testing/fake-codex-process.ts";
 
@@ -35,6 +36,8 @@ async function createHarness(
     idleMs?: number;
     resumeExisting?: boolean;
     fakeError?: boolean;
+    withoutCommandTiming?: boolean;
+    withoutCommandStart?: boolean;
   } = {},
 ): Promise<Harness> {
   const root = await mkdtemp(path.join(os.tmpdir(), "karont-codex-"));
@@ -65,11 +68,23 @@ async function createHarness(
           const fake = createFakeCodexSpawn(fixturePath, {
             startAtResume:
               scenario === "continuar" && (options.resumeExisting === true || fakes.length > 0),
+            withoutCommandTiming: options.withoutCommandTiming,
+            withoutCommandStart: options.withoutCommandStart,
           });
           fakes.push(fake);
           return fake(command, args, spawnOptions);
         },
       }),
+    codexModelLoader: async (cwd) => {
+      if (options.fakeError)
+        throw Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" });
+      const fake = createFakeCodexSpawn(fixturePath);
+      fakes.push(fake);
+      return new CodexAdapter(() => undefined, {
+        env,
+        spawn: (command, args, spawnOptions) => fake(command, args, { ...spawnOptions, cwd }),
+      }).loadModelCatalog(cwd);
+    },
   });
 
   return {
@@ -241,6 +256,115 @@ test("Codex transmite texto, converte leitura em ação e carrega os modelos rea
   });
 });
 
+test("agent.models carrega uma vez antes da primeira mensagem e reutiliza o cache persistido", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const [first, concurrent] = await Promise.all([
+      harness.manager.models("codex"),
+      harness.manager.models("codex"),
+    ]);
+    assert.equal(first.models.length, 8);
+    assert.equal(first.fetchedAt, concurrent.fetchedAt);
+    assert.deepEqual(first.models[0]?.efforts, ["low", "medium", "high", "xhigh", "max"]);
+    assert.equal(first.models[0]?.defaultEffort, "low");
+    assert.equal(first.models.find((model) => model.id === "gpt-6-sol")?.defaultEffort, "medium");
+    assert.equal(harness.fakes.length, 1);
+    assert.equal(harness.fakes[0]?.processes[0]?.signalCode, "SIGTERM");
+    const requests = harness.fakes[0]?.messages[0] ?? [];
+    assert.deepEqual(
+      requests
+        .filter((request) => typeof request.method === "string")
+        .map((request) => request.method),
+      ["initialize", "initialized", "model/list"],
+    );
+
+    const saved = getSetting(harness.db, "agent.codex.models");
+    assert.ok(saved && typeof saved === "object" && !Array.isArray(saved));
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
+    assert.equal(saved.fetchedAt, first.fetchedAt);
+
+    await harness.manager.close();
+    let loaderCalls = 0;
+    const restarted = new ConversationManager({
+      db: harness.db,
+      broadcast: async () => undefined,
+      env: { KARONT_DISABLE_AGENT_DETECTION: "1" },
+      codexModelLoader: async () => {
+        loaderCalls += 1;
+        throw new Error("O catálogo persistido deveria ser suficiente.");
+      },
+    });
+    const restored = await restarted.models("codex");
+    assert.deepEqual(restored, first);
+    assert.equal(loaderCalls, 0);
+    await restarted.close();
+  } finally {
+    await harness.close();
+  }
+});
+
+test("remove wrappers bash, sh e zsh com aspas simples ou duplas", () => {
+  assert.equal(unwrapCodexShellCommand("/bin/bash -lc 'mkdir -p /tmp/x'"), "mkdir -p /tmp/x");
+  assert.equal(unwrapCodexShellCommand('sh -c "mkdir -p /tmp/x"'), "mkdir -p /tmp/x");
+  assert.equal(unwrapCodexShellCommand('zsh -lc "printf \\"ok\\""'), 'printf "ok"');
+  assert.equal(unwrapCodexShellCommand("npm test"), "npm test");
+});
+
+test("mede a duração pela observação quando o Codex omite os tempos da ação", async () => {
+  const harness = await createHarness("comando-permitido", {
+    mode: "edit",
+    withoutCommandTiming: true,
+  });
+  try {
+    const conversation = createConversation(harness.manager, "edit");
+    await harness.manager.send(conversation.id, fixturePrompt("comando-permitido"));
+    const permission = await waitForPart(
+      harness,
+      conversation.id,
+      (part) => part.type === "permission" && part.state === "pending",
+    );
+    await harness.manager.respond(conversation.id, permission.id, {
+      responseType: "permission",
+      decision: "allow",
+    });
+    await waitForState(harness, conversation.id, "idle");
+    const action = latestAgent(harness, conversation.id)?.parts.find(
+      (part) => part.type === "action" && part.actionType === "command",
+    );
+    assert.ok(action?.type === "action" && action.durationMs !== null && action.durationMs > 0);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("deixa a duração nula quando não há início ou duração informados", async () => {
+  const harness = await createHarness("comando-permitido", {
+    mode: "edit",
+    withoutCommandTiming: true,
+    withoutCommandStart: true,
+  });
+  try {
+    const conversation = createConversation(harness.manager, "edit");
+    await harness.manager.send(conversation.id, fixturePrompt("comando-permitido"));
+    const permission = await waitForPart(
+      harness,
+      conversation.id,
+      (part) => part.type === "permission" && part.state === "pending",
+    );
+    await harness.manager.respond(conversation.id, permission.id, {
+      responseType: "permission",
+      decision: "allow",
+    });
+    await waitForState(harness, conversation.id, "idle");
+    const action = latestAgent(harness, conversation.id)?.parts.find(
+      (part) => part.type === "action" && part.actionType === "command",
+    );
+    assert.equal(action?.type === "action" ? action.durationMs : undefined, null);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("modos Codex usam as políticas reais do app-server", async (t) => {
   for (const [mode, sandbox, approvalPolicy] of [
     ["read-only", "read-only", "never"],
@@ -316,6 +440,17 @@ test("aprovações de comando permitem, permitem sempre nesta conversa ou negam"
           finalPermission?.type === "permission" ? finalPermission.state : undefined,
           decision === "deny" ? "denied" : "allowed",
         );
+        if (scenario === "comando-permitido") {
+          const action = latestAgent(harness, conversation.id)?.parts.find(
+            (part) => part.type === "action" && part.actionType === "command",
+          );
+          assert.ok(action?.type === "action");
+          if (action?.type === "action") {
+            assert.equal(action.title, "touch /tmp/arquivo-de-teste && ls");
+            assert.equal(action.input, "touch /tmp/arquivo-de-teste && ls");
+            assert.ok(action.durationMs !== null && action.durationMs > 0);
+          }
+        }
       } finally {
         await harness.close();
       }

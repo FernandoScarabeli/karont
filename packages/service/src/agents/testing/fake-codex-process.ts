@@ -5,13 +5,20 @@ import { PassThrough } from "node:stream";
 
 type FixtureLine = { direction: string; stream: string; line: string };
 type JsonRecord = Record<string, unknown>;
-type FakeProcessOptions = { startAtResume?: boolean };
+type FakeProcessOptions = {
+  startAtResume?: boolean;
+  withoutCommandTiming?: boolean;
+  withoutCommandStart?: boolean;
+};
 
 export type FakeCodexSpawn = ((
   command: string,
   args: string[],
   options: SpawnOptions,
-) => ChildProcess) & { messages: JsonRecord[][] };
+) => ChildProcess) & {
+  messages: JsonRecord[][];
+  processes: Array<{ exitCode: number | null; signalCode: NodeJS.Signals | null }>;
+};
 
 /** Process-compatible Codex fake that consumes host JSON-RPC and replays captured fixtures. */
 export function createFakeCodexSpawn(
@@ -19,12 +26,16 @@ export function createFakeCodexSpawn(
   options: FakeProcessOptions = {},
 ): FakeCodexSpawn {
   const messages: JsonRecord[][] = [];
+  const processes: FakeCodexProcess[] = [];
   const spawn = (() => {
     const recorded: JsonRecord[] = [];
     messages.push(recorded);
-    return new FakeCodexProcess(fixturePath, { ...options, recorded }) as unknown as ChildProcess;
+    const child = new FakeCodexProcess(fixturePath, { ...options, recorded });
+    processes.push(child);
+    return child as unknown as ChildProcess;
   }) as unknown as FakeCodexSpawn;
   spawn.messages = messages;
+  spawn.processes = processes;
   return spawn;
 }
 
@@ -147,6 +158,25 @@ class FakeCodexProcess extends EventEmitter {
       if (record.direction === "stderr") this.stderr.write(`${record.line}\n`);
       else if (record.direction === "in" && record.stream === "stdout") {
         const message = parseFixture(record.line);
+        if (
+          this.#options.withoutCommandStart &&
+          message.method === "item/started" &&
+          isRecord(message.params) &&
+          isRecord(message.params.item) &&
+          message.params.item.type === "commandExecution"
+        )
+          continue;
+        if (
+          this.#options.withoutCommandTiming &&
+          (message.method === "item/started" || message.method === "item/completed") &&
+          isRecord(message.params) &&
+          isRecord(message.params.item) &&
+          message.params.item.type === "commandExecution"
+        ) {
+          delete message.params.item.startedAtMs;
+          delete message.params.item.completedAtMs;
+          delete message.params.item.durationMs;
+        }
         if (message.method === undefined && message.id !== undefined && hostRequestId !== undefined)
           message.id = hostRequestId;
         this.stdout.write(`${JSON.stringify(message)}\n`);
@@ -177,12 +207,12 @@ class FakeCodexProcess extends EventEmitter {
   }
 }
 
-function parseFixture(line: string): JsonRecord {
-  return JSON.parse(line) as JsonRecord;
-}
-
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseFixture(line: string): JsonRecord {
+  return JSON.parse(line) as JsonRecord;
 }
 
 function deepEqual(left: unknown, right: unknown): boolean {

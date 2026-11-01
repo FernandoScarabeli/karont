@@ -47,7 +47,13 @@ export class ClaudeAdapter implements AgentAdapter {
   readonly #actions = new Map<string, { partId: string; startedAt: number }>();
   readonly #pending = new Map<
     string,
-    { requestId: string; tool: string; input: Record<string, unknown>; suggestions: unknown[] }
+    {
+      requestId: string;
+      tool: string;
+      input: Record<string, unknown>;
+      suggestions: unknown[];
+      actionId?: string;
+    }
   >();
   readonly #taskIds = new Map<string, string>();
   readonly #parts = new Map<string, MessagePart>();
@@ -236,6 +242,18 @@ export class ClaudeAdapter implements AgentAdapter {
     const current = this.#pendingPart(partId);
     if (current?.type === "permission")
       this.#part({ ...current, state: state === "allowed" ? "allowed" : "denied" });
+    if (pending.actionId) {
+      const actionInfo = this.#actions.get(pending.actionId);
+      const action = actionInfo ? this.#pendingPart(actionInfo.partId) : undefined;
+      if (action?.type === "action" && action.state === "waiting")
+        this.#part({
+          ...action,
+          state: state === "allowed" ? "running" : "error",
+          ...(state === "denied"
+            ? { durationMs: Math.max(0, Date.now() - (actionInfo?.startedAt ?? Date.now())) }
+            : {}),
+        });
+    }
     if (current?.type === "question") this.#part({ ...current, state: "answered" });
     if (current?.type === "plan")
       this.#part({
@@ -455,7 +473,7 @@ export class ClaudeAdapter implements AgentAdapter {
       type: "action",
       actionType: actionType(name),
       title: actionTitle(name, input),
-      input: summarizeInput(input),
+      input: summarizeInput(input, name === "Bash"),
       output: "",
       truncated: false,
       state: "running",
@@ -512,7 +530,15 @@ export class ClaudeAdapter implements AgentAdapter {
       }
     }
     const partId = randomUUID();
-    this.#pending.set(partId, { requestId, tool, input, suggestions });
+    const actionId =
+      typeof input.command === "string" ? this.#markCommandWaiting(input.command) : undefined;
+    this.#pending.set(partId, {
+      requestId,
+      tool,
+      input,
+      suggestions,
+      ...(actionId ? { actionId } : {}),
+    });
     if (tool === "AskUserQuestion") {
       const questions = Array.isArray(input.questions)
         ? input.questions.filter(isRecord).map((question) => ({
@@ -557,7 +583,13 @@ export class ClaudeAdapter implements AgentAdapter {
         id: partId,
         type: "permission",
         tool,
-        summary: summarizeInput(input),
+        summary:
+          typeof input.command === "string" && input.command.length > 0
+            ? truncateUtf8(input.command, 8 * 1024).text
+            : summarizeInput(input),
+        ...(typeof input.description === "string" && input.description.length > 0
+          ? { description: truncateUtf8(input.description, 8 * 1024).text }
+          : {}),
         options: [
           "allow",
           ...(suggestions.some(isAllowSuggestion) ? ["always" as const] : []),
@@ -606,6 +638,17 @@ export class ClaudeAdapter implements AgentAdapter {
 
   #pendingPart(partId: string): MessagePart | undefined {
     return this.#parts.get(partId);
+  }
+
+  #markCommandWaiting(command: string): string | undefined {
+    for (const [actionId, actionInfo] of this.#actions) {
+      const action = this.#pendingPart(actionInfo.partId);
+      if (action?.type !== "action" || action.actionType !== "command" || action.input !== command)
+        continue;
+      this.#part({ ...action, state: "waiting" });
+      return actionId;
+    }
+    return undefined;
   }
 
   #part(part: MessagePart): void {
@@ -722,8 +765,9 @@ function actionTitle(tool: string, input: Record<string, unknown>): string {
           : "";
   return `${tool}${detail ? ` · ${detail}` : ""}`.slice(0, 240);
 }
-function summarizeInput(input: Record<string, unknown>): string {
+function summarizeInput(input: Record<string, unknown>, preferCommand = false): string {
   const raw = [
+    ...(preferCommand ? [input.command] : []),
     input.description,
     input.file_path,
     input.pattern,
