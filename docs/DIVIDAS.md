@@ -11,11 +11,8 @@
 9. **Placeholder com frases engraçadas que trocam sozinhas** no campo de mensagem ("faz meu café", "domine o mundo"…). Pedido do dono para depois do M1.
 
 ## Do M2
-- Cartões de permissão/pergunta/plano do **Codex** testados só com fixtures; falta teste real na interface.
-- Anexar arquivo e branch do Git no composer: não feitos (sem suporte no serviço).
-- Links do markdown ficam inertes (falta canal para abrir no navegador do sistema).
-- Linha do tempo: prévia do texto mostra markdown cru (`**`) e caminhos absolutos; encurtar para relativo à pasta.
-- `conversationSendParamsSchema` duplicado entre `conversations.ts` e `methods.ts` (unificar).
-- Bundle da UI com 806 kB (avisos do Vite); dividir.
-- Testes de `server.test.ts` travam no sandbox do Codex e deixam processos `codex-linux-sandbox` órfãos na máquina; encerrar e evitar (timeout no teste).
+- Testes de `server.test.ts` usam socket Unix e não rodam no sandbox do Codex (pulados com `KARONT_SKIP_SOCKET_TESTS=1`); rodam fora dele no `npm run check`.
+- Limite de quadro subiu para 64 MiB para caber até 8 anexos; anexos grandes passam inteiros pela memória do serviço. Se pesar, trocar por envio em pedaços.
+- Botão Planejar volta para "Desligado" ao reabrir a conversa (não é guardado).
 - Medição de RAM/CPU com resposta chegando e conversa longa: ainda não feita.
+- A skill `unslop` não está instalada no Codex; as revisões de UI usaram taste lint + Impeccable.
