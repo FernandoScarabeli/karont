@@ -49,6 +49,8 @@ export const events = {
       kind: z.literal("delta"),
       partId: z.string(),
       delta: z.string(),
+      startedAt: z.number().int().nonnegative().optional(),
+      endedAt: z.number().int().nonnegative().optional(),
     }),
   ]),
   "conversation.stateChanged": z.union([

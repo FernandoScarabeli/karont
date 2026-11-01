@@ -812,6 +812,15 @@
   line-height: var(--k-leading-normal);
 }
 
+.srOnly {
+  position: absolute;
+  width: var(--k-border-width);
+  height: var(--k-border-width);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .timelineChart {
   min-width: 0;
   overflow-x: auto;
@@ -1001,7 +1010,8 @@
 }
 
 .timelineStep[data-kind="waiting"] .timelineBar {
-  background: var(--k-color-attention);
+  border: var(--k-border-width) solid var(--k-color-attention);
+  background: transparent;
 }
 
 .timelineStep[data-kind="error"] .timelineIcon {
@@ -1017,8 +1027,17 @@
   color: var(--k-color-text-secondary);
 }
 
+.timelineStep[data-kind="text"] .timelineBar,
+.timelineStep[data-kind="todo"] .timelineBar {
+  background: var(--k-color-text-secondary);
+}
+
 .timelineStep[data-kind="action"] .timelineIcon {
   color: var(--k-color-primary);
+}
+
+.timelineStep[data-kind="action"] .timelineBar {
+  background: var(--k-color-primary);
 }
 
 .partTarget {
