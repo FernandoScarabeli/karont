@@ -129,7 +129,7 @@ export const Composer = memo(function Composer({
             onPaste={onPaste}
             placeholder={placeholder}
             ref={textareaRef}
-            rows={2}
+            rows={1}
             value={value}
           />
           {animatedPlaceholder && !value && !isFocused && !disabled ? (

@@ -24,8 +24,11 @@ import {
   type AgentEffort,
   type AgentModels,
   agentDisplayName,
+  type ComposerPopoverName,
   ComposerPreferences,
+  effortSettingKey,
   effortsForModel,
+  modelSettingKey,
 } from "./ComposerPreferences.tsx";
 import { MessageRow, type ResponseInput, TodosPart } from "./ConversationParts.tsx";
 import styles from "./ConversationView.module.css";
@@ -33,6 +36,13 @@ import { formatFolderPath } from "./displayText.ts";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
+
+type ConversationOptionsPatch = {
+  mode?: Conversation["mode"];
+  model?: Conversation["model"] | null;
+  effort?: Conversation["effort"] | null;
+  plan?: Conversation["plan"];
+};
 
 export function ConversationView({
   id,
@@ -52,12 +62,12 @@ export function ConversationView({
   const { conversation, messages, loading, error, liveText, addMessage, updateConversation } =
     useConversation(id);
   const [draft, setDraft] = useState("");
-  const planMode = conversation?.plan ?? false;
   const [models, setModels] = useState<AgentModels | null>(null);
+  const [activePopover, setActivePopover] = useState<ComposerPopoverName>(null);
+  const [optimisticOptions, setOptimisticOptions] = useState<ConversationOptionsPatch>({});
   const [interactionError, setInteractionError] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const [visibleMessageCount, setVisibleMessageCount] = useState(100);
-  const [isSavingOptions, setIsSavingOptions] = useState(false);
   const [isResponding, setIsResponding] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -75,11 +85,27 @@ export function ConversationView({
   const previousScrollHeight = useRef(0);
   const restoreAfterOlder = useRef(false);
   const previousScrollVersion = useRef("");
+  const optimisticOptionsRef = useRef<ConversationOptionsPatch>({});
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const saveRevisionRef = useRef(0);
+  const sendRevisionRef = useRef(0);
+  const sendPendingRef = useRef(false);
+  const activeConversationIdRef = useRef(id);
+  const optimisticConversationIdRef = useRef(id);
+  activeConversationIdRef.current = id;
   const agent = conversation?.agent;
+  const currentModels = models?.agent === agent ? models : null;
+  const visibleOptions = optimisticConversationIdRef.current === id ? optimisticOptions : {};
+  const visibleConversation = conversation ? { ...conversation, ...visibleOptions } : null;
+  const planMode = visibleConversation?.plan ?? false;
 
   useEffect(() => {
-    if (!agent || !bridge) return;
+    if (!agent || !bridge) {
+      setModels(null);
+      return;
+    }
     let mounted = true;
+    setModels(null);
     void bridge
       .request("agent.models", { agent })
       .then((result) => {
@@ -110,23 +136,23 @@ export function ConversationView({
   const isWaiting = conversation?.state === "waiting";
   const isError = conversation?.state === "error";
   const composerAttachments = useComposerAttachments(
-    Boolean(
-      conversation &&
-        bridge &&
-        !loading &&
-        !isWaiting &&
-        !isSavingOptions &&
-        !isResponding &&
-        !isSending,
-    ),
+    Boolean(conversation && bridge && !loading && !isWaiting && !isResponding && !isSending),
     id,
   );
   const gitInfo = useGitInfo(conversation?.cwd, id);
   useEffect(() => {
     if (previousConversationIdRef.current === id) return;
     previousConversationIdRef.current = id;
+    optimisticConversationIdRef.current = id;
+    optimisticOptionsRef.current = {};
+    setOptimisticOptions({});
+    saveRevisionRef.current += 1;
+    sendRevisionRef.current += 1;
+    sendPendingRef.current = false;
+    setIsSending(false);
     setDraft("");
     setInteractionError("");
+    setActivePopover(null);
   }, [id]);
 
   useEffect(() => {
@@ -206,7 +232,11 @@ export function ConversationView({
   }, []);
 
   const sendMessage = useCallback(
-    async (textValue: string, files: ConversationAttachment[] = []) => {
+    async (
+      textValue: string,
+      files: ConversationAttachment[] = [],
+      attachmentIds: string[] = [],
+    ) => {
       const text = textValue.trim();
       if (
         !bridge ||
@@ -214,36 +244,58 @@ export function ConversationView({
         (!text && files.length === 0) ||
         isWorking ||
         isWaiting ||
-        isSending
+        isSending ||
+        sendPendingRef.current
       )
         return;
+      const conversationId = id;
+      const sendRevision = ++sendRevisionRef.current;
+      sendPendingRef.current = true;
       setInteractionError("");
-      setIsSending(true);
       setDraft("");
       try {
+        let observedQueue: Promise<void>;
+        do {
+          observedQueue = saveQueueRef.current;
+          await observedQueue;
+        } while (observedQueue !== saveQueueRef.current);
+
+        if (activeConversationIdRef.current !== conversationId) return;
+        setIsSending(true);
         const result = await bridge.request("conversation.send", {
-          id,
+          id: conversationId,
           text: text || " ",
           ...(files.length ? { attachments: files } : {}),
         });
-        addMessage(result.userMessage);
-        addMessage(result.agentMessage);
-        composerAttachments.clear();
+        if (activeConversationIdRef.current === conversationId) {
+          addMessage(result.userMessage);
+          addMessage(result.agentMessage);
+          for (const attachmentId of attachmentIds) composerAttachments.remove(attachmentId);
+        }
       } catch (sendError) {
-        setDraft(textValue);
-        setInteractionError(
-          sendError instanceof BridgeError && sendError.message
-            ? sendError.message
-            : t.chat.sendFailed,
-        );
+        if (activeConversationIdRef.current === conversationId) {
+          if (textValue) {
+            setDraft((currentDraft) =>
+              currentDraft ? `${textValue}\n\n${currentDraft}` : textValue,
+            );
+          }
+          setInteractionError(
+            sendError instanceof BridgeError && sendError.message
+              ? sendError.message
+              : t.chat.sendFailed,
+          );
+        }
       } finally {
-        setIsSending(false);
+        if (sendRevisionRef.current === sendRevision) {
+          setIsSending(false);
+          sendPendingRef.current = false;
+        }
       }
     },
     [
       addMessage,
       bridge,
-      composerAttachments.clear,
+      composerAttachments.remove,
       conversation,
       id,
       isSending,
@@ -310,28 +362,68 @@ export function ConversationView({
   );
 
   const saveOptions = useCallback(
-    async (options: {
-      mode?: Conversation["mode"];
-      model?: string | null;
-      effort?: NonNullable<Conversation["effort"]> | null;
-      plan?: boolean;
-    }) => {
-      if (!bridge || !conversation) return;
-      setIsSavingOptions(true);
+    (
+      options: ConversationOptionsPatch,
+      rememberedSetting?: { key: string; value: string },
+    ): Promise<void> => {
+      if (!bridge || !conversation) return Promise.resolve();
+
+      const conversationId = id;
+      if (activeConversationIdRef.current !== conversationId) return Promise.resolve();
+      const revision = ++saveRevisionRef.current;
+      const nextOptimisticOptions = { ...optimisticOptionsRef.current, ...options };
+      optimisticConversationIdRef.current = conversationId;
+      optimisticOptionsRef.current = nextOptimisticOptions;
+      setOptimisticOptions(nextOptimisticOptions);
       setInteractionError("");
-      try {
-        const result = await bridge.request("conversation.setOptions", { id, options });
-        updateConversation(result.conversation);
-        upsertConversation(result.conversation);
-      } catch (optionsError) {
-        setInteractionError(
-          optionsError instanceof BridgeError && optionsError.message
-            ? optionsError.message
-            : t.chat.optionsFailed,
-        );
-      } finally {
-        setIsSavingOptions(false);
-      }
+
+      const queuedSave = saveQueueRef.current.then(async () => {
+        let failureMessage: string = t.chat.optionsFailed;
+        try {
+          const result = await bridge.request("conversation.setOptions", {
+            id: conversationId,
+            options,
+          });
+          if (activeConversationIdRef.current === conversationId) {
+            updateConversation(result.conversation);
+          }
+          upsertConversation(result.conversation);
+
+          if (rememberedSetting) {
+            failureMessage = t.chat.settingsSaveFailed;
+            await bridge.request("settings.set", rememberedSetting);
+          }
+
+          if (
+            activeConversationIdRef.current === conversationId &&
+            revision === saveRevisionRef.current
+          ) {
+            optimisticOptionsRef.current = {};
+            setOptimisticOptions({});
+            setInteractionError("");
+          }
+        } catch (optionsError) {
+          if (
+            activeConversationIdRef.current === conversationId &&
+            revision === saveRevisionRef.current
+          ) {
+            optimisticOptionsRef.current = {};
+            setOptimisticOptions({});
+          }
+          if (activeConversationIdRef.current === conversationId) {
+            setInteractionError(
+              failureMessage === t.chat.optionsFailed &&
+                optionsError instanceof BridgeError &&
+                optionsError.message
+                ? optionsError.message
+                : failureMessage,
+            );
+          }
+        }
+      });
+
+      saveQueueRef.current = queuedSave;
+      return queuedSave;
     },
     [bridge, conversation, id, updateConversation],
   );
@@ -392,17 +484,16 @@ export function ConversationView({
     [conversation],
   );
   const canAttachFiles = Boolean(
-    conversation &&
-      bridge &&
-      !loading &&
-      !isWaiting &&
-      !isSavingOptions &&
-      !isResponding &&
-      !isSending,
+    conversation && bridge && !loading && !isWaiting && !isResponding && !isSending,
   );
   const changeEffort = useCallback(
-    (value: AgentEffort | "") => void saveOptions({ effort: value || null }),
-    [saveOptions],
+    (value: AgentEffort | "") => {
+      void saveOptions(
+        { effort: value || null },
+        value && conversation ? { key: effortSettingKey(conversation.agent), value } : undefined,
+      );
+    },
+    [conversation, saveOptions],
   );
   const changeMode = useCallback(
     (value: NonNullable<Conversation["mode"]>) => void saveOptions({ mode: value }),
@@ -410,14 +501,18 @@ export function ConversationView({
   );
   const changeModel = useCallback(
     (value: string) => {
-      const supportedEfforts = effortsForModel(models, value);
-      const clearEffort = conversation?.effort && !supportedEfforts.includes(conversation.effort);
-      void saveOptions({
-        model: value || null,
-        ...(clearEffort ? { effort: null } : {}),
-      });
+      const supportedEfforts = effortsForModel(currentModels, value);
+      const currentEffort = visibleConversation?.effort;
+      const clearEffort = currentEffort && !supportedEfforts.includes(currentEffort);
+      void saveOptions(
+        {
+          model: value || null,
+          ...(clearEffort ? { effort: null } : {}),
+        },
+        conversation ? { key: modelSettingKey(conversation.agent), value } : undefined,
+      );
     },
-    [conversation?.effort, models, saveOptions],
+    [conversation, currentModels, saveOptions, visibleConversation?.effort],
   );
   const changePlanMode = useCallback(
     (value: boolean) => void saveOptions({ plan: value }),
@@ -433,20 +528,14 @@ export function ConversationView({
             {agentDisplayName(conversation.agent)}
           </span>
           <ComposerPreferences
-            disabled={
-              isWorking ||
-              isWaiting ||
-              isSavingOptions ||
-              isResponding ||
-              isSending ||
-              loading ||
-              !bridge
-            }
-            effort={conversation.effort ?? ""}
-            mode={conversation.mode}
-            model={conversation.model ?? ""}
-            models={models}
+            activePopover={activePopover}
+            disabled={isWorking || isWaiting || isResponding || isSending || loading || !bridge}
+            effort={visibleConversation?.effort ?? ""}
+            mode={visibleConversation?.mode ?? "edit"}
+            model={visibleConversation?.model ?? null}
+            models={currentModels}
             planMode={planMode}
+            onActivePopoverChange={setActivePopover}
             onEffortChange={changeEffort}
             onModeChange={changeMode}
             onModelChange={changeModel}
@@ -456,6 +545,7 @@ export function ConversationView({
       ) : null,
     [
       bridge,
+      activePopover,
       canAttachFiles,
       changeEffort,
       changeMode,
@@ -464,13 +554,15 @@ export function ConversationView({
       composerAttachments.addFiles,
       conversation,
       isResponding,
-      isSavingOptions,
       isSending,
       isWaiting,
       isWorking,
       loading,
-      models,
+      currentModels,
       planMode,
+      visibleConversation?.effort,
+      visibleConversation?.mode,
+      visibleConversation?.model,
     ],
   );
   const composerAttachmentsNode = useMemo(
@@ -504,8 +596,18 @@ export function ConversationView({
   );
   const composerStop = useCallback(() => void stopAgent(), [stopAgent]);
   const composerSubmit = useCallback(
-    () => void sendMessage(draft, composerAttachments.getRequestAttachments()),
-    [composerAttachments.getRequestAttachments, draft, sendMessage],
+    () =>
+      void sendMessage(
+        draft,
+        composerAttachments.getRequestAttachments(),
+        composerAttachments.attachments.map((attachment) => attachment.id),
+      ),
+    [
+      composerAttachments.attachments,
+      composerAttachments.getRequestAttachments,
+      draft,
+      sendMessage,
+    ],
   );
 
   return (
@@ -668,9 +770,7 @@ export function ConversationView({
           ariaDescription={t.conversation.composerKeyboardDescription}
           below={composerBelow}
           busy={isWorking}
-          disabled={
-            !conversation || loading || isWaiting || isSavingOptions || isResponding || isSending
-          }
+          disabled={!conversation || loading || isWaiting || isResponding || isSending}
           leading={composerLeading}
           attachments={composerAttachmentsNode}
           onChange={setDraft}

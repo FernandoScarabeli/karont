@@ -1,0 +1,38 @@
+.popover {
+  position: fixed;
+  z-index: var(--k-layer-popover);
+  box-sizing: border-box;
+  overflow: auto;
+  min-width: var(--k-menu-min-width);
+  margin: 0;
+  max-width: min(var(--k-pane-menu-max-width), calc(100vw - var(--k-space-4)));
+  padding: var(--k-space-2);
+  border: var(--k-border-width) solid var(--k-color-border-strong);
+  border-radius: var(--k-radius-lg);
+  background: var(--k-color-bg-raised);
+  box-shadow: var(--k-shadow-dialog);
+  color: var(--k-color-text-primary);
+  scrollbar-color: var(--k-color-border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.popover:focus {
+  outline: none;
+}
+
+.heading {
+  margin-block-end: var(--k-space-2);
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+}
+
+.srOnly {
+  position: absolute;
+  width: var(--k-border-width);
+  height: var(--k-border-width);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
