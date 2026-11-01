@@ -166,6 +166,20 @@ export function createHandlers({
           .catch((error: unknown) => {
             throw conversationError(error);
           });
+      case "conversation.setPinned":
+        return conversationManager
+          .setPinned(request.params.id, request.params.pinned)
+          .then((conversation) => ({ conversation }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.setArchived":
+        return conversationManager
+          .setArchived(request.params.id, request.params.archived)
+          .then((conversation) => ({ conversation }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
       case "conversation.setOptions":
         return conversationManager
           .setOptions(request.params.id, request.params.options)

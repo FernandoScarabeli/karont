@@ -21,6 +21,8 @@
   --k-color-brand: #f3eee3;
   --k-color-ok: #6fcf97;
   --k-color-terminal-selection: rgb(243 238 227 / 30%);
+  --k-color-scrollbar-thumb: rgb(133 133 139 / 8%);
+  --k-color-scrollbar-thumb-hover: rgb(133 133 139 / 30%);
   --k-color-dialog-backdrop: rgb(0 0 0 / 72%);
   --k-color-drop-zone: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
   --k-shadow-dialog: 0 var(--k-space-8) var(--k-space-10) rgb(0 0 0 / 32%);
@@ -67,6 +69,9 @@
   --k-radius-full: 999px;
 
   --k-border-width: 1px;
+  --k-scrollbar-track-width: 14px;
+  --k-scrollbar-thumb-inset: 1px;
+  --k-sidebar-scrollbar-content-inset: 10px;
   --k-focus-ring-width: 2px;
   --k-focus-ring-offset: 2px;
   --k-control-height-sm: 28px;
@@ -187,6 +192,8 @@
   --k-color-brand: #29292c;
   --k-color-ok: #27673b;
   --k-color-terminal-selection: rgb(41 41 44 / 18%);
+  --k-color-scrollbar-thumb: rgb(100 101 106 / 10%);
+  --k-color-scrollbar-thumb-hover: rgb(100 101 106 / 30%);
   --k-color-dialog-backdrop: rgb(0 0 0 / 34%);
   --k-color-drop-zone: color-mix(in srgb, var(--k-color-primary) 10%, transparent);
   --k-shadow-dialog: 0 var(--k-space-8) var(--k-space-10) rgb(0 0 0 / 16%);

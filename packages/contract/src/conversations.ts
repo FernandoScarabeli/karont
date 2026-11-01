@@ -13,6 +13,8 @@ export const conversationSchema = z.strictObject({
   model: z.string().min(1).max(80).optional(),
   effort: reasoningEffortSchema.optional(),
   plan: z.boolean().optional(),
+  pinnedAt: z.iso.datetime({ offset: true }).nullable(),
+  archivedAt: z.iso.datetime({ offset: true }).nullable(),
   state: conversationStateSchema,
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),

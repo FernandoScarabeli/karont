@@ -125,8 +125,6 @@
   overscroll-behavior: contain;
   padding: var(--k-space-4) var(--k-space-6);
   scroll-behavior: auto;
-  scrollbar-color: var(--k-color-border-strong) transparent;
-  scrollbar-width: thin;
 }
 
 .bottomSentinel {

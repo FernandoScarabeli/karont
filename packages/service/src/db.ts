@@ -58,6 +58,11 @@ export const migrations: { version: number; up: string }[] = [
     version: 8,
     up: "ALTER TABLE conversations ADD COLUMN title_manually_set INTEGER NOT NULL DEFAULT 0 CHECK (title_manually_set IN (0, 1));",
   },
+  {
+    version: 9,
+    up: `ALTER TABLE conversations ADD COLUMN pinned_at TEXT;
+    ALTER TABLE conversations ADD COLUMN archived_at TEXT;`,
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -78,12 +83,14 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     id: randomUUID(),
     ...input,
     plan: input.plan ?? false,
+    pinnedAt: null,
+    archivedAt: null,
     state: "idle",
     createdAt: now,
     updatedAt: now,
   };
   db.prepare(
-    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,state,created_at,updated_at,title_manually_set) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,state,created_at,updated_at,title_manually_set,pinned_at,archived_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     conversation.id,
     conversation.agent,
@@ -97,6 +104,8 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     now,
     now,
     conversation.title === "Nova conversa" ? 0 : 1,
+    conversation.pinnedAt,
+    conversation.archivedAt,
   );
   return conversation;
 }
@@ -110,10 +119,11 @@ export function getConversation(db: DatabaseSync, id: string): Conversation | nu
 
 export function listConversations(
   db: DatabaseSync,
-  filters: { agent?: string; cwd?: string; limit: number },
+  filters: { agent?: string; cwd?: string; archived?: boolean; limit: number },
 ): Conversation[] {
   const clauses: string[] = [];
   const values: (string | number)[] = [];
+  clauses.push(filters.archived ? "archived_at IS NOT NULL" : "archived_at IS NULL");
   if (filters.agent) {
     clauses.push("agent=?");
     values.push(filters.agent);
@@ -125,7 +135,7 @@ export function listConversations(
   values.push(filters.limit);
   const rows = db
     .prepare(
-      `SELECT * FROM conversations ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY updated_at DESC LIMIT ?`,
+      `SELECT * FROM conversations WHERE ${clauses.join(" AND ")} ORDER BY CASE WHEN pinned_at IS NULL THEN 1 ELSE 0 END, pinned_at DESC, updated_at DESC LIMIT ?`,
     )
     .all(...values) as ConversationRow[];
   return rows.map(mapConversation);
@@ -133,7 +143,7 @@ export function listConversations(
 
 export function updateConversation(db: DatabaseSync, conversation: Conversation): void {
   db.prepare(
-    "UPDATE conversations SET title=?,mode=?,model=?,effort=?,plan=?,state=?,updated_at=? WHERE id=?",
+    "UPDATE conversations SET title=?,mode=?,model=?,effort=?,plan=?,state=?,updated_at=?,pinned_at=?,archived_at=? WHERE id=?",
   ).run(
     conversation.title,
     conversation.mode,
@@ -142,6 +152,8 @@ export function updateConversation(db: DatabaseSync, conversation: Conversation)
     conversation.plan ? 1 : 0,
     conversation.state,
     conversation.updatedAt,
+    conversation.pinnedAt,
+    conversation.archivedAt,
     conversation.id,
   );
 }
@@ -261,6 +273,8 @@ type ConversationRow = {
   model: string | null;
   effort: Conversation["effort"] | null;
   plan: number;
+  pinned_at: string | null;
+  archived_at: string | null;
   state: Conversation["state"];
   created_at: string;
   updated_at: string;
@@ -287,6 +301,8 @@ function mapConversation(row: ConversationRow): Conversation {
     ...(row.model ? { model: row.model } : {}),
     ...(row.effort ? { effort: row.effort } : {}),
     plan: row.plan === 1,
+    pinnedAt: row.pinned_at,
+    archivedAt: row.archived_at,
     state: row.state,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

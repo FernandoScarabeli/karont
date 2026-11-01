@@ -9,6 +9,7 @@ import {
   createConversation,
   getConversation,
   getSetting,
+  listConversations,
   listCustomAgents,
   listMessages,
   listRecentFolderRecords,
@@ -26,7 +27,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    8,
+    9,
   );
   assert.equal(
     (
@@ -44,6 +45,13 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   assert.ok(messageColumns.has("started_at_ms"));
   assert.ok(messageColumns.has("ended_at_ms"));
   assert.ok(messageColumns.has("attachments_json"));
+  const conversationColumns = new Set(
+    (db.prepare("PRAGMA table_info(conversations)").all() as { name: string }[]).map(
+      (column) => column.name,
+    ),
+  );
+  assert.ok(conversationColumns.has("pinned_at"));
+  assert.ok(conversationColumns.has("archived_at"));
   setSetting(db, "appearance.theme", { mode: "dark", enabled: true });
   assert.deepEqual(getSetting(db, "appearance.theme"), { mode: "dark", enabled: true });
   assert.equal((await stat(dbPath)).mode & 0o777, 0o600);
@@ -66,7 +74,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    8,
+    9,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();
@@ -122,6 +130,8 @@ test("migra conversas antigas sem perder preferências existentes nem mensagens"
       model: conversation?.model,
       effort: conversation?.effort,
       plan: conversation?.plan,
+      pinnedAt: conversation?.pinnedAt,
+      archivedAt: conversation?.archivedAt,
     },
     {
       agent: "claude",
@@ -131,6 +141,8 @@ test("migra conversas antigas sem perder preferências existentes nem mensagens"
       model: "haiku",
       effort: "low",
       plan: false,
+      pinnedAt: null,
+      archivedAt: null,
     },
   );
   const legacyMessages = listMessages(db, "legacy-1");
@@ -188,6 +200,44 @@ test("migra conversas antigas sem perder preferências existentes nem mensagens"
     null,
   );
   assert.equal(getConversation(db, untitled.id)?.title, "Título escolhido pela pessoa");
+  db.close();
+});
+
+test("conversas arquivadas e fixadas filtram e ordenam sem mudar a ordem recente", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-conversation-list-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const create = (title: string) =>
+    createConversation(db, { agent: "claude", title, cwd: root, mode: "edit" });
+  const recent = create("Recente");
+  const older = create("Antiga");
+  const pinnedOlder = create("Fixada antiga");
+  const pinnedNewer = create("Fixada nova");
+  const archived = create("Arquivada");
+  const earlier = "2026-10-01T10:00:00.000Z";
+  const later = "2026-10-02T10:00:00.000Z";
+  db.prepare("UPDATE conversations SET updated_at=? WHERE id=?").run(
+    "2026-10-31T10:00:00.000Z",
+    recent.id,
+  );
+  db.prepare("UPDATE conversations SET updated_at=? WHERE id=?").run(
+    "2026-10-31T09:00:00.000Z",
+    older.id,
+  );
+  db.prepare("UPDATE conversations SET pinned_at=? WHERE id=?").run(earlier, pinnedOlder.id);
+  db.prepare("UPDATE conversations SET pinned_at=? WHERE id=?").run(later, pinnedNewer.id);
+  db.prepare("UPDATE conversations SET archived_at=? WHERE id=?").run(later, archived.id);
+
+  const active = listConversations(db, { limit: 20 });
+  assert.deepEqual(
+    active.map((conversation) => conversation.id),
+    [pinnedNewer.id, pinnedOlder.id, recent.id, older.id],
+  );
+  assert.equal(active[0]?.pinnedAt, later);
+  assert.equal(active[0]?.archivedAt, null);
+  assert.deepEqual(
+    listConversations(db, { archived: true, limit: 20 }).map((conversation) => conversation.id),
+    [archived.id],
+  );
   db.close();
 });
 

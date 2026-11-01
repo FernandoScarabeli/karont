@@ -172,6 +172,7 @@ export const methods = {
     params: z.strictObject({
       agent: z.enum(["claude", "codex"]).optional(),
       cwd: z.string().optional(),
+      archived: z.boolean().optional(),
       limit: z.number().int().min(1).max(500).default(100),
     }),
     result: z.strictObject({ conversations: z.array(conversationSchema) }),
@@ -225,6 +226,14 @@ export const methods = {
       id: z.string().min(1),
       title: z.string().trim().min(1).max(240),
     }),
+    result: z.strictObject({ conversation: conversationSchema }),
+  },
+  "conversation.setPinned": {
+    params: z.strictObject({ id: z.string().min(1), pinned: z.boolean() }),
+    result: z.strictObject({ conversation: conversationSchema }),
+  },
+  "conversation.setArchived": {
+    params: z.strictObject({ id: z.string().min(1), archived: z.boolean() }),
     result: z.strictObject({ conversation: conversationSchema }),
   },
   "conversation.setOptions": {

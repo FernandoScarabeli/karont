@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   type ReactNode,
   type RefObject,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -15,6 +16,7 @@ type Placement = { left: number; top: number; maxHeight: number };
 export function ComposerPopover({
   open,
   anchorRef,
+  anchorPoint,
   initialFocus,
   onClose,
   children,
@@ -25,12 +27,13 @@ export function ComposerPopover({
 }: {
   open: boolean;
   anchorRef: RefObject<HTMLElement | null>;
+  anchorPoint?: { x: number; y: number };
   initialFocus?: () => HTMLElement | null;
   onClose: () => void;
   children: ReactNode;
   className?: string;
   id?: string;
-  role?: "group" | "dialog";
+  role?: "group" | "dialog" | "menu";
   label?: string;
 }) {
   const popoverRef = useRef<HTMLElement>(null);
@@ -41,14 +44,29 @@ export function ComposerPopover({
     initialFocusRef.current = initialFocus;
   }, [initialFocus]);
 
+  const restoreFocus = useCallback(() => {
+    requestAnimationFrame(() => {
+      const anchor = anchorRef.current;
+      if (anchor?.isConnected && !document.querySelector("dialog[open]")) anchor.focus();
+    });
+  }, [anchorRef]);
+
   useLayoutEffect(() => {
     if (!open) return;
     const measure = () => {
       const anchor = anchorRef.current;
       const popover = popoverRef.current;
       if (!anchor || !popover) return;
-      const rect = anchor.getBoundingClientRect();
+      const rect = anchorPoint
+        ? {
+            left: anchorPoint.x,
+            right: anchorPoint.x,
+            top: anchorPoint.y,
+            bottom: anchorPoint.y,
+          }
+        : anchor?.getBoundingClientRect();
       const bounds = popover.getBoundingClientRect();
+      if (!rect) return;
       const tokenSpace = Number.parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue("--k-space-2"),
       );
@@ -72,7 +90,7 @@ export function ComposerPopover({
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };
-  }, [anchorRef, open]);
+  }, [anchorPoint, anchorRef, open]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -85,15 +103,14 @@ export function ComposerPopover({
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (popoverRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
+      const focusWasInside = Boolean(popoverRef.current?.contains(document.activeElement));
       const clickedAnotherTrigger = Boolean(target.closest("[data-composer-menu-trigger]"));
       onClose();
-      if (!clickedAnotherTrigger) {
-        requestAnimationFrame(() => anchorRef.current?.focus());
-      }
+      if (focusWasInside && !clickedAnotherTrigger) restoreFocus();
     };
     document.addEventListener("pointerdown", handlePointerDown, true);
     return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [anchorRef, onClose, open]);
+  }, [anchorRef, onClose, open, restoreFocus]);
 
   useEffect(() => {
     if (!open) return;
@@ -101,11 +118,11 @@ export function ComposerPopover({
       if (event.key !== "Escape") return;
       event.preventDefault();
       onClose();
-      requestAnimationFrame(() => anchorRef.current?.focus());
+      restoreFocus();
     };
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [anchorRef, onClose, open]);
+  }, [onClose, open, restoreFocus]);
 
   if (!open || typeof document === "undefined") return null;
   const style = placement
@@ -127,6 +144,20 @@ export function ComposerPopover({
           popoverRef.current = element;
         }}
         role="dialog"
+        style={style}
+        tabIndex={-1}
+      >
+        {children}
+      </div>
+    ) : role === "menu" ? (
+      <div
+        aria-label={label}
+        className={classNames}
+        id={id}
+        ref={(element) => {
+          popoverRef.current = element;
+        }}
+        role="menu"
         style={style}
         tabIndex={-1}
       >

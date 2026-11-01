@@ -14,6 +14,7 @@ import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { getBridge } from "../bridge/index.ts";
 import { Composer } from "../components/Composer/Composer.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
+import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
 import { t } from "../i18n/pt-BR.ts";
 import {
   AttachmentChips,
@@ -623,6 +624,7 @@ export function ConversationView({
           aria-description={isRenamingTitle ? undefined : t.chat.renameTitleHint}
           aria-label={title}
           className={styles.title}
+          data-pane-title=""
           draggable={Boolean(dragHandleProps?.draggable && !isRenamingTitle)}
           onDoubleClick={beginTitleRename}
           onKeyDown={(event) => {
@@ -687,7 +689,11 @@ export function ConversationView({
         {headerActions}
       </header>
 
-      <section aria-label={t.chat.messageList} className={styles.messageList} ref={messageListRef}>
+      <section
+        aria-label={t.chat.messageList}
+        className={`${styles.messageList} ${scrollAreaStyles.scrollArea}`}
+        ref={messageListRef}
+      >
         {loading ? <p className={styles.loading}>{t.chat.loading}</p> : null}
         {error ? (
           <p className={styles.error} role="alert">

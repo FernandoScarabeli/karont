@@ -142,15 +142,14 @@ export function ComposerPreferences({
     openConfig(event.currentTarget, event.detail === 0);
   }
 
-  function closeConfig(returnFocus = true) {
+  function closeConfig() {
     onActivePopoverChange(null);
-    if (returnFocus) requestAnimationFrame(() => configAnchorRef.current?.focus());
   }
 
   function chooseMode(value: ConversationMode) {
     if (value === "full" && mode !== "full") {
       setConfirmFull(true);
-      closeConfig(false);
+      closeConfig();
       return;
     }
     onModeChange(value);
@@ -245,7 +244,7 @@ export function ComposerPreferences({
               : null
           }
           label={t.chat.configLabel}
-          onClose={() => closeConfig()}
+          onClose={closeConfig}
           open={active("config")}
           role="dialog"
         >
