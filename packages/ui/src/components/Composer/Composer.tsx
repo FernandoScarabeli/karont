@@ -1,5 +1,13 @@
 import { ArrowUp, Square } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, type ReactNode, useLayoutEffect, useRef } from "react";
+import {
+  type ClipboardEventHandler,
+  type DragEventHandler,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import styles from "./Composer.module.css";
 
 export type ComposerProps = {
@@ -17,6 +25,14 @@ export type ComposerProps = {
   mono?: boolean;
   busy?: boolean;
   onStop?: () => void;
+  attachments?: ReactNode;
+  dragActive?: boolean;
+  dropMessage?: string;
+  onPaste?: ClipboardEventHandler<HTMLTextAreaElement>;
+  onDragEnter?: DragEventHandler<HTMLFormElement>;
+  onDragLeave?: DragEventHandler<HTMLFormElement>;
+  onDragOver?: DragEventHandler<HTMLFormElement>;
+  onDrop?: DragEventHandler<HTMLFormElement>;
   below?: ReactNode;
 };
 
@@ -35,6 +51,14 @@ export function Composer({
   mono = false,
   busy = false,
   onStop,
+  attachments,
+  dragActive = false,
+  dropMessage,
+  onPaste,
+  onDragEnter,
+  onDragLeave,
+  onDragOver,
+  onDrop,
   below,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -78,7 +102,15 @@ export function Composer({
 
   return (
     <div className={styles.wrapper}>
-      <form className={styles.card} onSubmit={submit}>
+      <form
+        className={`${styles.card} ${dragActive ? styles.dragActive : ""}`}
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onSubmit={submit}
+      >
+        {attachments ? <div className={styles.attachments}>{attachments}</div> : null}
         <textarea
           aria-description={ariaDescription}
           aria-label={placeholder}
@@ -86,11 +118,17 @@ export function Composer({
           disabled={disabled}
           onChange={(event) => onChange(event.currentTarget.value)}
           onKeyDown={handleKeyDown}
+          onPaste={onPaste}
           placeholder={placeholder}
           ref={textareaRef}
           rows={2}
           value={value}
         />
+        {dragActive && dropMessage ? (
+          <div className={styles.dropNotice} role="status">
+            {dropMessage}
+          </div>
+        ) : null}
         <div className={styles.footer}>
           <div className={styles.leading}>{leading}</div>
           <div className={styles.actions}>

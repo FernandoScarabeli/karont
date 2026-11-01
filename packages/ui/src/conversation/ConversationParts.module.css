@@ -30,6 +30,39 @@
   white-space: pre-wrap;
 }
 
+.sentAttachments {
+  display: flex;
+  max-width: min(var(--k-chat-user-bubble-max-width), 88%);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--k-space-1);
+}
+
+.sentAttachment {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: var(--k-control-height-sm);
+  align-items: center;
+  gap: var(--k-space-1);
+  padding-inline: var(--k-space-2);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-color-bg-raised);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-11);
+}
+
+.sentAttachmentName {
+  overflow: hidden;
+  color: var(--k-color-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sentAttachmentSize {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+}
+
 .messageActions {
   display: flex;
   flex-wrap: wrap;
@@ -201,6 +234,30 @@
   text-decoration-color: var(--k-color-border-muted);
   text-underline-offset: var(--k-space-1);
   cursor: help;
+}
+
+.markdownLink {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--k-color-working);
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
+  text-decoration-color: var(--k-color-border-muted);
+  text-underline-offset: var(--k-space-1);
+  cursor: pointer;
+}
+
+.markdownLink:hover {
+  text-decoration-color: currentColor;
+}
+
+.markdownLink:focus-visible {
+  border-radius: var(--k-radius-xs);
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-chat-focus-outline-offset);
 }
 
 .codeBlock {

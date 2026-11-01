@@ -5,6 +5,7 @@
 }
 
 .card {
+  position: relative;
   display: grid;
   gap: var(--k-space-3);
   min-width: 0;
@@ -13,6 +14,31 @@
   border-radius: var(--k-radius-2xl);
   background: var(--k-color-bg-raised);
   transition: border-color var(--k-duration-fast) var(--k-ease);
+}
+
+.attachments {
+  display: grid;
+  min-width: 0;
+  gap: var(--k-space-2);
+}
+
+.dragActive {
+  outline: var(--k-focus-ring-width) solid var(--k-color-working);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.dropNotice {
+  position: absolute;
+  z-index: var(--k-layer-popover);
+  inset: var(--k-space-2);
+  display: grid;
+  place-items: center;
+  border-radius: var(--k-radius-xl);
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-14);
+  font-weight: var(--k-weight-medium);
+  pointer-events: none;
 }
 
 .card:focus-within {
@@ -48,7 +74,7 @@
 }
 
 .mono {
-  font-family: var(--k-font-mono);
+  font-family: var(--k-font-mono); /* taste-skill-ignore: literal shell command. */
 }
 
 .footer {

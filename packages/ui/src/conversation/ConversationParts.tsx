@@ -10,6 +10,7 @@ import {
   FileText,
   Globe2,
   HelpCircle,
+  Image as ImageIcon,
   ListTodo,
   LoaderCircle,
   LockKeyhole,
@@ -36,8 +37,10 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "../components/Button/Button.tsx";
 import { t } from "../i18n/pt-BR.ts";
+import { formatAttachmentSize } from "./attachmentUtils.ts";
 import styles from "./ConversationParts.module.css";
 import { cleanMarkdownPreview, formatConversationText } from "./displayText.ts";
+import { getAllowedExternalUrl } from "./externalLinks.ts";
 import type { ConversationMessage, MessagePart } from "./useConversation.ts";
 
 type HighlightPlugin = typeof import("rehype-highlight").default;
@@ -94,6 +97,7 @@ export const MessageRow = memo(function MessageRow({
       : "";
   const visibleParts = message.parts.slice(-visiblePartCount);
   const hasTimeline = message.author === "agent" && message.parts.length > 0;
+  const attachmentOccurrences = new Map<string, number>();
 
   const navigateToPart = useCallback(
     (partId: string) => {
@@ -143,26 +147,61 @@ export const MessageRow = memo(function MessageRow({
     >
       {message.author === "user" ? (
         <>
-          <div className={styles.userBubble}>{text}</div>
-          <div className={styles.messageActions}>
-            <button className={styles.textAction} onClick={() => onCopy(text)} type="button">
-              <Copy aria-hidden="true" size={14} />
-              {t.chat.copy}
-            </button>
-            <button className={styles.textAction} onClick={() => onEdit(text)} type="button">
-              <Pencil aria-hidden="true" size={14} />
-              {t.chat.edit}
-            </button>
-            <button
-              className={styles.textAction}
-              disabled={message.status === "streaming"}
-              onClick={() => onResend(text)}
-              type="button"
-            >
-              <Play aria-hidden="true" size={14} />
-              {t.chat.resend}
-            </button>
-          </div>
+          {message.attachments?.length ? (
+            <section aria-label={t.chat.sentAttachments} className={styles.sentAttachments}>
+              {message.attachments.map((attachment) => {
+                const baseKey = JSON.stringify([
+                  attachment.name,
+                  attachment.mimeType,
+                  attachment.kind,
+                  attachment.sizeBytes,
+                ]);
+                const occurrence = attachmentOccurrences.get(baseKey) ?? 0;
+                attachmentOccurrences.set(baseKey, occurrence + 1);
+                return (
+                  <span
+                    className={styles.sentAttachment}
+                    key={`${baseKey}:${occurrence}`}
+                    title={`${attachment.name} · ${formatAttachmentSize(attachment.sizeBytes)}`}
+                  >
+                    {attachment.kind === "image" ? (
+                      <ImageIcon aria-hidden="true" size={14} />
+                    ) : (
+                      <FileText aria-hidden="true" size={14} />
+                    )}
+                    <span className={styles.sentAttachmentName}>{attachment.name}</span>
+                    <span className={styles.sentAttachmentSize}>
+                      {formatAttachmentSize(attachment.sizeBytes)}
+                    </span>
+                  </span>
+                );
+              })}
+            </section>
+          ) : null}
+          {text.trim() ? <div className={styles.userBubble}>{text}</div> : null}
+          {text.trim() ? (
+            <div className={styles.messageActions}>
+              <button className={styles.textAction} onClick={() => onCopy(text)} type="button">
+                <Copy aria-hidden="true" size={14} />
+                {t.chat.copy}
+              </button>
+              <button className={styles.textAction} onClick={() => onEdit(text)} type="button">
+                <Pencil aria-hidden="true" size={14} />
+                {t.chat.edit}
+              </button>
+              {!message.attachments?.length ? (
+                <button
+                  className={styles.textAction}
+                  disabled={message.status === "streaming"}
+                  onClick={() => onResend(text)}
+                  type="button"
+                >
+                  <Play aria-hidden="true" size={14} />
+                  {t.chat.resend}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </>
       ) : (
         <>
@@ -387,11 +426,22 @@ const MarkdownBody = memo(function MarkdownBody({
     <div className={styles.markdown}>
       <Markdown
         components={{
-          a: ({ children }) => (
-            <span className={styles.inertLink} title={t.chat.linkUnavailable}>
-              {children}
-            </span>
-          ),
+          a: ({ children, href }) => {
+            const externalUrl = getAllowedExternalUrl(href);
+            return externalUrl ? (
+              <button
+                className={styles.markdownLink}
+                onClick={() => void openExternalUrl(externalUrl, onAnnounce)}
+                type="button"
+              >
+                {children}
+              </button>
+            ) : (
+              <span className={styles.inertLink} title={t.chat.linkUnavailable}>
+                {children}
+              </span>
+            );
+          },
           pre: ({ children }) => <CodeBlock onAnnounce={onAnnounce}>{children}</CodeBlock>,
         }}
         rehypePlugins={highlightPlugin ? [highlightPlugin] : []}
@@ -402,6 +452,19 @@ const MarkdownBody = memo(function MarkdownBody({
     </div>
   );
 });
+
+async function openExternalUrl(url: string, onAnnounce: (text: string) => void): Promise<void> {
+  try {
+    if (window.karontNative) {
+      const opened = await window.karontNative.openExternal(url);
+      if (!opened) onAnnounce(t.chat.linkOpenFailed);
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch {
+    onAnnounce(t.chat.linkOpenFailed);
+  }
+}
 
 function CodeBlock({
   children,
