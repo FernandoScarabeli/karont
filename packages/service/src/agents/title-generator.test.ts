@@ -6,7 +6,7 @@ import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
-function createFakeTitleCli(output: string, hangs = false) {
+function createFakeTitleCli(output: string, hangs = false, exitCode = 0) {
   let invocation: { command: string; args: string[]; cwd: string; files: string[] } | undefined;
   const spawn = ((command: string | URL, args: readonly string[] = [], options?: SpawnOptions) => {
     const emitter = new EventEmitter();
@@ -31,7 +31,7 @@ function createFakeTitleCli(output: string, hangs = false) {
       queueMicrotask(() => {
         stdout.end(output);
         stderr.end();
-        emitter.emit("close", 0, null);
+        emitter.emit("close", exitCode, null);
       });
     }
     return child;
@@ -72,6 +72,8 @@ test("Codex usa execução efêmera e somente leitura numa pasta temporária vaz
     {
       env: { ...process.env, KARONT_CODEX_CLI: "/fake/codex" },
       spawn: fake.spawn,
+      codexModel: "codex-mini-available",
+      codexEffort: "low",
     },
   );
   const invocation = fake.getInvocation();
@@ -85,25 +87,70 @@ test("Codex usa execução efêmera e somente leitura numa pasta temporária vaz
   assert.ok(args.includes("--ephemeral"));
   assert.ok(args.includes("--ignore-user-config"));
   assert.equal(args[sandboxIndex + 1], "read-only");
-  assert.equal(args[modelIndex + 1], "gpt-5.1-codex-mini");
+  assert.equal(args[modelIndex + 1], "codex-mini-available");
   assert.equal(args[args.indexOf("--config") + 1], 'model_reasoning_effort="low"');
   assert.equal(args[directoryIndex + 1], invocation?.cwd);
   assert.deepEqual(invocation?.files, []);
 });
 
-test("timeout e saída fora do formato mantêm o título atual sem propagar erro", async () => {
+test("Codex usa o modelo padrão quando a lista não oferece um modelo", async () => {
+  const fake = createFakeTitleCli("Título válido\n");
+  const title = await generateConversationTitle("codex", "Pedido", "Resposta", {
+    env: { ...process.env, KARONT_CODEX_CLI: "/fake/codex" },
+    spawn: fake.spawn,
+  });
+  const args = fake.getInvocation()?.args ?? [];
+
+  assert.equal(title, "Título válido");
+  assert.equal(args.includes("--model"), false);
+});
+
+test("normaliza prefixos e markdown, aceita respostas curtas e limita o título a seis palavras", () => {
+  const wrapped = createFakeTitleCli('### **Título:** `"Karont: app desktop de chat"`');
+  const short = createFakeTitleCli("Só");
+  const long = createFakeTitleCli("um dois três quatro cinco seis sete oito nove dez");
+
+  return Promise.all([
+    generateConversationTitle("claude", "Pedido", "Resposta", {
+      env: { ...process.env, KARONT_CLAUDE_CLI: "/fake/claude" },
+      spawn: wrapped.spawn,
+    }),
+    generateConversationTitle("claude", "Pedido", "Resposta", {
+      env: { ...process.env, KARONT_CLAUDE_CLI: "/fake/claude" },
+      spawn: short.spawn,
+    }),
+    generateConversationTitle("claude", "Pedido", "Resposta", {
+      env: { ...process.env, KARONT_CLAUDE_CLI: "/fake/claude" },
+      spawn: long.spawn,
+    }),
+  ]).then(([normalized, acceptedShort, truncated]) => {
+    assert.equal(normalized, "Karont: app desktop de chat");
+    assert.equal(acceptedShort, "Só");
+    assert.equal(truncated, "um dois três quatro cinco seis");
+  });
+});
+
+test("timeout e falha de CLI são registrados sem conteúdo da conversa", async () => {
+  const logs: string[] = [];
+  const logger = { error: (message: string) => logs.push(message) };
   const hangingCli = createFakeTitleCli("", true);
   const timeout = await generateConversationTitle("claude", "Pedido", "Resposta", {
     env: { ...process.env, KARONT_CLAUDE_CLI: "/fake/claude" },
     spawn: hangingCli.spawn,
     timeoutMs: 20,
+    logger,
   });
   assert.equal(timeout, null);
+  assert.match(logs[0] ?? "", /timeout após 20 ms/u);
 
-  const invalidCli = createFakeTitleCli("Título curto\n");
-  const invalid = await generateConversationTitle("claude", "Pedido", "Resposta", {
+  const failedCli = createFakeTitleCli("conteúdo privado", false, 7);
+  const failed = await generateConversationTitle("claude", "conteúdo privado", "resposta secreta", {
     env: { ...process.env, KARONT_CLAUDE_CLI: "/fake/claude" },
-    spawn: invalidCli.spawn,
+    spawn: failedCli.spawn,
+    logger,
   });
-  assert.equal(invalid, null);
+  assert.equal(failed, null);
+  assert.match(logs[1] ?? "", /código de saída 7/u);
+  assert.equal(logs.join(" ").includes("conteúdo privado"), false);
+  assert.equal(logs.join(" ").includes("resposta secreta"), false);
 });

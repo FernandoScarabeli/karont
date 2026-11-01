@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { AnyEvent, Conversation, MessagePart } from "@karont/contract";
@@ -11,10 +14,13 @@ import {
   getMessage,
   openDatabase,
   setAgentSession,
+  setSetting,
 } from "../db.ts";
+import type { AdapterModelList } from "./adapter.ts";
 import { AgentCliError, ClaudeAdapter } from "./claude-adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
 import { createFakeClaudeSpawn, type FakeClaudeSpawn } from "./testing/fake-claude-process.ts";
+import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
 const fixtureDir = new URL("./fixtures/claude/", import.meta.url);
 
@@ -28,6 +34,37 @@ type Harness = {
   close(): Promise<void>;
 };
 
+function createFakeTitleCli(output: string) {
+  let invocation: { command: string; args: string[]; cwd: string } | undefined;
+  const spawn = ((command: string | URL, args: readonly string[] = [], options?: SpawnOptions) => {
+    const emitter = new EventEmitter();
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const child = Object.assign(emitter, {
+      stdout,
+      stderr,
+      stdin: null,
+      kill: () => {
+        queueMicrotask(() => emitter.emit("close", null, "SIGKILL"));
+        return true;
+      },
+    }) as unknown as ChildProcess;
+    invocation = {
+      command: String(command),
+      args: [...args],
+      cwd: String(options?.cwd ?? ""),
+    };
+    queueMicrotask(() => {
+      stdout.write(output);
+      stdout.end();
+      stderr.end();
+      emitter.emit("close", 0, null);
+    });
+    return child;
+  }) as NonNullable<TitleGeneratorOptions["spawn"]>;
+  return { spawn, getInvocation: () => invocation };
+}
+
 async function createHarness(
   scenario: string,
   extraEnv: NodeJS.ProcessEnv = {},
@@ -38,11 +75,20 @@ async function createHarness(
       agent: Conversation["agent"],
       userMessage: string,
       agentResponse: string,
+      options?: Pick<TitleGeneratorOptions, "codexModel" | "codexEffort">,
     ) => Promise<string | null>;
+    codexModelCache?: AdapterModelList;
   } = {},
 ): Promise<Harness> {
   const root = await mkdtemp(path.join(os.tmpdir(), "karont-conversations-"));
   const db = openDatabase(path.join(root, "karont.db"));
+  if (fakeOptions.codexModelCache) {
+    setSetting(db, "agent.codex.models", {
+      agent: "codex",
+      ...fakeOptions.codexModelCache,
+      fetchedAt: new Date().toISOString(),
+    });
+  }
   const events: AnyEvent[] = [];
   const listeners = new Set<(event: AnyEvent) => void>();
   const spawnArgs: string[][] = [];
@@ -206,15 +252,22 @@ test("Claude transmite texto em deltas e converte leitura em ação", async () =
   }
 });
 
-test("gera título em segundo plano usando só o início da primeira troca", async () => {
+test("fluxo da UI create + send gera e transmite título após resposta concluída", async () => {
   let captured: { agent: string; userMessage: string; agentResponse: string } | undefined;
+  const titleCli = createFakeTitleCli('### **Título:** `"Karont: app desktop de chat"`\n');
+  const titleLogs: string[] = [];
   const harness = await createHarness(
     "texto",
     {},
     {
       titleGenerator: async (agent, userMessage, agentResponse) => {
         captured = { agent, userMessage, agentResponse };
-        return "Entender a primeira resposta";
+        assert.equal(agent, "claude");
+        return generateConversationTitle("claude", userMessage, agentResponse, {
+          env: { ...process.env, KARONT_CLAUDE_CLI: "fake-title-cli" },
+          spawn: titleCli.spawn,
+          logger: { error: (message) => titleLogs.push(message) },
+        });
       },
     },
   );
@@ -225,6 +278,7 @@ test("gera título em segundo plano usando só o início da primeira troca", asy
       cwd: os.tmpdir(),
       mode: "edit",
     });
+    assert.equal(conversation.title, "Nova conversa");
     await harness.manager.send(conversation.id, "P".repeat(1_100));
     await waitForState(harness, conversation.id, "idle");
     for (
@@ -239,13 +293,24 @@ test("gera título em segundo plano usando só o início da primeira troca", asy
     assert.equal(captured?.agent, "claude");
     assert.equal(captured?.userMessage.length, 1_000);
     assert.ok(captured?.agentResponse.startsWith("Oi!"));
-    assert.equal(updated?.title, "Entender a primeira resposta");
+    assert.equal(updated?.title, "Karont: app desktop de chat");
+    assert.ok(titleCli.getInvocation()?.args.at(-1)?.includes("P".repeat(1_000)));
+    assert.deepEqual(titleLogs, []);
     assert.ok(
       harness.events.some(
         (event) =>
           event.event === "conversation.stateChanged" &&
           event.payload.conversation.id === conversation.id &&
-          event.payload.conversation.title === "Entender a primeira resposta",
+          "messageStatus" in event.payload &&
+          event.payload.messageStatus === "done",
+      ),
+    );
+    assert.ok(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          event.payload.conversation.id === conversation.id &&
+          event.payload.conversation.title === "Karont: app desktop de chat",
       ),
     );
   } finally {
@@ -285,6 +350,72 @@ test("não substitui o título quando a pessoa renomeia durante a geração", as
       harness.manager.get(conversation.id)?.conversation.title,
       "Título escolhido por mim",
     );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Codex escolhe um modelo econômico disponível com esforço mínimo para o título", async () => {
+  let capturedOptions: Pick<TitleGeneratorOptions, "codexModel" | "codexEffort"> | undefined;
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      codexModelCache: {
+        models: [
+          {
+            id: "codex-standard",
+            name: "Codex Standard",
+            efforts: ["low", "medium"],
+            defaultEffort: "medium",
+          },
+          {
+            id: "codex-small",
+            name: "Codex Small",
+            efforts: ["low"],
+            defaultEffort: "low",
+          },
+          {
+            id: "codex-mini-available",
+            name: "Codex Mini",
+            efforts: ["low", "high"],
+            defaultEffort: "low",
+          },
+          {
+            id: "codex-nano-available",
+            name: "Codex Nano",
+            efforts: ["low"],
+            defaultEffort: "low",
+          },
+        ],
+        efforts: ["low", "medium", "high"],
+      },
+      titleGenerator: async (_agent, _userMessage, _agentResponse, options) => {
+        capturedOptions = options;
+        return "Título do Codex";
+      },
+    },
+  );
+  try {
+    const conversation = harness.manager.create({
+      agent: "codex",
+      title: "Nova conversa",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    await harness.manager.send(conversation.id, "Ajude com o projeto.");
+    await waitForState(harness, conversation.id, "idle");
+    for (
+      let attempt = 0;
+      attempt < 100 && harness.manager.get(conversation.id)?.conversation.title === "Nova conversa";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    assert.equal(capturedOptions?.codexModel, "codex-nano-available");
+    assert.equal(capturedOptions?.codexEffort, "low");
+    assert.equal(harness.manager.get(conversation.id)?.conversation.title, "Título do Codex");
   } finally {
     await harness.close();
   }
