@@ -175,6 +175,23 @@
   background: var(--k-color-text-secondary);
 }
 
+.agentWorkingMarker {
+  width: var(--k-dot-size);
+  height: var(--k-dot-size);
+  flex: 0 0 auto;
+  border-radius: var(--k-radius-full);
+  background: var(--k-color-working);
+}
+
+.needsYouMarker {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--k-space-1);
+  color: var(--k-color-attention);
+  font-size: var(--k-text-11);
+}
+
 .exitedMarker {
   flex: 0 0 auto;
   color: var(--k-color-text-muted);

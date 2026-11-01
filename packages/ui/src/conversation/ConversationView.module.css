@@ -1,0 +1,280 @@
+.page {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  container-name: conversation-pane;
+  container-type: inline-size;
+}
+
+.header {
+  display: flex;
+  min-height: var(--k-terminal-header-height);
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--k-space-3);
+  padding-inline: var(--k-space-5);
+  border-bottom: var(--k-border-width) solid var(--k-color-border);
+}
+
+.title {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-14);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+}
+
+.title:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.title:active {
+  cursor: grabbing;
+}
+
+.state,
+.progress {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--k-space-2);
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-12);
+}
+
+.stateMark,
+.progressMark {
+  width: var(--k-dot-size);
+  height: var(--k-dot-size);
+  border-radius: var(--k-radius-full);
+  background: var(--k-color-text-muted);
+}
+
+.working :where(.stateMark),
+.progress:not(:where(.progressWaiting)) :where(.progressMark) {
+  background: var(--k-color-working);
+}
+
+.working,
+.progress:not(:where(.progressWaiting)) {
+  color: var(--k-color-working);
+}
+
+.waiting :where(.stateMark),
+.progress :where(.progressWaiting) :where(.progressMark) {
+  background: var(--k-color-attention);
+}
+
+.waiting,
+.progress :where(.progressWaiting) {
+  color: var(--k-color-attention);
+}
+
+.failed {
+  color: var(--k-color-danger);
+}
+
+.failed :where(.stateMark) {
+  background: var(--k-color-danger);
+}
+
+.messageList {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--k-space-4) var(--k-space-6);
+  scroll-behavior: auto;
+  scrollbar-color: var(--k-color-border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.loading,
+.error {
+  display: flex;
+  max-width: var(--k-chat-content-max-width);
+  align-items: center;
+  gap: var(--k-space-2);
+  margin: var(--k-space-3) auto;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+}
+
+.error {
+  color: var(--k-color-danger);
+}
+
+.empty {
+  display: flex;
+  width: min(100%, var(--k-chat-content-max-width));
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-space-2);
+  margin: auto;
+  color: var(--k-color-text-muted);
+  text-align: center;
+}
+
+.empty svg {
+  color: var(--k-color-text-secondary);
+}
+
+.empty p {
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-20);
+  font-weight: var(--k-weight-medium);
+}
+
+.empty span {
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+}
+
+.olderMessages {
+  align-self: center;
+  min-height: var(--k-control-height-md);
+  padding-inline: var(--k-space-3);
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-12);
+  cursor: pointer;
+}
+
+.olderMessages:hover,
+.olderMessages:focus-visible {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
+.olderMessages:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-chat-focus-outline-offset);
+}
+
+.composerSection {
+  display: grid;
+  width: min(calc(100% - var(--k-space-6) - var(--k-space-6)), var(--k-chat-content-max-width));
+  flex: 0 0 auto;
+  gap: var(--k-space-2);
+  align-self: center;
+  padding-block-end: var(--k-space-3);
+}
+
+.progress {
+  margin: 0;
+  padding-inline: var(--k-space-2);
+  color: var(--k-color-working);
+}
+
+.composerControls {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.agentTag {
+  display: inline-flex;
+  min-height: var(--k-control-height-md);
+  align-items: center;
+  gap: var(--k-space-2);
+  padding-inline: var(--k-space-2);
+  border-radius: var(--k-radius-md);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-medium);
+}
+
+.folderStrip {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--k-space-2) var(--k-space-3);
+  border-radius: 0 0 var(--k-radius-lg) var(--k-radius-lg);
+  background: var(--k-color-bg-raised);
+}
+
+.folderButton {
+  display: inline-flex;
+  min-width: 0;
+  min-height: var(--k-control-height-sm);
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--k-color-text-muted);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-11);
+  cursor: pointer;
+}
+
+.folderButton span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folderButton:hover {
+  color: var(--k-color-text-primary);
+}
+
+.folderButton:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-chat-focus-outline-offset);
+}
+
+.pinnedTodos {
+  max-height: var(--k-chat-pinned-todos-max-height);
+  overflow: auto;
+}
+
+.srOnly {
+  position: absolute;
+  width: var(--k-border-width);
+  height: var(--k-border-width);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@container conversation-pane (max-width: 600px) {
+  .header {
+    gap: var(--k-space-2);
+    padding-inline: var(--k-space-3);
+  }
+
+  .state {
+    font-size: var(--k-text-11);
+  }
+
+  .messageList {
+    padding-inline: var(--k-space-3);
+  }
+
+  .composerSection {
+    width: calc(100% - var(--k-space-4) - var(--k-space-4));
+  }
+}
