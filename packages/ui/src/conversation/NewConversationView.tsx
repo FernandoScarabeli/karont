@@ -478,7 +478,14 @@ export function NewConversationView({
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title} id={titleId} ref={titleRef} tabIndex={-1} {...dragHandleProps}>
+        <h1
+          className={styles.title}
+          data-pane-title=""
+          id={titleId}
+          ref={titleRef}
+          tabIndex={-1}
+          {...dragHandleProps}
+        >
           {t.conversation.title}
         </h1>
         {headerActions}

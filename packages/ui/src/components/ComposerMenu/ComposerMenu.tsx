@@ -132,7 +132,7 @@ export function ComposerMenu({
           focusIntentRef.current === "option" ? (optionRefs.current[activeIndex] ?? null) : null
         }
         label={label}
-        onClose={() => close()}
+        onClose={() => close(false)}
         open={open}
       >
         {heading ? <ComposerPopoverHeading>{heading}</ComposerPopoverHeading> : null}

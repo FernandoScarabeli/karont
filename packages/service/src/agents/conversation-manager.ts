@@ -125,8 +125,35 @@ export class ConversationManager {
     return conversation;
   }
 
-  list(filters: { agent?: string; cwd?: string; limit: number }): Conversation[] {
+  list(filters: {
+    agent?: string;
+    cwd?: string;
+    archived?: boolean;
+    limit: number;
+  }): Conversation[] {
     return listConversations(this.#db, filters);
+  }
+
+  async setPinned(id: string, pinned: boolean): Promise<Conversation> {
+    const conversation = this.#requireConversation(id);
+    if (pinned && conversation.archivedAt) {
+      throw new Error("Não é possível fixar uma conversa arquivada.");
+    }
+    const now = this.#now();
+    conversation.pinnedAt = pinned ? now : null;
+    updateConversation(this.#db, conversation);
+    await this.#stateEvent(conversation);
+    return conversation;
+  }
+
+  async setArchived(id: string, archived: boolean): Promise<Conversation> {
+    const conversation = this.#requireConversation(id);
+    const now = this.#now();
+    conversation.archivedAt = archived ? now : null;
+    conversation.pinnedAt = null;
+    updateConversation(this.#db, conversation);
+    await this.#stateEvent(conversation);
+    return conversation;
   }
 
   get(id: string): { conversation: Conversation; messages: ConversationMessage[] } | null {

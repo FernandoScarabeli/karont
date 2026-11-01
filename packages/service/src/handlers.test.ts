@@ -139,6 +139,113 @@ test("conversation.rename persiste o título e emite conversation.stateChanged",
   db.close();
 });
 
+test("conversation.setPinned e setArchived persistem, notificam e arquivam sem parar a conversa", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-conversation-actions-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => {
+      events.push(event);
+    },
+    env: { PATH: "" },
+    homeDir: root,
+  });
+  const created = (await handlers.handle(
+    request("conversation.create", { agent: "claude", cwd: root }),
+    connection([]),
+  )) as { conversation: { id: string; updatedAt: string } };
+
+  const pinned = (await handlers.handle(
+    request("conversation.setPinned", { id: created.conversation.id, pinned: true }),
+    connection(events),
+  )) as {
+    conversation: { pinnedAt: string | null; archivedAt: string | null; updatedAt: string };
+  };
+  assert.ok(pinned.conversation.pinnedAt);
+  assert.equal(pinned.conversation.archivedAt, null);
+  assert.equal(pinned.conversation.updatedAt, created.conversation.updatedAt);
+  const pinnedList = (await handlers.handle(
+    request("conversation.list", { limit: 20 }),
+    connection([]),
+  )) as { conversations: Array<{ pinnedAt: string | null }> };
+  assert.equal(pinnedList.conversations[0]?.pinnedAt, pinned.conversation.pinnedAt);
+  assert.ok(
+    events.some(
+      (event) =>
+        event.event === "conversation.stateChanged" &&
+        event.payload.conversation.pinnedAt === pinned.conversation.pinnedAt,
+    ),
+  );
+
+  db.prepare("UPDATE conversations SET state='working' WHERE id=?").run(created.conversation.id);
+  const archived = (await handlers.handle(
+    request("conversation.setArchived", { id: created.conversation.id, archived: true }),
+    connection(events),
+  )) as {
+    conversation: {
+      pinnedAt: string | null;
+      archivedAt: string | null;
+      state: string;
+      updatedAt: string;
+    };
+  };
+  assert.equal(archived.conversation.pinnedAt, null);
+  assert.ok(archived.conversation.archivedAt);
+  assert.equal(archived.conversation.state, "working");
+  assert.equal(archived.conversation.updatedAt, created.conversation.updatedAt);
+  assert.deepEqual(
+    (
+      (await handlers.handle(request("conversation.list", { limit: 20 }), connection([]))) as {
+        conversations: unknown[];
+      }
+    ).conversations,
+    [],
+  );
+  const archivedList = (await handlers.handle(
+    request("conversation.list", { archived: true, limit: 20 }),
+    connection([]),
+  )) as {
+    conversations: Array<{
+      id: string;
+      state: string;
+      pinnedAt: string | null;
+      archivedAt: string | null;
+    }>;
+  };
+  assert.deepEqual(
+    archivedList.conversations.map((conversation) => conversation.id),
+    [created.conversation.id],
+  );
+  assert.equal(archivedList.conversations[0]?.state, "working");
+  assert.equal(archivedList.conversations[0]?.pinnedAt, null);
+  assert.ok(archivedList.conversations[0]?.archivedAt);
+  assert.ok(
+    events.some(
+      (event) =>
+        event.event === "conversation.stateChanged" &&
+        event.payload.conversation.archivedAt === archived.conversation.archivedAt,
+    ),
+  );
+
+  const unarchived = (await handlers.handle(
+    request("conversation.setArchived", { id: created.conversation.id, archived: false }),
+    connection(events),
+  )) as { conversation: { archivedAt: string | null; state: string } };
+  assert.equal(unarchived.conversation.archivedAt, null);
+  assert.equal(unarchived.conversation.state, "working");
+  const unpinned = (await handlers.handle(
+    request("conversation.setPinned", { id: created.conversation.id, pinned: false }),
+    connection(events),
+  )) as { conversation: { pinnedAt: string | null; updatedAt: string } };
+  assert.equal(unpinned.conversation.pinnedAt, null);
+  assert.equal(unpinned.conversation.updatedAt, created.conversation.updatedAt);
+  db.close();
+});
+
 test("dev.streamTest é indisponível fora do modo dev", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ks-"));
   const db = openDatabase(path.join(root, "karont.db"));

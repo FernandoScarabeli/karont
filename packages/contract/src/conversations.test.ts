@@ -11,6 +11,8 @@ const conversation = {
   cwd: "/tmp",
   mode: "edit",
   state: "idle",
+  pinnedAt: null,
+  archivedAt: null,
   createdAt: "2026-10-31T10:00:00Z",
   updatedAt: "2026-10-31T10:00:00Z",
 } as const;
@@ -31,6 +33,14 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
   assert.equal(
     methods["conversation.rename"].params.safeParse({ id: "c1", title: "   " }).success,
     false,
+  );
+  assert.equal(
+    methods["conversation.setPinned"].params.safeParse({ id: "c1", pinned: true }).success,
+    true,
+  );
+  assert.equal(
+    methods["conversation.setArchived"].params.safeParse({ id: "c1", archived: true }).success,
+    true,
   );
   assert.equal(
     methods["conversation.setOptions"].params.safeParse({

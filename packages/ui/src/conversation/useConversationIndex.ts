@@ -4,77 +4,149 @@ import { getBridge } from "../bridge/index.ts";
 import { t } from "../i18n/pt-BR.ts";
 
 type Snapshot = { conversations: Conversation[]; loading: boolean; error: boolean };
-let snapshot: Snapshot = { conversations: [], loading: true, error: false };
-const listeners = new Set<() => void>();
-let initialized = false;
+type Bucket = "active" | "archived";
 
-function notify() {
-  for (const listener of listeners) listener();
+const snapshots: Record<Bucket, Snapshot> = {
+  active: { conversations: [], loading: true, error: false },
+  archived: { conversations: [], loading: true, error: false },
+};
+const listeners: Record<Bucket, Set<() => void>> = {
+  active: new Set(),
+  archived: new Set(),
+};
+const latestConversations = new Map<string, Conversation>();
+const deletedIds = new Set<string>();
+let connected = false;
+let activeRequested = false;
+let archivedRequested = false;
+
+function notify(bucket: Bucket) {
+  for (const listener of listeners[bucket]) listener();
 }
 
 function sort(conversations: Conversation[]) {
-  return conversations.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  return conversations.sort((left, right) => {
+    if (left.pinnedAt && right.pinnedAt) return right.pinnedAt.localeCompare(left.pinnedAt);
+    if (left.pinnedAt) return -1;
+    if (right.pinnedAt) return 1;
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
 }
 
-function upsert(conversation: Conversation) {
-  const next = snapshot.conversations.filter((item) => item.id !== conversation.id);
-  next.push(conversation);
-  snapshot = { ...snapshot, conversations: sort(next) };
-  notify();
+function belongsTo(conversation: Conversation, bucket: Bucket) {
+  return Boolean(conversation.archivedAt) === (bucket === "archived");
 }
 
-function connect() {
-  if (initialized) return;
-  initialized = true;
+function applyToBucket(bucket: Bucket, conversation: Conversation) {
+  const current = snapshots[bucket];
+  const exists = current.conversations.some((item) => item.id === conversation.id);
+  if (!belongsTo(conversation, bucket) && !exists) return;
+  const next = current.conversations.filter((item) => item.id !== conversation.id);
+  if (belongsTo(conversation, bucket)) next.push(conversation);
+  snapshots[bucket] = { ...current, conversations: sort(next) };
+  notify(bucket);
+}
+
+function loadBucket(bucket: Bucket) {
+  if (bucket === "active") {
+    if (activeRequested) return;
+    activeRequested = true;
+  } else {
+    if (archivedRequested) return;
+    archivedRequested = true;
+  }
+
   const bridge = getBridge();
   if (!bridge) {
-    snapshot = { conversations: [], loading: false, error: false };
-    notify();
+    snapshots[bucket] = { conversations: [], loading: false, error: false };
+    notify(bucket);
     return;
   }
 
-  bridge.onEvent((event) => {
-    if (event.event === "conversation.stateChanged") upsert(event.payload.conversation);
-  });
-
+  snapshots[bucket] = { ...snapshots[bucket], loading: true, error: false };
+  notify(bucket);
   void bridge
-    .request("conversation.list", { limit: 500 })
+    .request("conversation.list", { archived: bucket === "archived", limit: 500 })
     .then((result) => {
       const merged = new Map(
         result.conversations.map((conversation) => [conversation.id, conversation]),
       );
-      for (const current of snapshot.conversations) {
-        const fetched = merged.get(current.id);
-        if (!fetched || fetched.updatedAt < current.updatedAt) merged.set(current.id, current);
+      for (const [id, latest] of latestConversations) {
+        if (deletedIds.has(id)) {
+          merged.delete(id);
+          continue;
+        }
+        const fetched = merged.get(id);
+        if (!fetched || latest.updatedAt >= fetched.updatedAt) {
+          merged.delete(id);
+          if (belongsTo(latest, bucket)) merged.set(id, latest);
+        }
       }
-      snapshot = {
+      snapshots[bucket] = {
         conversations: sort([...merged.values()]),
         loading: false,
         error: false,
       };
-      notify();
+      notify(bucket);
     })
     .catch(() => {
-      snapshot = { ...snapshot, loading: false, error: true };
-      notify();
+      snapshots[bucket] = { ...snapshots[bucket], loading: false, error: true };
+      notify(bucket);
     });
 }
 
-export function useConversationIndex() {
+function connect() {
+  if (connected) return;
+  connected = true;
+  const bridge = getBridge();
+  if (!bridge) {
+    snapshots.active = { conversations: [], loading: false, error: false };
+    notify("active");
+    return;
+  }
+
+  bridge.onEvent((event) => {
+    if (event.event !== "conversation.stateChanged") return;
+    const conversation = event.payload.conversation;
+    latestConversations.set(conversation.id, conversation);
+    deletedIds.delete(conversation.id);
+    applyToBucket("active", conversation);
+    applyToBucket("archived", conversation);
+  });
+  loadBucket("active");
+}
+
+export function useConversationIndex(archived = false) {
+  const bucket: Bucket = archived ? "archived" : "active";
   return useSyncExternalStore(
     (listener) => {
-      listeners.add(listener);
+      listeners[bucket].add(listener);
       connect();
-      return () => listeners.delete(listener);
+      if (archived) loadBucket("archived");
+      return () => listeners[bucket].delete(listener);
     },
-    () => snapshot,
-    () => snapshot,
+    () => snapshots[bucket],
+    () => snapshots[bucket],
   );
 }
 
 export function upsertConversation(conversation: Conversation) {
-  connect();
-  upsert(conversation);
+  latestConversations.set(conversation.id, conversation);
+  deletedIds.delete(conversation.id);
+  applyToBucket("active", conversation);
+  applyToBucket("archived", conversation);
+}
+
+export function removeConversationFromIndex(id: string) {
+  deletedIds.add(id);
+  latestConversations.delete(id);
+  for (const bucket of ["active", "archived"] as const) {
+    const current = snapshots[bucket];
+    const conversations = current.conversations.filter((conversation) => conversation.id !== id);
+    if (conversations.length === current.conversations.length) continue;
+    snapshots[bucket] = { ...current, conversations };
+    notify(bucket);
+  }
 }
 
 export function conversationIndexErrorText() {

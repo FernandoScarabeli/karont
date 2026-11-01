@@ -48,6 +48,8 @@ type NavigationState = {
   navigate: (view: NavigationTarget) => void;
   setActivePane: (paneId: string) => void;
   splitActivePane: (direction: "row" | "column", paneId?: string) => string | null;
+  openConversationBeside: (conversationId: string) => string | null;
+  closeConversationWorkspacePanes: (conversationId: string) => void;
   closeWorkspacePane: (paneId: string) => void;
   closeTerminalWorkspacePane: (terminalId: string) => void;
   moveWorkspacePane: (paneId: string, targetPaneId: string, edge: PaneEdge) => void;
@@ -192,6 +194,44 @@ export function NavigationProvider({ children }: PropsWithChildren) {
     [activePaneId, layout],
   );
 
+  const openConversationBeside = useCallback(
+    (conversationId: string) => {
+      const existing = findPaneByConversation(layout, conversationId);
+      if (existing) {
+        setActivePaneId(existing.id);
+        setView({ name: "workspace" });
+        return existing.id;
+      }
+      if (paneCount(layout) >= 6) return null;
+      const nextLayout = splitPaneInLayout(layout, activePaneId, "row", "after", {
+        kind: "chat",
+        conversationId,
+      });
+      const nextPane = listPanes(nextLayout).find(
+        (pane) => pane.view.kind === "chat" && pane.view.conversationId === conversationId,
+      );
+      if (!nextPane) return null;
+      setLayout(nextLayout);
+      setActivePaneId(nextPane.id);
+      setView({ name: "workspace" });
+      setStatusMessage(t.workspace.paneSplit);
+      return nextPane.id;
+    },
+    [activePaneId, layout],
+  );
+
+  const closeConversationWorkspacePanes = useCallback((conversationId: string) => {
+    setLayout((current) => {
+      let next = current;
+      for (const pane of listPanes(current)) {
+        if (pane.view.kind === "chat" && pane.view.conversationId === conversationId) {
+          next = setPaneView(next, pane.id, { kind: "new-conversation" });
+        }
+      }
+      return next;
+    });
+  }, []);
+
   const closeWorkspacePane = useCallback(
     (paneId: string) => {
       const nextLayout = closePaneInLayout(layout, paneId);
@@ -240,6 +280,8 @@ export function NavigationProvider({ children }: PropsWithChildren) {
         navigate,
         setActivePane,
         splitActivePane,
+        openConversationBeside,
+        closeConversationWorkspacePanes,
         closeWorkspacePane,
         closeTerminalWorkspacePane,
         moveWorkspacePane,

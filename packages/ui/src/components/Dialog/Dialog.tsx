@@ -61,8 +61,10 @@ export function Dialog({
       return;
     }
 
-    if (dialog.open) dialog.close();
-    restoreFocus();
+    if (dialog.open) {
+      dialog.close();
+      restoreFocus();
+    }
   }, [initialFocusRef, open, restoreFocus]);
 
   useEffect(
