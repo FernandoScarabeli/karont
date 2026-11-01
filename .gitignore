@@ -11,3 +11,4 @@ coverage/
 test-results/
 playwright-report/
 scripts/record-fixtures/out/
+.claude/settings.local.json
