@@ -1,25 +1,7 @@
 import type { MessagePart } from "@karont/contract";
-import { FileText } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import styles from "./WorkingIndicator.module.css";
-import {
-  currentActionFiles,
-  deriveWorkingLabel,
-  lastThinkingSentence,
-  type WorkingActionPart,
-} from "./workingLabel.ts";
-
-const dotIds = [
-  "top-left",
-  "top-center",
-  "top-right",
-  "middle-right",
-  "bottom-right",
-  "bottom-center",
-  "bottom-left",
-  "middle-left",
-  "center",
-];
+import { deriveWorkingLabel, type WorkingActionPart } from "./workingLabel.ts";
 
 export const WorkingIndicator = memo(function WorkingIndicator({
   active,
@@ -63,9 +45,6 @@ export const WorkingIndicator = memo(function WorkingIndicator({
   if (!active && !wasActive) return null;
 
   const label = deriveWorkingLabel(lastPart, actions, stopping);
-  const thinkingPart = lastPart?.type === "thinking" ? lastPart : undefined;
-  const sentence = lastThinkingSentence(thinkingPart);
-  const files = currentActionFiles(actions);
 
   return (
     <div
@@ -83,40 +62,23 @@ export const WorkingIndicator = memo(function WorkingIndicator({
         className={styles.mainLine}
         role={active ? "status" : undefined}
       >
-        <span aria-hidden="true" className={styles.dots}>
-          {dotIds.map((dotId) => (
-            <span className={styles.dot} data-position={dotId} key={dotId} />
-          ))}
-        </span>
+        <svg aria-hidden="true" className={styles.spiral} fill="none" viewBox="0 0 16 16">
+          <path
+            d="M8 8c0-1.1 1.7-1.1 1.7 0 0 2.2-3.5 2.2-3.5 0s5.4-3.6 5.4 0-7.2 4.8-7.2 0 9-6 9 0"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeWidth="1.4"
+          />
+        </svg>
         <span className={styles.step}>
-          <span className={styles.shimmer}>{label}</span>
+          <span className={styles.shimmer}>
+            <span className={styles.shimmerBase}>{label}</span>
+            <span aria-hidden="true" className={styles.shimmerBand}>
+              <span className={styles.shimmerHighlight}>{label}</span>
+            </span>
+          </span>
         </span>
-      </div>
-      <div aria-hidden="true" className={styles.ticker}>
-        <span className={styles.tickerText} data-empty={!sentence || undefined}>
-          {sentence || "\u00a0"}
-        </span>
-      </div>
-      <div aria-hidden="true" className={styles.chipsRow}>
-        {files.length > 0 ? <FileChips files={files} /> : null}
       </div>
     </div>
   );
 });
-
-function FileChips({ files }: { files: string[] }) {
-  const visibleFiles = files.slice(0, 3);
-  const overflow = files.length - visibleFiles.length;
-
-  return (
-    <span className={styles.chips}>
-      {visibleFiles.map((file) => (
-        <span className={styles.chip} key={file}>
-          <FileText aria-hidden="true" className={styles.fileIcon} />
-          <span className={styles.chipName}>{file}</span>
-        </span>
-      ))}
-      {overflow > 0 ? <span className={styles.moreChips}>+{overflow}</span> : null}
-    </span>
-  );
-}
