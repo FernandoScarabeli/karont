@@ -32,7 +32,6 @@ import {
   useCallback,
   useEffect,
   useId,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -67,15 +66,16 @@ function loadHighlightPlugin(): Promise<HighlightPlugin | null> {
 const messageDateFormatter = new Intl.DateTimeFormat("pt-BR", {
   day: "numeric",
   month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
 });
 const messageDateFormatterWithYear = new Intl.DateTimeFormat("pt-BR", {
   day: "numeric",
   month: "short",
   year: "numeric",
+});
+const messageTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
   hour: "2-digit",
   minute: "2-digit",
+  hourCycle: "h23",
 });
 
 function formatMessageDateTime(createdAt: string): string {
@@ -84,7 +84,7 @@ function formatMessageDateTime(createdAt: string): string {
     date.getFullYear() === new Date().getFullYear()
       ? messageDateFormatter
       : messageDateFormatterWithYear;
-  return formatter.format(date);
+  return `${messageTimeFormatter.format(date)} · ${formatter.format(date)}`;
 }
 
 export type ResponseInput =
@@ -129,7 +129,6 @@ export const MessageRow = memo(function MessageRow({
   const timestampId = useId();
   const timelineId = useId();
   const messageRef = useRef<HTMLElement>(null);
-  const dateOptionsRef = useRef<HTMLDivElement>(null);
   const isUserMessage = message.author === "user";
   const text = isUserMessage
     ? message.parts
@@ -147,34 +146,6 @@ export const MessageRow = memo(function MessageRow({
   useEffect(() => {
     if (!isActionsOpen) setShowTimeline(false);
   }, [isActionsOpen]);
-
-  useLayoutEffect(() => {
-    if (!isActionsOpen || isUserMessage) return;
-    const messageElement = messageRef.current;
-    const dateOptions = dateOptionsRef.current;
-    if (!messageElement || !dateOptions) return;
-
-    const scrollContainer = findScrollContainer(messageElement);
-    if (!scrollContainer) return;
-
-    let previousDateHeight = 0;
-    const keepVisibleContentInPlace = () => {
-      const dateHeight = dateOptions.getBoundingClientRect().height;
-      const addedHeight = dateHeight - previousDateHeight;
-      previousDateHeight = dateHeight;
-      if (addedHeight <= 0) return;
-
-      const visibleTop = scrollContainer.getBoundingClientRect().top + scrollContainer.clientTop;
-      if (messageElement.getBoundingClientRect().top < visibleTop) {
-        scrollContainer.scrollTop += addedHeight;
-      }
-    };
-
-    const observer = new ResizeObserver(keepVisibleContentInPlace);
-    observer.observe(dateOptions);
-    keepVisibleContentInPlace();
-    return () => observer.disconnect();
-  }, [isActionsOpen, isUserMessage]);
 
   const navigateToPart = useCallback(
     (partId: string) => {
@@ -254,7 +225,6 @@ export const MessageRow = memo(function MessageRow({
         className={`${styles.messageDateOptions} ${isActionsOpen ? styles.messageDateOptionsOpen : ""}`}
         id={timestampId}
         inert={!isActionsOpen}
-        ref={dateOptionsRef}
       >
         <div className={styles.messageDateOptionsInner}>
           <time className={styles.messageTimestamp} dateTime={message.createdAt}>
@@ -382,14 +352,6 @@ export const MessageRow = memo(function MessageRow({
     </article>
   );
 });
-
-function findScrollContainer(element: HTMLElement): HTMLElement | null {
-  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-    const overflowY = window.getComputedStyle(parent).overflowY;
-    if (overflowY === "auto" || overflowY === "scroll") return parent;
-  }
-  return null;
-}
 
 function isMessageToggleTarget(
   target: EventTarget | null,
