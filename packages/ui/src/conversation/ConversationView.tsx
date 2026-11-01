@@ -1,7 +1,17 @@
-import type { Conversation, ConversationMessage } from "@karont/contract";
+import type { Conversation, ConversationAttachment, ConversationMessage } from "@karont/contract";
 import { BridgeError } from "@karont/contract";
-import { Folder, MessageSquareText, TriangleAlert } from "lucide-react";
 import {
+  FileText,
+  Folder,
+  GitBranch,
+  Image as ImageIcon,
+  MessageSquareText,
+  Paperclip,
+  TriangleAlert,
+  X,
+} from "lucide-react";
+import {
+  type ClipboardEvent,
   type DragEventHandler,
   type ReactNode,
   useCallback,
@@ -15,6 +25,13 @@ import { getBridge } from "../bridge/index.ts";
 import { Composer } from "../components/Composer/Composer.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import {
+  classifyAttachmentFile,
+  formatAttachmentSize,
+  MAX_CONVERSATION_ATTACHMENTS,
+  MAX_IMAGE_ATTACHMENT_BYTES,
+  MAX_TEXT_ATTACHMENT_BYTES,
+} from "./attachmentUtils.ts";
+import {
   type AgentModels,
   agentDisplayName,
   ComposerPreferences,
@@ -26,6 +43,23 @@ import { formatFolderPath } from "./displayText.ts";
 import { isConversationPlanModeActive, setConversationPlanModeActive } from "./planMode.ts";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
+
+type PendingAttachment = ConversationAttachment & {
+  id: string;
+  sizeBytes: number;
+  previewUrl?: string;
+};
+
+type AttachmentFailure = "unsupported" | "image-too-large" | "text-too-large" | "invalid-name";
+
+class AttachmentInputError extends Error {
+  readonly code: AttachmentFailure;
+
+  constructor(code: AttachmentFailure) {
+    super(code);
+    this.code = code;
+  }
+}
 
 export function ConversationView({
   id,
@@ -45,6 +79,10 @@ export function ConversationView({
   const { conversation, messages, loading, error, liveText, addMessage, updateConversation } =
     useConversation(id);
   const [draft, setDraft] = useState("");
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [isPreparingAttachments, setIsPreparingAttachments] = useState(false);
+  const [gitInfo, setGitInfo] = useState<{ branch: string | null; detached: boolean } | null>(null);
   const [planMode, setPlanMode] = useState(() => isConversationPlanModeActive(id));
   const [models, setModels] = useState<AgentModels | null>(null);
   const [interactionError, setInteractionError] = useState("");
@@ -54,13 +92,92 @@ export function ConversationView({
   const [isResponding, setIsResponding] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
+  const attachmentQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const attachmentTaskCountRef = useRef(0);
+  const activeConversationIdRef = useRef(id);
+  activeConversationIdRef.current = id;
+  const isMountedRef = useRef(true);
+  const dragDepthRef = useRef(0);
+  const previousConversationIdRef = useRef(id);
   const messageListRef = useRef<HTMLDivElement>(null);
   const composerSectionRef = useRef<HTMLElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const wasNearBottom = useRef(true);
   const previousScrollHeight = useRef(0);
   const restoreAfterOlder = useRef(false);
   const previousScrollVersion = useRef("");
   const agent = conversation?.agent;
+
+  const replacePendingAttachments = useCallback((next: PendingAttachment[]) => {
+    pendingAttachmentsRef.current = next;
+    setPendingAttachments(next);
+  }, []);
+
+  const clearPendingAttachments = useCallback(() => {
+    for (const attachment of pendingAttachmentsRef.current) {
+      if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    }
+    replacePendingAttachments([]);
+  }, [replacePendingAttachments]);
+
+  const removePendingAttachment = useCallback(
+    (attachmentId: string) => {
+      const removed = pendingAttachmentsRef.current.find(
+        (attachment) => attachment.id === attachmentId,
+      );
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+      replacePendingAttachments(
+        pendingAttachmentsRef.current.filter((attachment) => attachment.id !== attachmentId),
+      );
+    },
+    [replacePendingAttachments],
+  );
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      for (const attachment of pendingAttachmentsRef.current) {
+        if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (previousConversationIdRef.current === id) return;
+    previousConversationIdRef.current = id;
+    setDraft("");
+    clearPendingAttachments();
+    setInteractionError("");
+  }, [clearPendingAttachments, id]);
+
+  useEffect(() => {
+    if (!bridge || !conversation?.cwd) {
+      setGitInfo(null);
+      return;
+    }
+    let active = true;
+    const conversationId = id;
+    const refreshGitInfo = () => {
+      void bridge
+        .request("folders.gitInfo", { path: conversation.cwd })
+        .then((result) => {
+          if (active && id === conversationId) setGitInfo(result);
+        })
+        .catch(() => {
+          if (active && id === conversationId) setGitInfo(null);
+        });
+    };
+
+    setGitInfo(null);
+    refreshGitInfo();
+    window.addEventListener("focus", refreshGitInfo);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refreshGitInfo);
+    };
+  }, [bridge, conversation?.cwd, id]);
 
   useEffect(() => {
     if (!agent || !bridge) return;
@@ -106,6 +223,100 @@ export function ConversationView({
     [latestMessage],
   );
 
+  function queueAttachments(files: File[]) {
+    if (files.length === 0 || !conversation || !bridge || loading || isWaiting || isSending) {
+      return;
+    }
+    const queueConversationId = id;
+    attachmentTaskCountRef.current += 1;
+    setIsPreparingAttachments(true);
+    setInteractionError("");
+    attachmentQueueRef.current = attachmentQueueRef.current
+      .then(async () => {
+        if (!isMountedRef.current || activeConversationIdRef.current !== queueConversationId) {
+          return;
+        }
+        const warnings: string[] = [];
+        for (const file of files) {
+          if (!isMountedRef.current || activeConversationIdRef.current !== queueConversationId) {
+            break;
+          }
+          if (pendingAttachmentsRef.current.length >= MAX_CONVERSATION_ATTACHMENTS) {
+            warnings.push(t.chat.attachmentLimit);
+            break;
+          }
+          try {
+            const attachment = await prepareAttachment(file);
+            if (!isMountedRef.current || activeConversationIdRef.current !== queueConversationId) {
+              if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+              break;
+            }
+            replacePendingAttachments([...pendingAttachmentsRef.current, attachment]);
+          } catch (fileError) {
+            if (activeConversationIdRef.current === queueConversationId) {
+              warnings.push(attachmentFailureMessage(fileError, file.name));
+            }
+          }
+        }
+        if (
+          warnings.length > 0 &&
+          isMountedRef.current &&
+          activeConversationIdRef.current === queueConversationId
+        ) {
+          setInteractionError([...new Set(warnings)].slice(0, 3).join(" "));
+        }
+      })
+      .catch(() => {
+        if (isMountedRef.current && activeConversationIdRef.current === queueConversationId) {
+          setInteractionError(t.chat.attachmentReadFailed("arquivo"));
+        }
+      })
+      .finally(() => {
+        attachmentTaskCountRef.current -= 1;
+        if (isMountedRef.current && attachmentTaskCountRef.current === 0) {
+          setIsPreparingAttachments(false);
+        }
+      });
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    if (files.length === 0) return;
+    event.preventDefault();
+    queueAttachments(files);
+  }
+
+  const handleDragEnter: DragEventHandler<HTMLFormElement> = (event) => {
+    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDraggingFiles(true);
+  };
+
+  const handleDragLeave: DragEventHandler<HTMLFormElement> = (event) => {
+    if (dragDepthRef.current === 0) return;
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDraggingFiles(false);
+  };
+
+  const handleDragOver: DragEventHandler<HTMLFormElement> = (event) => {
+    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDrop: DragEventHandler<HTMLFormElement> = (event) => {
+    if (event.dataTransfer.files.length === 0) return;
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDraggingFiles(false);
+    queueAttachments(Array.from(event.dataTransfer.files));
+  };
+
   useEffect(() => {
     const list = messageListRef.current;
     if (!list) return;
@@ -150,20 +361,38 @@ export function ConversationView({
   }, []);
 
   const sendMessage = useCallback(
-    async (textValue: string) => {
+    async (textValue: string, files: PendingAttachment[] = []) => {
       const text = textValue.trim();
-      if (!bridge || !conversation || !text || isWorking || isWaiting || isSending) return;
+      if (
+        !bridge ||
+        !conversation ||
+        (!text && files.length === 0) ||
+        isWorking ||
+        isWaiting ||
+        isSending
+      )
+        return;
       setInteractionError("");
       setIsSending(true);
       setDraft("");
       try {
+        const attachments: ConversationAttachment[] = files.map(
+          ({ name, mimeType, kind, data }) => ({
+            name,
+            mimeType,
+            kind,
+            data,
+          }),
+        );
         const result = await bridge.request("conversation.send", {
           id,
-          text,
+          text: text || " ",
           ...(planMode ? { plan: true } : {}),
+          ...(attachments.length ? { attachments } : {}),
         });
         addMessage(result.userMessage);
         addMessage(result.agentMessage);
+        clearPendingAttachments();
       } catch (sendError) {
         setDraft(textValue);
         setInteractionError(
@@ -175,7 +404,17 @@ export function ConversationView({
         setIsSending(false);
       }
     },
-    [addMessage, bridge, conversation, id, isSending, isWaiting, isWorking, planMode],
+    [
+      addMessage,
+      bridge,
+      clearPendingAttachments,
+      conversation,
+      id,
+      isSending,
+      isWaiting,
+      isWorking,
+      planMode,
+    ],
   );
 
   const stopAgent = useCallback(async () => {
@@ -274,6 +513,15 @@ export function ConversationView({
   const title = conversation?.title ?? t.chat.loading;
   const homeTodos = isWorking ? lastTodos : null;
   const folderPath = conversation ? formatFolderPath(conversation.cwd) : null;
+  const canAttachFiles = Boolean(
+    conversation &&
+      bridge &&
+      !loading &&
+      !isWaiting &&
+      !isSavingOptions &&
+      !isResponding &&
+      !isSending,
+  );
 
   return (
     <section
@@ -362,6 +610,12 @@ export function ConversationView({
             {isStopping ? ` · ${t.chat.stopping}` : ""}
           </p>
         ) : null}
+        {isPreparingAttachments ? (
+          <p className={styles.progress} role="status">
+            <span aria-hidden="true" className={styles.progressMark} />
+            {t.chat.preparingAttachments}
+          </p>
+        ) : null}
         {interactionError ? (
           <p className={styles.error} role="alert">
             <TriangleAlert aria-hidden="true" size={16} />
@@ -383,6 +637,15 @@ export function ConversationView({
                   <Folder aria-hidden="true" size={15} />
                   <span title={folderPath?.title}>{folderPath?.text}</span>
                 </button>
+                {gitInfo?.detached || gitInfo?.branch ? (
+                  <span
+                    className={styles.gitBranch}
+                    title={gitInfo.detached ? t.chat.detachedHead : (gitInfo.branch ?? undefined)}
+                  >
+                    <GitBranch aria-hidden="true" size={14} />
+                    <span>{gitInfo.detached ? t.chat.detachedHead : gitInfo.branch}</span>
+                  </span>
+                ) : null}
               </div>
             ) : null
           }
@@ -393,6 +656,28 @@ export function ConversationView({
           leading={
             conversation ? (
               <div className={styles.composerControls}>
+                <button
+                  aria-label={t.chat.attachFile}
+                  aria-description={t.chat.attachmentRules}
+                  className={styles.attachButton}
+                  disabled={!canAttachFiles}
+                  onClick={() => attachmentInputRef.current?.click()}
+                  title={t.chat.attachmentRules}
+                  type="button"
+                >
+                  <Paperclip aria-hidden="true" size={16} />
+                </button>
+                <input
+                  aria-label={t.chat.chooseAttachments}
+                  className={styles.fileInput}
+                  multiple
+                  onChange={(event) => {
+                    queueAttachments(Array.from(event.currentTarget.files ?? []));
+                    event.currentTarget.value = "";
+                  }}
+                  ref={attachmentInputRef}
+                  type="file"
+                />
                 <span className={styles.agentTag}>
                   <AgentIcon agentId={conversation.agent} />
                   {agentDisplayName(conversation.agent)}
@@ -431,12 +716,69 @@ export function ConversationView({
               </div>
             ) : null
           }
+          attachments={
+            pendingAttachments.length ? (
+              <section aria-label={t.chat.pendingAttachments} className={styles.pendingAttachments}>
+                {pendingAttachments.map((attachment) => (
+                  <div className={styles.pendingAttachment} key={attachment.id}>
+                    {attachment.kind === "image" && attachment.previewUrl ? (
+                      <img
+                        alt=""
+                        className={styles.attachmentThumbnail}
+                        src={attachment.previewUrl}
+                      />
+                    ) : (
+                      <span aria-hidden="true" className={styles.attachmentIcon}>
+                        {attachment.kind === "image" ? (
+                          <ImageIcon size={16} />
+                        ) : (
+                          <FileText size={16} />
+                        )}
+                      </span>
+                    )}
+                    <span className={styles.pendingAttachmentText}>
+                      <span className={styles.pendingAttachmentName} title={attachment.name}>
+                        {attachment.name}
+                      </span>
+                      <span className={styles.pendingAttachmentSize}>
+                        {formatAttachmentSize(attachment.sizeBytes)}
+                      </span>
+                    </span>
+                    <button
+                      aria-label={t.chat.removeAttachment(attachment.name)}
+                      className={styles.removeAttachment}
+                      disabled={isSending}
+                      onClick={() => removePendingAttachment(attachment.id)}
+                      title={t.chat.removeAttachment(attachment.name)}
+                      type="button"
+                    >
+                      <X aria-hidden="true" size={14} />
+                    </button>
+                  </div>
+                ))}
+              </section>
+            ) : null
+          }
           onChange={setDraft}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          onPaste={handlePaste}
           onStop={() => void stopAgent()}
-          onSubmit={() => void sendMessage(draft)}
+          onSubmit={() => void sendMessage(draft, pendingAttachments)}
           placeholder={t.chat.messageInput}
-          submitDisabled={!bridge || loading || !draft.trim() || isWaiting || isSending}
+          submitDisabled={
+            !bridge ||
+            loading ||
+            isPreparingAttachments ||
+            (!draft.trim() && pendingAttachments.length === 0) ||
+            isWaiting ||
+            isSending
+          }
           submitLabel={isWorking ? t.chat.stop : t.chat.send}
+          dragActive={isDraggingFiles}
+          dropMessage={t.chat.dropAttachments}
           value={draft}
         />
       </section>
@@ -454,4 +796,83 @@ function findLatestTodos(message: ConversationMessage | null) {
     if (part?.type === "todos") return part;
   }
   return null;
+}
+
+async function prepareAttachment(file: File): Promise<PendingAttachment> {
+  const fileInfo = classifyAttachmentFile(file);
+  if (!fileInfo) throw new AttachmentInputError("unsupported");
+
+  const name = file.name || fallbackAttachmentName(fileInfo.kind, fileInfo.mimeType);
+  if (name.trim() !== name || name.length > 255 || /\p{Cc}/u.test(name)) {
+    throw new AttachmentInputError("invalid-name");
+  }
+
+  if (fileInfo.kind === "image") {
+    if (file.size > MAX_IMAGE_ATTACHMENT_BYTES) {
+      throw new AttachmentInputError("image-too-large");
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.byteLength > MAX_IMAGE_ATTACHMENT_BYTES) {
+      throw new AttachmentInputError("image-too-large");
+    }
+    return {
+      id: crypto.randomUUID(),
+      name,
+      mimeType: fileInfo.mimeType,
+      kind: "image",
+      data: encodeBase64(bytes),
+      sizeBytes: bytes.byteLength,
+      previewUrl: URL.createObjectURL(file),
+    };
+  }
+
+  if (file.size > MAX_TEXT_ATTACHMENT_BYTES) {
+    throw new AttachmentInputError("text-too-large");
+  }
+  const data = await file.text();
+  const sizeBytes = new TextEncoder().encode(data).byteLength;
+  if (sizeBytes > MAX_TEXT_ATTACHMENT_BYTES) {
+    throw new AttachmentInputError("text-too-large");
+  }
+  return {
+    id: crypto.randomUUID(),
+    name,
+    mimeType: fileInfo.mimeType,
+    kind: "text",
+    data,
+    sizeBytes,
+  };
+}
+
+function fallbackAttachmentName(kind: "image" | "text", mimeType: string): string {
+  if (kind === "text" && mimeType === "application/json") return "arquivo.json";
+  const extension =
+    mimeType === "image/jpeg"
+      ? "jpg"
+      : mimeType.split("/")[1] || (kind === "image" ? "png" : "txt");
+  return `${kind === "image" ? "imagem-colada" : "arquivo"}.${extension}`;
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 32_768;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function attachmentFailureMessage(error: unknown, name: string): string {
+  const safeName = name.trim() || "arquivo";
+  if (!(error instanceof AttachmentInputError)) return t.chat.attachmentReadFailed(safeName);
+  switch (error.code) {
+    case "unsupported":
+      return t.chat.attachmentUnsupported(safeName);
+    case "image-too-large":
+      return t.chat.attachmentImageTooLarge(safeName);
+    case "text-too-large":
+      return t.chat.attachmentTextTooLarge(safeName);
+    case "invalid-name":
+      return t.chat.attachmentInvalidName;
+  }
 }
