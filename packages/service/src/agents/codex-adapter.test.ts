@@ -4,6 +4,7 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import type { AnyEvent, Conversation, MessagePart } from "@karont/contract";
 import {
   addMessage,
@@ -43,10 +44,11 @@ async function createHarness(
   const fakes: FakeCodexSpawn[] = [];
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
     KARONT_CODEX_CLI: "codex",
     ...(options.idleMs === undefined ? {} : { KARONT_AGENT_IDLE_MS: String(options.idleMs) }),
   };
-  const fixturePath = new URL(`${scenario}.jsonl`, fixtureDir).pathname;
+  const fixturePath = fileURLToPath(new URL(`${scenario}.jsonl`, fixtureDir));
   const manager = new ConversationManager({
     db,
     env,
