@@ -54,8 +54,7 @@
   text-underline-offset: var(--k-space-1);
 }
 
-.index a:focus-visible,
-.timelineControl:focus-visible {
+.index a:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-color-focus);
   outline-offset: var(--k-focus-ring-offset);
   border-radius: var(--k-radius-xs);
@@ -146,24 +145,6 @@
   gap: var(--k-space-2);
   color: var(--k-color-text-secondary);
   font-size: var(--k-text-12);
-}
-
-.timelineControl {
-  align-self: flex-start;
-  min-height: var(--k-control-height-md);
-  padding-inline: var(--k-space-2);
-  border: var(--k-border-width) solid transparent;
-  border-radius: var(--k-radius-sm);
-  background: transparent;
-  color: var(--k-color-text-secondary);
-  font-family: var(--k-font-sans);
-  font-size: var(--k-text-12);
-  cursor: pointer;
-}
-
-.timelineControl:hover {
-  background: var(--k-color-bg-hover);
-  color: var(--k-color-text-primary);
 }
 
 .localNote {
