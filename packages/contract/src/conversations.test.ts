@@ -22,6 +22,16 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
   });
   assert.equal(creation.success, true);
   if (creation.success) assert.equal(creation.data.mode, "edit");
+  const rename = methods["conversation.rename"].params.safeParse({
+    id: "c1",
+    title: "  Revisar o fluxo de acesso  ",
+  });
+  assert.equal(rename.success, true);
+  if (rename.success) assert.equal(rename.data.title, "Revisar o fluxo de acesso");
+  assert.equal(
+    methods["conversation.rename"].params.safeParse({ id: "c1", title: "   " }).success,
+    false,
+  );
   assert.equal(
     methods["conversation.setOptions"].params.safeParse({
       id: "c1",

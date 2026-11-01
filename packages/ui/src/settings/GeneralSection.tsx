@@ -2,6 +2,7 @@ import { CircleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
+import { TextField } from "../components/TextField/TextField.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./GeneralSection.module.css";
 
@@ -48,6 +49,14 @@ export function GeneralSection() {
   const [saveError, setSaveError] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [userNamePhase, setUserNamePhase] = useState<LoadPhase>(() =>
+    bridge ? "loading" : "noBridge",
+  );
+  const [userName, setUserName] = useState("");
+  const [savedUserName, setSavedUserName] = useState("");
+  const [userNameError, setUserNameError] = useState("");
+  const [userNameAnnouncement, setUserNameAnnouncement] = useState("");
+  const [isSavingUserName, setIsSavingUserName] = useState(false);
   const mountedRef = useRef(false);
 
   const loadPreference = useCallback(async () => {
@@ -70,13 +79,42 @@ export function GeneralSection() {
     }
   }, [bridge]);
 
+  const loadUserName = useCallback(async () => {
+    if (!bridge) {
+      setUserNamePhase("noBridge");
+      return;
+    }
+    setUserNamePhase("loading");
+    setUserNameError("");
+    const [systemNameResult, overrideResult] = await Promise.allSettled([
+      bridge.request("system.userName", {}),
+      bridge.request("settings.get", { key: "profile.userNameOverride" }),
+    ]);
+    if (!mountedRef.current) return;
+    if (systemNameResult.status === "rejected" && overrideResult.status === "rejected") {
+      setUserNameError(t.settings.userNameLoadFailed);
+      setUserNamePhase("error");
+      return;
+    }
+    const override =
+      overrideResult.status === "fulfilled" && typeof overrideResult.value.value === "string"
+        ? overrideResult.value.value.trim()
+        : "";
+    const systemName = systemNameResult.status === "fulfilled" ? systemNameResult.value.name : null;
+    const initialName = override || systemName || "";
+    setUserName(initialName);
+    setSavedUserName(initialName);
+    setUserNamePhase("ready");
+  }, [bridge]);
+
   useEffect(() => {
     mountedRef.current = true;
     void loadPreference();
+    void loadUserName();
     return () => {
       mountedRef.current = false;
     };
-  }, [loadPreference]);
+  }, [loadPreference, loadUserName]);
 
   useEffect(() => {
     if (!announcement) return;
@@ -103,6 +141,29 @@ export function GeneralSection() {
       setSaveError(errorMessage(error, t.settings.closeBehaviorSaveFailed));
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function saveUserName() {
+    if (
+      !bridge ||
+      userNamePhase !== "ready" ||
+      isSavingUserName ||
+      userName.trim() === savedUserName
+    )
+      return;
+    setUserNameError("");
+    setUserNameAnnouncement("");
+    setIsSavingUserName(true);
+    try {
+      const value = userName.trim() || null;
+      await bridge.request("settings.set", { key: "profile.userNameOverride", value });
+      setSavedUserName(userName.trim());
+      setUserNameAnnouncement(t.settings.userNameSaved);
+    } catch (error) {
+      setUserNameError(errorMessage(error, t.settings.userNameSaveFailed));
+    } finally {
+      setIsSavingUserName(false);
     }
   }
 
@@ -141,6 +202,45 @@ export function GeneralSection() {
             </label>
           ))}
         </div>
+      </fieldset>
+
+      <fieldset
+        className={styles.nameGroup}
+        disabled={userNamePhase !== "ready" || isSavingUserName}
+      >
+        <TextField
+          label={t.settings.userNameLabel}
+          maxLength={80}
+          onChange={(event) => setUserName(event.currentTarget.value)}
+          placeholder={t.settings.userNamePlaceholder}
+          value={userName}
+        />
+        <div className={styles.nameActions}>
+          <span className={styles.announcement} role="status">
+            {userNameAnnouncement}
+          </span>
+          <Button
+            disabled={
+              userNamePhase !== "ready" || isSavingUserName || userName.trim() === savedUserName
+            }
+            onClick={() => void saveUserName()}
+            size="sm"
+            variant="secondary"
+          >
+            {isSavingUserName ? t.settings.userNameSaving : t.settings.userNameSave}
+          </Button>
+        </div>
+        {userNamePhase === "loading" ? (
+          <p className={styles.statusMessage} role="status">
+            {t.settings.loadingPreference}
+          </p>
+        ) : null}
+        {userNameError ? (
+          <p className={styles.errorMessage} role="alert">
+            <CircleAlert aria-hidden="true" size={16} strokeWidth={1.8} />
+            <span>{userNameError}</span>
+          </p>
+        ) : null}
       </fieldset>
 
       {phase === "noBridge" ? (

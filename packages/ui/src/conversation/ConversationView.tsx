@@ -1,6 +1,6 @@
 import type { Conversation, ConversationAttachment, ConversationMessage } from "@karont/contract";
 import { BridgeError } from "@karont/contract";
-import { Folder, MessageSquareText, TriangleAlert } from "lucide-react";
+import { Check, Folder, MessageSquareText, TriangleAlert, X } from "lucide-react";
 import {
   type DragEventHandler,
   type ReactNode,
@@ -13,6 +13,7 @@ import {
 import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { getBridge } from "../bridge/index.ts";
 import { Composer } from "../components/Composer/Composer.tsx";
+import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import {
   AttachmentChips,
@@ -60,10 +61,15 @@ export function ConversationView({
   const [isResponding, setIsResponding] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isRenamingTitle, setIsRenamingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
   const previousConversationIdRef = useRef(id);
   const messageListRef = useRef<HTMLDivElement>(null);
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const composerSectionRef = useRef<HTMLElement>(null);
+  const titleHeadingRef = useRef<HTMLHeadingElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const scrollFrameRef = useRef<number | null>(null);
   const wasNearBottom = useRef(true);
   const previousScrollHeight = useRef(0);
@@ -122,6 +128,10 @@ export function ConversationView({
     setDraft("");
     setInteractionError("");
   }, [id]);
+
+  useEffect(() => {
+    if (conversation && !isRenamingTitle) setTitleDraft(conversation.title);
+  }, [conversation, isRenamingTitle]);
   const stateLabel = isWorking
     ? t.chat.working
     : isWaiting
@@ -332,6 +342,49 @@ export function ConversationView({
     setAnnouncement(t.chat.folderCopied);
   }, [conversation, copyText]);
 
+  function beginTitleRename() {
+    if (!conversation || isSavingTitle || isRenamingTitle) return;
+    setTitleDraft(conversation.title);
+    setIsRenamingTitle(true);
+    requestAnimationFrame(() => {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    });
+  }
+
+  function cancelTitleRename() {
+    setTitleDraft(conversation?.title ?? "");
+    setIsRenamingTitle(false);
+    requestAnimationFrame(() => titleHeadingRef.current?.focus());
+  }
+
+  async function saveTitleRename() {
+    const titleValue = titleDraft.trim();
+    if (!bridge || !conversation || isSavingTitle) return;
+    if (!titleValue) {
+      setInteractionError(t.chat.titleRequired);
+      titleInputRef.current?.focus();
+      return;
+    }
+    setInteractionError("");
+    setIsSavingTitle(true);
+    try {
+      const result = await bridge.request("conversation.rename", { id, title: titleValue });
+      updateConversation(result.conversation);
+      upsertConversation(result.conversation);
+      setIsRenamingTitle(false);
+      requestAnimationFrame(() => titleHeadingRef.current?.focus());
+    } catch (renameError) {
+      setInteractionError(
+        renameError instanceof BridgeError && renameError.message
+          ? renameError.message
+          : t.chat.renameTitleFailed,
+      );
+    } finally {
+      setIsSavingTitle(false);
+    }
+  }
+
   const title = conversation?.title ?? t.chat.loading;
   const homeTodos = isWorking ? lastTodos : null;
   const folderPath = useMemo(
@@ -463,10 +516,65 @@ export function ConversationView({
       tabIndex={-1}
     >
       <header className={styles.header}>
-        <h1 className={styles.title} {...dragHandleProps}>
-          {title}
+        <h1
+          {...dragHandleProps}
+          aria-description={isRenamingTitle ? undefined : t.chat.renameTitleHint}
+          aria-label={title}
+          className={styles.title}
+          draggable={Boolean(dragHandleProps?.draggable && !isRenamingTitle)}
+          onDoubleClick={beginTitleRename}
+          onKeyDown={(event) => {
+            if (!isRenamingTitle && (event.key === "F2" || event.key === "Enter")) {
+              event.preventDefault();
+              beginTitleRename();
+            }
+          }}
+          ref={titleHeadingRef}
+          tabIndex={isRenamingTitle ? -1 : 0}
+          title={isRenamingTitle ? undefined : t.chat.renameTitleHint}
+        >
+          {isRenamingTitle ? (
+            <input
+              aria-label={t.chat.renameTitleInput}
+              className={styles.titleInput}
+              disabled={isSavingTitle}
+              maxLength={240}
+              onChange={(event) => setTitleDraft(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void saveTitleRename();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancelTitleRename();
+                }
+              }}
+              ref={titleInputRef}
+              value={titleDraft}
+            />
+          ) : (
+            title
+          )}
         </h1>
-        {conversation ? (
+        {isRenamingTitle ? (
+          <div className={styles.titleActions}>
+            <IconButton
+              disabled={isSavingTitle}
+              icon={<Check aria-hidden="true" size={15} />}
+              label={t.chat.saveTitle}
+              onClick={() => void saveTitleRename()}
+              size="sm"
+            />
+            <IconButton
+              disabled={isSavingTitle}
+              icon={<X aria-hidden="true" size={15} />}
+              label={t.chat.cancelTitleRename}
+              onClick={cancelTitleRename}
+              size="sm"
+            />
+          </div>
+        ) : conversation ? (
           <span
             className={`${styles.state} ${isWaiting ? styles.waiting : isWorking ? styles.working : isError ? styles.failed : ""}`}
           >

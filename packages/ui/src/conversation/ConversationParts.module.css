@@ -353,33 +353,42 @@
 }
 
 .thinking summary,
-.action summary,
-.actionGroup summary {
+.actionToggle,
+.actionGroupToggle {
   display: flex;
   min-height: var(--k-control-height-md);
   align-items: center;
   gap: var(--k-space-2);
+  border: 0;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
+  font: inherit;
   list-style: none;
+  text-align: start;
 }
 
-.thinking summary::-webkit-details-marker,
-.action summary::-webkit-details-marker,
-.actionGroup summary::-webkit-details-marker {
+.actionToggle,
+.actionGroupToggle {
+  width: 100%;
+  padding: 0;
+}
+
+.thinking summary::-webkit-details-marker {
   display: none;
 }
 
 .thinking summary:hover,
-.action summary:hover,
-.actionGroup summary:hover,
+.actionToggle:hover,
+.actionGroupToggle:hover,
 .planResult > summary.planSummary:hover {
   background: var(--k-color-bg-hover);
   color: var(--k-color-text-primary);
 }
 
 .thinking summary:focus-visible,
-.action summary:focus-visible,
-.actionGroup summary:focus-visible {
+.actionToggle:focus-visible,
+.actionGroupToggle:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-color-focus);
   outline-offset: var(--k-chat-focus-outline-offset);
 }
@@ -409,7 +418,7 @@
   font-size: var(--k-text-12);
 }
 
-.actionGroup summary {
+.actionGroupToggle {
   width: fit-content;
   padding-inline: var(--k-space-2);
   border-radius: var(--k-radius-sm);
@@ -419,8 +428,31 @@
 .actionGroupBody {
   display: flex;
   flex-direction: column;
-  gap: var(--k-space-1);
+  gap: var(--k-space-2);
   padding-inline-start: var(--k-space-4);
+}
+
+.actionGroupBody[hidden] {
+  display: none;
+}
+
+.actionBatchItem {
+  min-width: 0;
+}
+
+.actionBatchTitle {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: var(--k-space-1) var(--k-space-2);
+  color: var(--k-color-text-primary);
+}
+
+.actionBatchTitle > span:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
 }
 
 .action {
@@ -429,19 +461,30 @@
   font-size: var(--k-text-12);
 }
 
-.action > summary {
+.actionToggle {
   flex-wrap: wrap;
   padding-inline: var(--k-space-2);
   border-radius: var(--k-radius-sm);
 }
 
-.action[open] > summary {
+.actionToggle[aria-expanded="true"] {
   background: var(--k-color-bg-raised);
 }
 
 .actionIcon {
   flex: 0 0 auto;
   color: var(--k-color-text-muted);
+}
+
+.actionDisclosure {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+  transition: transform var(--k-duration-fast) var(--k-ease);
+}
+
+.actionToggle[aria-expanded="true"] .actionDisclosure,
+.actionGroupToggle[aria-expanded="true"] .actionDisclosure {
+  transform: rotate(90deg);
 }
 
 .permittedIcon {
@@ -465,7 +508,7 @@
   color: var(--k-color-text-secondary);
 }
 
-.action[open] .actionState {
+.actionToggle[aria-expanded="true"] .actionState {
   color: var(--k-color-text-primary);
 }
 
@@ -1138,7 +1181,7 @@
 }
 
 @container conversation-pane (max-width: 520px) {
-  .action > summary {
+  .actionToggle {
     align-items: flex-start;
   }
 

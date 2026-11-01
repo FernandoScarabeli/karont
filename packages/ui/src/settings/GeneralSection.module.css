@@ -12,6 +12,23 @@
   border: 0;
 }
 
+.nameGroup {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: var(--k-space-3);
+}
+
+.nameActions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+}
+
 .legend {
   display: flex;
   width: 100%;

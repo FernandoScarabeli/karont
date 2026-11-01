@@ -128,6 +128,10 @@ export const methods = {
       homeDir: z.string(),
     }),
   },
+  "system.userName": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ name: z.string().nullable() }),
+  },
   "settings.get": {
     params: z.strictObject({ key: settingKeySchema }),
     result: z.strictObject({ key: settingKeySchema, value: jsonValueSchema.nullable() }),
@@ -215,6 +219,13 @@ export const methods = {
   "conversation.delete": {
     params: z.strictObject({ id: z.string().min(1) }),
     result: z.strictObject({ deleted: z.boolean() }),
+  },
+  "conversation.rename": {
+    params: z.strictObject({
+      id: z.string().min(1),
+      title: z.string().trim().min(1).max(240),
+    }),
+    result: z.strictObject({ conversation: conversationSchema }),
   },
   "conversation.setOptions": {
     params: z.strictObject({ id: z.string().min(1), options: conversationOptionsSchema }),

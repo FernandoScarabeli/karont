@@ -16,6 +16,7 @@ import { getSetting, recordRecentFolder, setSetting } from "./db.ts";
 import { ServiceError } from "./errors.ts";
 import { gitInfo, listRecentFolders, validateFolder } from "./folders.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
+import { getSystemUserName } from "./user-name.ts";
 
 export { ServiceError } from "./errors.ts";
 
@@ -88,6 +89,8 @@ export function createHandlers({
           platform: process.platform,
           homeDir,
         };
+      case "system.userName":
+        return { name: await getSystemUserName({ platform }) };
       case "settings.get":
         return { key: request.params.key, value: getSetting(db, request.params.key) };
       case "settings.set":
@@ -153,6 +156,13 @@ export function createHandlers({
         return conversationManager
           .remove(request.params.id)
           .then((deleted) => ({ deleted }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.rename":
+        return conversationManager
+          .rename(request.params.id, request.params.title)
+          .then((conversation) => ({ conversation }))
           .catch((error: unknown) => {
             throw conversationError(error);
           });

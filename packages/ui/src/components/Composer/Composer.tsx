@@ -8,6 +8,7 @@ import {
   type ReactNode,
   useLayoutEffect,
   useRef,
+  useState,
 } from "react";
 import styles from "./Composer.module.css";
 
@@ -35,6 +36,7 @@ export type ComposerProps = {
   onDragOver?: DragEventHandler<HTMLFormElement>;
   onDrop?: DragEventHandler<HTMLFormElement>;
   below?: ReactNode;
+  animatedPlaceholder?: ReactNode;
 };
 
 export const Composer = memo(function Composer({
@@ -61,8 +63,10 @@ export const Composer = memo(function Composer({
   onDragOver,
   onDrop,
   below,
+  animatedPlaceholder,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isFocused, setIsFocused] = useState(false);
   const cannotSubmit = !busy && (disabled || submitDisabled);
 
   useLayoutEffect(() => {
@@ -112,19 +116,28 @@ export const Composer = memo(function Composer({
         onSubmit={submit}
       >
         {attachments ? <div className={styles.attachments}>{attachments}</div> : null}
-        <textarea
-          aria-description={ariaDescription}
-          aria-label={placeholder}
-          className={`${styles.textarea} ${mono ? styles.mono : ""}`}
-          disabled={disabled}
-          onChange={(event) => onChange(event.currentTarget.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={onPaste}
-          placeholder={placeholder}
-          ref={textareaRef}
-          rows={2}
-          value={value}
-        />
+        <div className={styles.textareaWrap}>
+          <textarea
+            aria-description={ariaDescription}
+            aria-label={placeholder}
+            className={`${styles.textarea} ${mono ? styles.mono : ""} ${animatedPlaceholder && !value && !isFocused && !disabled ? styles.animatedPlaceholderInput : ""}`}
+            disabled={disabled}
+            onBlur={() => setIsFocused(false)}
+            onChange={(event) => onChange(event.currentTarget.value)}
+            onFocus={() => setIsFocused(true)}
+            onKeyDown={handleKeyDown}
+            onPaste={onPaste}
+            placeholder={placeholder}
+            ref={textareaRef}
+            rows={2}
+            value={value}
+          />
+          {animatedPlaceholder && !value && !isFocused && !disabled ? (
+            <div aria-hidden="true" className={styles.placeholderOverlay}>
+              {animatedPlaceholder}
+            </div>
+          ) : null}
+        </div>
         {dragActive && dropMessage ? (
           <div className={styles.dropNotice} role="status">
             {dropMessage}

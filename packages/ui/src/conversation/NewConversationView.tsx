@@ -33,6 +33,7 @@ import {
 } from "./ComposerPreferences.tsx";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import styles from "./NewConversationView.module.css";
+import { TextType } from "./TextType.tsx";
 import { upsertConversation } from "./useConversationIndex.ts";
 
 const LAST_AGENT_SETTING = "newConversation.lastAgent";
@@ -83,6 +84,11 @@ export function NewConversationView({
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState<AgentEffort | "">("");
   const [planMode, setPlanMode] = useState(false);
+  const [greetingName, setGreetingName] = useState<string | null>(null);
+  const [openingGreeting] = useState(() => ({
+    hour: new Date().getHours(),
+    sample: Math.random(),
+  }));
   const choiceTriggerRef = useRef<HTMLButtonElement>(null);
   const menuRootRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -116,53 +122,76 @@ export function NewConversationView({
       bridge.request("settings.get", { key: LAST_AGENT_SETTING }),
       bridge.request("settings.get", { key: LAST_FOLDER_SETTING }),
       bridge.request("system.info", {}),
-    ]).then(async ([agentsResult, agentSettingResult, folderSettingResult, systemInfoResult]) => {
-      if (!mounted) return;
-
-      if (agentsResult.status === "fulfilled") {
-        const foundAgents = agentsResult.value.agents.filter(
-          (agent) => agent.found && (agent.id === "claude" || agent.id === "codex"),
-        );
-        setAgents(foundAgents);
-        if (
-          !choiceTouchedRef.current &&
-          agentSettingResult.status === "fulfilled" &&
-          typeof agentSettingResult.value.value === "string" &&
-          (agentSettingResult.value.value === TERMINAL_CHOICE ||
-            foundAgents.some((agent) => agent.id === agentSettingResult.value.value))
-        ) {
-          setChoice(agentSettingResult.value.value);
-        }
-      } else {
-        setAgentsError(true);
-      }
-
-      if (systemInfoResult.status === "fulfilled") {
-        setHomePath(systemInfoResult.value.homeDir);
-      }
-
-      if (folderSettingResult.status !== "fulfilled") return;
-      if (folderTouchedRef.current) return;
-      const storedFolder = folderSettingResult.value.value;
-      if (typeof storedFolder !== "string" || storedFolder === PERSONAL_FOLDER) return;
-
-      try {
-        const validation = await bridge.request("folders.validate", { path: storedFolder });
+      bridge.request("system.userName", {}),
+      bridge.request("settings.get", { key: "profile.userNameOverride" }),
+    ]).then(
+      async ([
+        agentsResult,
+        agentSettingResult,
+        folderSettingResult,
+        systemInfoResult,
+        userNameResult,
+        userNameSettingResult,
+      ]) => {
         if (!mounted) return;
+
+        if (agentsResult.status === "fulfilled") {
+          const foundAgents = agentsResult.value.agents.filter(
+            (agent) => agent.found && (agent.id === "claude" || agent.id === "codex"),
+          );
+          setAgents(foundAgents);
+          if (
+            !choiceTouchedRef.current &&
+            agentSettingResult.status === "fulfilled" &&
+            typeof agentSettingResult.value.value === "string" &&
+            (agentSettingResult.value.value === TERMINAL_CHOICE ||
+              foundAgents.some((agent) => agent.id === agentSettingResult.value.value))
+          ) {
+            setChoice(agentSettingResult.value.value);
+          }
+        } else {
+          setAgentsError(true);
+        }
+
+        if (systemInfoResult.status === "fulfilled") {
+          setHomePath(systemInfoResult.value.homeDir);
+        }
+
+        const storedName =
+          userNameSettingResult.status === "fulfilled" &&
+          typeof userNameSettingResult.value.value === "string"
+            ? userNameSettingResult.value.value.trim()
+            : "";
+        const systemName = userNameResult.status === "fulfilled" ? userNameResult.value.name : null;
+        setGreetingName(storedName || systemName);
+
+        if (folderSettingResult.status !== "fulfilled") return;
         if (folderTouchedRef.current) return;
-        if (validation.exists && validation.isDirectory) {
-          updateFolderPath(validation.path);
+        const storedFolder = folderSettingResult.value.value;
+        if (typeof storedFolder !== "string" || storedFolder === PERSONAL_FOLDER) return;
+
+        try {
+          const validation = await bridge.request("folders.validate", { path: storedFolder });
+          if (!mounted) return;
+          if (folderTouchedRef.current) return;
+          if (validation.exists && validation.isDirectory) {
+            updateFolderPath(validation.path);
+            return;
+          }
+        } catch {
           return;
         }
-      } catch {
-        return;
-      }
 
-      if (mounted) {
-        updateFolderPath(PERSONAL_FOLDER);
-        saveSetting(LAST_FOLDER_SETTING, PERSONAL_FOLDER, t.conversation.settingsFolderSaveFailed);
-      }
-    });
+        if (mounted) {
+          updateFolderPath(PERSONAL_FOLDER);
+          saveSetting(
+            LAST_FOLDER_SETTING,
+            PERSONAL_FOLDER,
+            t.conversation.settingsFolderSaveFailed,
+          );
+        }
+      },
+    );
 
     return () => {
       mounted = false;
@@ -423,12 +452,11 @@ export function NewConversationView({
         folderPath === PERSONAL_FOLDER
           ? (homePath ?? (await bridge.request("system.info", {})).homeDir)
           : folderPath;
-      const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? text;
       const result = await bridge.request("conversation.create", {
         agent: selectedAgent.id,
         cwd,
         mode,
-        title: firstLine ? firstLine.slice(0, 240) : t.conversation.title,
+        title: t.conversation.title,
         ...(model ? { model } : {}),
         ...(effort ? { effort } : {}),
         plan: planMode,
@@ -506,7 +534,7 @@ export function NewConversationView({
 
       <section aria-labelledby={titleId} className={styles.composerSection}>
         <p className={styles.welcome} data-k-new-conversation-title>
-          {t.conversation.welcomeTitle}
+          {t.conversation.welcomeTitle(greetingName, openingGreeting.hour, openingGreeting.sample)}
         </p>
         {composerAttachments.isPreparing ? (
           <p className={styles.preparing} role="status">
@@ -608,6 +636,7 @@ export function NewConversationView({
               ? t.conversation.terminalCommandPlaceholder
               : t.conversation.promptPlaceholder
           }
+          animatedPlaceholder={choice !== TERMINAL_CHOICE && selectedAgent ? <TextType /> : null}
           submitDisabled={
             !bridge ||
             isOpening ||

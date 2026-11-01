@@ -63,9 +63,30 @@
   resize: none;
 }
 
+.textareaWrap {
+  position: relative;
+  min-width: 0;
+}
+
 .textarea::placeholder {
   color: var(--k-color-text-secondary);
   opacity: 1;
+}
+
+.animatedPlaceholderInput::placeholder {
+  color: transparent;
+}
+
+.placeholderOverlay {
+  position: absolute;
+  inset: var(--k-space-1) 0 auto;
+  overflow: hidden;
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-14);
+  line-height: var(--k-leading-normal);
+  pointer-events: none;
+  white-space: pre-wrap;
 }
 
 .textarea:disabled {

@@ -73,6 +73,7 @@
   --k-control-height-md: 32px;
   --k-control-height-lg: 36px;
   --k-duration-fast: 120ms;
+  --k-duration-cursor-blink: 500ms;
   --k-duration-highlight: 1.2s;
   --k-ease: cubic-bezier(0.2, 0, 0, 1);
   --k-opacity-disabled: 0.5;

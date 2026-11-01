@@ -13,6 +13,8 @@ import { isMethodName } from "./validate.ts";
 test("todos os métodos aceitam parâmetros válidos", () => {
   assert.equal(methods["system.ping"].params.safeParse({}).success, true);
   assert.equal(methods["system.info"].params.safeParse({}).success, true);
+  assert.equal(methods["system.userName"].params.safeParse({}).success, true);
+  assert.equal(methods["system.userName"].result.safeParse({ name: null }).success, true);
   assert.equal(methods["settings.get"].params.safeParse({ key: "theme.dark" }).success, true);
   assert.equal(
     methods["settings.set"].params.safeParse({ key: "theme.dark", value: { enabled: true } })
@@ -24,6 +26,10 @@ test("todos os métodos aceitam parâmetros válidos", () => {
     true,
   );
   assert.equal(methods["folders.gitInfo"].params.safeParse({ path: "/tmp" }).success, true);
+  assert.equal(
+    methods["conversation.rename"].params.safeParse({ id: "c1", title: "  Novo título  " }).success,
+    true,
+  );
   assert.equal(
     methods["folders.gitInfo"].result.safeParse({ branch: "feature/anexos", detached: false })
       .success,

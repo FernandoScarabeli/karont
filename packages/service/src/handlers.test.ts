@@ -86,6 +86,10 @@ test("ping, info e settings usam contrato e banco", async () => {
   assert.equal(info.contractVersion, 1);
   assert.equal(info.startedAt, "2026-10-31T00:00:00.000Z");
   assert.equal(info.homeDir, root);
+  const userName = (await handlers.handle(request("system.userName", {}), conn)) as {
+    name: string | null;
+  };
+  assert.ok(userName.name === null || typeof userName.name === "string");
   assert.deepEqual(
     await handlers.handle(request("settings.set", { key: "test.value", value: [1, "two"] }), conn),
     {
@@ -97,6 +101,41 @@ test("ping, info e settings usam contrato e banco", async () => {
     key: "test.value",
     value: [1, "two"],
   });
+  db.close();
+});
+
+test("conversation.rename persiste o título e emite conversation.stateChanged", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => {
+      events.push(event);
+    },
+    env: { PATH: "" },
+    homeDir: root,
+  });
+  const created = (await handlers.handle(
+    request("conversation.create", { agent: "claude", cwd: root }),
+    connection([]),
+  )) as { conversation: { id: string } };
+  const result = (await handlers.handle(
+    request("conversation.rename", { id: created.conversation.id, title: "  Revisar o fluxo  " }),
+    connection(events),
+  )) as { conversation: { title: string } };
+
+  assert.equal(result.conversation.title, "Revisar o fluxo");
+  assert.ok(
+    events.some(
+      (event) =>
+        event.event === "conversation.stateChanged" &&
+        event.payload.conversation.title === "Revisar o fluxo",
+    ),
+  );
   db.close();
 });
 
