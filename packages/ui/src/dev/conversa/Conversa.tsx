@@ -4,23 +4,38 @@ import type { ConversationMessage, MessagePart } from "@karont/contract";
 import {
   ArrowRight,
   ArrowUp,
+  Bot,
+  Brain,
   Check,
   ChevronDown,
   Circle,
   CircleAlert,
+  FilePlus,
   FileText,
+  Globe,
+  KeyRound,
+  ListChecks,
+  ListTodo,
+  Pencil,
   RotateCcw,
+  Search,
+  Terminal,
+  Wrench,
 } from "lucide-react";
 import { memo, type ReactNode, useId, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styles from "./Conversa.module.css";
+import { formatWorkDuration, splitFinalAnswer } from "./conversationDisplay";
 
 type ActionPart = Extract<MessagePart, { type: "action" }>;
 type ThinkingPart = Extract<MessagePart, { type: "thinking" }>;
 type TodosPart = Extract<MessagePart, { type: "todos" }>;
 type PlanPart = Extract<MessagePart, { type: "plan" }>;
 type ErrorPart = Extract<MessagePart, { type: "error" }>;
+type PermissionPart = Extract<MessagePart, { type: "permission" }>;
+type QuestionPart = Extract<MessagePart, { type: "question" }>;
+type TextPart = Extract<MessagePart, { type: "text" }>;
 
 const date = "2026-11-01T15:42:00-03:00";
 
@@ -100,6 +115,8 @@ const sampleMessages: ConversationMessage[] = [
     conversationId: "sample-conversation",
     author: "agent",
     status: "done",
+    startedAt: 0,
+    endedAt: 233_000,
     parts: [
       {
         id: "thinking-1",
@@ -109,6 +126,12 @@ const sampleMessages: ConversationMessage[] = [
         endedAt: 4_000,
       },
       ...readParts,
+      {
+        id: "text-progress-1",
+        type: "text",
+        markdown:
+          "A chave já é compartilhada pelo serviço; agora vou conferir os limites recomendados.",
+      },
       {
         id: "search-1",
         type: "action",
@@ -128,6 +151,11 @@ const sampleMessages: ConversationMessage[] = [
         truncated: false,
         state: "ok",
         durationMs: 310,
+      },
+      {
+        id: "text-progress-2",
+        type: "text",
+        markdown: "A expiração mantém a janela consistente entre as instâncias.",
       },
       {
         id: "command-1",
@@ -246,12 +274,84 @@ const sampleMessages: ConversationMessage[] = [
     conversationId: "sample-conversation",
     author: "agent",
     status: "streaming",
-    parts: [],
+    startedAt: 0,
+    parts: [
+      {
+        id: "thinking-2",
+        type: "thinking",
+        text: "Vou simplificar a função e conferir o caso do limite.",
+        startedAt: 0,
+        endedAt: 4_000,
+      },
+      {
+        id: "read-2-app",
+        type: "action",
+        actionType: "read",
+        title: "src/app.ts",
+        input: "src/app.ts",
+        output: "",
+        truncated: false,
+        state: "ok",
+        durationMs: 22,
+      },
+      {
+        id: "read-2-tests",
+        type: "action",
+        actionType: "read",
+        title: "src/rate-limit.test.ts",
+        input: "src/rate-limit.test.ts",
+        output: "",
+        truncated: false,
+        state: "ok",
+        durationMs: 19,
+      },
+      {
+        id: "command-2",
+        type: "action",
+        actionType: "command",
+        title: "npm test",
+        input: "npm test",
+        output: "Executando os testes do limitador…",
+        truncated: false,
+        state: "running",
+        durationMs: null,
+      },
+    ],
+    createdAt: date,
+    updatedAt: date,
+  },
+  {
+    id: "user-message-3",
+    conversationId: "sample-conversation",
+    author: "user",
+    status: "done",
+    parts: [
+      {
+        id: "user-text-3",
+        type: "text",
+        markdown: "Qual é o limite por chave?",
+      },
+    ],
     createdAt: date,
     updatedAt: date,
   },
   {
     id: "agent-message-3",
+    conversationId: "sample-conversation",
+    author: "agent",
+    status: "done",
+    parts: [
+      {
+        id: "text-3",
+        type: "text",
+        markdown: "O limite é de **120 chamadas por chave** em uma janela de 60 segundos.",
+      },
+    ],
+    createdAt: date,
+    updatedAt: date,
+  },
+  {
+    id: "agent-message-error",
     conversationId: "sample-conversation",
     author: "agent",
     status: "error",
@@ -308,11 +408,13 @@ function formatJson(value: string) {
 const Disclosure = memo(function Disclosure({
   label,
   children,
+  icon,
   className,
   panelClassName,
 }: {
   label: ReactNode;
   children: ReactNode;
+  icon?: ReactNode;
   className?: string;
   panelClassName?: string;
 }) {
@@ -330,6 +432,7 @@ const Disclosure = memo(function Disclosure({
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
+        {icon ? <span className={styles.disclosureIcon}>{icon}</span> : null}
         <span className={styles.disclosureLabel}>{label}</span>
         <ChevronDown
           aria-hidden="true"
@@ -358,7 +461,7 @@ const ThinkingDisclosure = memo(function ThinkingDisclosure({ part }: { part: Th
       : 0;
 
   return (
-    <Disclosure label={`Pensou por ${seconds}s`}>
+    <Disclosure icon={<Brain aria-hidden="true" size={14} />} label={`Pensou por ${seconds}s`}>
       <p className={styles.thinkingText}>{part.text}</p>
     </Disclosure>
   );
@@ -366,7 +469,10 @@ const ThinkingDisclosure = memo(function ThinkingDisclosure({ part }: { part: Th
 
 const ReadGroup = memo(function ReadGroup({ parts }: { parts: readonly ActionPart[] }) {
   return (
-    <Disclosure label={`Leu ${parts.length} arquivos`}>
+    <Disclosure
+      icon={<FileText aria-hidden="true" size={14} />}
+      label={`Leu ${parts.length} arquivos`}
+    >
       <div className={styles.fileList}>
         {parts.map((part) => (
           <div className={styles.fileRow} key={part.id}>
@@ -381,7 +487,11 @@ const ReadGroup = memo(function ReadGroup({ parts }: { parts: readonly ActionPar
 
 const SearchDisclosure = memo(function SearchDisclosure({ part }: { part: ActionPart }) {
   return (
-    <Disclosure label={<>Buscou “{part.title}”</>} panelClassName={styles.flushPanel}>
+    <Disclosure
+      icon={<Search aria-hidden="true" size={14} />}
+      label={<>Buscou “{part.title}”</>}
+      panelClassName={styles.flushPanel}
+    >
       <div className={styles.searchPanel}>
         <div className={styles.searchHeader}>
           <span>Resultados para</span>
@@ -398,9 +508,11 @@ const BashDisclosure = memo(function BashDisclosure({ part }: { part: ActionPart
 
   return (
     <Disclosure
+      icon={<Terminal aria-hidden="true" size={14} />}
       label={
         <>
           Rodou <code>{part.title}</code>
+          {part.state === "running" ? <span className={styles.toolState}> · Rodando</span> : null}
         </>
       }
       panelClassName={styles.flushPanel}
@@ -425,6 +537,7 @@ const EditDisclosure = memo(function EditDisclosure({ part }: { part: ActionPart
 
   return (
     <Disclosure
+      icon={<Pencil aria-hidden="true" size={14} />}
       label={
         <>
           Editou <code>{part.title}</code>{" "}
@@ -465,7 +578,10 @@ const TodosDisclosure = memo(function TodosDisclosure({ part }: { part: TodosPar
   const completed = part.items.filter((item) => item.state === "done").length;
 
   return (
-    <Disclosure label={`Tarefas · ${completed} de ${part.items.length} concluídas`}>
+    <Disclosure
+      icon={<ListChecks aria-hidden="true" size={14} />}
+      label={`Tarefas · ${completed} de ${part.items.length} concluídas`}
+    >
       <div className={styles.todoList}>
         {part.items.map((item) => (
           <div className={styles.todoItem} key={item.id}>
@@ -495,9 +611,107 @@ const TodosDisclosure = memo(function TodosDisclosure({ part }: { part: TodosPar
 
 const PlanDisclosure = memo(function PlanDisclosure({ part }: { part: PlanPart }) {
   return (
-    <Disclosure label="Plano de execução">
+    <Disclosure icon={<ListTodo aria-hidden="true" size={14} />} label="Plano de execução">
       <div className={styles.planPanel}>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.markdown}</ReactMarkdown>
+      </div>
+    </Disclosure>
+  );
+});
+
+const PendingPlan = memo(function PendingPlan({ part }: { part: PlanPart }) {
+  return (
+    <section aria-label="Plano pendente" className={styles.pendingPart}>
+      <p className={styles.pendingTitle}>Plano aguardando aprovação</p>
+      <div className={styles.planPanel}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.markdown}</ReactMarkdown>
+      </div>
+    </section>
+  );
+});
+
+function permissionOptionLabel(option: PermissionPart["options"][number]) {
+  switch (option) {
+    case "allow":
+      return "Permitir";
+    case "always":
+      return "Permitir sempre";
+    case "deny":
+      return "Negar";
+  }
+}
+
+const PendingPermission = memo(function PendingPermission({ part }: { part: PermissionPart }) {
+  return (
+    <section aria-label="Permissão pendente" className={styles.pendingPart}>
+      <p className={styles.pendingTitle}>
+        <KeyRound aria-hidden="true" size={14} />
+        {part.tool}
+      </p>
+      <p className={styles.pendingText}>{part.summary}</p>
+      {part.description ? <p className={styles.pendingText}>{part.description}</p> : null}
+      <fieldset className={styles.pendingOptions}>
+        <legend className={styles.srOnly}>Opções disponíveis</legend>
+        {part.options.map((option) => (
+          <span className={styles.pendingOption} key={option}>
+            {permissionOptionLabel(option)}
+          </span>
+        ))}
+      </fieldset>
+    </section>
+  );
+});
+
+const QuestionContent = memo(function QuestionContent({ part }: { part: QuestionPart }) {
+  return (
+    <div className={styles.questionList}>
+      {part.questions.map((question) => (
+        <div className={styles.questionItem} key={question.question}>
+          <p className={styles.pendingText}>{question.question}</p>
+          {question.options.map((option) => (
+            <div className={styles.questionOption} key={option.label}>
+              <span>{option.label}</span>
+              {option.description ? <span>{option.description}</span> : null}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+});
+
+const PendingQuestion = memo(function PendingQuestion({ part }: { part: QuestionPart }) {
+  return (
+    <section aria-label="Pergunta pendente" className={styles.pendingPart}>
+      <p className={styles.pendingTitle}>O agente precisa de uma resposta</p>
+      <QuestionContent part={part} />
+    </section>
+  );
+});
+
+const QuestionDisclosure = memo(function QuestionDisclosure({ part }: { part: QuestionPart }) {
+  return (
+    <Disclosure icon={<Circle aria-hidden="true" size={14} />} label="Pergunta respondida">
+      <QuestionContent part={part} />
+    </Disclosure>
+  );
+});
+
+const PermissionDisclosure = memo(function PermissionDisclosure({
+  part,
+}: {
+  part: PermissionPart;
+}) {
+  const stateLabel = part.state === "allowed" ? "Permissão concedida" : "Permissão negada";
+
+  return (
+    <Disclosure
+      icon={<KeyRound aria-hidden="true" size={14} />}
+      label={`${stateLabel} · ${part.tool}`}
+    >
+      <div className={styles.pendingPart}>
+        <p className={styles.pendingText}>{part.summary}</p>
+        {part.description ? <p className={styles.pendingText}>{part.description}</p> : null}
       </div>
     </Disclosure>
   );
@@ -507,7 +721,10 @@ const SubagentDisclosure = memo(function SubagentDisclosure({ part }: { part: Ac
   const steps = part.output.split(/\r?\n/).filter(Boolean);
 
   return (
-    <Disclosure label={`Explorou o projeto · ${steps.length} passos`}>
+    <Disclosure
+      icon={<Bot aria-hidden="true" size={14} />}
+      label={`Explorou o projeto · ${steps.length} passos`}
+    >
       <div className={styles.subagentPanel}>
         <p className={styles.subagentDescription}>{part.input}</p>
         <ol className={styles.subagentSteps}>
@@ -522,7 +739,7 @@ const SubagentDisclosure = memo(function SubagentDisclosure({ part }: { part: Ac
 
 const McpDisclosure = memo(function McpDisclosure({ part }: { part: ActionPart }) {
   return (
-    <Disclosure label={part.title}>
+    <Disclosure icon={<KeyRound aria-hidden="true" size={14} />} label={part.title}>
       <div className={styles.mcpPanel}>
         <div className={styles.jsonGroup}>
           <span className={styles.jsonLabel}>Entrada</span>
@@ -596,16 +813,49 @@ function renderAction(part: ActionPart) {
     case "other":
       return part.title.startsWith("subagent:") ? (
         <SubagentDisclosure key={part.id} part={part} />
-      ) : (
+      ) : part.title.includes(" · ") ? (
         <McpDisclosure key={part.id} part={part} />
+      ) : (
+        <Disclosure icon={<Wrench aria-hidden="true" size={14} />} key={part.id} label={part.title}>
+          <p className={styles.thinkingText}>{part.output || part.input}</p>
+        </Disclosure>
       );
-    default:
+    case "read":
       return (
-        <Disclosure key={part.id} label={part.title}>
+        <Disclosure
+          icon={<FileText aria-hidden="true" size={14} />}
+          key={part.id}
+          label={part.title}
+        >
+          <p className={styles.thinkingText}>{part.output || part.input}</p>
+        </Disclosure>
+      );
+    case "write":
+      return (
+        <Disclosure
+          icon={<FilePlus aria-hidden="true" size={14} />}
+          key={part.id}
+          label={part.title}
+        >
+          <p className={styles.thinkingText}>{part.output || part.input}</p>
+        </Disclosure>
+      );
+    case "web":
+      return (
+        <Disclosure icon={<Globe aria-hidden="true" size={14} />} key={part.id} label={part.title}>
           <p className={styles.thinkingText}>{part.output || part.input}</p>
         </Disclosure>
       );
   }
+}
+
+function isAlwaysVisiblePart(part: MessagePart) {
+  return (
+    part.type === "error" ||
+    (part.type === "permission" && part.state === "pending") ||
+    (part.type === "question" && part.state === "pending") ||
+    (part.type === "plan" && part.state === "pending")
+  );
 }
 
 function isToolPart(part: MessagePart) {
@@ -613,7 +863,9 @@ function isToolPart(part: MessagePart) {
     part.type === "thinking" ||
     part.type === "action" ||
     part.type === "todos" ||
-    part.type === "plan"
+    part.type === "plan" ||
+    part.type === "permission" ||
+    part.type === "question"
   );
 }
 
@@ -626,7 +878,23 @@ function renderMessagePart(part: MessagePart): ReactNode {
     case "todos":
       return <TodosDisclosure key={part.id} part={part} />;
     case "plan":
-      return <PlanDisclosure key={part.id} part={part} />;
+      return part.state === "pending" ? (
+        <PendingPlan key={part.id} part={part} />
+      ) : (
+        <PlanDisclosure key={part.id} part={part} />
+      );
+    case "permission":
+      return part.state === "pending" ? (
+        <PendingPermission key={part.id} part={part} />
+      ) : (
+        <PermissionDisclosure key={part.id} part={part} />
+      );
+    case "question":
+      return part.state === "pending" ? (
+        <PendingQuestion key={part.id} part={part} />
+      ) : (
+        <QuestionDisclosure key={part.id} part={part} />
+      );
     case "error":
       return <ErrorMessage key={part.id} part={part} />;
     case "text":
@@ -643,10 +911,7 @@ function renderMessagePart(part: MessagePart): ReactNode {
 function renderMessageParts(parts: readonly MessagePart[]): ReactNode[] {
   const rendered: ReactNode[] = [];
   const toolGroup: ReactNode[] = [];
-  const reads = parts.filter(
-    (part): part is ActionPart => part.type === "action" && part.actionType === "read",
-  );
-  let readGroupRendered = false;
+  let index = 0;
 
   const flushTools = () => {
     if (toolGroup.length === 0) return;
@@ -657,16 +922,35 @@ function renderMessageParts(parts: readonly MessagePart[]): ReactNode[] {
     );
   };
 
-  for (const part of parts) {
+  while (index < parts.length) {
+    const part = parts[index];
+    if (!part) {
+      index += 1;
+      continue;
+    }
+
+    if (isAlwaysVisiblePart(part)) {
+      flushTools();
+      const node = renderMessagePart(part);
+      if (node !== null) rendered.push(node);
+      index += 1;
+      continue;
+    }
+
     if (part.type === "action" && part.actionType === "read") {
-      if (!readGroupRendered) {
-        toolGroup.push(<ReadGroup key="read-group" parts={reads} />);
-        readGroupRendered = true;
+      const reads: ActionPart[] = [];
+      while (index < parts.length) {
+        const next = parts[index];
+        if (next?.type !== "action" || next.actionType !== "read") break;
+        reads.push(next);
+        index += 1;
       }
+      toolGroup.push(<ReadGroup key={`read-group-${reads[0]?.id ?? index}`} parts={reads} />);
       continue;
     }
 
     const node = renderMessagePart(part);
+    index += 1;
     if (node === null) continue;
     if (isToolPart(part)) {
       toolGroup.push(node);
@@ -678,6 +962,44 @@ function renderMessageParts(parts: readonly MessagePart[]): ReactNode[] {
 
   flushTools();
   return rendered;
+}
+
+function renderFinalAnswer(parts: readonly TextPart[]) {
+  if (parts.length === 0) return null;
+
+  return (
+    <div className={styles.markdown}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {parts.map((part) => part.markdown).join("\n\n")}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+function renderCompletedMessage(message: ConversationMessage) {
+  const { history, finalAnswer } = splitFinalAnswer(message.parts);
+  const historyParts = history.filter((part) => !isAlwaysVisiblePart(part));
+  const alwaysVisibleParts = message.parts.filter(isAlwaysVisiblePart);
+  const durationMs =
+    message.startedAt !== undefined && message.endedAt !== undefined
+      ? message.endedAt - message.startedAt
+      : undefined;
+
+  return (
+    <>
+      {historyParts.length > 0 ? (
+        <Disclosure
+          className={styles.historyDisclosure}
+          label={formatWorkDuration(durationMs)}
+          panelClassName={styles.historyPanel}
+        >
+          {renderMessageParts(historyParts)}
+        </Disclosure>
+      ) : null}
+      {alwaysVisibleParts.map((part) => renderMessagePart(part))}
+      {renderFinalAnswer(finalAnswer)}
+    </>
+  );
 }
 
 const MessageRow = memo(function MessageRow({ message }: { message: ConversationMessage }) {
@@ -694,9 +1016,18 @@ const MessageRow = memo(function MessageRow({ message }: { message: Conversation
     );
   }
 
-  if (message.status === "streaming" && message.parts.length === 0) {
+  if (message.status === "done") {
+    return (
+      <article aria-label="Resposta do agente" className={styles.agentMessage}>
+        {renderCompletedMessage(message)}
+      </article>
+    );
+  }
+
+  if (message.status === "streaming") {
     return (
       <article aria-label="Resposta do agente em andamento" className={styles.agentMessage}>
+        {renderMessageParts(message.parts)}
         <WorkingIndicator label="Lendo app.ts" />
       </article>
     );
