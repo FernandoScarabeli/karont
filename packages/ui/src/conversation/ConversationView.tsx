@@ -4,7 +4,6 @@ import { Folder, MessageSquareText, TriangleAlert } from "lucide-react";
 import {
   type DragEventHandler,
   type ReactNode,
-  type RefObject,
   useCallback,
   useEffect,
   useMemo,
@@ -28,12 +27,10 @@ import { upsertConversation } from "./useConversationIndex.ts";
 
 export function ConversationView({
   id,
-  titleRef,
   headerActions,
   dragHandleProps,
 }: {
   id: string;
-  titleRef?: RefObject<HTMLHeadingElement | null>;
   headerActions?: ReactNode;
   dragHandleProps?: {
     draggable: boolean;
@@ -267,9 +264,14 @@ export function ConversationView({
   const homeTodos = isWorking ? lastTodos : null;
 
   return (
-    <section aria-label={title} className={styles.page}>
+    <section
+      aria-label={title}
+      className={styles.page}
+      data-focus-context="conversation"
+      tabIndex={-1}
+    >
       <header className={styles.header}>
-        <h1 className={styles.title} ref={titleRef} tabIndex={-1} {...dragHandleProps}>
+        <h1 className={styles.title} {...dragHandleProps}>
           {title}
         </h1>
         {conversation ? (

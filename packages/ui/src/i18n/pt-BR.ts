@@ -174,6 +174,7 @@ export const t = {
     timeline: "Linha do tempo",
     timelineTitle: "Linha do tempo da resposta",
     timelineDurationMissing: "Duração não informada",
+    durationUnderSecond: "Menos de 1 s",
     timelineCaption: "Etapas na ordem recebida; as durações vêm dos dados da ação.",
     folderCopy: (path: string) => `Copiar caminho da pasta: ${path}`,
     folderCopied: "Caminho da pasta copiado",

@@ -124,16 +124,15 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
                 : "bottom";
         moveWorkspacePane(activePaneId, neighbor.paneId, edge);
         window.requestAnimationFrame(() =>
-          paneElements.current
-            .get(activePaneId)
-            ?.querySelector<HTMLHeadingElement>("h1")
-            ?.focus({ preventScroll: true }),
+          getPaneFocusTarget(paneElements.current.get(activePaneId))?.focus({
+            preventScroll: true,
+          }),
         );
         return;
       }
       setActivePane(neighbor.paneId);
       window.requestAnimationFrame(() =>
-        neighbor.element.querySelector<HTMLHeadingElement>("h1")?.focus({ preventScroll: true }),
+        getPaneFocusTarget(neighbor.element)?.focus({ preventScroll: true }),
       );
     };
     window.addEventListener("keydown", handleShortcut);
@@ -147,21 +146,19 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
   const paneTitles = new Map(
     allPanes.map((pane) => [pane.id, getPaneTitle(pane, terminalById, terminalTitles)]),
   );
-  const focusPaneTitle = useCallback((paneId: string) => {
+  const focusPaneContext = useCallback((paneId: string) => {
     window.requestAnimationFrame(() => {
-      paneElements.current.get(paneId)?.querySelector<HTMLHeadingElement>("h1")?.focus({
-        preventScroll: true,
-      });
+      getPaneFocusTarget(paneElements.current.get(paneId))?.focus({ preventScroll: true });
     });
   }, []);
 
   useEffect(() => {
     const previous = previousActive.current;
     if (previous.paneId === activePaneId && previous.viewKind !== activeViewKind) {
-      focusPaneTitle(activePaneId);
+      focusPaneContext(activePaneId);
     }
     previousActive.current = { paneId: activePaneId, viewKind: activeViewKind };
-  }, [activePaneId, activeViewKind, focusPaneTitle]);
+  }, [activePaneId, activeViewKind, focusPaneContext]);
 
   function startDrag(event: DragEvent<HTMLHeadingElement>, paneId: string) {
     event.dataTransfer.effectAllowed = "move";
@@ -177,13 +174,13 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
 
   function movePanel(paneId: string, targetPaneId: string, edge: PaneEdge) {
     moveWorkspacePane(paneId, targetPaneId, edge);
-    focusPaneTitle(paneId);
+    focusPaneContext(paneId);
   }
 
   function closePanel(paneId: string) {
     const nextPaneId = allPanes.find((pane) => pane.id !== paneId)?.id ?? paneId;
     closeWorkspacePane(paneId);
-    focusPaneTitle(nextPaneId);
+    focusPaneContext(nextPaneId);
   }
 
   function edgeFromPointer(event: DragEvent<HTMLDivElement>): PaneEdge {
@@ -207,7 +204,7 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
         onClosePane={() => closePanel(pane.id)}
         onSplit={(direction) => {
           const newPaneId = splitActivePane(direction, pane.id);
-          if (newPaneId) focusPaneTitle(newPaneId);
+          if (newPaneId) focusPaneContext(newPaneId);
         }}
         paneTitle={paneTitle}
       />
@@ -257,7 +254,6 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
           headerActions={renderToolbar(pane)}
           id={pane.view.conversationId}
           key={pane.view.conversationId}
-          titleRef={isActive ? titleRef : undefined}
         />
       </Suspense>
     );
@@ -373,6 +369,14 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
 
 function collectPanes(tree: LayoutNode): PaneNode[] {
   return tree.type === "pane" ? [tree] : tree.children.flatMap(collectPanes);
+}
+
+function getPaneFocusTarget(pane: HTMLElement | undefined): HTMLElement | null {
+  if (!pane) return null;
+  return (
+    pane.querySelector<HTMLElement>("[data-focus-context]") ??
+    pane.querySelector<HTMLHeadingElement>("h1")
+  );
 }
 
 function getPaneTitle(
