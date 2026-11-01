@@ -55,6 +55,22 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
     }).success,
     true,
   );
+  assert.equal(
+    methods["agent.models"].result.safeParse({
+      agent: "codex",
+      models: [
+        {
+          id: "gpt-6.1-sol",
+          name: "gpt-6.1-sol",
+          efforts: ["low", "medium", "high"],
+          defaultEffort: "medium",
+        },
+      ],
+      efforts: ["low", "medium", "high"],
+      fetchedAt: "2026-10-31T10:00:00Z",
+    }).success,
+    true,
+  );
 });
 
 test("contratos guardam partes interativas ordenadas e estados explícitos", () => {
@@ -76,10 +92,22 @@ test("contratos guardam partes interativas ordenadas e estados explícitos", () 
         durationMs: 12,
       },
       {
+        id: "a2",
+        type: "action",
+        actionType: "command",
+        title: "mkdir -p /tmp/x",
+        input: "mkdir -p /tmp/x",
+        output: "",
+        truncated: false,
+        state: "waiting",
+        durationMs: null,
+      },
+      {
         id: "p1",
         type: "permission",
         tool: "Bash",
-        summary: "Rodar comando",
+        summary: "mkdir -p /tmp/x",
+        description: "Crie a pasta temporária",
         options: ["allow", "always", "deny"],
         state: "pending",
       },

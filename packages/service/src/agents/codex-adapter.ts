@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn as nodeSpawn, type SpawnOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
+import { performance } from "node:perf_hooks";
 import { createInterface } from "node:readline";
 import type { Conversation, MessagePart } from "@karont/contract";
 import type {
@@ -38,7 +39,11 @@ type PendingResponse =
       questions: JsonRecord[];
     }
   | { kind: "plan" };
-type ActionRecord = { part: Extract<MessagePart, { type: "action" }>; startedAt: number | null };
+type ActionRecord = {
+  part: Extract<MessagePart, { type: "action" }>;
+  startedAt: number | null;
+  observedStartedAt: number | null;
+};
 
 export type CodexAdapterOptions = {
   env?: NodeJS.ProcessEnv;
@@ -90,38 +95,7 @@ export class CodexAdapter implements AgentAdapter {
     this.#turnId = "";
     this.#stopRequested = false;
     this.#models = { models: [], efforts: [...EFFORTS] };
-    const command =
-      this.#env.KARONT_CODEX_CLI ||
-      (await resolveAgentCommand("codex", {
-        env: this.#env,
-        homeDir: this.#homeDir,
-        platform: this.#platform,
-      })) ||
-      "codex";
-    try {
-      this.#child = this.#spawn(command, ["app-server", "--stdio"], {
-        cwd: conversation.cwd,
-        env: this.#env,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-    } catch (error) {
-      throw classifyStartError(error, command);
-    }
-
-    const child = this.#child;
-    if (!child.stdin || !child.stdout || !child.stderr)
-      throw new AgentCliError("failed", "O Codex não abriu os canais de comunicação esperados.");
-    const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
-    lines.on("line", (line) => this.#handleLine(line));
-    child.stderr.on("data", () => undefined);
-    child.once("error", (error) => this.#handleProcessError(error, child, command));
-    child.once("close", (code, signal) => this.#handleProcessClose(code, signal, child));
-
-    await this.#request("initialize", {
-      clientInfo: { name: "karont", version: "0.0.0", title: "Karont" },
-      capabilities: { experimentalApi: true },
-    });
-    await this.#notify("initialized", {});
+    await this.#startServer(conversation.cwd);
     const catalog = await this.#request("model/list", { limit: 100, includeHidden: false });
     this.#models = parseModelList(catalog);
     const selected = selectModel(this.#models, catalog, conversation.model);
@@ -144,6 +118,19 @@ export class CodexAdapter implements AgentAdapter {
       this.#threadId = thread.id;
     }
     this.#emit({ kind: "session", sessionId: this.#threadId });
+  }
+
+  async loadModelCatalog(cwd: string): Promise<AdapterModelList> {
+    this.#disposed = false;
+    this.#models = { models: [], efforts: [...EFFORTS] };
+    try {
+      await this.#startServer(cwd);
+      const catalog = await this.#request("model/list", { limit: 100, includeHidden: false });
+      this.#models = parseModelList(catalog);
+      return await this.getModels();
+    } finally {
+      await this.dispose();
+    }
   }
 
   async send(text: string): Promise<void> {
@@ -269,6 +256,41 @@ export class CodexAdapter implements AgentAdapter {
       models: this.#models.models.map((model) => ({ ...model, efforts: [...model.efforts] })),
       efforts: [...this.#models.efforts],
     };
+  }
+
+  async #startServer(cwd: string): Promise<void> {
+    const command =
+      this.#env.KARONT_CODEX_CLI ||
+      (await resolveAgentCommand("codex", {
+        env: this.#env,
+        homeDir: this.#homeDir,
+        platform: this.#platform,
+      })) ||
+      "codex";
+    try {
+      this.#child = this.#spawn(command, ["app-server", "--stdio"], {
+        cwd,
+        env: this.#env,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch (error) {
+      throw classifyStartError(error, command);
+    }
+
+    const child = this.#child;
+    if (!child.stdin || !child.stdout || !child.stderr)
+      throw new AgentCliError("failed", "O Codex não abriu os canais de comunicação esperados.");
+    const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
+    lines.on("line", (line) => this.#handleLine(line));
+    child.stderr.on("data", () => undefined);
+    child.once("error", (error) => this.#handleProcessError(error, child, command));
+    child.once("close", (code, signal) => this.#handleProcessClose(code, signal, child));
+
+    await this.#request("initialize", {
+      clientInfo: { name: "karont", version: "0.0.0", title: "Karont" },
+      capabilities: { experimentalApi: true },
+    });
+    await this.#notify("initialized", {});
   }
 
   async #startTurn(text: string, planMode: boolean): Promise<void> {
@@ -547,10 +569,19 @@ export class CodexAdapter implements AgentAdapter {
     const prior = this.#actions.get(id);
     const startedAt =
       typeof item.startedAtMs === "number" ? item.startedAtMs : (prior?.startedAt ?? null);
+    const observedStartedAt =
+      stage === "running"
+        ? (prior?.observedStartedAt ?? performance.now())
+        : (prior?.observedStartedAt ?? null);
     const actionType = actionTypeFor(item);
-    const command = stringValue(item.command);
-    const input = actionInput(item, command);
-    const title = actionTitle(item, actionType);
+    const action = Array.isArray(item.commandActions)
+      ? item.commandActions.find(isRecord)
+      : undefined;
+    const command = unwrapCodexShellCommand(stringValue(item.command));
+    const actionCommand = unwrapCodexShellCommand(stringValue(action?.command));
+    const displayCommand = command || actionCommand;
+    const input = actionInput(item, displayCommand);
+    const title = actionTitle(item, actionType, displayCommand);
     const rawOutput = actionOutput(item);
     const { output, truncated } = truncateOutput(rawOutput);
     const status = stringValue(item.status);
@@ -558,12 +589,25 @@ export class CodexAdapter implements AgentAdapter {
       status === "completed" &&
       (item.exitCode === undefined || item.exitCode === null || item.exitCode === 0);
     const state = stage === "running" ? "running" : successful ? "ok" : "error";
+    const reportedDuration =
+      typeof item.durationMs === "number" && item.durationMs > 0
+        ? Math.max(1, Math.trunc(item.durationMs))
+        : null;
+    const timestampDuration =
+      startedAt !== null && typeof item.completedAtMs === "number"
+        ? item.completedAtMs - startedAt
+        : null;
+    const observedDuration =
+      stage === "complete" && observedStartedAt !== null
+        ? Math.ceil(performance.now() - observedStartedAt)
+        : null;
     const durationMs =
-      typeof item.durationMs === "number"
-        ? Math.max(0, Math.trunc(item.durationMs))
-        : startedAt !== null && typeof item.completedAtMs === "number"
-          ? Math.max(0, item.completedAtMs - startedAt)
-          : null;
+      reportedDuration ??
+      (timestampDuration !== null && timestampDuration > 0
+        ? Math.ceil(timestampDuration)
+        : observedDuration !== null && observedDuration > 0
+          ? observedDuration
+          : null);
     const part: Extract<MessagePart, { type: "action" }> = {
       id,
       type: "action",
@@ -575,7 +619,7 @@ export class CodexAdapter implements AgentAdapter {
       state,
       durationMs,
     };
-    this.#actions.set(id, { part, startedAt });
+    this.#actions.set(id, { part, startedAt, observedStartedAt });
     this.#emitPart(part);
   }
 
@@ -641,6 +685,12 @@ export const createCodexAdapterFactory =
   (_conversation, emit) =>
     new CodexAdapter(emit, options);
 
+export function createCodexModelLoader(
+  options: CodexAdapterOptions = {},
+): (cwd: string) => Promise<AdapterModelList> {
+  return async (cwd) => new CodexAdapter(() => undefined, options).loadModelCatalog(cwd);
+}
+
 function permissionSettings(mode: Conversation["mode"]): {
   sandbox: "read-only" | "workspace-write" | "danger-full-access";
   approvalPolicy: "never" | "on-request";
@@ -663,12 +713,19 @@ function parseModelList(value: unknown): AdapterModelList {
           .map((entry) => stringValue(entry.reasoningEffort))
           .filter((effort): effort is Effort => validEfforts.has(effort))
       : [];
+    const requestedDefault = stringValue(model.defaultReasoningEffort);
+    const defaultEffort =
+      validEfforts.has(requestedDefault) &&
+      (!supported.length || supported.includes(requestedDefault as Effort))
+        ? (requestedDefault as Effort)
+        : (supported[0] ?? EFFORTS[0]);
     const displayName = stringValue(model.displayName);
     return [
       {
         id,
         name: displayName && !/^\[redigido\]$/i.test(displayName) ? displayName : id,
         efforts: supported.length ? supported : [...EFFORTS],
+        defaultEffort,
       },
     ];
   });
@@ -691,7 +748,8 @@ function selectModel(
     : (list.models.find(
         (model) => model.id === stringValue(selectedRaw?.model ?? selectedRaw?.id),
       ) ?? list.models[0]);
-  const effort = stringValue(selectedRaw?.defaultReasoningEffort) || "low";
+  const effort =
+    stringValue(selectedRaw?.defaultReasoningEffort) || selected?.defaultEffort || "low";
   return { id: requested || selected?.id || "gpt-6.1-sol", effort };
 }
 
@@ -766,6 +824,7 @@ function actionTypeFor(item: JsonRecord): Extract<MessagePart, { type: "action" 
 function actionTitle(
   item: JsonRecord,
   actionType: Extract<MessagePart, { type: "action" }>["actionType"],
+  command: string,
 ): string {
   const type = stringValue(item.type);
   if (type === "commandExecution") {
@@ -775,7 +834,7 @@ function actionTitle(
     const name = stringValue(action?.name) || baseName(stringValue(action?.path));
     if (actionType === "read") return name ? `Leu ${name}` : "Leu arquivos";
     if (actionType === "search") return "Buscou arquivos";
-    return stringValue(item.command) || "Executou um comando";
+    return command || "Executou um comando";
   }
   if (type === "fileChange") return actionType === "write" ? "Criou arquivos" : "Editou arquivos";
   if (type === "webSearch")
@@ -785,14 +844,22 @@ function actionTitle(
 
 function actionInput(item: JsonRecord, command: string): string {
   if (stringValue(item.type) === "commandExecution") {
-    const action = Array.isArray(item.commandActions)
-      ? item.commandActions.find(isRecord)
-      : undefined;
-    return stringValue(action?.command) || command;
+    return command;
   }
   if (stringValue(item.type) === "webSearch") return stringValue(item.query);
   if (stringValue(item.type) === "fileChange") return fileChangeSummary(item.changes);
   return command || JSON.stringify(item);
+}
+
+export function unwrapCodexShellCommand(command: string): string {
+  const match = command.match(
+    /^\s*(?:[^\s]*\/)?(?:bash|sh|zsh)\s+-(?:lc|c)\s+(['"])([\s\S]*)\1\s*$/,
+  );
+  if (!match) return command;
+  const quote = match[1];
+  const inner = match[2] ?? "";
+  if (quote === "'") return inner.replaceAll("'\\''", "'");
+  return inner.replace(/\\([\\"$`])/g, "$1");
 }
 
 function actionOutput(item: JsonRecord): string {

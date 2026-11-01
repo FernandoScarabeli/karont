@@ -17,7 +17,12 @@ export type AdapterResponse =
   | { responseType: "plan"; decision: "approve" | "reject"; comment?: string };
 
 export type AdapterModelList = {
-  models: { id: string; name: string; efforts: NonNullable<Conversation["effort"]>[] }[];
+  models: {
+    id: string;
+    name: string;
+    efforts: NonNullable<Conversation["effort"]>[];
+    defaultEffort: NonNullable<Conversation["effort"]>;
+  }[];
   efforts: NonNullable<Conversation["effort"]>[];
 };
 

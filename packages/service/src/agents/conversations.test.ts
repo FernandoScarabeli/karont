@@ -203,6 +203,20 @@ test("permissões permitem uma vez, sempre com sugestão real e negam", async (t
           conversation.id,
           (part) => part.type === "permission" && part.state === "pending",
         );
+        if (scenario === "comando-permitido") {
+          assert.ok(
+            permission.type === "permission" &&
+              permission.summary === "touch .karont-approval-probe && ls" &&
+              permission.description === "Create probe file in project folder and list contents",
+          );
+          const waitingAction = latestAgent(harness, conversation.id)?.parts.find(
+            (part) => part.type === "action" && part.actionType === "command",
+          );
+          assert.equal(
+            waitingAction?.type === "action" ? waitingAction.state : undefined,
+            "waiting",
+          );
+        }
         const decision =
           scenario === "comando-permitir-sempre"
             ? "always"
@@ -221,6 +235,12 @@ test("permissões permitem uma vez, sempre com sugestão real e negam", async (t
           finalPart?.type === "permission" ? finalPart.state : undefined,
           decision === "deny" ? "denied" : "allowed",
         );
+        if (scenario === "comando-permitido") {
+          const action = latestAgent(harness, conversation.id)?.parts.find(
+            (part) => part.type === "action" && part.actionType === "command",
+          );
+          assert.equal(action?.type === "action" ? action.state : undefined, "ok");
+        }
       } finally {
         await harness.close();
       }

@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
+import os from "node:os";
 import type { DatabaseSync } from "node:sqlite";
-import type { AnyEvent, Conversation, ConversationMessage, MessagePart } from "@karont/contract";
+import {
+  type AnyEvent,
+  agentModelsSchema,
+  type Conversation,
+  type ConversationMessage,
+  type MessagePart,
+} from "@karont/contract";
 import { DeltaCoalescer } from "../coalescer.ts";
 import {
   addMessage,
@@ -8,11 +15,13 @@ import {
   deleteConversation,
   getAgentSession,
   getConversation,
+  getSetting,
   listConversations,
   listMessages,
   type NewConversation,
   saveMessage,
   setAgentSession,
+  setSetting,
   updateConversation,
 } from "../db.ts";
 import type {
@@ -23,7 +32,9 @@ import type {
   AgentAdapter,
 } from "./adapter.ts";
 import { AgentCliError, createClaudeAdapterFactory } from "./claude-adapter.ts";
-import { createCodexAdapterFactory } from "./codex-adapter.ts";
+import { createCodexAdapterFactory, createCodexModelLoader } from "./codex-adapter.ts";
+
+const CODEX_MODELS_SETTING = "agent.codex.models";
 
 type ActiveConversation = {
   adapter: AgentAdapter;
@@ -42,6 +53,7 @@ export type ConversationManagerOptions = {
   broadcast: (event: AnyEvent) => Promise<void>;
   env?: NodeJS.ProcessEnv;
   adapterFactory?: AdapterFactory;
+  codexModelLoader?: (cwd: string) => Promise<AdapterModelList>;
   now?: () => string;
 };
 
@@ -50,6 +62,7 @@ export class ConversationManager {
   readonly #broadcast: ConversationManagerOptions["broadcast"];
   readonly #env: NodeJS.ProcessEnv;
   readonly #factory: AdapterFactory;
+  readonly #codexModelLoader: (cwd: string) => Promise<AdapterModelList>;
   readonly #now: () => string;
   readonly #active = new Map<string, ActiveConversation>();
   readonly #pendingParts = new Map<string, { conversationId: string; messageId: string }>();
@@ -57,6 +70,8 @@ export class ConversationManager {
     models: [],
     efforts: ["low", "medium", "high", "xhigh", "max"],
   };
+  #codexModelFetchedAt: string | undefined;
+  #codexModelLoadPromise: Promise<void> | undefined;
   #closing = false;
 
   constructor(options: ConversationManagerOptions) {
@@ -65,11 +80,17 @@ export class ConversationManager {
     this.#env = options.env ?? process.env;
     const claudeFactory = createClaudeAdapterFactory({ env: this.#env });
     const codexFactory = createCodexAdapterFactory({ env: this.#env });
+    this.#codexModelLoader = options.codexModelLoader ?? createCodexModelLoader({ env: this.#env });
     this.#factory =
       options.adapterFactory ??
       ((conversation, emit) =>
         (conversation.agent === "codex" ? codexFactory : claudeFactory)(conversation, emit));
     this.#now = options.now ?? (() => new Date().toISOString());
+    const cached = readCodexModelCache(getSetting(this.#db, CODEX_MODELS_SETTING));
+    if (cached) {
+      this.#codexModelList = cached.modelList;
+      this.#codexModelFetchedAt = cached.fetchedAt;
+    }
   }
 
   create(input: NewConversation): Conversation {
@@ -216,25 +237,28 @@ export class ConversationManager {
 
   async models(agent: "claude" | "codex"): Promise<{
     agent: "claude" | "codex";
-    models: { id: string; name: string }[];
+    models: {
+      id: string;
+      name: string;
+      efforts?: NonNullable<Conversation["effort"]>[];
+      defaultEffort?: NonNullable<Conversation["effort"]>;
+    }[];
     efforts: ("low" | "medium" | "high" | "xhigh" | "max")[];
+    fetchedAt?: string;
   }> {
     const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
     if (agent === "codex") {
-      const active = [...this.#active.values()].find((entry) => entry.agent === "codex");
-      if (active) {
-        try {
-          await active.startPromise;
-          const modelList = await active.adapter.getModels?.();
-          if (modelList) this.#codexModelList = modelList;
-        } catch {
-          // Keep the latest list discovered by a previous Codex process.
-        }
-      }
+      await this.#loadCodexModelsIfNeeded();
       return {
         agent,
-        models: this.#codexModelList.models.map(({ id, name }) => ({ id, name })),
+        models: this.#codexModelList.models.map(({ id, name, efforts, defaultEffort }) => ({
+          id,
+          name,
+          efforts: [...efforts],
+          defaultEffort,
+        })),
         efforts: [...this.#codexModelList.efforts],
+        ...(this.#codexModelFetchedAt ? { fetchedAt: this.#codexModelFetchedAt } : {}),
       };
     }
     return {
@@ -246,6 +270,51 @@ export class ConversationManager {
       ],
       efforts: [...efforts],
     };
+  }
+
+  async #loadCodexModelsIfNeeded(): Promise<void> {
+    if (this.#codexModelFetchedAt) return;
+    if (this.#codexModelLoadPromise) return this.#codexModelLoadPromise;
+    const loading = (async () => {
+      const active = [...this.#active.values()].find((entry) => entry.agent === "codex");
+      try {
+        let modelList: AdapterModelList | undefined;
+        if (active) {
+          await active.startPromise;
+          modelList = await active.adapter.getModels?.();
+        }
+        modelList ??= await this.#codexModelLoader(os.homedir());
+        this.#cacheCodexModelList(modelList);
+      } catch {
+        // Keep returning the most recent list if Codex is unavailable.
+      }
+    })();
+    this.#codexModelLoadPromise = loading;
+    try {
+      await loading;
+    } finally {
+      if (this.#codexModelLoadPromise === loading) this.#codexModelLoadPromise = undefined;
+    }
+  }
+
+  #cacheCodexModelList(modelList: AdapterModelList): void {
+    this.#codexModelList = modelList;
+    this.#codexModelFetchedAt = this.#now();
+    try {
+      setSetting(this.#db, CODEX_MODELS_SETTING, {
+        agent: "codex",
+        models: modelList.models.map(({ id, name, efforts, defaultEffort }) => ({
+          id,
+          name,
+          efforts,
+          defaultEffort,
+        })),
+        efforts: modelList.efforts,
+        fetchedAt: this.#codexModelFetchedAt,
+      });
+    } catch {
+      // Keep the in-memory catalog available for this service run if persistence fails.
+    }
   }
 
   async close(): Promise<void> {
@@ -310,7 +379,7 @@ export class ConversationManager {
           await activeRef.eventQueue;
           if (conversation.agent !== "codex") return;
           const modelList = await adapter.getModels?.();
-          if (modelList) this.#codexModelList = modelList;
+          if (modelList) this.#cacheCodexModelList(modelList);
         })
         .catch(async (error: unknown) => {
           if (!this.#closing) {
@@ -579,4 +648,26 @@ export class ConversationManager {
   async #emit(event: AnyEvent): Promise<void> {
     await this.#broadcast(event);
   }
+}
+
+function readCodexModelCache(
+  value: unknown,
+): { modelList: AdapterModelList; fetchedAt: string } | null {
+  const parsed = agentModelsSchema.safeParse(value);
+  if (!parsed.success || parsed.data.agent !== "codex" || !parsed.data.fetchedAt) return null;
+  return {
+    modelList: {
+      models: parsed.data.models.map((model) => {
+        const efforts = model.efforts?.length ? model.efforts : parsed.data.efforts;
+        return {
+          id: model.id,
+          name: model.name,
+          efforts: [...efforts],
+          defaultEffort: model.defaultEffort ?? efforts[0] ?? "low",
+        };
+      }),
+      efforts: [...parsed.data.efforts],
+    },
+    fetchedAt: parsed.data.fetchedAt,
+  };
 }
