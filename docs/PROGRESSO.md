@@ -66,6 +66,8 @@ Repositório recriado do zero em 2026-10-31.
 
 19. **Leveza é requisito** (2026-10-31): o app não pode comer RAM nem CPU. Toda tarefa do M2 em diante leva critério de desempenho (lista virtualizada em conversas longas, deltas agrupados, nada de re-render por token, processos das CLIs encerrados quando ociosos, sem polling). O orquestrador mede RAM/CPU no fim de cada marco.
 
+20. **Planejar** (decisão do orquestrador na ausência do dono, 2026-10-31, revisável): botão "Planejar" no composer. Com ele ligado, o agente só planeja (Claude `plan`, Codex `collaborationMode: plan`); o cartão de plano tem Aprovar (executa no modo de acesso escolhido) e Ajustar.
+
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
 - Node 24 roda `.ts` direto (type stripping): testes e serviço em dev rodam sem build. Por isso o TS usa `erasableSyntaxOnly` (sem `enum`/`namespace`) e imports com extensão `.ts`.
