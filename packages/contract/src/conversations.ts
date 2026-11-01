@@ -18,7 +18,11 @@ export const conversationSchema = z.strictObject({
 });
 export type Conversation = z.infer<typeof conversationSchema>;
 
-const messagePartBase = { id: z.string().min(1) };
+const messagePartBase = {
+  id: z.string().min(1),
+  startedAt: z.number().int().nonnegative().optional(),
+  endedAt: z.number().int().nonnegative().optional(),
+};
 export const questionOptionSchema = z.strictObject({
   label: z.string(),
   description: z.string().optional(),
@@ -97,6 +101,8 @@ export const messageSchema = z.strictObject({
   author: z.enum(["user", "agent"]),
   status: z.enum(["streaming", "done", "interrupted", "error"]),
   parts: z.array(messagePartSchema),
+  startedAt: z.number().int().nonnegative().optional(),
+  endedAt: z.number().int().nonnegative().optional(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
 });

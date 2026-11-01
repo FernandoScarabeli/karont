@@ -172,6 +172,14 @@ test("Claude transmite texto em deltas e converte leitura em ação", async () =
     );
     const message = latestAgent(harness, conversation.id);
     assert.equal(message?.status, "done");
+    assert.equal(typeof message?.startedAt, "number");
+    assert.equal(typeof message?.endedAt, "number");
+    assert.ok((message?.endedAt ?? 0) >= (message?.startedAt ?? 0));
+    for (const part of message?.parts ?? []) {
+      assert.equal(typeof part.startedAt, "number", `parte ${part.id} sem início registrado`);
+      assert.equal(typeof part.endedAt, "number", `parte ${part.id} sem fim registrado`);
+      assert.ok((part.endedAt ?? 0) >= (part.startedAt ?? 0));
+    }
     assert.ok(
       message?.parts.some(
         (part) =>
@@ -237,6 +245,9 @@ test("permissões permitem uma vez, sempre com sugestão real e negam", async (t
           finalPart?.type === "permission" ? finalPart.state : undefined,
           decision === "deny" ? "denied" : "allowed",
         );
+        assert.equal(typeof finalPart?.startedAt, "number");
+        assert.equal(typeof finalPart?.endedAt, "number");
+        assert.ok((finalPart?.endedAt ?? 0) >= (finalPart?.startedAt ?? 0));
         if (scenario === "comando-permitido") {
           const action = latestAgent(harness, conversation.id)?.parts.find(
             (part) => part.type === "action" && part.actionType === "command",
@@ -299,6 +310,9 @@ test("pergunta e plano aguardam decisão do usuário", async (t) => {
         (part) => part.id === question.id,
       );
       assert.equal(answered?.type === "question" ? answered.state : undefined, "answered");
+      assert.equal(typeof answered?.startedAt, "number");
+      assert.equal(typeof answered?.endedAt, "number");
+      assert.ok((answered?.endedAt ?? 0) >= (answered?.startedAt ?? 0));
     } finally {
       await harness.close();
     }
@@ -438,11 +452,13 @@ test("CLI ausente gera erro retryable e o reinício marca streaming como interru
       const conversation = createConversation(harness.manager);
       await harness.manager.send(conversation.id, "Olá.");
       await waitForState(harness, conversation.id, "error");
-      assert.ok(
-        latestAgent(harness, conversation.id)?.parts.some(
-          (part) => part.type === "error" && part.errorType === "cli-not-found" && part.retryable,
-        ),
-      );
+      const failedMessage = latestAgent(harness, conversation.id);
+      assert.equal(typeof failedMessage?.startedAt, "number");
+      assert.equal(typeof failedMessage?.endedAt, "number");
+      const error = failedMessage?.parts.find((part) => part.type === "error");
+      assert.ok(error?.type === "error");
+      assert.equal(error.startedAt, error.endedAt);
+      assert.ok(error.type === "error" && error.errorType === "cli-not-found" && error.retryable);
     } finally {
       await harness.close();
     }

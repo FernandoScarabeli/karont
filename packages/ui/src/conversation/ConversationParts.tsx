@@ -873,7 +873,10 @@ const TimelineView = memo(
     const regionRef = useRef<HTMLElement>(null);
     const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
     const [activeIndex, setActiveIndex] = useState(0);
-    const timeline = useMemo(() => buildTimeline(message.parts), [message.parts]);
+    const timeline = useMemo(
+      () => buildTimeline(message.parts, message.startedAt),
+      [message.parts, message.startedAt],
+    );
     const tickIntervalMs = timelineTickInterval(timeline.totalDurationMs);
     const axisEndMs = Math.ceil(timeline.totalDurationMs / tickIntervalMs) * tickIntervalMs;
     const ticks: number[] = [];
@@ -935,7 +938,9 @@ const TimelineView = memo(
             </strong>
           </p>
         </div>
-        <p className={styles.timelineCaption}>{t.chat.timelineCaption}</p>
+        {timeline.isLegacy ? (
+          <p className={styles.timelineCaption}>{t.chat.timelineLegacyNote}</p>
+        ) : null}
         <p className={styles.srOnly} id={`${id}-help`}>
           {t.chat.timelineNavigateHelp}
         </p>
@@ -978,7 +983,9 @@ const TimelineView = memo(
                   : "0%";
               const width =
                 row.durationMs !== null && axisEndMs > 0
-                  ? `${(row.durationMs / axisEndMs) * 100}%`
+                  ? row.durationMs === 0
+                    ? "var(--k-border-width)"
+                    : `${(row.durationMs / axisEndMs) * 100}%`
                   : "0%";
               return (
                 <li className={styles.timelineRow} key={row.part.id}>
@@ -1011,7 +1018,7 @@ const TimelineView = memo(
                           />
                         );
                       })}
-                      {row.durationMs !== null && row.durationMs > 0 ? (
+                      {row.durationMs !== null && row.startMs !== null ? (
                         <span className={styles.timelineBar} style={{ left, width }} />
                       ) : null}
                     </span>
@@ -1047,9 +1054,12 @@ type TimelineRow = {
   startMs: number | null;
 };
 
-function buildTimeline(parts: MessagePart[]) {
+function buildTimeline(parts: MessagePart[], messageStartedAt?: number) {
+  const origin = messageStartedAt;
+  const isLegacy = messageStartedAt === undefined;
   let totalDurationMs = 0;
   let hasKnownDuration = false;
+  let summedDurationMs = 0;
   const rows = parts.map((part): TimelineRow => {
     let kind: TimelineKind;
     let kindLabel: string;
@@ -1067,23 +1077,18 @@ function buildTimeline(parts: MessagePart[]) {
         kind = part.state === "error" ? "error" : part.state === "waiting" ? "waiting" : "action";
         kindLabel = t.chat.actionTypes[part.actionType];
         title = `${part.title || t.chat.timelineAction} · ${t.chat.actionStates[part.state]}`;
-        durationMs = part.durationMs;
-        if (durationMs !== null) {
-          startMs = totalDurationMs;
-          totalDurationMs += durationMs;
-          hasKnownDuration = true;
-        }
         break;
       case "permission":
         kind = "waiting";
         kindLabel = t.chat.timelineWaiting;
-        title = `${
+        title =
           part.state === "allowed"
-            ? t.chat.permissionResults.allowed
-            : part.state === "denied"
-              ? t.chat.permissionResults.denied
-              : t.chat.timelinePermissionRequest
-        } · ${previewText(part.summary)}`;
+            ? t.chat.timelineApproval
+            : `${
+                part.state === "denied"
+                  ? t.chat.permissionResults.denied
+                  : t.chat.timelinePermissionRequest
+              } · ${previewText(part.summary)}`;
         break;
       case "question": {
         kind = "waiting";
@@ -1120,10 +1125,31 @@ function buildTimeline(parts: MessagePart[]) {
         break;
     }
 
+    if (isLegacy) {
+      if (part.type === "action" && part.durationMs !== null) {
+        startMs = summedDurationMs;
+        durationMs = part.durationMs;
+        summedDurationMs += part.durationMs;
+        hasKnownDuration = true;
+      }
+    } else if (part.startedAt !== undefined || part.endedAt !== undefined) {
+      const partStartedAt = part.startedAt ?? part.endedAt ?? 0;
+      startMs = Math.max(0, partStartedAt - (origin ?? partStartedAt));
+      const endedAt = part.endedAt ?? Date.now();
+      durationMs = Math.max(0, endedAt - partStartedAt);
+      totalDurationMs = Math.max(totalDurationMs, startMs + durationMs);
+      hasKnownDuration = true;
+    }
+
     return { part, kind, kindLabel, title, durationMs, startMs };
   });
 
-  return { rows, totalDurationMs, hasKnownDuration };
+  return {
+    rows,
+    totalDurationMs: isLegacy ? summedDurationMs : totalDurationMs,
+    hasKnownDuration,
+    isLegacy,
+  };
 }
 
 function timelineIcon(part: MessagePart): ReactNode {

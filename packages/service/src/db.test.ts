@@ -21,7 +21,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    4,
+    5,
   );
   assert.equal(
     (
@@ -31,6 +31,13 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
     )?.name,
     "recent_folders",
   );
+  const messageColumns = new Set(
+    (db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).map(
+      (column) => column.name,
+    ),
+  );
+  assert.ok(messageColumns.has("started_at_ms"));
+  assert.ok(messageColumns.has("ended_at_ms"));
   setSetting(db, "appearance.theme", { mode: "dark", enabled: true });
   assert.deepEqual(getSetting(db, "appearance.theme"), { mode: "dark", enabled: true });
   assert.equal((await stat(dbPath)).mode & 0o777, 0o600);
@@ -53,7 +60,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    4,
+    5,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();

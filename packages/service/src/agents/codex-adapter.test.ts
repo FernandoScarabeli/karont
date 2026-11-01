@@ -210,6 +210,14 @@ test("Codex transmite texto, converte leitura em ação e carrega os modelos rea
       await waitForState(harness, conversation.id, "idle");
       const message = latestAgent(harness, conversation.id);
       assert.equal(message?.status, "done");
+      assert.equal(typeof message?.startedAt, "number");
+      assert.equal(typeof message?.endedAt, "number");
+      assert.ok((message?.endedAt ?? 0) >= (message?.startedAt ?? 0));
+      for (const part of message?.parts ?? []) {
+        assert.equal(typeof part.startedAt, "number", `parte ${part.id} sem início registrado`);
+        assert.equal(typeof part.endedAt, "number", `parte ${part.id} sem fim registrado`);
+        assert.ok((part.endedAt ?? 0) >= (part.startedAt ?? 0));
+      }
       assert.ok(
         message?.parts.some((part) => part.type === "text" && part.markdown.includes("Oi!")),
       );
@@ -239,14 +247,14 @@ test("Codex transmite texto, converte leitura em ação e carrega os modelos rea
       const conversation = createConversation(harness.manager);
       await harness.manager.send(conversation.id, fixturePrompt("leitura"));
       await waitForState(harness, conversation.id, "idle");
-      assert.ok(
-        latestAgent(harness, conversation.id)?.parts.some(
-          (part) =>
-            part.type === "action" &&
-            part.actionType === "read" &&
-            part.title.includes("README.md"),
-        ),
+      const readAction = latestAgent(harness, conversation.id)?.parts.find(
+        (part) =>
+          part.type === "action" && part.actionType === "read" && part.title.includes("README.md"),
       );
+      assert.ok(readAction?.type === "action");
+      assert.equal(typeof readAction.startedAt, "number");
+      assert.equal(typeof readAction.endedAt, "number");
+      assert.ok((readAction.endedAt ?? 0) >= (readAction.startedAt ?? 0));
       assert.ok(
         latestAgent(harness, conversation.id)?.parts.some(
           (part) => part.type === "text" && part.markdown.includes("Projeto de teste"),
@@ -492,6 +500,9 @@ test("pergunta, plano aprovado e atualização da lista de tarefas", async (t) =
         finalQuestion?.type === "question" ? finalQuestion.state : undefined,
         "answered",
       );
+      assert.equal(typeof finalQuestion?.startedAt, "number");
+      assert.equal(typeof finalQuestion?.endedAt, "number");
+      assert.ok((finalQuestion?.endedAt ?? 0) >= (finalQuestion?.startedAt ?? 0));
     } finally {
       await harness.close();
     }

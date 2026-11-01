@@ -79,10 +79,13 @@ test("contratos guardam partes interativas ordenadas e estados explícitos", () 
     conversationId: "c1",
     author: "agent",
     status: "streaming",
+    startedAt: 1_798_000_000_000,
     parts: [
       {
         id: "a1",
         type: "action",
+        startedAt: 1_798_000_000_000,
+        endedAt: 1_798_000_000_012,
         actionType: "read",
         title: "Read README",
         input: "README.md",
@@ -163,6 +166,8 @@ test("eventos de texto levam só o delta; eventos de método e parte passam pela
       kind: "delta",
       partId: "text1",
       delta: "novo trecho",
+      startedAt: 1_798_000_000_000,
+      endedAt: 1_798_000_000_010,
     },
   };
   assert.equal(parseEvent(partEvent).ok, true);

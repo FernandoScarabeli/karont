@@ -19,7 +19,16 @@ type Action =
   | { type: "reset" }
   | { type: "loaded"; conversation: Conversation; messages: ConversationMessage[] }
   | { type: "event"; event: AnyEvent }
-  | { type: "deltas"; deltas: Array<{ partId: string; messageId: string; delta: string }> }
+  | {
+      type: "deltas";
+      deltas: Array<{
+        partId: string;
+        messageId: string;
+        delta: string;
+        startedAt?: number;
+        endedAt?: number;
+      }>;
+    }
   | { type: "failed"; error: string };
 
 const initialState: State = {
@@ -45,7 +54,16 @@ export function useConversation(conversationId: string) {
     let mounted = true;
     let loaded = false;
     let queued: AnyEvent[] = [];
-    const pendingDeltas = new Map<string, { partId: string; messageId: string; delta: string }>();
+    const pendingDeltas = new Map<
+      string,
+      {
+        partId: string;
+        messageId: string;
+        delta: string;
+        startedAt?: number;
+        endedAt?: number;
+      }
+    >();
     let rafId: number | null = null;
 
     const dispatchEvent = (event: AnyEvent) => {
@@ -56,6 +74,12 @@ export function useConversation(conversationId: string) {
           partId: event.payload.partId,
           messageId: event.payload.messageId,
           delta: `${current?.delta ?? ""}${event.payload.delta}`,
+          ...(current?.startedAt !== undefined || event.payload.startedAt !== undefined
+            ? { startedAt: current?.startedAt ?? event.payload.startedAt }
+            : {}),
+          ...(event.payload.endedAt !== undefined || current?.endedAt !== undefined
+            ? { endedAt: event.payload.endedAt ?? current?.endedAt }
+            : {}),
         });
         if (rafId === null) {
           rafId = window.requestAnimationFrame(() => {
@@ -209,7 +233,13 @@ function updatePart(state: State, messageId: string, part: MessagePart): State {
 
 function appendDeltaBatch(
   state: State,
-  deltas: Array<{ partId: string; messageId: string; delta: string }>,
+  deltas: Array<{
+    partId: string;
+    messageId: string;
+    delta: string;
+    startedAt?: number;
+    endedAt?: number;
+  }>,
 ): State {
   const changedMessages = new Map<string, { message: ConversationMessage; parts: MessagePart[] }>();
   for (const delta of deltas) {
@@ -221,9 +251,19 @@ function appendDeltaBatch(
     if (partIndex < 0) continue;
     const part = parts[partIndex];
     if (part?.type === "text") {
-      parts[partIndex] = { ...part, markdown: `${part.markdown}${delta.delta}` };
+      parts[partIndex] = {
+        ...part,
+        markdown: `${part.markdown}${delta.delta}`,
+        ...(delta.startedAt !== undefined ? { startedAt: delta.startedAt } : {}),
+        ...(delta.endedAt !== undefined ? { endedAt: delta.endedAt } : {}),
+      };
     } else if (part?.type === "thinking") {
-      parts[partIndex] = { ...part, text: `${part.text}${delta.delta}` };
+      parts[partIndex] = {
+        ...part,
+        text: `${part.text}${delta.delta}`,
+        ...(delta.startedAt !== undefined ? { startedAt: delta.startedAt } : {}),
+        ...(delta.endedAt !== undefined ? { endedAt: delta.endedAt } : {}),
+      };
     } else {
       continue;
     }

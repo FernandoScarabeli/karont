@@ -40,6 +40,11 @@ export const migrations: { version: number; up: string }[] = [
       session_id TEXT NOT NULL, updated_at TEXT NOT NULL
     ) STRICT;`,
   },
+  {
+    version: 5,
+    up: `ALTER TABLE messages ADD COLUMN started_at_ms INTEGER;
+    ALTER TABLE messages ADD COLUMN ended_at_ms INTEGER;`,
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -126,7 +131,7 @@ export function updateConversation(db: DatabaseSync, conversation: Conversation)
 
 export function addMessage(db: DatabaseSync, message: ConversationMessage): void {
   db.prepare(
-    "INSERT INTO messages (id,conversation_id,author,status,parts,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+    "INSERT INTO messages (id,conversation_id,author,status,parts,created_at,updated_at,started_at_ms,ended_at_ms) VALUES (?,?,?,?,?,?,?,?,?)",
   ).run(
     message.id,
     message.conversationId,
@@ -135,14 +140,20 @@ export function addMessage(db: DatabaseSync, message: ConversationMessage): void
     JSON.stringify(message.parts),
     message.createdAt,
     message.updatedAt,
+    message.startedAt ?? null,
+    message.endedAt ?? null,
   );
 }
 
 export function saveMessage(db: DatabaseSync, message: ConversationMessage): void {
-  db.prepare("UPDATE messages SET status=?,parts=?,updated_at=? WHERE id=?").run(
+  db.prepare(
+    "UPDATE messages SET status=?,parts=?,updated_at=?,started_at_ms=?,ended_at_ms=? WHERE id=?",
+  ).run(
     message.status,
     JSON.stringify(message.parts),
     message.updatedAt,
+    message.startedAt ?? null,
+    message.endedAt ?? null,
     message.id,
   );
 }
@@ -188,10 +199,13 @@ export function recoverInterruptedMessages(db: DatabaseSync): void {
       errorType: "interrupted",
       text: "Serviço reiniciado durante a resposta. Tente de novo.",
       retryable: true,
+      startedAt: Date.parse(now),
+      endedAt: Date.parse(now),
     };
     message.parts.push(error);
     message.status = "interrupted";
     message.updatedAt = now;
+    message.endedAt = Date.parse(now);
     saveMessage(db, message);
   }
   db.prepare(
@@ -217,6 +231,8 @@ type MessageRow = {
   author: ConversationMessage["author"];
   status: ConversationMessage["status"];
   parts: string;
+  started_at_ms: number | null;
+  ended_at_ms: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -241,6 +257,8 @@ function mapMessage(row: MessageRow): ConversationMessage {
     author: row.author,
     status: row.status,
     parts: JSON.parse(row.parts) as MessagePart[],
+    ...(row.started_at_ms !== null ? { startedAt: row.started_at_ms } : {}),
+    ...(row.ended_at_ms !== null ? { endedAt: row.ended_at_ms } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

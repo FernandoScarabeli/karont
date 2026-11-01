@@ -46,6 +46,7 @@ type ActiveConversation = {
   messageToSave?: ConversationMessage;
   currentMessage?: ConversationMessage;
   coalescers: Map<string, DeltaCoalescer>;
+  deltaTimes: Map<string, { startedAt: number; endedAt: number }>;
   eventQueue: Promise<void>;
 };
 export type ConversationManagerOptions = {
@@ -370,6 +371,7 @@ export class ConversationManager {
         sessionId,
         startPromise: Promise.resolve(),
         coalescers: new Map(),
+        deltaTimes: new Map(),
         currentMessage: message,
         eventQueue: Promise.resolve(),
       };
@@ -443,40 +445,63 @@ export class ConversationManager {
     }
     if (event.kind === "part") {
       await this.#flushCoalescers(active);
-      this.#upsertPart(message, event.part);
-      if (
-        event.part.type === "permission" ||
-        event.part.type === "question" ||
-        event.part.type === "plan"
-      ) {
-        if (event.part.state === "pending")
-          this.#pendingParts.set(event.part.id, { conversationId, messageId: message.id });
-        else this.#pendingParts.delete(event.part.id);
+      const part = this.#timestampPart(message, event.part);
+      this.#upsertPart(message, part);
+      if (part.type === "permission" || part.type === "question" || part.type === "plan") {
+        if (part.state === "pending")
+          this.#pendingParts.set(part.id, { conversationId, messageId: message.id });
+        else this.#pendingParts.delete(part.id);
       }
       message.updatedAt = this.#now();
       this.#flushMessageSave(active, message);
       await this.#emit({
         event: "conversation.partUpdated",
-        payload: { conversationId, messageId: message.id, kind: "upsert", part: event.part },
+        payload: { conversationId, messageId: message.id, kind: "upsert", part },
       });
       return;
     }
     if (event.kind === "text-delta") {
+      const observedAt = this.#epochNow();
+      const existingPart = message.parts.find((item) => item.id === event.partId);
+      const timing = active.deltaTimes.get(event.partId);
+      active.deltaTimes.set(event.partId, {
+        startedAt: timing?.startedAt ?? existingPart?.startedAt ?? observedAt,
+        endedAt: observedAt,
+      });
       let coalescer = active.coalescers.get(event.partId);
       if (!coalescer) {
         coalescer = new DeltaCoalescer(
           async (delta) => {
             let part = message.parts.find((item) => item.id === event.partId);
             if (!part) {
+              const times = active.deltaTimes.get(event.partId);
               part =
                 event.partType === "text"
-                  ? { id: event.partId, type: "text", markdown: "" }
-                  : { id: event.partId, type: "thinking", text: "" };
+                  ? {
+                      id: event.partId,
+                      type: "text",
+                      markdown: "",
+                      startedAt: times?.startedAt,
+                      endedAt: times?.endedAt,
+                    }
+                  : {
+                      id: event.partId,
+                      type: "thinking",
+                      text: "",
+                      startedAt: times?.startedAt,
+                      endedAt: times?.endedAt,
+                    };
               message.parts.push(part);
               await this.#emit({
                 event: "conversation.partUpdated",
                 payload: { conversationId, messageId: message.id, kind: "upsert", part },
               });
+            } else {
+              const times = active.deltaTimes.get(event.partId);
+              if (times) {
+                part.startedAt ??= times.startedAt;
+                part.endedAt = times.endedAt;
+              }
             }
             if (part.type === "text") part.markdown += delta;
             else if (part.type === "thinking") part.text += delta;
@@ -490,6 +515,8 @@ export class ConversationManager {
                 kind: "delta",
                 partId: event.partId,
                 delta,
+                startedAt: part.startedAt,
+                endedAt: part.endedAt,
               },
             });
           },
@@ -502,6 +529,9 @@ export class ConversationManager {
     }
     if (event.kind === "turn-end") {
       await this.#flushCoalescers(active);
+      active.deltaTimes.clear();
+      const endedAt = this.#epochNow();
+      message.endedAt = endedAt;
       if (event.error) {
         const errorPart: MessagePart = {
           id: randomUUID(),
@@ -509,6 +539,8 @@ export class ConversationManager {
           errorType: event.error.type,
           text: event.error.text,
           retryable: event.status !== "done",
+          startedAt: endedAt,
+          endedAt,
         };
         this.#upsertPart(message, errorPart);
         await this.#emit({
@@ -579,6 +611,31 @@ export class ConversationManager {
     if (message && pending?.id !== message.id) saveMessage(this.#db, message);
   }
 
+  #timestampPart(message: ConversationMessage, part: MessagePart): MessagePart {
+    const observedAt = this.#epochNow();
+    const previous = message.parts.find((item) => item.id === part.id);
+    if (part.type === "error") return { ...part, startedAt: observedAt, endedAt: observedAt };
+
+    const startedAt = previous?.startedAt ?? observedAt;
+    if (part.type === "action") {
+      return {
+        ...part,
+        startedAt,
+        ...(part.state === "ok" || part.state === "error"
+          ? { endedAt: observedAt }
+          : { endedAt: undefined }),
+      };
+    }
+    if (part.type === "permission" || part.type === "question" || part.type === "plan") {
+      return {
+        ...part,
+        startedAt,
+        ...(part.state === "pending" ? { endedAt: undefined } : { endedAt: observedAt }),
+      };
+    }
+    return { ...part, startedAt, endedAt: observedAt };
+  }
+
   async #finishWithError(
     conversation: Conversation,
     message: ConversationMessage,
@@ -586,16 +643,20 @@ export class ConversationManager {
     text: string,
   ): Promise<void> {
     if (message.status !== "streaming") return;
+    const endedAt = this.#epochNow();
     const part: MessagePart = {
       id: randomUUID(),
       type: "error",
       errorType: type,
       text,
       retryable: true,
+      startedAt: endedAt,
+      endedAt,
     };
     message.parts.push(part);
     message.status = type === "interrupted" ? "interrupted" : "error";
     message.updatedAt = this.#now();
+    message.endedAt = endedAt;
     const active = this.#active.get(conversation.id);
     if (active) this.#flushMessageSave(active, message);
     else saveMessage(this.#db, message);
@@ -618,6 +679,7 @@ export class ConversationManager {
       author: "agent",
       status: "streaming",
       parts: [],
+      startedAt: Date.parse(now),
       createdAt: now,
       updatedAt: now,
     };
@@ -633,6 +695,10 @@ export class ConversationManager {
     const index = message.parts.findIndex((item) => item.id === part.id);
     if (index === -1) message.parts.push(part);
     else message.parts[index] = part;
+  }
+
+  #epochNow(): number {
+    return Date.parse(this.#now());
   }
 
   async #stateEvent(
