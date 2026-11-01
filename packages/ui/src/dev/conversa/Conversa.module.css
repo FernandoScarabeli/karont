@@ -68,7 +68,14 @@
 
 .agentMessage {
   align-items: stretch;
-  gap: var(--k-space-3);
+  gap: var(--k-space-4);
+}
+
+.toolGroup {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--k-space-1);
 }
 
 .userBubble {
@@ -96,7 +103,7 @@
   align-items: center;
   justify-content: flex-start;
   gap: var(--k-space-1);
-  padding: 0 var(--k-space-1);
+  padding: 0;
   border: var(--k-border-width) solid transparent;
   border-radius: var(--k-radius-sm);
   background: transparent;
@@ -158,6 +165,13 @@
   display: none;
 }
 
+.flushPanel {
+  overflow: hidden;
+  padding: 0;
+  border-color: var(--k-color-border);
+  background: var(--k-color-bg-app);
+}
+
 .thinkingText {
   margin: 0;
   color: var(--k-color-text-secondary);
@@ -167,7 +181,6 @@
 }
 
 .fileList,
-.searchResults,
 .todoList,
 .jsonGroup {
   display: grid;
@@ -178,25 +191,18 @@
 .fileRow {
   display: flex;
   min-width: 0;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--k-space-2);
   color: var(--k-color-text-muted);
 }
 
 .fileRow > svg {
   flex: 0 0 auto;
-  margin-block-start: var(--k-space-1);
+  margin: 0;
 }
 
-.fileDescription,
-.searchResultCopy {
-  display: grid;
+.fileName {
   min-width: 0;
-  gap: var(--k-space-1);
-}
-
-.fileName,
-.searchResultTitle {
   overflow: hidden;
   color: var(--k-color-text-primary);
   font-size: var(--k-text-13);
@@ -204,27 +210,22 @@
   white-space: nowrap;
 }
 
-.fileOutput,
-.searchResultExcerpt {
-  color: var(--k-color-text-secondary);
-  font-size: var(--k-text-12);
-  line-height: var(--k-leading-normal);
-}
-
 .searchPanel,
 .terminalPanel,
 .diffPanel {
   overflow: hidden;
-  border: var(--k-border-width) solid var(--k-color-border);
-  border-radius: var(--k-radius-md);
-  background: var(--k-color-bg-app);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .searchHeader,
 .terminalHeader,
 .diffHeader {
+  box-sizing: border-box;
   display: flex;
   min-width: 0;
+  height: var(--k-control-height-sm);
   min-height: var(--k-control-height-sm);
   align-items: center;
   justify-content: space-between;
@@ -243,43 +244,21 @@
   white-space: nowrap;
 }
 
-.searchResults {
-  gap: 0;
-  padding: var(--k-space-1);
-}
-
-.searchResult {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--k-space-2);
-  padding: var(--k-space-2);
-  border-radius: var(--k-radius-sm);
-  color: var(--k-color-text-muted);
-}
-
-.searchResult > svg {
-  flex: 0 0 auto;
-}
-
-.searchResultCopy {
-  flex: 1 1 auto;
-}
-
-.searchResultExcerpt {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.searchSource {
-  flex: 0 0 auto;
-  color: var(--k-color-text-muted);
-  font-size: var(--k-text-12);
+.searchOutput {
+  max-width: 100%;
+  max-height: var(--k-chat-part-max-height);
+  margin: 0;
+  overflow: auto;
+  padding: var(--k-space-3);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .terminalHeader {
-  background: transparent;
+  background: var(--k-color-bg-raised);
 }
 
 .exitCode {
@@ -306,7 +285,6 @@
 .diffStats {
   display: inline-flex;
   gap: var(--k-space-1);
-  font-family: var(--k-font-mono); /* taste-skill-ignore: saída literal de código */
   font-size: var(--k-text-12);
   font-variant-numeric: tabular-nums;
 }
@@ -574,92 +552,54 @@
   gap: var(--k-space-2);
   color: var(--k-color-text-secondary);
   font-size: var(--k-text-13);
+  list-style: none;
 }
 
 .spiralLoader {
-  display: grid;
-  width: calc(var(--k-working-dot-size) * 3 + var(--k-working-dot-gap) * 2);
-  height: calc(var(--k-working-dot-size) * 3 + var(--k-working-dot-gap) * 2);
+  display: block;
+  width: var(--k-dev-conversa-loader-size);
+  height: var(--k-dev-conversa-loader-size);
   flex: 0 0 auto;
-  grid-template:
-    "dot1 dot2 dot3"
-    "dot8 dot9 dot4"
-    "dot7 dot6 dot5" / repeat(3, var(--k-working-dot-size));
-  gap: var(--k-working-dot-gap);
-}
-
-.spiralLoader > * {
-  width: var(--k-working-dot-size);
-  height: var(--k-working-dot-size);
-  border-radius: var(--k-radius-full);
-  background: var(--k-color-text-secondary);
-  animation: spiralPulse var(--k-working-dot-cycle) var(--k-ease) infinite;
-}
-
-.spiralDot1 {
-  grid-area: dot1;
-  animation-delay: 0ms;
-}
-
-.spiralDot2 {
-  grid-area: dot2;
-  animation-delay: var(--k-working-dot-stagger);
-}
-
-.spiralDot3 {
-  grid-area: dot3;
-  animation-delay: calc(var(--k-working-dot-stagger) * 2);
-}
-
-.spiralDot4 {
-  grid-area: dot4;
-  animation-delay: calc(var(--k-working-dot-stagger) * 3);
-}
-
-.spiralDot5 {
-  grid-area: dot5;
-  animation-delay: calc(var(--k-working-dot-stagger) * 4);
-}
-
-.spiralDot6 {
-  grid-area: dot6;
-  animation-delay: calc(var(--k-working-dot-stagger) * 5);
-}
-
-.spiralDot7 {
-  grid-area: dot7;
-  animation-delay: calc(var(--k-working-dot-stagger) * 6);
-}
-
-.spiralDot8 {
-  grid-area: dot8;
-  animation-delay: calc(var(--k-working-dot-stagger) * 7);
-}
-
-.spiralDot9 {
-  grid-area: dot9;
-  animation-delay: calc(var(--k-working-dot-stagger) * 8);
+  color: var(--k-color-text-muted);
+  list-style: none;
+  transform-origin: center;
+  animation: spiralSpin var(--k-working-dot-cycle) linear infinite;
 }
 
 .shimmer {
   position: relative;
   display: inline-block;
-  overflow: hidden;
-  color: var(--k-color-text-secondary);
+  color: var(--k-color-text-muted);
 }
 
-.shimmer::after {
+.shimmerBase {
+  display: inline-block;
+  color: var(--k-color-text-muted);
+}
+
+.shimmerBand {
   position: absolute;
   inset-block: 0;
   left: 0;
-  width: 40%;
-  border-radius: var(--k-radius-full);
-  background: var(--k-color-text-primary);
-  content: "";
-  opacity: 0.12;
+  width: 36%;
+  overflow: hidden;
   pointer-events: none;
-  transform: translateX(-140%);
-  animation: shimmerSweep var(--k-working-shimmer-duration) linear infinite;
+  transform: translateX(-278%);
+  animation: shimmerWindow var(--k-working-shimmer-duration) linear infinite;
+}
+
+.shimmerHighlight {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: max-content;
+  color: transparent;
+  background: var(--k-color-text-primary);
+  background-clip: text; /* taste-skill-ignore: shimmer em texto solicitado */
+  -webkit-background-clip: text; /* taste-skill-ignore: shimmer em texto solicitado */
+  white-space: nowrap;
+  transform: translateX(100%);
+  animation: shimmerCounter var(--k-working-shimmer-duration) linear infinite;
 }
 
 .composerSection {
@@ -683,9 +623,9 @@
   min-height: var(--k-control-height-sm);
   align-items: center;
   padding-inline: var(--k-space-2);
-  border: var(--k-border-width) solid var(--k-color-border-strong);
-  border-radius: var(--k-radius-sm);
-  background: transparent;
+  border: var(--k-border-width) solid var(--k-color-border);
+  border-radius: var(--k-dev-conversa-suggestion-radius);
+  background: var(--k-color-bg-raised);
   color: var(--k-color-text-secondary);
   font: inherit;
   font-size: var(--k-text-12);
@@ -712,7 +652,7 @@
   width: 100%;
   min-height: var(--k-composer-textarea-min-height);
   max-height: var(--k-composer-textarea-max-height);
-  resize: vertical;
+  resize: none;
   border: 0;
   background: transparent;
   color: var(--k-color-text-primary);
@@ -789,21 +729,21 @@
   }
 }
 
-@keyframes spiralPulse {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(0.78);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
+@keyframes spiralSpin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
-@keyframes shimmerSweep {
+@keyframes shimmerWindow {
   to {
-    transform: translateX(300%);
+    transform: translateX(278%);
+  }
+}
+
+@keyframes shimmerCounter {
+  to {
+    transform: translateX(-100%);
   }
 }
 
@@ -816,12 +756,6 @@
 
   .messageList {
     padding-block: var(--k-space-6);
-  }
-
-  .searchSource {
-    max-width: 30%;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .errorMessage {
@@ -837,14 +771,16 @@
     animation: none;
   }
 
-  .spiralLoader > span {
+  .spiralLoader {
     animation: none;
-    opacity: 1;
-    transform: none;
   }
 
-  .shimmer::after {
+  .shimmerBand,
+  .shimmerHighlight {
     animation: none;
-    opacity: 0;
+  }
+
+  .shimmerBand {
+    display: none;
   }
 }

@@ -156,6 +156,8 @@
   --k-duration-effort-needle: 220ms;
   --k-chat-content-max-width: 860px;
   --k-dev-conversa-column-width: 640px;
+  --k-dev-conversa-loader-size: 14px;
+  --k-dev-conversa-suggestion-radius: 6px;
   --k-chat-user-bubble-max-width: 720px;
   --k-chat-code-max-height: 360px;
   --k-chat-part-max-height: 240px;

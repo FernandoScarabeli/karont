@@ -31,7 +31,7 @@ const readParts: ActionPart[] = [
     actionType: "read",
     title: "src/app.ts",
     input: "src/app.ts",
-    output: "Inicialização do serviço e configuração do limitador.",
+    output: "",
     truncated: false,
     state: "ok",
     durationMs: 24,
@@ -42,7 +42,7 @@ const readParts: ActionPart[] = [
     actionType: "read",
     title: "src/rate-limit.ts",
     input: "src/rate-limit.ts",
-    output: "Implementação atual do limite por chave.",
+    output: "",
     truncated: false,
     state: "ok",
     durationMs: 18,
@@ -53,7 +53,7 @@ const readParts: ActionPart[] = [
     actionType: "read",
     title: "src/rate-limit.test.ts",
     input: "src/rate-limit.test.ts",
-    output: "Testes existentes para o limitador.",
+    output: "",
     truncated: false,
     state: "ok",
     durationMs: 21,
@@ -78,24 +78,6 @@ const diff = [
   "+  };",
   "+}",
 ].join("\n");
-
-const searchResults = [
-  {
-    title: "Rate limiting patterns",
-    source: "redis.io",
-    excerpt: "Use um contador com expiração para limitar chamadas por janela.",
-  },
-  {
-    title: "Fixed window rate limiter",
-    source: "github.com/redis",
-    excerpt: "Exemplo de limite por chave com contador e tempo de expiração.",
-  },
-  {
-    title: "Rate limiting in Node.js",
-    source: "nodejs.org",
-    excerpt: "Cuidados com concorrência e armazenamento compartilhado.",
-  },
-];
 
 const sampleMessages: ConversationMessage[] = [
   {
@@ -133,7 +115,16 @@ const sampleMessages: ConversationMessage[] = [
         actionType: "search",
         title: "rate limit redis",
         input: "rate limit redis",
-        output: JSON.stringify(searchResults),
+        output: [
+          "Rate limiting patterns · redis.io",
+          "Use um contador com expiração para limitar chamadas por janela.",
+          "",
+          "Fixed window rate limiter · github.com/redis",
+          "Exemplo de limite por chave com contador e tempo de expiração.",
+          "",
+          "Rate limiting in Node.js · nodejs.org",
+          "Cuidados com concorrência e armazenamento compartilhado.",
+        ].join("\n"),
         truncated: false,
         state: "ok",
         durationMs: 310,
@@ -306,28 +297,6 @@ function countDiffLines(value: string) {
   };
 }
 
-type SearchResult = { title: string; source: string; excerpt: string };
-
-function getSearchResults(output: string): SearchResult[] {
-  try {
-    const value: unknown = JSON.parse(output);
-    if (!Array.isArray(value)) return [];
-    return value.flatMap((item): SearchResult[] => {
-      if (
-        !isRecord(item) ||
-        typeof item.title !== "string" ||
-        typeof item.source !== "string" ||
-        typeof item.excerpt !== "string"
-      ) {
-        return [];
-      }
-      return [{ title: item.title, source: item.source, excerpt: item.excerpt }];
-    });
-  } catch {
-    return [];
-  }
-}
-
 function formatJson(value: string) {
   try {
     return JSON.stringify(JSON.parse(value), null, 2);
@@ -340,10 +309,12 @@ const Disclosure = memo(function Disclosure({
   label,
   children,
   className,
+  panelClassName,
 }: {
   label: ReactNode;
   children: ReactNode;
   className?: string;
+  panelClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const triggerId = useId();
@@ -370,7 +341,7 @@ const Disclosure = memo(function Disclosure({
       <section
         aria-hidden={!open}
         aria-labelledby={triggerId}
-        className={styles.disclosurePanel}
+        className={`${styles.disclosurePanel} ${panelClassName ?? ""}`}
         hidden={!open}
         id={panelId}
       >
@@ -400,10 +371,7 @@ const ReadGroup = memo(function ReadGroup({ parts }: { parts: readonly ActionPar
         {parts.map((part) => (
           <div className={styles.fileRow} key={part.id}>
             <FileText aria-hidden="true" size={14} strokeWidth={1.7} />
-            <div className={styles.fileDescription}>
-              <span className={styles.fileName}>{part.title}</span>
-              <span className={styles.fileOutput}>{part.output}</span>
-            </div>
+            <span className={styles.fileName}>{part.title}</span>
           </div>
         ))}
       </div>
@@ -412,27 +380,14 @@ const ReadGroup = memo(function ReadGroup({ parts }: { parts: readonly ActionPar
 });
 
 const SearchDisclosure = memo(function SearchDisclosure({ part }: { part: ActionPart }) {
-  const results = getSearchResults(part.output);
-
   return (
-    <Disclosure label={<>Buscou “{part.title}”</>}>
+    <Disclosure label={<>Buscou “{part.title}”</>} panelClassName={styles.flushPanel}>
       <div className={styles.searchPanel}>
         <div className={styles.searchHeader}>
           <span>Resultados para</span>
           <span className={styles.searchQuery}>“{part.input}”</span>
         </div>
-        <div className={styles.searchResults}>
-          {results.map((result) => (
-            <div className={styles.searchResult} key={`${result.source}-${result.title}`}>
-              <FileText aria-hidden="true" size={14} strokeWidth={1.7} />
-              <div className={styles.searchResultCopy}>
-                <span className={styles.searchResultTitle}>{result.title}</span>
-                <span className={styles.searchResultExcerpt}>{result.excerpt}</span>
-              </div>
-              <span className={styles.searchSource}>{result.source}</span>
-            </div>
-          ))}
-        </div>
+        <pre className={styles.searchOutput}>{part.output}</pre>
       </div>
     </Disclosure>
   );
@@ -448,6 +403,7 @@ const BashDisclosure = memo(function BashDisclosure({ part }: { part: ActionPart
           Rodou <code>{part.title}</code>
         </>
       }
+      panelClassName={styles.flushPanel}
     >
       <div className={styles.terminalPanel}>
         <div className={styles.terminalHeader}>
@@ -478,6 +434,7 @@ const EditDisclosure = memo(function EditDisclosure({ part }: { part: ActionPart
           </span>
         </>
       }
+      panelClassName={styles.flushPanel}
     >
       <div className={styles.diffPanel}>
         <div className={styles.diffHeader}>{part.title}</div>
@@ -608,26 +565,22 @@ const ErrorMessage = memo(function ErrorMessage({ part }: { part: ErrorPart }) {
 });
 
 const WorkingIndicator = memo(function WorkingIndicator({ label }: { label: string }) {
-  const dotClasses = [
-    styles.spiralDot1,
-    styles.spiralDot2,
-    styles.spiralDot3,
-    styles.spiralDot4,
-    styles.spiralDot5,
-    styles.spiralDot6,
-    styles.spiralDot7,
-    styles.spiralDot8,
-    styles.spiralDot9,
-  ];
-
   return (
     <div aria-live="polite" className={styles.workingStatus} role="status">
-      <span aria-hidden="true" className={styles.spiralLoader}>
-        {dotClasses.map((className) => (
-          <span className={className} key={className} />
-        ))}
+      <svg aria-hidden="true" className={styles.spiralLoader} fill="none" viewBox="0 0 16 16">
+        <path
+          d="M8 8c0-1.1 1.7-1.1 1.7 0 0 2.2-3.5 2.2-3.5 0s5.4-3.6 5.4 0-7.2 4.8-7.2 0 9-6 9 0"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.4"
+        />
+      </svg>
+      <span className={styles.shimmer}>
+        <span className={styles.shimmerBase}>{label}</span>
+        <span aria-hidden="true" className={styles.shimmerBand}>
+          <span className={styles.shimmerHighlight}>{label}</span>
+        </span>
       </span>
-      <span className={styles.shimmer}>{label}</span>
     </div>
   );
 });
@@ -655,6 +608,78 @@ function renderAction(part: ActionPart) {
   }
 }
 
+function isToolPart(part: MessagePart) {
+  return (
+    part.type === "thinking" ||
+    part.type === "action" ||
+    part.type === "todos" ||
+    part.type === "plan"
+  );
+}
+
+function renderMessagePart(part: MessagePart): ReactNode {
+  switch (part.type) {
+    case "thinking":
+      return <ThinkingDisclosure key={part.id} part={part} />;
+    case "action":
+      return renderAction(part);
+    case "todos":
+      return <TodosDisclosure key={part.id} part={part} />;
+    case "plan":
+      return <PlanDisclosure key={part.id} part={part} />;
+    case "error":
+      return <ErrorMessage key={part.id} part={part} />;
+    case "text":
+      return (
+        <div className={styles.markdown} key={part.id}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.markdown}</ReactMarkdown>
+        </div>
+      );
+    default:
+      return null;
+  }
+}
+
+function renderMessageParts(parts: readonly MessagePart[]): ReactNode[] {
+  const rendered: ReactNode[] = [];
+  const toolGroup: ReactNode[] = [];
+  const reads = parts.filter(
+    (part): part is ActionPart => part.type === "action" && part.actionType === "read",
+  );
+  let readGroupRendered = false;
+
+  const flushTools = () => {
+    if (toolGroup.length === 0) return;
+    rendered.push(
+      <div className={styles.toolGroup} key={`tool-group-${rendered.length}`}>
+        {toolGroup.splice(0)}
+      </div>,
+    );
+  };
+
+  for (const part of parts) {
+    if (part.type === "action" && part.actionType === "read") {
+      if (!readGroupRendered) {
+        toolGroup.push(<ReadGroup key="read-group" parts={reads} />);
+        readGroupRendered = true;
+      }
+      continue;
+    }
+
+    const node = renderMessagePart(part);
+    if (node === null) continue;
+    if (isToolPart(part)) {
+      toolGroup.push(node);
+    } else {
+      flushTools();
+      rendered.push(node);
+    }
+  }
+
+  flushTools();
+  return rendered;
+}
+
 const MessageRow = memo(function MessageRow({ message }: { message: ConversationMessage }) {
   if (message.author === "user") {
     const text = message.parts
@@ -677,41 +702,9 @@ const MessageRow = memo(function MessageRow({ message }: { message: Conversation
     );
   }
 
-  const reads = message.parts.filter(
-    (part): part is ActionPart => part.type === "action" && part.actionType === "read",
-  );
-  let readGroupRendered = false;
-
   return (
     <article aria-label="Resposta do agente" className={styles.agentMessage}>
-      {message.parts.map((part) => {
-        if (part.type === "action" && part.actionType === "read") {
-          if (readGroupRendered) return null;
-          readGroupRendered = true;
-          return <ReadGroup key="read-group" parts={reads} />;
-        }
-
-        switch (part.type) {
-          case "thinking":
-            return <ThinkingDisclosure key={part.id} part={part} />;
-          case "action":
-            return renderAction(part);
-          case "todos":
-            return <TodosDisclosure key={part.id} part={part} />;
-          case "plan":
-            return <PlanDisclosure key={part.id} part={part} />;
-          case "error":
-            return <ErrorMessage key={part.id} part={part} />;
-          case "text":
-            return (
-              <div className={styles.markdown} key={part.id}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.markdown}</ReactMarkdown>
-              </div>
-            );
-          default:
-            return null;
-        }
-      })}
+      {renderMessageParts(message.parts)}
     </article>
   );
 });
