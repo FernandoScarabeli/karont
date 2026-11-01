@@ -21,7 +21,6 @@ import {
   ActionItem,
   MessageRow,
   type ResponseInput,
-  TimelineView,
   TodosPart,
 } from "../conversation/ConversationParts.tsx";
 import conversationStyles from "../conversation/ConversationView.module.css";
@@ -317,6 +316,7 @@ function DemoMessage({
   openPartId?: string;
 }) {
   const messageRef = useRef<HTMLDivElement>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   useEffect(() => {
     if (!openPartId) return;
@@ -326,10 +326,28 @@ function DemoMessage({
     part?.querySelector<HTMLElement>("details > summary")?.click();
   }, [openPartId]);
 
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && messageRef.current?.contains(event.target)) return;
+      setActionsOpen(false);
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setActionsOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [actionsOpen]);
+
   return (
     <div ref={messageRef}>
       <MessageRow
         cwd={previewConversation.cwd}
+        isActionsOpen={actionsOpen}
         message={message}
         onAnnounce={noOp}
         onCopy={noOp}
@@ -338,6 +356,7 @@ function DemoMessage({
         onResend={noOp}
         onRespond={noResponse}
         onRetry={noOp}
+        onToggleActions={() => setActionsOpen((open) => !open)}
       />
     </div>
   );
@@ -381,7 +400,6 @@ export function ChatPreview() {
     composerAttachmentExamples,
   );
   const [note, setNote] = useState("");
-  const [timelineOpen, setTimelineOpen] = useState(true);
 
   useEffect(() => {
     let visibleLength = initialStreamingText.length;
@@ -572,32 +590,13 @@ export function ChatPreview() {
               ))}
             </div>
             <WorkingIndicator />
-            <ExampleLabel>Linha do tempo fechada, no controle real da mensagem</ExampleLabel>
+            <ExampleLabel>Clique na resposta para abrir as opções e a linha do tempo</ExampleLabel>
             <DemoMessage message={timelineMessage} />
-            <ExampleLabel>Linha do tempo aberta</ExampleLabel>
-            <button
-              aria-expanded={timelineOpen}
-              className={styles.timelineControl}
-              onClick={() => setTimelineOpen((open) => !open)}
-              type="button"
-            >
-              {timelineOpen ? "Fechar exemplo aberto" : "Abrir exemplo aberto"}
-            </button>
-            {timelineOpen ? (
-              <TimelineView
-                autoFocus={false}
-                cwd={previewConversation.cwd}
-                id="chat-preview-open-timeline"
-                message={timelineMessage}
-                onClose={() => setTimelineOpen(false)}
-                onNavigate={noOp}
-              />
-            ) : null}
           </PreviewSection>
 
           <PreviewSection id="chat-message-actions" title="Ações da mensagem">
             <p className={styles.hint}>
-              Passe o cursor ou use Tab para ver copiar, editar e reenviar.
+              Clique na mensagem ou foque e pressione Enter ou Espaço para abrir as opções.
             </p>
             <DemoMessage message={userExamples.short} />
           </PreviewSection>

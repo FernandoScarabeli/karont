@@ -27,6 +27,7 @@ import type { ReactNode } from "react";
 import {
   type FormEvent,
   type KeyboardEvent,
+  type MouseEvent,
   memo,
   useCallback,
   useEffect,
@@ -75,6 +76,8 @@ type OnRespond = (response: ResponseInput) => Promise<void>;
 
 export const MessageRow = memo(function MessageRow({
   message,
+  isActionsOpen,
+  onToggleActions,
   onCopy,
   onCopyCode,
   onEdit,
@@ -86,6 +89,8 @@ export const MessageRow = memo(function MessageRow({
   agent,
 }: {
   message: ConversationMessage;
+  isActionsOpen: boolean;
+  onToggleActions: (messageId: string) => void;
   agent?: AgentErrorAgent;
   onCopy: (text: string) => void;
   onCopyCode?: (code: string) => void;
@@ -98,8 +103,8 @@ export const MessageRow = memo(function MessageRow({
 }) {
   const [showTimeline, setShowTimeline] = useState(false);
   const [visiblePartCount, setVisiblePartCount] = useState(120);
+  const optionsId = useId();
   const timelineId = useId();
-  const timelineToggleRef = useRef<HTMLButtonElement>(null);
   const messageRef = useRef<HTMLElement>(null);
   const text =
     message.author === "user"
@@ -110,7 +115,14 @@ export const MessageRow = memo(function MessageRow({
       : "";
   const visibleParts = message.parts.slice(-visiblePartCount);
   const hasTimeline = message.author === "agent" && message.parts.length > 0;
+  const hasRetryableError =
+    message.author === "agent" &&
+    message.parts.some((part) => part.type === "error" && part.retryable);
   const attachmentOccurrences = new Map<string, number>();
+
+  useEffect(() => {
+    if (!isActionsOpen) setShowTimeline(false);
+  }, [isActionsOpen]);
 
   const navigateToPart = useCallback(
     (partId: string) => {
@@ -146,18 +158,45 @@ export const MessageRow = memo(function MessageRow({
     [message.parts.length],
   );
 
-  const closeTimeline = useCallback(() => {
-    setShowTimeline(false);
-    timelineToggleRef.current?.focus();
-  }, []);
+  const closeTimeline = useCallback(() => setShowTimeline(false), []);
+
+  function handleMessageClick(event: MouseEvent<HTMLElement>) {
+    if (window.getSelection()?.toString().length) return;
+    if (!isMessageToggleTarget(event.target, message.author)) return;
+    onToggleActions(message.id);
+  }
+
+  function handleMessageKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (
+      !(event.target instanceof Element) ||
+      !event.target.matches(`.${styles.srOnly}`) ||
+      (event.key !== "Enter" && event.key !== " ")
+    ) {
+      return;
+    }
+    event.preventDefault();
+    onToggleActions(message.id);
+  }
 
   return (
     <article
       aria-label={message.author === "user" ? t.chat.userMessage : t.chat.agentMessage}
-      className={`${styles.message} ${message.author === "user" ? styles.userMessage : styles.agentMessage}`}
+      className={`${styles.message} ${message.author === "user" ? styles.userMessage : styles.agentMessage} ${isActionsOpen ? styles.messageOpen : ""}`}
       data-author={message.author}
+      data-message-id={message.id}
+      onClick={handleMessageClick}
+      onKeyDown={handleMessageKeyDown}
       ref={messageRef}
     >
+      <button
+        aria-controls={optionsId}
+        aria-expanded={isActionsOpen}
+        aria-label={message.author === "user" ? t.chat.userMessage : t.chat.agentMessage}
+        className={styles.srOnly}
+        onClick={() => onToggleActions(message.id)}
+        tabIndex={0}
+        type="button"
+      />
       {message.author === "user" ? (
         <>
           {message.attachments?.length ? (
@@ -192,29 +231,6 @@ export const MessageRow = memo(function MessageRow({
             </section>
           ) : null}
           {text.trim() ? <div className={styles.userBubble}>{text}</div> : null}
-          {text.trim() ? (
-            <div className={styles.messageActions}>
-              <button className={styles.textAction} onClick={() => onCopy(text)} type="button">
-                <Copy aria-hidden="true" size={14} />
-                {t.chat.copy}
-              </button>
-              <button className={styles.textAction} onClick={() => onEdit(text)} type="button">
-                <Pencil aria-hidden="true" size={14} />
-                {t.chat.edit}
-              </button>
-              {!message.attachments?.length ? (
-                <button
-                  className={styles.textAction}
-                  disabled={message.status === "streaming"}
-                  onClick={() => onResend(text)}
-                  type="button"
-                >
-                  <Play aria-hidden="true" size={14} />
-                  {t.chat.resend}
-                </button>
-              ) : null}
-            </div>
-          ) : null}
         </>
       ) : (
         <>
@@ -233,49 +249,132 @@ export const MessageRow = memo(function MessageRow({
               message.id,
               message.status === "streaming",
               onRespond,
-              onRetry,
               onAnnounce,
               onCopyCode,
               cwd,
               agent,
             )}
           </div>
-          {hasTimeline ? (
-            <>
+        </>
+      )}
+      <div
+        aria-hidden={!isActionsOpen}
+        className={`${styles.messageOptions} ${isActionsOpen ? styles.messageOptionsOpen : ""}`}
+        id={optionsId}
+        inert={!isActionsOpen}
+      >
+        <div className={styles.messageOptionsInner}>
+          <div className={styles.messageActions}>
+            {message.author === "user" && text.trim() ? (
+              <>
+                <button className={styles.textAction} onClick={() => onCopy(text)} type="button">
+                  <Copy aria-hidden="true" size={14} />
+                  {t.chat.copy}
+                </button>
+                <button className={styles.textAction} onClick={() => onEdit(text)} type="button">
+                  <Pencil aria-hidden="true" size={14} />
+                  {t.chat.edit}
+                </button>
+                {!message.attachments?.length ? (
+                  <button
+                    className={styles.textAction}
+                    disabled={message.status === "streaming"}
+                    onClick={() => onResend(text)}
+                    type="button"
+                  >
+                    <Play aria-hidden="true" size={14} />
+                    {t.chat.resend}
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+            {hasRetryableError ? (
               <button
-                aria-expanded={showTimeline}
+                className={styles.textAction}
+                disabled={message.status === "streaming"}
+                onClick={() => onRetry(message.id)}
+                type="button"
+              >
+                <Play aria-hidden="true" size={14} />
+                {t.chat.retry}
+              </button>
+            ) : null}
+            {hasTimeline ? (
+              <button
                 aria-controls={timelineId}
+                aria-expanded={showTimeline}
                 className={styles.timelineToggle}
                 onClick={() => setShowTimeline((value) => !value)}
-                ref={timelineToggleRef}
                 type="button"
               >
                 <Clock3 aria-hidden="true" size={14} />
                 {t.chat.timeline}
               </button>
-              {showTimeline ? (
-                <TimelineView
-                  id={timelineId}
-                  message={message}
-                  cwd={cwd}
-                  onClose={closeTimeline}
-                  onNavigate={navigateToPart}
-                />
-              ) : null}
-            </>
+            ) : null}
+          </div>
+          {hasTimeline && isActionsOpen && showTimeline ? (
+            <TimelineView
+              id={timelineId}
+              message={message}
+              cwd={cwd}
+              onClose={closeTimeline}
+              onNavigate={navigateToPart}
+            />
           ) : null}
-        </>
-      )}
+        </div>
+      </div>
     </article>
   );
 });
+
+function isMessageToggleTarget(
+  target: EventTarget | null,
+  author: ConversationMessage["author"],
+): boolean {
+  const element = target instanceof Element ? target : null;
+  if (!element) return false;
+  if (
+    element.closest(
+      [
+        "button",
+        "a",
+        "input",
+        "textarea",
+        "select",
+        "fieldset",
+        "label",
+        "summary",
+        "details",
+        "pre",
+        "code",
+        "[contenteditable='true']",
+        "[role='button']",
+        "[role='checkbox']",
+        "[role='radio']",
+        "[role='switch']",
+        "[role='option']",
+        `.${styles.codeBlock}`,
+        `.${styles.permissionCard}`,
+        `.${styles.questionCard}`,
+        `.${styles.planCard}`,
+        `.${styles.action}`,
+        `.${styles.actionGroup}`,
+        `.${styles.inertLink}`,
+      ].join(","),
+    )
+  ) {
+    return false;
+  }
+  return author === "user"
+    ? element.closest(`.${styles.userBubble}`) !== null
+    : element.closest(`.${styles.parts}`) !== null;
+}
 
 function renderParts(
   parts: MessagePart[],
   messageId: string,
   isStreaming: boolean,
   onRespond: OnRespond,
-  onRetry: (messageId: string) => void,
   onAnnounce: (text: string) => void,
   onCopyCode: ((code: string) => void) | undefined,
   cwd: string,
@@ -349,7 +448,6 @@ function renderParts(
         onAnnounce={onAnnounce}
         onCopyCode={onCopyCode}
         onRespond={onRespond}
-        onRetry={onRetry}
         part={part}
         cwd={cwd}
         agent={agent}
@@ -366,7 +464,6 @@ const PartItem = memo(
     messageId,
     isStreaming,
     onRespond,
-    onRetry,
     onAnnounce,
     onCopyCode,
     cwd,
@@ -376,7 +473,6 @@ const PartItem = memo(
     messageId: string;
     isStreaming: boolean;
     onRespond: OnRespond;
-    onRetry: (messageId: string) => void;
     onAnnounce: (text: string) => void;
     onCopyCode: ((code: string) => void) | undefined;
     cwd: string;
@@ -410,7 +506,7 @@ const PartItem = memo(
         content = <TodosPart part={part} />;
         break;
       case "error":
-        content = <ErrorPart agent={agent} messageId={messageId} onRetry={onRetry} part={part} />;
+        content = <ErrorPart agent={agent} part={part} />;
         break;
       case "action":
         return null;
@@ -426,7 +522,6 @@ const PartItem = memo(
     previous.messageId === next.messageId &&
     previous.isStreaming === next.isStreaming &&
     previous.onRespond === next.onRespond &&
-    previous.onRetry === next.onRetry &&
     previous.onAnnounce === next.onAnnounce &&
     previous.onCopyCode === next.onCopyCode &&
     previous.cwd === next.cwd &&
@@ -1150,13 +1245,9 @@ export const TodosPart = memo(function TodosPart({
 
 const ErrorPart = memo(function ErrorPart({
   part,
-  messageId,
-  onRetry,
   agent,
 }: {
   part: Extract<MessagePart, { type: "error" }>;
-  messageId: string;
-  onRetry: (messageId: string) => void;
   agent?: AgentErrorAgent;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1184,11 +1275,6 @@ const ErrorPart = memo(function ErrorPart({
             {details}
           </pre>
         </div>
-      ) : null}
-      {part.retryable ? (
-        <Button onClick={() => onRetry(messageId)} variant="secondary">
-          {t.chat.retry}
-        </Button>
       ) : null}
     </section>
   );
