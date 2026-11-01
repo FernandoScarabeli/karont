@@ -4,9 +4,9 @@
   width: min(100%, var(--k-chat-content-max-width));
   min-width: 0;
   flex-direction: column;
-  gap: var(--k-space-2);
+  gap: 0;
   margin-inline: auto;
-  padding-block: var(--k-space-1);
+  padding-block: 0;
   content-visibility: auto;
   contain-intrinsic-size: auto var(--k-chat-message-intrinsic-size);
 }
@@ -17,13 +17,8 @@
   outline-offset: var(--k-chat-focus-outline-offset);
 }
 
-.messageOpen {
-  background: transparent;
-}
-
 .userMessage {
   align-items: flex-end;
-  gap: 0;
 }
 
 .agentMessage {
@@ -77,12 +72,12 @@
 
 .userMessage .sentAttachments,
 .userMessage .userBubble {
-  margin-block-end: var(--k-space-2);
+  margin-block-end: 0;
 }
 
 .messageActions {
   display: flex;
-  min-height: var(--k-control-height-sm);
+  min-height: calc(var(--k-control-height-sm) - var(--k-space-1));
   flex-wrap: wrap;
   gap: var(--k-space-1);
 }
@@ -97,21 +92,17 @@
   width: 100%;
   min-width: 0;
   opacity: 0;
-  visibility: hidden;
   pointer-events: none;
-  transition:
-    opacity var(--k-duration-fast) var(--k-ease),
-    visibility 0s linear var(--k-duration-fast);
+  transition: opacity var(--k-duration-fast) var(--k-ease);
 }
 
-.messageDateOptionsOpen,
-.messageOptionsOpen {
+.message:hover .messageDateOptions,
+.message:hover .messageOptions,
+.message:focus-within .messageDateOptions,
+.message:focus-within .messageOptions,
+.message:has(.timeline) .messageOptions {
   opacity: 1;
-  visibility: visible;
   pointer-events: auto;
-  transition:
-    opacity var(--k-duration-fast) var(--k-ease),
-    visibility 0s;
 }
 
 .messageDateOptionsInner {
@@ -133,22 +124,6 @@
   display: grid;
   min-width: 0;
   gap: var(--k-space-1);
-}
-
-.userMessage .messageDateOptionsInner {
-  padding-block-end: var(--k-space-2);
-}
-
-.agentMessage .messageDateOptions {
-  margin-block-end: calc(var(--k-space-2) * -1);
-}
-
-.agentMessage .messageDateOptionsInner {
-  padding-block-end: var(--k-space-2);
-}
-
-.userMessage .messageOptionsInner {
-  padding-block-start: var(--k-space-2);
 }
 
 .messageTimestamp {
@@ -222,6 +197,10 @@
   min-width: 0;
   flex-direction: column;
   gap: var(--k-space-3);
+}
+
+.workHistory + .partTarget:has(.markdown) {
+  margin-block-start: calc(var(--k-space-2) - var(--k-space-3));
 }
 
 .workHistory {
@@ -1263,6 +1242,11 @@
 
 .timelineToggle {
   align-self: flex-start;
+}
+
+.messageActions .textAction,
+.messageActions .timelineToggle {
+  min-height: calc(var(--k-control-height-sm) - var(--k-space-1));
 }
 
 .timeline {

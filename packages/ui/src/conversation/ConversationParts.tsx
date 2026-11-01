@@ -29,7 +29,6 @@ import type { ReactNode } from "react";
 import {
   type FormEvent,
   type KeyboardEvent,
-  type MouseEvent,
   memo,
   useCallback,
   useEffect,
@@ -108,8 +107,6 @@ type OnRespond = (response: ResponseInput) => Promise<void>;
 
 export const MessageRow = memo(function MessageRow({
   message,
-  isActionsOpen,
-  onToggleActions,
   onCopy,
   onCopyCode,
   onEdit,
@@ -122,8 +119,6 @@ export const MessageRow = memo(function MessageRow({
   onWorkingIndicatorExit,
 }: {
   message: ConversationMessage;
-  isActionsOpen: boolean;
-  onToggleActions: (messageId: string) => void;
   agent?: AgentErrorAgent;
   onCopy: (text: string) => void;
   onCopyCode?: (code: string) => void;
@@ -142,8 +137,6 @@ export const MessageRow = memo(function MessageRow({
 }) {
   const [showTimeline, setShowTimeline] = useState(false);
   const [visiblePartCount, setVisiblePartCount] = useState(120);
-  const optionsId = useId();
-  const timestampId = useId();
   const timelineId = useId();
   const messageRef = useRef<HTMLElement>(null);
   const isUserMessage = message.author === "user";
@@ -159,10 +152,6 @@ export const MessageRow = memo(function MessageRow({
     message.author === "agent" &&
     message.parts.some((part) => part.type === "error" && part.retryable);
   const attachmentOccurrences = new Map<string, number>();
-
-  useEffect(() => {
-    if (!isActionsOpen) setShowTimeline(false);
-  }, [isActionsOpen]);
 
   const navigateToPart = useCallback(
     (partId: string) => {
@@ -200,49 +189,15 @@ export const MessageRow = memo(function MessageRow({
 
   const closeTimeline = useCallback(() => setShowTimeline(false), []);
 
-  function handleMessageClick(event: MouseEvent<HTMLElement>) {
-    if (window.getSelection()?.toString().length) return;
-    if (!isMessageToggleTarget(event.target, message.author)) return;
-    onToggleActions(message.id);
-  }
-
-  function handleMessageKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (
-      !(event.target instanceof Element) ||
-      !event.target.matches(`.${styles.srOnly}`) ||
-      (event.key !== "Enter" && event.key !== " ")
-    ) {
-      return;
-    }
-    event.preventDefault();
-    onToggleActions(message.id);
-  }
-
   return (
     <article
       aria-label={message.author === "user" ? t.chat.userMessage : t.chat.agentMessage}
-      className={`${styles.message} ${message.author === "user" ? styles.userMessage : styles.agentMessage} ${isActionsOpen ? styles.messageOpen : ""}`}
+      className={`${styles.message} ${message.author === "user" ? styles.userMessage : styles.agentMessage}`}
       data-author={message.author}
       data-message-id={message.id}
-      onClick={handleMessageClick}
-      onKeyDown={handleMessageKeyDown}
       ref={messageRef}
     >
-      <button
-        aria-controls={`${timestampId} ${optionsId}`}
-        aria-expanded={isActionsOpen}
-        aria-label={message.author === "user" ? t.chat.userMessage : t.chat.agentMessage}
-        className={styles.srOnly}
-        onClick={() => onToggleActions(message.id)}
-        tabIndex={0}
-        type="button"
-      />
-      <div
-        aria-hidden={!isActionsOpen}
-        className={`${styles.messageDateOptions} ${isActionsOpen ? styles.messageDateOptionsOpen : ""}`}
-        id={timestampId}
-        inert={!isActionsOpen}
-      >
+      <div className={styles.messageDateOptions}>
         <div className={styles.messageDateOptionsInner}>
           <time className={styles.messageTimestamp} dateTime={message.createdAt}>
             {formatMessageDateTime(message.createdAt)}
@@ -341,12 +296,7 @@ export const MessageRow = memo(function MessageRow({
           ) : null}
         </>
       )}
-      <div
-        aria-hidden={!isActionsOpen}
-        className={`${styles.messageOptions} ${isActionsOpen ? styles.messageOptionsOpen : ""}`}
-        id={optionsId}
-        inert={!isActionsOpen}
-      >
+      <div className={styles.messageOptions}>
         <div className={styles.messageOptionsInner}>
           <div className={styles.messageOptionsMeta}>
             <div className={styles.messageActions}>
@@ -387,7 +337,7 @@ export const MessageRow = memo(function MessageRow({
               ) : null}
             </div>
           </div>
-          {hasTimeline && isActionsOpen && showTimeline ? (
+          {hasTimeline && showTimeline ? (
             <TimelineView
               id={timelineId}
               message={message}
@@ -401,49 +351,6 @@ export const MessageRow = memo(function MessageRow({
     </article>
   );
 });
-
-function isMessageToggleTarget(
-  target: EventTarget | null,
-  author: ConversationMessage["author"],
-): boolean {
-  const element = target instanceof Element ? target : null;
-  if (!element) return false;
-  if (
-    element.closest(
-      [
-        "button",
-        "a",
-        "input",
-        "textarea",
-        "select",
-        "fieldset",
-        "label",
-        "summary",
-        "details",
-        "pre",
-        "code",
-        "[contenteditable='true']",
-        "[role='button']",
-        "[role='checkbox']",
-        "[role='radio']",
-        "[role='switch']",
-        "[role='option']",
-        `.${styles.codeBlock}`,
-        `.${styles.permissionCard}`,
-        `.${styles.questionCard}`,
-        `.${styles.planCard}`,
-        `.${styles.action}`,
-        `.${styles.actionGroup}`,
-        `.${styles.inertLink}`,
-      ].join(","),
-    )
-  ) {
-    return false;
-  }
-  return author === "user"
-    ? element.closest(`.${styles.userBubble}`) !== null
-    : element.closest(`.${styles.parts}`) !== null;
-}
 
 function renderParts(
   parts: MessagePart[],

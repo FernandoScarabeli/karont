@@ -8,7 +8,7 @@
 }
 
 .modelTrigger {
-  width: var(--k-composer-model-width);
+  width: auto;
   max-width: var(--k-composer-select-max-width);
 }
 
