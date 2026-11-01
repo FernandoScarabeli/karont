@@ -1,4 +1,4 @@
-import type { Agent, Conversation } from "@karont/contract";
+import type { Agent, Conversation, ConversationAttachment } from "@karont/contract";
 import { BridgeError } from "@karont/contract";
 import { ChevronDown, Folder, TriangleAlert } from "lucide-react";
 import {
@@ -21,11 +21,17 @@ import { TextField } from "../components/TextField/TextField.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import {
+  AttachmentChips,
+  AttachmentPicker,
+  useComposerAttachments,
+} from "./ComposerAttachments.tsx";
+import {
   type AgentEffort,
   type AgentModels,
   ComposerPreferences,
   effortsForModel,
 } from "./ComposerPreferences.tsx";
+import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import styles from "./NewConversationView.module.css";
 import { setConversationPlanModeActive } from "./planMode.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
@@ -180,6 +186,18 @@ export function NewConversationView({
 
   const selectedAgent = agents.find((agent) => agent.id === choice);
   const selectedTitle = selectedAgent?.name ?? t.conversation.terminal;
+  const canAttachFiles = Boolean(
+    bridge &&
+      selectedAgent &&
+      (selectedAgent.id === "claude" || selectedAgent.id === "codex") &&
+      !isOpening,
+  );
+  const composerAttachments = useComposerAttachments(
+    canAttachFiles,
+    choice === TERMINAL_CHOICE ? "terminal" : "agent",
+  );
+  const gitPath = folderPath === PERSONAL_FOLDER ? homePath : folderPath;
+  const gitInfo = useGitInfo(gitPath, "new-conversation");
   const isPersonalFolderSelected = folderPath === PERSONAL_FOLDER || folderPath === homePath;
   const folderName = isPersonalFolderSelected ? PERSONAL_FOLDER : getFolderName(folderPath);
   const accessibleFolderPath = isPersonalFolderSelected
@@ -221,6 +239,7 @@ export function NewConversationView({
 
   function chooseAgent(option: AgentChoice) {
     choiceTouchedRef.current = true;
+    if (option === TERMINAL_CHOICE) composerAttachments.clear();
     setChoice(option);
     setError("");
     closeMenu();
@@ -395,7 +414,8 @@ export function NewConversationView({
       return;
     }
     const text = value.trim();
-    if (!text) return;
+    const files: ConversationAttachment[] = composerAttachments.getRequestAttachments();
+    if (!text && files.length === 0) return;
     setError("");
     setIsOpening(true);
     let created: Conversation | null = null;
@@ -409,7 +429,7 @@ export function NewConversationView({
         agent: selectedAgent.id,
         cwd,
         mode,
-        title: firstLine.slice(0, 240),
+        title: firstLine ? firstLine.slice(0, 240) : t.conversation.title,
         ...(model ? { model } : {}),
         ...(effort ? { effort } : {}),
       });
@@ -417,9 +437,11 @@ export function NewConversationView({
       upsertConversation(created);
       await bridge.request("conversation.send", {
         id: created.id,
-        text,
+        text: text || " ",
         ...(planMode ? { plan: true } : {}),
+        ...(files.length ? { attachments: files } : {}),
       });
+      composerAttachments.clear();
       setConversationPlanModeActive(created.id, planMode);
       navigate({ name: "conversation", id: created.id });
     } catch (openError) {
@@ -488,11 +510,28 @@ export function NewConversationView({
         <p className={styles.welcome} data-k-new-conversation-title>
           {t.conversation.welcomeTitle}
         </p>
+        {composerAttachments.isPreparing ? (
+          <p className={styles.preparing} role="status">
+            {t.chat.preparingAttachments}
+          </p>
+        ) : null}
+        {composerAttachments.error ? (
+          <p className={styles.error} role="alert">
+            <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.8} />
+            <span>{composerAttachments.error}</span>
+          </p>
+        ) : null}
         <Composer
           disabled={choice !== TERMINAL_CHOICE && !selectedAgent}
           ariaDescription={t.conversation.composerKeyboardDescription}
           leading={
             <div className={styles.controls} ref={menuRootRef}>
+              {selectedAgent && (selectedAgent.id === "claude" || selectedAgent.id === "codex") ? (
+                <AttachmentPicker
+                  disabled={!canAttachFiles}
+                  onFiles={composerAttachments.addFiles}
+                />
+              ) : null}
               <div className={styles.choiceWrap}>
                 <button
                   aria-controls={choiceListboxId}
@@ -549,10 +588,22 @@ export function NewConversationView({
                 <Folder aria-hidden="true" size={16} strokeWidth={1.8} />
                 <span>{folderName}</span>
               </button>
+              <GitBranchLabel info={gitInfo} />
             </div>
+          }
+          attachments={
+            <AttachmentChips
+              attachments={composerAttachments.attachments}
+              onRemove={composerAttachments.remove}
+            />
           }
           mono={choice === TERMINAL_CHOICE}
           onChange={setCommand}
+          onDragEnter={composerAttachments.onDragEnter}
+          onDragLeave={composerAttachments.onDragLeave}
+          onDragOver={composerAttachments.onDragOver}
+          onDrop={composerAttachments.onDrop}
+          onPaste={composerAttachments.onPaste}
           onSubmit={submitComposer}
           placeholder={
             choice === TERMINAL_CHOICE
@@ -562,8 +613,12 @@ export function NewConversationView({
           submitDisabled={
             !bridge ||
             isOpening ||
-            (choice !== TERMINAL_CHOICE && (!selectedAgent || !command.trim()))
+            composerAttachments.isPreparing ||
+            (choice !== TERMINAL_CHOICE &&
+              (!selectedAgent || (!command.trim() && composerAttachments.attachments.length === 0)))
           }
+          dragActive={composerAttachments.isDragging}
+          dropMessage={t.chat.dropAttachments}
           submitLabel={
             choice === TERMINAL_CHOICE ? t.conversation.openTerminal : t.conversation.sendMessage
           }
