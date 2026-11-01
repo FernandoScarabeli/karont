@@ -37,6 +37,7 @@ import { formatFolderPath } from "./displayText.ts";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
+import { WorkingIndicator } from "./WorkingIndicator.tsx";
 
 type ConversationOptionsPatch = {
   mode?: Conversation["mode"];
@@ -185,7 +186,6 @@ export function ConversationView({
   const scrollVersion = `${latestMessage?.id ?? "empty"}:${latestPart?.id ?? ""}:${latestPartContent}:${visibleMessages.length}`;
   const isWorking = conversation?.state === "working";
   const isWaiting = conversation?.state === "waiting";
-  const isError = conversation?.state === "error";
   const composerAttachments = useComposerAttachments(
     Boolean(conversation && bridge && !loading && !isWaiting && !isResponding && !isSending),
     id,
@@ -209,13 +209,6 @@ export function ConversationView({
   useEffect(() => {
     if (conversation && !isRenamingTitle) setTitleDraft(conversation.title);
   }, [conversation, isRenamingTitle]);
-  const stateLabel = isWorking
-    ? t.chat.working
-    : isWaiting
-      ? t.chat.waiting
-      : isError
-        ? t.chat.conversationError
-        : t.chat.idle;
   const lastTodos = useMemo(
     () => findLatestTodos(latestMessage?.status === "streaming" ? latestMessage : null),
     [latestMessage],
@@ -791,13 +784,7 @@ export function ConversationView({
             <TodosPart part={homeTodos} />
           </div>
         ) : null}
-        {isWorking ? (
-          <p className={styles.progress} role="status">
-            <span aria-hidden="true" className={styles.progressMark} />
-            {stateLabel}
-            {isStopping ? ` · ${t.chat.stopping}` : ""}
-          </p>
-        ) : null}
+        {isWorking ? <WorkingIndicator stopping={isStopping} /> : null}
         {composerAttachments.isPreparing ? (
           <p className={styles.progress} role="status">
             <span aria-hidden="true" className={styles.progressMark} />

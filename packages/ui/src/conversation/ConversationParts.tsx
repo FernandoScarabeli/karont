@@ -75,6 +75,7 @@ type OnRespond = (response: ResponseInput) => Promise<void>;
 export const MessageRow = memo(function MessageRow({
   message,
   onCopy,
+  onCopyCode,
   onEdit,
   onResend,
   onRespond,
@@ -84,6 +85,7 @@ export const MessageRow = memo(function MessageRow({
 }: {
   message: ConversationMessage;
   onCopy: (text: string) => void;
+  onCopyCode?: (code: string) => void;
   onEdit: (text: string) => void;
   onResend: (text: string) => void;
   onRespond: OnRespond;
@@ -230,6 +232,7 @@ export const MessageRow = memo(function MessageRow({
               onRespond,
               onRetry,
               onAnnounce,
+              onCopyCode,
               cwd,
             )}
           </div>
@@ -270,6 +273,7 @@ function renderParts(
   onRespond: OnRespond,
   onRetry: (messageId: string) => void,
   onAnnounce: (text: string) => void,
+  onCopyCode: ((code: string) => void) | undefined,
   cwd: string,
 ) {
   const elements: ReactNode[] = [];
@@ -338,6 +342,7 @@ function renderParts(
         isStreaming={isStreaming}
         messageId={messageId}
         onAnnounce={onAnnounce}
+        onCopyCode={onCopyCode}
         onRespond={onRespond}
         onRetry={onRetry}
         part={part}
@@ -357,6 +362,7 @@ const PartItem = memo(
     onRespond,
     onRetry,
     onAnnounce,
+    onCopyCode,
     cwd,
   }: {
     part: MessagePart;
@@ -365,6 +371,7 @@ const PartItem = memo(
     onRespond: OnRespond;
     onRetry: (messageId: string) => void;
     onAnnounce: (text: string) => void;
+    onCopyCode: ((code: string) => void) | undefined;
     cwd: string;
   }) {
     let content: ReactNode;
@@ -375,6 +382,7 @@ const PartItem = memo(
             isStreaming={isStreaming}
             markdown={part.markdown}
             onAnnounce={onAnnounce}
+            onCopyCode={onCopyCode}
           />
         );
         break;
@@ -388,7 +396,7 @@ const PartItem = memo(
         content = <QuestionPart onRespond={onRespond} part={part} />;
         break;
       case "plan":
-        content = <PlanPart onRespond={onRespond} part={part} />;
+        content = <PlanPart onCopyCode={onCopyCode} onRespond={onRespond} part={part} />;
         break;
       case "todos":
         content = <TodosPart part={part} />;
@@ -412,6 +420,7 @@ const PartItem = memo(
     previous.onRespond === next.onRespond &&
     previous.onRetry === next.onRetry &&
     previous.onAnnounce === next.onAnnounce &&
+    previous.onCopyCode === next.onCopyCode &&
     previous.cwd === next.cwd,
 );
 
@@ -419,10 +428,12 @@ const MarkdownBody = memo(function MarkdownBody({
   markdown,
   isStreaming = false,
   onAnnounce,
+  onCopyCode,
 }: {
   markdown: string;
   isStreaming?: boolean;
   onAnnounce: (text: string) => void;
+  onCopyCode?: (code: string) => void;
 }) {
   const [highlightPlugin, setHighlightPlugin] = useState<HighlightPlugin | null>(null);
   const blocks = useMemo(() => splitMarkdownBlocks(markdown), [markdown]);
@@ -449,6 +460,7 @@ const MarkdownBody = memo(function MarkdownBody({
           highlightPlugin={highlightPlugin}
           key={block.start}
           onAnnounce={onAnnounce}
+          onCopyCode={onCopyCode}
           useHighlight={
             highlightPlugin !== null && block.hasFencedCode && (block.closed || !isStreaming)
           }
@@ -463,11 +475,13 @@ const MarkdownBlock = memo(
     block,
     highlightPlugin,
     onAnnounce,
+    onCopyCode,
     useHighlight,
   }: {
     block: string;
     highlightPlugin: HighlightPlugin | null;
     onAnnounce: (text: string) => void;
+    onCopyCode?: (code: string) => void;
     useHighlight: boolean;
   }) {
     const components = useMemo(
@@ -489,10 +503,12 @@ const MarkdownBlock = memo(
           );
         },
         pre: ({ children }: { children?: ReactNode }) => (
-          <CodeBlock onAnnounce={onAnnounce}>{children}</CodeBlock>
+          <CodeBlock onAnnounce={onAnnounce} onCopyCode={onCopyCode}>
+            {children}
+          </CodeBlock>
         ),
       }),
-      [onAnnounce],
+      [onAnnounce, onCopyCode],
     );
 
     return (
@@ -508,6 +524,7 @@ const MarkdownBlock = memo(
   (previous, next) =>
     previous.block === next.block &&
     previous.onAnnounce === next.onAnnounce &&
+    previous.onCopyCode === next.onCopyCode &&
     previous.useHighlight === next.useHighlight &&
     (!next.useHighlight || previous.highlightPlugin === next.highlightPlugin),
 );
@@ -528,9 +545,11 @@ async function openExternalUrl(url: string, onAnnounce: (text: string) => void):
 function CodeBlock({
   children,
   onAnnounce,
+  onCopyCode,
 }: {
   children: ReactNode;
   onAnnounce: (text: string) => void;
+  onCopyCode?: (code: string) => void;
 }) {
   const [copyState, setCopyState] = useState("");
   const code = getText(children);
@@ -540,7 +559,13 @@ function CodeBlock({
         aria-label={t.chat.actionCopyCode}
         className={styles.codeCopy}
         onClick={() => {
-          void copyCode();
+          if (onCopyCode) {
+            onCopyCode(code);
+            setCopyState(t.chat.codeCopied);
+            onAnnounce(t.chat.codeCopied);
+          } else {
+            void copyCode();
+          }
         }}
         type="button"
       >
@@ -658,21 +683,23 @@ const ActionGroup = memo(
     ),
 );
 
-const ActionItem = memo(function ActionItem({
+export const ActionItem = memo(function ActionItem({
   action,
   messageId,
   permitted,
   cwd,
   summary,
+  initialExpanded = false,
 }: {
   action: ConversationAction;
   messageId: string;
   permitted: boolean;
   cwd: string;
   summary: string;
+  initialExpanded?: boolean;
 }) {
   const Icon = actionIcon(action.actionType);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(initialExpanded);
   const duration =
     action.durationMs === null || action.durationMs === undefined || action.durationMs < 1_000
       ? ""
@@ -989,9 +1016,11 @@ const QuestionPart = memo(function QuestionPart({
 const PlanPart = memo(function PlanPart({
   part,
   onRespond,
+  onCopyCode,
 }: {
   part: Extract<MessagePart, { type: "plan" }>;
   onRespond: OnRespond;
+  onCopyCode?: (code: string) => void;
 }) {
   const [adjusting, setAdjusting] = useState(false);
   const [comment, setComment] = useState("");
@@ -1004,7 +1033,11 @@ const PlanPart = memo(function PlanPart({
           {part.state === "approved" ? t.chat.planResults.approved : t.chat.planResults.rejected}
         </summary>
         <div className={styles.planResultBody}>
-          <MarkdownBody markdown={part.markdown} onAnnounce={() => undefined} />
+          <MarkdownBody
+            markdown={part.markdown}
+            onAnnounce={() => undefined}
+            onCopyCode={onCopyCode}
+          />
           {part.comment ? <p className={styles.planComment}>{part.comment}</p> : null}
         </div>
       </details>
@@ -1016,7 +1049,7 @@ const PlanPart = memo(function PlanPart({
         <ListTodo aria-hidden="true" size={16} />
         {t.chat.plan}
       </h3>
-      <MarkdownBody markdown={part.markdown} onAnnounce={() => undefined} />
+      <MarkdownBody markdown={part.markdown} onAnnounce={() => undefined} onCopyCode={onCopyCode} />
       {adjusting ? (
         <label className={styles.adjustment}>
           <span>{t.chat.adjustment}</span>
@@ -1130,19 +1163,21 @@ const ErrorPart = memo(function ErrorPart({
   );
 });
 
-const TimelineView = memo(
+export const TimelineView = memo(
   function TimelineView({
     id,
     message,
     cwd,
     onClose,
     onNavigate,
+    autoFocus = true,
   }: {
     id: string;
     message: ConversationMessage;
     cwd: string;
     onClose: () => void;
     onNavigate: (partId: string) => void;
+    autoFocus?: boolean;
   }) {
     const regionRef = useRef<HTMLElement>(null);
     const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -1157,8 +1192,8 @@ const TimelineView = memo(
     for (let tick = 0; tick <= axisEndMs; tick += tickIntervalMs) ticks.push(tick);
 
     useEffect(() => {
-      regionRef.current?.focus();
-    }, []);
+      if (autoFocus) regionRef.current?.focus();
+    }, [autoFocus]);
 
     function handleTimelineKeyDown(event: KeyboardEvent<HTMLElement>) {
       if (event.key === "Escape") {
@@ -1314,6 +1349,7 @@ const TimelineView = memo(
       previous.id === next.id &&
       previous.onClose === next.onClose &&
       previous.onNavigate === next.onNavigate &&
+      previous.autoFocus === next.autoFocus &&
       previous.cwd === next.cwd &&
       previous.message.parts.length === next.message.parts.length &&
       previous.message.parts.every((part, index) => part === next.message.parts[index])
