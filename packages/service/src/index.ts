@@ -1,3 +1,15 @@
+export type {
+  AdapterEvent,
+  AdapterFactory,
+  AdapterResponse,
+  AgentAdapter,
+} from "./agents/adapter.ts";
+export {
+  AgentCliError,
+  ClaudeAdapter,
+  createClaudeAdapterFactory,
+} from "./agents/claude-adapter.ts";
+export { ConversationManager } from "./agents/conversation-manager.ts";
 export { computeMac, createNonce, createSecret, readSecret, verifyMac } from "./auth.ts";
 export { connectService, type ServiceClient } from "./client.ts";
 export { DeltaCoalescer, type DeltaCoalescerOptions, type TimerFunctions } from "./coalescer.ts";

@@ -72,6 +72,8 @@ Tarefas são chamadas nativas em `assistant.message.content`: `TaskCreate` com `
 | Pode editar (pede permissão para comandos) | `--permission-mode acceptEdits` ou `manual`, com `--permission-prompts host --permission-prompt-tool stdio` | Ferramentas que a política aprova automaticamente não geram `can_use_tool`; o host decide as demais. |
 | Liberado | `--permission-mode bypassPermissions` com o opt-in de bypass exigido pela CLI | Remove confirmações; não isola a pasta do Projeto. |
 
+O serviço usa `dontAsk` com `--tools Read,Glob,Grep,WebSearch,WebFetch,AskUserQuestion,ExitPlanMode,TaskCreate,TaskUpdate,TodoWrite` no modo Só leitura. Isso limita as ferramentas disponíveis melhor que `default`, permite as interações com o usuário e os itens de tarefas, e o host nega automaticamente qualquer outra ferramenta que escreva ou rode comandos. Para erro de login, as fixtures não contêm uma saída real desse tipo: o adaptador usa uma heurística restrita ao texto de erro (`not logged in`, `please log in`, `authentication required`, `logged out` ou OAuth expirado/inválido). Ele não consulta arquivos ou pastas de credenciais.
+
 A retomada real lembrou `jatobá` após `--resume`. O cenário de erro usa `cwd` inexistente e registra `ENOENT` antes de gerar. O resultado de um turno usa `result.subtype`; a falha de início aparece em stderr.
 
 ## Codex 0.166.0

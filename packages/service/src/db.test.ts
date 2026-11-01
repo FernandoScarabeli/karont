@@ -21,7 +21,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    3,
+    4,
   );
   assert.equal(
     (
@@ -53,7 +53,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    3,
+    4,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();
