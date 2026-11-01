@@ -23,6 +23,7 @@
 
 .userMessage {
   align-items: flex-end;
+  gap: 0;
 }
 
 .agentMessage {
@@ -74,6 +75,11 @@
   color: var(--k-color-text-muted);
 }
 
+.userMessage .sentAttachments,
+.userMessage .userBubble {
+  margin-block-end: var(--k-space-2);
+}
+
 .messageActions {
   display: flex;
   flex-wrap: wrap;
@@ -84,6 +90,7 @@
   justify-content: flex-end;
 }
 
+.messageDateOptions,
 .messageOptions {
   display: grid;
   width: 100%;
@@ -96,10 +103,18 @@
     opacity var(--k-duration-fast) var(--k-ease);
 }
 
+.messageDateOptionsOpen,
 .messageOptionsOpen {
   grid-template-rows: 1fr;
   opacity: 1;
   pointer-events: auto;
+}
+
+.messageDateOptionsInner {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .messageOptionsInner {
@@ -116,6 +131,14 @@
   gap: var(--k-space-1);
 }
 
+.userMessage .messageDateOptionsInner {
+  padding-block-end: var(--k-space-2);
+}
+
+.userMessage .messageOptionsInner {
+  padding-block-start: var(--k-space-2);
+}
+
 .messageTimestamp {
   color: var(--k-color-text-muted);
   font-size: var(--k-text-11);
@@ -127,6 +150,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .messageDateOptions,
   .messageOptions {
     transition: none;
   }
@@ -167,6 +191,14 @@
 .textAction:disabled {
   opacity: var(--k-opacity-disabled);
   cursor: not-allowed;
+}
+
+.messageActions > :first-child {
+  margin-inline-start: calc(var(--k-space-2) * -1);
+}
+
+.messageActions > :last-child {
+  margin-inline-end: calc(var(--k-space-2) * -1);
 }
 
 .parts {

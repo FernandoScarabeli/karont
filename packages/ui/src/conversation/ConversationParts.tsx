@@ -104,7 +104,6 @@ export const MessageRow = memo(function MessageRow({
   onCopy,
   onCopyCode,
   onEdit,
-  onResend,
   onRespond,
   onRetry,
   onAnnounce,
@@ -118,7 +117,6 @@ export const MessageRow = memo(function MessageRow({
   onCopy: (text: string) => void;
   onCopyCode?: (code: string) => void;
   onEdit: (text: string) => void;
-  onResend: (text: string) => void;
   onRespond: OnRespond;
   onRetry: (messageId: string) => void;
   onAnnounce: (text: string) => void;
@@ -127,15 +125,16 @@ export const MessageRow = memo(function MessageRow({
   const [showTimeline, setShowTimeline] = useState(false);
   const [visiblePartCount, setVisiblePartCount] = useState(120);
   const optionsId = useId();
+  const timestampId = useId();
   const timelineId = useId();
   const messageRef = useRef<HTMLElement>(null);
-  const text =
-    message.author === "user"
-      ? message.parts
-          .filter((part): part is Extract<MessagePart, { type: "text" }> => part.type === "text")
-          .map((part) => part.markdown)
-          .join("\n")
-      : "";
+  const isUserMessage = message.author === "user";
+  const text = isUserMessage
+    ? message.parts
+        .filter((part): part is Extract<MessagePart, { type: "text" }> => part.type === "text")
+        .map((part) => part.markdown)
+        .join("\n")
+    : "";
   const visibleParts = message.parts.slice(-visiblePartCount);
   const hasTimeline = message.author === "agent" && message.parts.length > 0;
   const hasRetryableError =
@@ -212,7 +211,7 @@ export const MessageRow = memo(function MessageRow({
       ref={messageRef}
     >
       <button
-        aria-controls={optionsId}
+        aria-controls={isUserMessage ? `${timestampId} ${optionsId}` : optionsId}
         aria-expanded={isActionsOpen}
         aria-label={message.author === "user" ? t.chat.userMessage : t.chat.agentMessage}
         className={styles.srOnly}
@@ -220,8 +219,20 @@ export const MessageRow = memo(function MessageRow({
         tabIndex={0}
         type="button"
       />
-      {message.author === "user" ? (
+      {isUserMessage ? (
         <>
+          <div
+            aria-hidden={!isActionsOpen}
+            className={`${styles.messageDateOptions} ${isActionsOpen ? styles.messageDateOptionsOpen : ""}`}
+            id={timestampId}
+            inert={!isActionsOpen}
+          >
+            <div className={styles.messageDateOptionsInner}>
+              <time className={styles.messageTimestamp} dateTime={message.createdAt}>
+                {formatMessageDateTime(message.createdAt)}
+              </time>
+            </div>
+          </div>
           {message.attachments?.length ? (
             <section aria-label={t.chat.sentAttachments} className={styles.sentAttachments}>
               {message.attachments.map((attachment) => {
@@ -288,9 +299,11 @@ export const MessageRow = memo(function MessageRow({
       >
         <div className={styles.messageOptionsInner}>
           <div className={styles.messageOptionsMeta}>
-            <time className={styles.messageTimestamp} dateTime={message.createdAt}>
-              {formatMessageDateTime(message.createdAt)}
-            </time>
+            {!isUserMessage ? (
+              <time className={styles.messageTimestamp} dateTime={message.createdAt}>
+                {formatMessageDateTime(message.createdAt)}
+              </time>
+            ) : null}
             <div className={styles.messageActions}>
               {message.author === "user" && text.trim() ? (
                 <>
@@ -302,17 +315,6 @@ export const MessageRow = memo(function MessageRow({
                     <Pencil aria-hidden="true" size={14} />
                     {t.chat.edit}
                   </button>
-                  {!message.attachments?.length ? (
-                    <button
-                      className={styles.textAction}
-                      disabled={message.status === "streaming"}
-                      onClick={() => onResend(text)}
-                      type="button"
-                    >
-                      <Play aria-hidden="true" size={14} />
-                      {t.chat.resend}
-                    </button>
-                  ) : null}
                 </>
               ) : null}
               {hasRetryableError ? (
