@@ -64,7 +64,15 @@ export function useConversation(conversationId: string) {
         endedAt?: number;
       }
     >();
-    let rafId: number | null = null;
+    let flushTimer: number | null = null;
+
+    const flushDeltas = () => {
+      if (flushTimer !== null) window.clearTimeout(flushTimer);
+      flushTimer = null;
+      if (!mounted || pendingDeltas.size === 0) return;
+      dispatch({ type: "deltas", deltas: [...pendingDeltas.values()] });
+      pendingDeltas.clear();
+    };
 
     const dispatchEvent = (event: AnyEvent) => {
       if (event.event === "conversation.partUpdated" && event.payload.kind === "delta") {
@@ -81,16 +89,12 @@ export function useConversation(conversationId: string) {
             ? { endedAt: event.payload.endedAt ?? current?.endedAt }
             : {}),
         });
-        if (rafId === null) {
-          rafId = window.requestAnimationFrame(() => {
-            rafId = null;
-            if (!mounted) return;
-            dispatch({ type: "deltas", deltas: [...pendingDeltas.values()] });
-            pendingDeltas.clear();
-          });
+        if (flushTimer === null) {
+          flushTimer = window.setTimeout(flushDeltas, 64);
         }
         return;
       }
+      flushDeltas();
       dispatch({ type: "event", event });
     };
 
@@ -123,7 +127,7 @@ export function useConversation(conversationId: string) {
     return () => {
       mounted = false;
       unsubscribe();
-      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      if (flushTimer !== null) window.clearTimeout(flushTimer);
     };
   }, [conversationId]);
 

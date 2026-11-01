@@ -105,6 +105,11 @@
   scrollbar-width: thin;
 }
 
+.bottomSentinel {
+  min-height: var(--k-border-width);
+  flex: 0 0 var(--k-border-width);
+}
+
 .loading,
 .error {
   display: flex;
