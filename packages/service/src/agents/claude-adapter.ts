@@ -2,7 +2,12 @@ import { type ChildProcess, spawn as nodeSpawn, type SpawnOptions } from "node:c
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import { createInterface } from "node:readline";
-import type { Conversation, MessagePart } from "@karont/contract";
+import {
+  type Conversation,
+  type ConversationAttachment,
+  MAX_FRAME_BYTES,
+  type MessagePart,
+} from "@karont/contract";
 import type { AdapterEvent, AdapterFactory, AdapterResponse, AgentAdapter } from "./adapter.ts";
 import { resolveAgentCommand } from "./detect.ts";
 
@@ -198,7 +203,11 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#emit({ kind: "session", sessionId });
   }
 
-  async send(text: string, plan = false): Promise<void> {
+  async send(
+    text: string,
+    plan = false,
+    attachments: ConversationAttachment[] = [],
+  ): Promise<void> {
     if (!this.#child || this.#child.exitCode !== null || this.#child.signalCode !== null) {
       if (!this.#conversation || !this.#sessionId)
         throw new AgentCliError("failed", "A CLI não está ativa.");
@@ -213,7 +222,24 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#activeThinkingPartId = undefined;
     this.#todosPartId = undefined;
     this.#todos = [];
-    await this.#write({ type: "user", message: { role: "user", content: text } });
+    const content = attachments.length
+      ? [
+          { type: "text", text },
+          ...attachments.map((attachment) =>
+            attachment.kind === "image"
+              ? {
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: attachment.mimeType,
+                    data: attachment.data,
+                  },
+                }
+              : { type: "text", text: formatTextAttachment(attachment) },
+          ),
+        ]
+      : text;
+    await this.#write({ type: "user", message: { role: "user", content } });
   }
 
   async respond(partId: string, response: AdapterResponse): Promise<void> {
@@ -238,11 +264,20 @@ export class ClaudeAdapter implements AgentAdapter {
         : { behavior: "deny", message: "Ação negada pelo usuário." };
       state = allow ? "allowed" : "denied";
     } else if (response.responseType === "question") {
+      const sourceQuestions = Array.isArray(pending.input.questions)
+        ? pending.input.questions.filter(isRecord)
+        : [];
       const answers = Object.fromEntries(
-        Object.entries(response.answers).map(([key, values]) => [
-          key,
-          values.length === 1 ? values[0] : values,
-        ]),
+        Object.entries(response.answers).map(([key, values]) => {
+          const index = Number(key);
+          const indexedQuestion =
+            Number.isInteger(index) && String(index) === key ? sourceQuestions[index] : undefined;
+          const answerKey =
+            indexedQuestion && typeof indexedQuestion.question === "string"
+              ? indexedQuestion.question
+              : key;
+          return [answerKey, values.length === 1 ? values[0] : values];
+        }),
       );
       toolResponse = { behavior: "allow", updatedInput: { ...pending.input, answers } };
       state = "answered";
@@ -699,8 +734,8 @@ export class ClaudeAdapter implements AgentAdapter {
     if (!stdin || stdin.destroyed)
       throw new AgentCliError("failed", "O canal de entrada da CLI foi encerrado.");
     const line = `${JSON.stringify(value)}\n`;
-    if (Buffer.byteLength(line, "utf8") > 64 * 1024)
-      throw new Error("A mensagem para a CLI excede o limite de 64 KiB.");
+    if (Buffer.byteLength(line, "utf8") > MAX_FRAME_BYTES)
+      throw new Error("A mensagem para a CLI excede o limite de 64 MiB.");
     if (!stdin.write(line))
       await new Promise<void>((resolve, reject) => {
         stdin.once("drain", resolve);
@@ -910,4 +945,15 @@ function isAllowSuggestion(value: unknown): boolean {
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function formatTextAttachment(
+  attachment: Extract<ConversationAttachment, { kind: "text" }>,
+): string {
+  const longestFence = Math.max(
+    0,
+    ...[...attachment.data.matchAll(/`+/gu)].map((match) => match[0].length),
+  );
+  const fence = "`".repeat(Math.max(3, longestFence + 1));
+  return `Arquivo anexado: ${attachment.name}\n\n${fence}\n${attachment.data}\n${fence}`;
 }

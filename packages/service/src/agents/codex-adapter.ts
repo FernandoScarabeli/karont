@@ -1,9 +1,11 @@
 import { type ChildProcess, spawn as nodeSpawn, type SpawnOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
+import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { createInterface } from "node:readline";
-import type { Conversation, MessagePart } from "@karont/contract";
+import type { Conversation, ConversationAttachment, MessagePart } from "@karont/contract";
 import type {
   AdapterEvent,
   AdapterFactory,
@@ -78,6 +80,8 @@ export class CodexAdapter implements AgentAdapter {
   #turnCompleteResolve: (() => void) | undefined;
   #disposed = false;
   #approvedPlanPartId: string | undefined;
+  #attachmentDirectory: string | undefined;
+  #attachmentCleanup: Promise<void> = Promise.resolve();
 
   constructor(emit: (event: AdapterEvent) => void, options: CodexAdapterOptions = {}) {
     this.#emit = emit;
@@ -133,14 +137,18 @@ export class CodexAdapter implements AgentAdapter {
     }
   }
 
-  async send(text: string, plan?: boolean): Promise<void> {
+  async send(
+    text: string,
+    plan?: boolean,
+    attachments: ConversationAttachment[] = [],
+  ): Promise<void> {
     if (!isRunning(this.#child)) {
       if (!this.#conversation || !this.#threadId)
         throw new AgentCliError("failed", "O processo Codex não está ativo.");
       await this.start(this.#conversation, this.#threadId, true);
     }
     this.#approvedPlanPartId = undefined;
-    await this.#startTurn(text, (plan ?? usesPlanMode(text)) ? "plan" : undefined);
+    await this.#startTurn(text, (plan ?? usesPlanMode(text)) ? "plan" : undefined, attachments);
   }
 
   async respond(partId: string, response: AdapterResponse): Promise<void> {
@@ -160,10 +168,11 @@ export class CodexAdapter implements AgentAdapter {
 
     if (response.responseType === "question" && pending.kind === "question") {
       const answers: JsonRecord = {};
-      for (const question of pending.questions) {
+      for (const [index, question] of pending.questions.entries()) {
         if (typeof question.id !== "string") continue;
         const answer =
           response.answers[question.id] ??
+          response.answers[String(index)] ??
           (typeof question.question === "string"
             ? response.answers[question.question]
             : undefined) ??
@@ -246,6 +255,8 @@ export class CodexAdapter implements AgentAdapter {
       });
     }
     this.#child = undefined;
+    await this.#attachmentCleanup;
+    await this.#cleanupAttachmentFiles();
   }
 
   async getModels(): Promise<AdapterModelList> {
@@ -290,8 +301,13 @@ export class CodexAdapter implements AgentAdapter {
     await this.#notify("initialized", {});
   }
 
-  async #startTurn(text: string, collaborationMode?: "default" | "plan"): Promise<void> {
+  async #startTurn(
+    text: string,
+    collaborationMode?: "default" | "plan",
+    attachments: ConversationAttachment[] = [],
+  ): Promise<void> {
     if (!this.#threadId) throw new AgentCliError("failed", "A conversa Codex não foi iniciada.");
+    const input = await this.#prepareInput(text, attachments);
     this.#turnOpen = true;
     this.#stopRequested = false;
     this.#turnId = "";
@@ -300,7 +316,7 @@ export class CodexAdapter implements AgentAdapter {
     });
     const params: JsonRecord = {
       threadId: this.#threadId,
-      input: [{ type: "text", text }],
+      input,
       model: this.#modelId,
       effort: this.#effort,
     };
@@ -314,7 +330,17 @@ export class CodexAdapter implements AgentAdapter {
         },
       };
     }
-    const result = await this.#request("turn/start", params);
+    let result: unknown;
+    try {
+      result = await this.#request("turn/start", params);
+    } catch (error) {
+      this.#turnOpen = false;
+      this.#turnCompleteResolve?.();
+      this.#turnCompleteResolve = undefined;
+      this.#attachmentCleanup = this.#cleanupAttachmentFiles();
+      await this.#attachmentCleanup;
+      throw error;
+    }
     if (isRecord(result) && isRecord(result.turn) && typeof result.turn.id === "string")
       this.#turnId = result.turn.id;
   }
@@ -634,7 +660,47 @@ export class CodexAdapter implements AgentAdapter {
     this.#turnCompleteResolve?.();
     this.#turnCompleteResolve = undefined;
     this.#approvedPlanPartId = undefined;
-    this.#emit({ kind: "turn-end", status, ...(error ? { error } : {}) });
+    this.#attachmentCleanup = this.#cleanupAttachmentFiles();
+    void this.#attachmentCleanup.then(() => {
+      this.#emit({ kind: "turn-end", status, ...(error ? { error } : {}) });
+    });
+  }
+
+  async #prepareInput(text: string, attachments: ConversationAttachment[]): Promise<JsonRecord[]> {
+    await this.#attachmentCleanup;
+    const input: JsonRecord[] = [{ type: "text", text }];
+    try {
+      for (const attachment of attachments) {
+        if (attachment.kind === "text") {
+          input.push({ type: "text", text: formatTextAttachment(attachment) });
+          continue;
+        }
+        if (!this.#attachmentDirectory) {
+          this.#attachmentDirectory = await mkdtemp(path.join(os.tmpdir(), "karont-anexo-"));
+          if (this.#disposed) throw new Error("O processo Codex foi encerrado durante o anexo.");
+          await chmod(this.#attachmentDirectory, 0o700);
+        }
+        const imagePath = path.join(
+          this.#attachmentDirectory,
+          `${randomUUID()}${imageExtension(attachment.mimeType)}`,
+        );
+        await writeFile(imagePath, Buffer.from(attachment.data, "base64"), {
+          flag: "wx",
+          mode: 0o600,
+        });
+        input.push({ type: "localImage", path: imagePath });
+      }
+    } catch (error) {
+      await this.#cleanupAttachmentFiles();
+      throw error;
+    }
+    return input;
+  }
+
+  async #cleanupAttachmentFiles(): Promise<void> {
+    const directory = this.#attachmentDirectory;
+    this.#attachmentDirectory = undefined;
+    if (directory) await rm(directory, { recursive: true, force: true }).catch(() => undefined);
   }
 
   #handleProcessError(error: Error, child: ChildProcess, command: string): void {
@@ -690,11 +756,11 @@ export function createCodexModelLoader(
 
 function permissionSettings(mode: Conversation["mode"]): {
   sandbox: "read-only" | "workspace-write" | "danger-full-access";
-  approvalPolicy: "never" | "on-request";
+  approvalPolicy: "never" | "on-request" | "untrusted";
 } {
   if (mode === "read-only") return { sandbox: "read-only", approvalPolicy: "never" };
   if (mode === "full") return { sandbox: "danger-full-access", approvalPolicy: "never" };
-  return { sandbox: "workspace-write", approvalPolicy: "on-request" };
+  return { sandbox: "workspace-write", approvalPolicy: "untrusted" };
 }
 
 function parseModelList(value: unknown): AdapterModelList {
@@ -929,6 +995,32 @@ function isRunning(child: ChildProcess | undefined): child is ChildProcess {
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function formatTextAttachment(
+  attachment: Extract<ConversationAttachment, { kind: "text" }>,
+): string {
+  const longestFence = Math.max(
+    0,
+    ...[...attachment.data.matchAll(/`+/gu)].map((match) => match[0].length),
+  );
+  const fence = "`".repeat(Math.max(3, longestFence + 1));
+  return `Arquivo anexado: ${attachment.name}\n\n${fence}\n${attachment.data}\n${fence}`;
+}
+
+function imageExtension(mimeType: string): string {
+  switch (mimeType) {
+    case "image/png":
+      return ".png";
+    case "image/jpeg":
+      return ".jpg";
+    case "image/gif":
+      return ".gif";
+    case "image/webp":
+      return ".webp";
+    default:
+      return ".img";
+  }
 }
 
 function stringValue(value: unknown): string {

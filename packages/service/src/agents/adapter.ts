@@ -1,4 +1,4 @@
-import type { Conversation, MessagePart } from "@karont/contract";
+import type { Conversation, ConversationAttachment, MessagePart } from "@karont/contract";
 
 export type AdapterEvent =
   | { kind: "part"; part: MessagePart }
@@ -33,7 +33,7 @@ export interface AgentAdapter {
     resume: boolean,
     plan?: boolean,
   ): Promise<void>;
-  send(text: string, plan?: boolean): Promise<void>;
+  send(text: string, plan?: boolean, attachments?: ConversationAttachment[]): Promise<void>;
   respond(partId: string, response: AdapterResponse): Promise<void>;
   interrupt(): Promise<void>;
   dispose(): Promise<void>;

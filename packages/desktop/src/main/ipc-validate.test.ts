@@ -24,6 +24,6 @@ test("mede o tamanho serializado em bytes e recusa acima do limite", () => {
   const oversized = { method: "system.ping", params: {}, extra: "x".repeat(MAX_FRAME_BYTES) };
   assert.deepEqual(validateIpcPayload(oversized), {
     ok: false,
-    error: { code: "too_large", message: "A requisição excede 1 MiB." },
+    error: { code: "too_large", message: "A requisição excede 64 MiB." },
   });
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { lstat, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -378,7 +378,7 @@ test("deixa a duração nula quando não há início ou duração informados", a
 test("modos Codex usam as políticas reais do app-server", async (t) => {
   for (const [mode, sandbox, approvalPolicy] of [
     ["read-only", "read-only", "never"],
-    ["edit", "workspace-write", "on-request"],
+    ["edit", "workspace-write", "untrusted"],
     ["full", "danger-full-access", "never"],
   ] as const) {
     await t.test(mode, async () => {
@@ -482,7 +482,7 @@ test("pergunta, plano aprovado e atualização da lista de tarefas", async (t) =
       assert.ok(question.type === "question" && question.questions[0]?.options.length === 2);
       await harness.manager.respond(conversation.id, question.id, {
         responseType: "question",
-        answers: { opcao: ["A"] },
+        answers: { "0": ["A"] },
       });
       await waitForState(harness, conversation.id, "idle");
       const response = harness.fakes[0]?.messages[0]?.find(
@@ -730,4 +730,47 @@ test("o serviço recupera mensagens streaming após reinício", async () => {
   assert.equal(recovered?.status, "interrupted");
   assert.ok(recovered?.parts.some((part) => part.type === "error" && part.retryable));
   db.close();
+});
+
+test("Codex recebe texto e localImage; o arquivo temporário some ao fim do turno", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    const imageData = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    const attachments = [
+      { name: "notas.md", mimeType: "text/markdown", kind: "text" as const, data: "linha 1" },
+      { name: "pixel.png", mimeType: "image/png", kind: "image" as const, data: imageData },
+    ];
+    const prompt = fixturePrompt("texto");
+    const sent = await harness.manager.send(conversation.id, prompt, false, attachments);
+    await waitForState(harness, conversation.id, "idle");
+
+    const turnStart = harness.fakes[0]?.messages[0]?.find(
+      (message) => message.method === "turn/start",
+    );
+    assert.ok(turnStart);
+    const input = (turnStart.params as { input: Record<string, unknown>[] }).input;
+    assert.deepEqual(input.slice(0, 2), [
+      { type: "text", text: prompt },
+      { type: "text", text: "Arquivo anexado: notas.md\n\n```\nlinha 1\n```" },
+    ]);
+    assert.equal(input[2]?.type, "localImage");
+    const imagePath = input[2]?.path;
+    assert.equal(typeof imagePath, "string");
+    assert.equal(path.isAbsolute(imagePath as string), true);
+    await assert.rejects(lstat(imagePath as string), { code: "ENOENT" });
+
+    const persisted = getMessage(harness.db, sent.userMessage.id);
+    assert.deepEqual(persisted?.attachments, [
+      { name: "notas.md", mimeType: "text/markdown", kind: "text", sizeBytes: 7 },
+      { name: "pixel.png", mimeType: "image/png", kind: "image", sizeBytes: 8 },
+    ]);
+    const raw = harness.db
+      .prepare("SELECT attachments_json FROM messages WHERE id=?")
+      .get(sent.userMessage.id) as { attachments_json: string };
+    assert.equal(raw.attachments_json.includes(imageData), false);
+    assert.equal(raw.attachments_json.includes("linha 1"), false);
+  } finally {
+    await harness.close();
+  }
 });

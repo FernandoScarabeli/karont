@@ -3,6 +3,7 @@ import { chmodSync, closeSync, lstatSync, openSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import type {
   Conversation,
+  ConversationAttachmentMetadata,
   ConversationMessage,
   JsonValue,
   MessagePart,
@@ -44,6 +45,10 @@ export const migrations: { version: number; up: string }[] = [
     version: 5,
     up: `ALTER TABLE messages ADD COLUMN started_at_ms INTEGER;
     ALTER TABLE messages ADD COLUMN ended_at_ms INTEGER;`,
+  },
+  {
+    version: 6,
+    up: "ALTER TABLE messages ADD COLUMN attachments_json TEXT;",
   },
 ];
 
@@ -131,13 +136,14 @@ export function updateConversation(db: DatabaseSync, conversation: Conversation)
 
 export function addMessage(db: DatabaseSync, message: ConversationMessage): void {
   db.prepare(
-    "INSERT INTO messages (id,conversation_id,author,status,parts,created_at,updated_at,started_at_ms,ended_at_ms) VALUES (?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO messages (id,conversation_id,author,status,parts,attachments_json,created_at,updated_at,started_at_ms,ended_at_ms) VALUES (?,?,?,?,?,?,?,?,?,?)",
   ).run(
     message.id,
     message.conversationId,
     message.author,
     message.status,
     JSON.stringify(message.parts),
+    message.attachments ? JSON.stringify(message.attachments) : null,
     message.createdAt,
     message.updatedAt,
     message.startedAt ?? null,
@@ -147,10 +153,11 @@ export function addMessage(db: DatabaseSync, message: ConversationMessage): void
 
 export function saveMessage(db: DatabaseSync, message: ConversationMessage): void {
   db.prepare(
-    "UPDATE messages SET status=?,parts=?,updated_at=?,started_at_ms=?,ended_at_ms=? WHERE id=?",
+    "UPDATE messages SET status=?,parts=?,attachments_json=?,updated_at=?,started_at_ms=?,ended_at_ms=? WHERE id=?",
   ).run(
     message.status,
     JSON.stringify(message.parts),
+    message.attachments ? JSON.stringify(message.attachments) : null,
     message.updatedAt,
     message.startedAt ?? null,
     message.endedAt ?? null,
@@ -231,6 +238,7 @@ type MessageRow = {
   author: ConversationMessage["author"];
   status: ConversationMessage["status"];
   parts: string;
+  attachments_json: string | null;
   started_at_ms: number | null;
   ended_at_ms: number | null;
   created_at: string;
@@ -257,6 +265,9 @@ function mapMessage(row: MessageRow): ConversationMessage {
     author: row.author,
     status: row.status,
     parts: JSON.parse(row.parts) as MessagePart[],
+    ...(row.attachments_json
+      ? { attachments: JSON.parse(row.attachments_json) as ConversationAttachmentMetadata[] }
+      : {}),
     ...(row.started_at_ms !== null ? { startedAt: row.started_at_ms } : {}),
     ...(row.ended_at_ms !== null ? { endedAt: row.ended_at_ms } : {}),
     createdAt: row.created_at,
