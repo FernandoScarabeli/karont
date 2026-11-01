@@ -5,9 +5,11 @@ import {
   type AnyEvent,
   agentModelsSchema,
   type Conversation,
+  type ConversationAttachment,
   type ConversationMessage,
   type MessagePart,
 } from "@karont/contract";
+import { validateAttachments } from "../attachments.ts";
 import { DeltaCoalescer } from "../coalescer.ts";
 import {
   addMessage,
@@ -111,7 +113,9 @@ export class ConversationManager {
     id: string,
     text: string,
     plan?: boolean,
+    attachments?: ConversationAttachment[],
   ): Promise<{ userMessage: ConversationMessage; agentMessage: ConversationMessage }> {
+    const validatedAttachments = validateAttachments(attachments);
     const conversation = this.#requireConversation(id);
     if (conversation.state === "working" || conversation.state === "waiting")
       throw new Error("A conversa já está em andamento.");
@@ -122,6 +126,9 @@ export class ConversationManager {
       author: "user",
       status: "done",
       parts: [{ id: randomUUID(), type: "text", markdown: text }],
+      ...(validatedAttachments.metadata.length
+        ? { attachments: validatedAttachments.metadata }
+        : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -141,7 +148,7 @@ export class ConversationManager {
       throw error;
     }
     const agentMessage = this.#newAgentMessage(id);
-    await this.#startTurn(conversation, agentMessage, text, plan);
+    await this.#startTurn(conversation, agentMessage, text, plan, validatedAttachments.data);
     return { userMessage, agentMessage };
   }
 
@@ -343,6 +350,7 @@ export class ConversationManager {
     message: ConversationMessage,
     text: string,
     plan?: boolean,
+    attachments: ConversationAttachment[] = [],
   ): Promise<void> {
     addMessage(this.#db, message);
     conversation.state = "working";
@@ -404,7 +412,7 @@ export class ConversationManager {
     active.currentMessage = message;
     try {
       await active.startPromise;
-      await active.adapter.send(text, plan);
+      await active.adapter.send(text, plan, attachments);
     } catch (error) {
       if (message.status === "streaming" && !this.#closing) {
         const kind = error instanceof AgentCliError ? error.errorType : "failed";

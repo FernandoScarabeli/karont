@@ -95,12 +95,20 @@ export const messagePartSchema = z.discriminatedUnion("type", [
   }),
 ]);
 export type MessagePart = z.infer<typeof messagePartSchema>;
+export const conversationAttachmentMetadataSchema = z.strictObject({
+  name: z.string().min(1).max(255),
+  mimeType: z.string().min(1).max(100),
+  kind: z.enum(["image", "text"]),
+  sizeBytes: z.number().int().nonnegative(),
+});
+export type ConversationAttachmentMetadata = z.infer<typeof conversationAttachmentMetadataSchema>;
 export const messageSchema = z.strictObject({
   id: z.string().min(1),
   conversationId: z.string().min(1),
   author: z.enum(["user", "agent"]),
   status: z.enum(["streaming", "done", "interrupted", "error"]),
   parts: z.array(messagePartSchema),
+  attachments: z.array(conversationAttachmentMetadataSchema).max(8).optional(),
   startedAt: z.number().int().nonnegative().optional(),
   endedAt: z.number().int().nonnegative().optional(),
   createdAt: z.iso.datetime({ offset: true }),
@@ -113,10 +121,26 @@ export const conversationOptionsSchema = z.strictObject({
   model: z.string().min(1).max(80).nullable().optional(),
   effort: reasoningEffortSchema.nullable().optional(),
 });
+export const conversationAttachmentSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    name: z.string().min(1).max(255),
+    mimeType: z.string().min(1).max(100),
+    kind: z.literal("image"),
+    data: z.string(),
+  }),
+  z.strictObject({
+    name: z.string().min(1).max(255),
+    mimeType: z.string().min(1).max(100),
+    kind: z.literal("text"),
+    data: z.string(),
+  }),
+]);
+export type ConversationAttachment = z.infer<typeof conversationAttachmentSchema>;
 export const conversationSendParamsSchema = z.strictObject({
   id: z.string().min(1),
   text: z.string().min(1).max(65_536),
   plan: z.boolean().optional(),
+  attachments: z.array(conversationAttachmentSchema).max(8).optional(),
 });
 export const agentModelsSchema = z.strictObject({
   agent: conversationAgentSchema,

@@ -16,6 +16,7 @@ export type FakeClaudeSpawn = ((
 ) => ChildProcess) & {
   controlRequests: Array<{ subtype: string; mode?: string }>;
   controlResponses: Record<string, unknown>[];
+  messages: Record<string, unknown>[];
 };
 
 /** Process-compatible Claude fake. It consumes host JSONL and replays captured fixture lines. */
@@ -25,15 +26,18 @@ export function createFakeClaudeSpawn(
 ): FakeClaudeSpawn {
   const controlRequests: FakeClaudeSpawn["controlRequests"] = [];
   const controlResponses: FakeClaudeSpawn["controlResponses"] = [];
+  const messages: FakeClaudeSpawn["messages"] = [];
   const spawn = (() =>
     new FakeClaudeProcess(
       fixturePath,
       options,
       controlRequests,
       controlResponses,
+      messages,
     ) as unknown as ChildProcess) as unknown as FakeClaudeSpawn;
   spawn.controlRequests = controlRequests;
   spawn.controlResponses = controlResponses;
+  spawn.messages = messages;
   return spawn;
 }
 
@@ -48,6 +52,7 @@ class FakeClaudeProcess extends EventEmitter {
   readonly #options: FakeClaudeOptions;
   readonly #controlRequests: FakeClaudeSpawn["controlRequests"];
   readonly #controlResponses: FakeClaudeSpawn["controlResponses"];
+  readonly #messages: FakeClaudeSpawn["messages"];
   #cursor = 0;
   #pending = "";
 
@@ -56,12 +61,14 @@ class FakeClaudeProcess extends EventEmitter {
     options: FakeClaudeOptions,
     controlRequests: FakeClaudeSpawn["controlRequests"],
     controlResponses: FakeClaudeSpawn["controlResponses"],
+    messages: FakeClaudeSpawn["messages"],
   ) {
     super();
     this.#options = options;
     this.#exitAfterResult = options.exitAfterResult === true;
     this.#controlRequests = controlRequests;
     this.#controlResponses = controlResponses;
+    this.#messages = messages;
     this.#records = readFileSync(fixturePath, "utf8")
       .split(/\r?\n/)
       .filter(Boolean)
@@ -95,6 +102,7 @@ class FakeClaudeProcess extends EventEmitter {
       this.#fail("JSON inválido do host.");
       return;
     }
+    this.#messages.push(value);
     if (value.type === "control_request") {
       const request = value.request as Record<string, unknown> | undefined;
       if (request?.subtype === "initialize" || request?.subtype === "interrupt") {

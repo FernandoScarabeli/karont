@@ -105,14 +105,16 @@ class FakeCodexProcess extends EventEmitter {
       this.#turnStarts > 0 &&
       expected.method === "turn/start"
         ? matchesAdjustmentTurn(expected.params, value.params)
-        : expected.method === "initialize"
-          ? deepEqual(
-              isRecord(expected.params) ? expected.params.capabilities : undefined,
-              isRecord(value.params) ? value.params.capabilities : undefined,
-            )
-          : expected.method === "thread/start"
-            ? deepEqual(omitPolicy(expected.params), omitPolicy(value.params))
-            : deepEqual(expected.params ?? {}, value.params ?? {});
+        : expected.method === "turn/start"
+          ? matchesTurnStart(expected.params, value.params)
+          : expected.method === "initialize"
+            ? deepEqual(
+                isRecord(expected.params) ? expected.params.capabilities : undefined,
+                isRecord(value.params) ? value.params.capabilities : undefined,
+              )
+            : expected.method === "thread/start"
+              ? deepEqual(omitPolicy(expected.params), omitPolicy(value.params))
+              : deepEqual(expected.params ?? {}, value.params ?? {});
     if (!paramsMatch) {
       this.#fail(`Parâmetros de ${String(value.method)} não correspondem à fixture.`);
       return;
@@ -259,6 +261,24 @@ function matchesAdjustmentTurn(expected: unknown, actual: unknown): boolean {
     isRecord(actual.input[0]) &&
     typeof actual.input[0].text === "string"
   );
+}
+
+function matchesTurnStart(expected: unknown, actual: unknown): boolean {
+  if (!isRecord(expected) || !isRecord(actual)) return false;
+  const { input: expectedInput, ...expectedParams } = expected;
+  const { input: actualInput, ...actualParams } = actual;
+  if (!Array.isArray(expectedInput) || !Array.isArray(actualInput) || actualInput.length < 1)
+    return false;
+  if (!deepEqual(expectedParams, actualParams) || !deepEqual(expectedInput[0], actualInput[0]))
+    return false;
+  return actualInput
+    .slice(1)
+    .every(
+      (item) =>
+        isRecord(item) &&
+        ((item.type === "text" && typeof item.text === "string") ||
+          (item.type === "localImage" && typeof item.path === "string")),
+    );
 }
 
 function isRecord(value: unknown): value is JsonRecord {

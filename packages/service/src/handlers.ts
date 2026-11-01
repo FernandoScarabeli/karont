@@ -14,7 +14,7 @@ import { AgentRegistry } from "./agents/registry.ts";
 import { DeltaCoalescer } from "./coalescer.ts";
 import { getSetting, recordRecentFolder, setSetting } from "./db.ts";
 import { ServiceError } from "./errors.ts";
-import { listRecentFolders, validateFolder } from "./folders.ts";
+import { gitInfo, listRecentFolders, validateFolder } from "./folders.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
 
 export { ServiceError } from "./errors.ts";
@@ -117,7 +117,12 @@ export function createHandlers({
       }
       case "conversation.send":
         return conversationManager
-          .send(request.params.id, request.params.text, request.params.plan)
+          .send(
+            request.params.id,
+            request.params.text,
+            request.params.plan,
+            request.params.attachments,
+          )
           .catch((error: unknown) => {
             throw conversationError(error);
           });
@@ -164,6 +169,8 @@ export function createHandlers({
         return listRecentFolders(db, homeDir);
       case "folders.validate":
         return validateFolder(request.params.path);
+      case "folders.gitInfo":
+        return gitInfo(request.params.path);
       case "terminals.list":
         return terminalManager.list();
       case "terminals.open": {

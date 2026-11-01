@@ -303,9 +303,21 @@ test("pergunta e plano aguardam decisão do usuário", async (t) => {
       assert.equal(question.questions[0]?.options.length, 2);
       await harness.manager.respond(conversation.id, question.id, {
         responseType: "question",
-        answers: { "Você prefere A ou B?": ["A"] },
+        answers: { "0": ["A"] },
       });
       await waitForState(harness, conversation.id, "idle");
+      const questionResponse = harness.claudeFake.controlResponses.find((entry) => {
+        const response = entry.response as { updatedInput?: { answers?: unknown } } | undefined;
+        return response?.updatedInput?.answers !== undefined;
+      });
+      assert.deepEqual(
+        (
+          questionResponse?.response as
+            | { updatedInput?: { answers?: Record<string, string> } }
+            | undefined
+        )?.updatedInput?.answers,
+        { "Você prefere A ou B?": "A" },
+      );
       const answered = latestAgent(harness, conversation.id)?.parts.find(
         (part) => part.id === question.id,
       );
@@ -553,4 +565,55 @@ test("setOptions reabre a sessão com novas flags de acesso, modelo e esforço",
 test("ClaudeAdapter preserva nome do executável no erro de binário ausente", () => {
   const error = new AgentCliError("cli-not-found", "Claude Code não encontrado.");
   assert.equal(error.errorType, "cli-not-found");
+});
+
+test("Claude recebe anexos em blocos e a mensagem salva apenas metadados", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    const imageData = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    const attachments = [
+      { name: "notas.md", mimeType: "text/markdown", kind: "text" as const, data: "Use `code`." },
+      { name: "pixel.png", mimeType: "image/png", kind: "image" as const, data: imageData },
+    ];
+    const sent = await harness.manager.send(
+      conversation.id,
+      "Leia os arquivos.",
+      false,
+      attachments,
+    );
+    await waitForState(harness, conversation.id, "idle");
+
+    const userLine = harness.claudeFake.messages.find((message) => message.type === "user");
+    assert.ok(userLine);
+    const content = (userLine.message as { content: unknown[] }).content;
+    assert.deepEqual(content, [
+      { type: "text", text: "Leia os arquivos." },
+      {
+        type: "text",
+        text: "Arquivo anexado: notas.md\n\n```\nUse `code`.\n```",
+      },
+      {
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data: imageData },
+      },
+    ]);
+
+    assert.deepEqual(harness.manager.get(conversation.id)?.messages[0]?.attachments, [
+      { name: "notas.md", mimeType: "text/markdown", kind: "text", sizeBytes: 11 },
+      { name: "pixel.png", mimeType: "image/png", kind: "image", sizeBytes: 8 },
+    ]);
+    const persisted = getMessage(harness.db, sent.userMessage.id);
+    assert.deepEqual(
+      persisted?.attachments,
+      harness.manager.get(conversation.id)?.messages[0]?.attachments,
+    );
+    const raw = harness.db
+      .prepare("SELECT attachments_json FROM messages WHERE id=?")
+      .get(sent.userMessage.id) as { attachments_json: string };
+    assert.equal(raw.attachments_json.includes(imageData), false);
+    assert.equal(raw.attachments_json.includes("Use `code`."), false);
+  } finally {
+    await harness.close();
+  }
 });

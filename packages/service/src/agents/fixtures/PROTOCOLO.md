@@ -107,7 +107,7 @@ O host interrompe com `turn/interrupt` e `{threadId,turnId}`. A resposta real fo
 | Modo Karont | `sandbox` | `approvalPolicy` | Limite observado |
 | --- | --- | --- | --- |
 | Só leitura | `read-only` | `never` | Não concede escalada de escrita. |
-| Pode editar (pede permissão para comandos) | `workspace-write` | `on-request` | Comandos dentro da política podem rodar sem pedido; escaladas são aprovadas pelo host. |
+| Pode editar (pede permissão para comandos) | `workspace-write` | `untrusted` | Comandos não confiáveis pedem aprovação; o sandbox permite editar o Projeto. |
 | Liberado | `danger-full-access` | `never` | Sem sandbox/aprovação automática; a pasta do Projeto não fica isolada. |
 
 ## Mapa para as partes da mensagem do Karont

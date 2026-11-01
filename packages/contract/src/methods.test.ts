@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { conversationSendParamsSchema, messageSchema } from "./conversations.ts";
 import {
   jsonValueSchema,
   MAX_SETTING_BYTES,
@@ -21,6 +22,61 @@ test("todos os métodos aceitam parâmetros válidos", () => {
   assert.equal(
     methods["dev.streamTest"].params.safeParse({ chunks: 1, chunkSize: 1 }).success,
     true,
+  );
+  assert.equal(methods["folders.gitInfo"].params.safeParse({ path: "/tmp" }).success, true);
+  assert.equal(
+    methods["folders.gitInfo"].result.safeParse({ branch: "feature/anexos", detached: false })
+      .success,
+    true,
+  );
+});
+
+test("conversation.send aceita até 8 anexos e a mensagem expõe só metadados", () => {
+  const attachment = {
+    name: "notas.md",
+    mimeType: "text/markdown",
+    kind: "text",
+    data: "conteúdo",
+  } as const;
+  const schema = methods["conversation.send"].params;
+  assert.equal(schema, conversationSendParamsSchema);
+  assert.equal(
+    schema.safeParse({ id: "c1", text: "Leia", attachments: [attachment] }).success,
+    true,
+  );
+  assert.equal(
+    schema.safeParse({
+      id: "c1",
+      text: "Leia",
+      attachments: Array.from({ length: 8 }, () => attachment),
+    }).success,
+    true,
+  );
+  assert.equal(
+    schema.safeParse({
+      id: "c1",
+      text: "Leia",
+      attachments: Array.from({ length: 9 }, () => attachment),
+    }).success,
+    false,
+  );
+  const savedMessage = {
+    id: "m1",
+    conversationId: "c1",
+    author: "user",
+    status: "done",
+    parts: [],
+    attachments: [{ name: "notas.md", mimeType: "text/markdown", kind: "text", sizeBytes: 8 }],
+    createdAt: "2026-10-31T10:00:00Z",
+    updatedAt: "2026-10-31T10:00:00Z",
+  };
+  assert.equal(messageSchema.safeParse(savedMessage).success, true);
+  assert.equal(
+    messageSchema.safeParse({
+      ...savedMessage,
+      attachments: [{ ...savedMessage.attachments[0], data: "conteúdo" }],
+    }).success,
+    false,
   );
 });
 
@@ -152,9 +208,11 @@ test("métodos de terminal validam caminhos, dimensões e bytes UTF-8", () => {
 test("folders.* valida caminhos e pickFolder não é método de requisição", () => {
   assert.equal(isMethodName("folders.recent"), true);
   assert.equal(isMethodName("folders.validate"), true);
+  assert.equal(isMethodName("folders.gitInfo"), true);
   assert.equal(isMethodName("pickFolder"), false);
   assert.equal(methods["folders.recent"].params.safeParse({}).success, true);
   assert.equal(methods["folders.validate"].params.safeParse({ path: "./projeto" }).success, true);
+  assert.equal(methods["folders.gitInfo"].params.safeParse({ path: "./projeto" }).success, true);
   assert.equal(methods["folders.validate"].params.safeParse({ path: "" }).success, false);
   assert.equal(
     methods["folders.validate"].params.safeParse({ path: "x".repeat(4_097) }).success,
