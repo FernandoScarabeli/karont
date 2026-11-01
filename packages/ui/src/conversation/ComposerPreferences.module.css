@@ -57,6 +57,47 @@
   cursor: not-allowed;
 }
 
+.planToggle {
+  display: inline-flex;
+  min-height: var(--k-control-height-md);
+  align-items: center;
+  gap: var(--k-space-1);
+  padding: 0 var(--k-space-2);
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-md);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-medium);
+  cursor: pointer;
+}
+
+.planToggle:hover:not(:disabled) {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
+.planToggle[aria-pressed="true"] {
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+}
+
+.planToggle:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.planToggle:disabled {
+  opacity: var(--k-opacity-disabled);
+  cursor: not-allowed;
+}
+
+.planToggleState {
+  color: var(--k-color-text-muted);
+  font-weight: var(--k-weight-regular);
+}
+
 .chevron {
   position: absolute;
   right: var(--k-space-1);

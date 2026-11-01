@@ -590,11 +590,16 @@ const PlanPart = memo(function PlanPart({
   const [submitting, setSubmitting] = useState(false);
   if (part.state !== "pending") {
     return (
-      <p className={styles.responseLine}>
-        <Check aria-hidden="true" size={15} />
-        {part.state === "approved" ? t.chat.planResults.approved : t.chat.planResults.rejected}
-        {part.comment ? ` · ${part.comment}` : ""}
-      </p>
+      <details className={styles.planResult}>
+        <summary className={styles.planSummary}>
+          <Check aria-hidden="true" size={15} />
+          {part.state === "approved" ? t.chat.planResults.approved : t.chat.planResults.rejected}
+        </summary>
+        <div className={styles.planResultBody}>
+          <MarkdownBody markdown={part.markdown} onAnnounce={() => undefined} />
+          {part.comment ? <p className={styles.planComment}>{part.comment}</p> : null}
+        </div>
+      </details>
     );
   }
   return (
@@ -611,38 +616,54 @@ const PlanPart = memo(function PlanPart({
         </label>
       ) : null}
       <div className={styles.cardActions}>
-        <Button
-          disabled={submitting}
-          onClick={() => {
-            setSubmitting(true);
-            void onRespond({ partId: part.id, responseType: "plan", decision: "approve" }).finally(
-              () => setSubmitting(false),
-            );
-          }}
-          variant="primary"
-        >
-          {t.chat.approve}
-        </Button>
         {!adjusting ? (
-          <Button onClick={() => setAdjusting(true)} variant="secondary">
-            {t.chat.adjust}
-          </Button>
+          <>
+            <Button
+              disabled={submitting}
+              onClick={() => {
+                setSubmitting(true);
+                void onRespond({
+                  partId: part.id,
+                  responseType: "plan",
+                  decision: "approve",
+                }).finally(() => setSubmitting(false));
+              }}
+              variant="primary"
+            >
+              {t.chat.approve}
+            </Button>
+            <Button onClick={() => setAdjusting(true)} variant="secondary">
+              {t.chat.adjust}
+            </Button>
+          </>
         ) : (
-          <Button
-            disabled={submitting || !comment.trim()}
-            onClick={() => {
-              setSubmitting(true);
-              void onRespond({
-                partId: part.id,
-                responseType: "plan",
-                decision: "reject",
-                comment: comment.trim(),
-              }).finally(() => setSubmitting(false));
-            }}
-            variant="secondary"
-          >
-            {t.chat.sendAdjustment}
-          </Button>
+          <>
+            <Button
+              disabled={submitting || !comment.trim()}
+              onClick={() => {
+                setSubmitting(true);
+                void onRespond({
+                  partId: part.id,
+                  responseType: "plan",
+                  decision: "reject",
+                  comment: comment.trim(),
+                }).finally(() => setSubmitting(false));
+              }}
+              variant="primary"
+            >
+              {t.chat.sendAdjustment}
+            </Button>
+            <Button
+              disabled={submitting}
+              onClick={() => {
+                setAdjusting(false);
+                setComment("");
+              }}
+              variant="secondary"
+            >
+              {t.chat.cancelAdjustment}
+            </Button>
+          </>
         )}
       </div>
     </section>

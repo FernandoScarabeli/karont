@@ -27,6 +27,7 @@ import {
   effortsForModel,
 } from "./ComposerPreferences.tsx";
 import styles from "./NewConversationView.module.css";
+import { setConversationPlanModeActive } from "./planMode.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
 
 const LAST_AGENT_SETTING = "newConversation.lastAgent";
@@ -76,6 +77,7 @@ export function NewConversationView({
   const [mode, setMode] = useState<Conversation["mode"]>("edit");
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState<AgentEffort | "">("");
+  const [planMode, setPlanMode] = useState(false);
   const choiceTriggerRef = useRef<HTMLButtonElement>(null);
   const menuRootRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -413,7 +415,12 @@ export function NewConversationView({
       });
       created = result.conversation;
       upsertConversation(created);
-      await bridge.request("conversation.send", { id: created.id, text });
+      await bridge.request("conversation.send", {
+        id: created.id,
+        text,
+        ...(planMode ? { plan: true } : {}),
+      });
+      setConversationPlanModeActive(created.id, planMode);
       navigate({ name: "conversation", id: created.id });
     } catch (openError) {
       setError(
@@ -515,6 +522,8 @@ export function NewConversationView({
                   mode={mode}
                   model={model}
                   models={models}
+                  planMode={planMode}
+                  disabled={isOpening}
                   onEffortChange={setEffort}
                   onModeChange={setMode}
                   onModelChange={(value) => {
@@ -523,6 +532,7 @@ export function NewConversationView({
                       setEffort("");
                     }
                   }}
+                  onPlanModeChange={setPlanMode}
                 />
               ) : null}
             </div>
