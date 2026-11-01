@@ -63,6 +63,29 @@ function loadHighlightPlugin(): Promise<HighlightPlugin | null> {
   return highlightPluginPromise;
 }
 
+const messageDateFormatter = new Intl.DateTimeFormat("pt-BR", {
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const messageDateFormatterWithYear = new Intl.DateTimeFormat("pt-BR", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function formatMessageDateTime(createdAt: string): string {
+  const date = new Date(createdAt);
+  const formatter =
+    date.getFullYear() === new Date().getFullYear()
+      ? messageDateFormatter
+      : messageDateFormatterWithYear;
+  return formatter.format(date);
+}
+
 export type ResponseInput =
   | { partId: string; responseType: "permission"; decision: "allow" | "always" | "deny" }
   | { partId: string; responseType: "question"; answers: Record<string, string[]> }
@@ -264,53 +287,58 @@ export const MessageRow = memo(function MessageRow({
         inert={!isActionsOpen}
       >
         <div className={styles.messageOptionsInner}>
-          <div className={styles.messageActions}>
-            {message.author === "user" && text.trim() ? (
-              <>
-                <button className={styles.textAction} onClick={() => onCopy(text)} type="button">
-                  <Copy aria-hidden="true" size={14} />
-                  {t.chat.copy}
-                </button>
-                <button className={styles.textAction} onClick={() => onEdit(text)} type="button">
-                  <Pencil aria-hidden="true" size={14} />
-                  {t.chat.edit}
-                </button>
-                {!message.attachments?.length ? (
-                  <button
-                    className={styles.textAction}
-                    disabled={message.status === "streaming"}
-                    onClick={() => onResend(text)}
-                    type="button"
-                  >
-                    <Play aria-hidden="true" size={14} />
-                    {t.chat.resend}
+          <div className={styles.messageOptionsMeta}>
+            <time className={styles.messageTimestamp} dateTime={message.createdAt}>
+              {formatMessageDateTime(message.createdAt)}
+            </time>
+            <div className={styles.messageActions}>
+              {message.author === "user" && text.trim() ? (
+                <>
+                  <button className={styles.textAction} onClick={() => onCopy(text)} type="button">
+                    <Copy aria-hidden="true" size={14} />
+                    {t.chat.copy}
                   </button>
-                ) : null}
-              </>
-            ) : null}
-            {hasRetryableError ? (
-              <button
-                className={styles.textAction}
-                disabled={message.status === "streaming"}
-                onClick={() => onRetry(message.id)}
-                type="button"
-              >
-                <Play aria-hidden="true" size={14} />
-                {t.chat.retry}
-              </button>
-            ) : null}
-            {hasTimeline ? (
-              <button
-                aria-controls={timelineId}
-                aria-expanded={showTimeline}
-                className={styles.timelineToggle}
-                onClick={() => setShowTimeline((value) => !value)}
-                type="button"
-              >
-                <Clock3 aria-hidden="true" size={14} />
-                {t.chat.timeline}
-              </button>
-            ) : null}
+                  <button className={styles.textAction} onClick={() => onEdit(text)} type="button">
+                    <Pencil aria-hidden="true" size={14} />
+                    {t.chat.edit}
+                  </button>
+                  {!message.attachments?.length ? (
+                    <button
+                      className={styles.textAction}
+                      disabled={message.status === "streaming"}
+                      onClick={() => onResend(text)}
+                      type="button"
+                    >
+                      <Play aria-hidden="true" size={14} />
+                      {t.chat.resend}
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+              {hasRetryableError ? (
+                <button
+                  className={styles.textAction}
+                  disabled={message.status === "streaming"}
+                  onClick={() => onRetry(message.id)}
+                  type="button"
+                >
+                  <Play aria-hidden="true" size={14} />
+                  {t.chat.retry}
+                </button>
+              ) : null}
+              {hasTimeline ? (
+                <button
+                  aria-controls={timelineId}
+                  aria-expanded={showTimeline}
+                  className={styles.timelineToggle}
+                  onClick={() => setShowTimeline((value) => !value)}
+                  type="button"
+                >
+                  <Clock3 aria-hidden="true" size={14} />
+                  {t.chat.timeline}
+                </button>
+              ) : null}
+            </div>
           </div>
           {hasTimeline && isActionsOpen && showTimeline ? (
             <TimelineView
