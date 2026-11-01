@@ -112,6 +112,12 @@
   flex: 0 0 var(--k-border-width);
 }
 
+.workingFallback {
+  width: min(100%, var(--k-chat-content-max-width));
+  flex: 0 0 auto;
+  margin-inline: auto;
+}
+
 .messageList[data-reveal="true"] > :not(.bottomSentinel) {
   animation: conversationDataReveal var(--k-duration-fast) var(--k-ease) both;
 }

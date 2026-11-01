@@ -52,6 +52,7 @@ import { cleanMarkdownPreview, formatConversationText } from "./displayText.ts";
 import { getAllowedExternalUrl } from "./externalLinks.ts";
 import { splitMarkdownBlocks } from "./markdownBlocks.ts";
 import type { ConversationMessage, MessagePart } from "./useConversation.ts";
+import { WorkingIndicator } from "./WorkingIndicator.tsx";
 
 type HighlightPlugin = typeof import("rehype-highlight").default;
 let highlightPluginPromise: Promise<HighlightPlugin | null> | null = null;
@@ -110,6 +111,8 @@ export const MessageRow = memo(function MessageRow({
   onAnnounce,
   cwd,
   agent,
+  workingIndicator,
+  onWorkingIndicatorExit,
 }: {
   message: ConversationMessage;
   isActionsOpen: boolean;
@@ -122,6 +125,13 @@ export const MessageRow = memo(function MessageRow({
   onRetry: (messageId: string) => void;
   onAnnounce: (text: string) => void;
   cwd: string;
+  workingIndicator?: {
+    active: boolean;
+    actions: readonly Extract<MessagePart, { type: "action" }>[];
+    lastPart?: MessagePart;
+    stopping: boolean;
+  };
+  onWorkingIndicatorExit?: () => void;
 }) {
   const [showTimeline, setShowTimeline] = useState(false);
   const [visiblePartCount, setVisiblePartCount] = useState(120);
@@ -290,6 +300,9 @@ export const MessageRow = memo(function MessageRow({
               agent,
             )}
           </div>
+          {workingIndicator ? (
+            <WorkingIndicator {...workingIndicator} onExitComplete={onWorkingIndicatorExit} />
+          ) : null}
         </>
       )}
       <div

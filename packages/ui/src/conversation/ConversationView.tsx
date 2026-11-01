@@ -45,6 +45,7 @@ import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
 import { WorkingIndicator } from "./WorkingIndicator.tsx";
+import { getFinalRunningActions } from "./workingLabel.ts";
 
 type ConversationOptionsPatch = {
   mode?: Conversation["mode"];
@@ -95,6 +96,10 @@ export function ConversationView({
   const [isStopping, setIsStopping] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isRenamingTitle, setIsRenamingTitle] = useState(false);
+  const [workingIndicatorPresence, setWorkingIndicatorPresence] = useState(() => ({
+    conversationId: id,
+    present: false,
+  }));
   const [showSlowLoading, setShowSlowLoading] = useState(
     () => !conversation && loading && Date.now() - openedAt >= 300,
   );
@@ -214,6 +219,15 @@ export function ConversationView({
   const orderedMessages = messages;
   const visibleMessages = orderedMessages.slice(-visibleMessageCount);
   const latestMessage = visibleMessages.at(-1);
+  const streamingAgentMessage =
+    latestMessage?.author === "agent" && latestMessage.status === "streaming"
+      ? latestMessage
+      : null;
+  const workingLastPart = streamingAgentMessage?.parts.at(-1);
+  const workingActions = useMemo(
+    () => getFinalRunningActions(streamingAgentMessage?.parts ?? []),
+    [streamingAgentMessage?.parts],
+  );
   const latestPart = latestMessage?.parts.at(-1);
   const latestPartContent =
     latestPart?.type === "text"
@@ -223,9 +237,38 @@ export function ConversationView({
         : latestPart?.type === "action"
           ? `${latestPart.state}:${latestPart.durationMs ?? ""}`
           : (latestPart?.id ?? "");
-  const scrollVersion = `${latestMessage?.id ?? "empty"}:${latestPart?.id ?? ""}:${latestPartContent}:${visibleMessages.length}`;
+  const scrollVersion = `${latestMessage?.id ?? "empty"}:${latestPart?.id ?? ""}:${latestPartContent}:${visibleMessages.length}:${conversation?.state ?? "idle"}`;
   const isWorking = conversation?.state === "working";
   const isWaiting = conversation?.state === "waiting";
+  const workingActive = isWorking || isStopping;
+  const shouldShowWorkingIndicator =
+    !isWaiting &&
+    (workingActive ||
+      (workingIndicatorPresence.conversationId === id && workingIndicatorPresence.present));
+  const workingIndicatorProps = useMemo(
+    () => ({
+      active: workingActive,
+      actions: workingActions,
+      lastPart: workingLastPart,
+      stopping: isStopping,
+    }),
+    [workingActive, workingActions, workingLastPart, isStopping],
+  );
+  const completeWorkingIndicatorExit = useCallback(() => {
+    if (workingActive && !isWaiting) return;
+    setWorkingIndicatorPresence((current) =>
+      current.conversationId === id && current.present ? { ...current, present: false } : current,
+    );
+  }, [id, isWaiting, workingActive]);
+  useEffect(() => {
+    setWorkingIndicatorPresence((current) => {
+      if (current.conversationId !== id) {
+        return { conversationId: id, present: workingActive && !isWaiting };
+      }
+      if (isWaiting) return current.present ? { ...current, present: false } : current;
+      return workingActive && !current.present ? { ...current, present: true } : current;
+    });
+  }, [id, isWaiting, workingActive]);
   const composerAttachments = useComposerAttachments(
     Boolean(conversation && bridge && !isWaiting && !isResponding && !isSending),
     id,
@@ -856,8 +899,30 @@ export function ConversationView({
             onEdit={editMessage}
             onRespond={respond}
             onRetry={retry}
+            onWorkingIndicatorExit={
+              message.author === "agent" &&
+              message.id === latestMessage?.id &&
+              shouldShowWorkingIndicator
+                ? completeWorkingIndicatorExit
+                : undefined
+            }
+            workingIndicator={
+              message.author === "agent" &&
+              message.id === latestMessage?.id &&
+              shouldShowWorkingIndicator
+                ? workingIndicatorProps
+                : undefined
+            }
           />
         ))}
+        {latestMessage?.author !== "agent" && shouldShowWorkingIndicator ? (
+          <div className={styles.workingFallback}>
+            <WorkingIndicator
+              {...workingIndicatorProps}
+              onExitComplete={completeWorkingIndicatorExit}
+            />
+          </div>
+        ) : null}
         <div aria-hidden="true" className={styles.bottomSentinel} ref={bottomSentinelRef} />
       </section>
 
@@ -871,7 +936,6 @@ export function ConversationView({
             <TodosPart part={homeTodos} />
           </div>
         ) : null}
-        {isWorking ? <WorkingIndicator stopping={isStopping} /> : null}
         {composerAttachments.isPreparing ? (
           <p className={styles.progress} role="status">
             <span aria-hidden="true" className={styles.progressMark} />

@@ -91,9 +91,6 @@
   --k-working-dot-stagger: 200ms;
   --k-working-shimmer-duration: 2.8s;
   --k-working-transition-duration: 180ms;
-  --k-working-card-min-width: 540px;
-  --k-working-card-min-height: 300px;
-  --k-working-content-max-width: 1520px;
   --k-ease: cubic-bezier(0.2, 0, 0, 1);
   --k-opacity-disabled: 0.5;
 
