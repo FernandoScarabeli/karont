@@ -68,6 +68,15 @@ Repositório recriado do zero em 2026-10-31.
 
 20. **Planejar** (decisão do orquestrador na ausência do dono, 2026-10-31, revisável): botão "Planejar" no composer. Com ele ligado, o agente só planeja (Claude `plan`, Codex `collaborationMode: plan`); o cartão de plano tem Aprovar (executa no modo de acesso escolhido) e Ajustar.
 
+## M2 — estado em 2026-10-31 (fim da sessão sem o dono)
+Branch `m2-chat` (sem PR). Feito e testado com as CLIs reais no preview (Haiku / GPT-5.6-Luna):
+- Chat com Claude Code (processo aberto, `stream-json`, `--permission-prompts host --permission-prompt-tool stdio`) e Codex (`codex app-server --stdio`).
+- Texto ao vivo com markdown, ações, cartões de permissão (Permitir / Sempre / Negar), pergunta com opções, plano (botão Planejar, Aprovar/Ajustar), tarefas, erro com tentar de novo, Parar, continuar sessão.
+- Composer: agente, modelo (lista real do Codex), esforço por modelo, acesso, Planejar.
+- Linha do tempo em cascata com horários reais por parte.
+- Leveza: app parado ≈ 340 MB de memória real (PSS, janela + serviço + preview), CPU ≈ 0%.
+- Fixtures reais em `packages/service/src/agents/fixtures/` e protocolo em `PROTOCOLO.md`.
+
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
 - Node 24 roda `.ts` direto (type stripping): testes e serviço em dev rodam sem build. Por isso o TS usa `erasableSyntaxOnly` (sem `enum`/`namespace`) e imports com extensão `.ts`.
