@@ -41,7 +41,12 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "../components/Button/Button.tsx";
 import { t } from "../i18n/pt-BR.ts";
-import { countDiffLines, parseFileChanges } from "./actionDiff.ts";
+import {
+  countDiffLines,
+  formatDiffStats,
+  getDiffDisplayLines,
+  parseFileChanges,
+} from "./actionDiff.ts";
 import {
   type ConversationAction,
   categoryForAction,
@@ -1224,7 +1229,8 @@ function actionBatchLabel(
   if (!changes.length) return fallback;
   const added = changes.reduce((total, change) => total + countDiffLines(change.diff).added, 0);
   const removed = changes.reduce((total, change) => total + countDiffLines(change.diff).removed, 0);
-  return `${fallback} +${added} −${removed}`;
+  const stats = formatDiffStats(added, removed);
+  return stats ? `${fallback} ${stats}` : fallback;
 }
 
 function actionPaths(action: ConversationAction, cwd: string): string[] {
@@ -1306,21 +1312,15 @@ function commandOutput(value: string): { output: string; exitCode: string | null
 
 function renderDiff(diff: string): ReactNode[] {
   const occurrences = new Map<string, number>();
-  let inHunk = false;
-  return diff.split(/\r?\n/u).map((line) => {
+  return getDiffDisplayLines(diff).map(({ text: line, kind }) => {
     const occurrence = occurrences.get(line) ?? 0;
     occurrences.set(line, occurrence + 1);
-    if (line.startsWith("@@")) inHunk = true;
-    const isFileHeader =
-      !inHunk &&
-      (line === "+++" || line.startsWith("+++ ") || line === "---" || line.startsWith("--- "));
-    const className = isFileHeader
-      ? ""
-      : line.startsWith("+")
+    const className =
+      kind === "added"
         ? styles.diffAdded
-        : line.startsWith("-")
+        : kind === "removed"
           ? styles.diffRemoved
-          : line.startsWith("@@")
+          : kind === "hunk"
             ? styles.diffHunk
             : "";
     return (
