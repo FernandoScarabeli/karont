@@ -64,6 +64,8 @@ Repositório recriado do zero em 2026-10-31.
 
 18. M2 é **chat interativo completo** (2026-10-31): permissão de comando no chat (Permitir / Sempre nesta conversa / Negar), perguntas do agente com opções, plano para aprovar, lista de tarefas ao vivo, linha do tempo dos passos. Claude por processo aberto com `stream-json` + `--permission-prompts host`; Codex por `codex app-server`. Modos: Só leitura / Pode editar (comandos pedem permissão) / Liberado. Composer no estilo da referência do dono (agente/modelo, esforço, acesso, anexar, enviar; faixa embaixo com pasta e branch). Referências de interface: agent-elements.21st.dev, fluidfunctionalism.com, kobra.systems (trace-waterfall). Dependências `react-markdown`, `remark-gfm`, `rehype-highlight` aprovadas. Fixtures gravados com o modelo mais barato (Haiku / menor do Codex).
 
+19. **Leveza é requisito** (2026-10-31): o app não pode comer RAM nem CPU. Toda tarefa do M2 em diante leva critério de desempenho (lista virtualizada em conversas longas, deltas agrupados, nada de re-render por token, processos das CLIs encerrados quando ociosos, sem polling). O orquestrador mede RAM/CPU no fim de cada marco.
+
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
 - Node 24 roda `.ts` direto (type stripping): testes e serviço em dev rodam sem build. Por isso o TS usa `erasableSyntaxOnly` (sem `enum`/`namespace`) e imports com extensão `.ts`.
