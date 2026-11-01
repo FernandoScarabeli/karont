@@ -7,9 +7,9 @@
 .card {
   position: relative;
   display: grid;
-  gap: var(--k-space-3);
+  gap: var(--k-space-2);
   min-width: 0;
-  padding: var(--k-space-4);
+  padding: var(--k-space-3) var(--k-space-4);
   border: var(--k-border-width) solid var(--k-color-border);
   border-radius: var(--k-radius-2xl);
   background: var(--k-color-bg-raised);
@@ -111,9 +111,9 @@
   display: flex;
   min-width: 0;
   flex: 1 1 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: var(--k-space-2);
+  gap: var(--k-space-1);
 }
 
 .actions {

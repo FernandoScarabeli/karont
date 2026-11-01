@@ -1,0 +1,98 @@
+.wrap {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.trigger {
+  display: inline-flex;
+  min-width: 0;
+  min-height: var(--k-control-height-md);
+  align-items: center;
+  gap: var(--k-space-1);
+  padding: 0 var(--k-space-2);
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-md);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.trigger:hover:not(:disabled),
+.trigger[aria-expanded="true"] {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
+.trigger:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.trigger:disabled {
+  opacity: var(--k-opacity-disabled);
+  cursor: not-allowed;
+}
+
+.chevron {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+}
+
+.listbox {
+  display: grid;
+  gap: var(--k-space-1);
+}
+
+.option {
+  display: flex;
+  min-width: 0;
+  min-height: var(--k-control-height-lg);
+  align-items: center;
+  gap: var(--k-space-3);
+  padding: 0 var(--k-space-2);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
+  cursor: pointer;
+}
+
+.option:hover,
+.option:focus-visible,
+.selected {
+  background: var(--k-color-bg-hover);
+}
+
+.option:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: calc(-1 * var(--k-focus-ring-width));
+}
+
+.optionContent {
+  display: inline-flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.check {
+  flex: 0 0 auto;
+  color: var(--k-color-text-primary);
+  visibility: hidden;
+}
+
+.check[data-visible="true"] {
+  visibility: visible;
+}
+
+.action {
+  margin-block-start: var(--k-space-1);
+  padding-block-start: var(--k-space-1);
+  border-block-start: var(--k-border-width) solid var(--k-color-border);
+}

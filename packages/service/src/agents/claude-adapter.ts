@@ -589,7 +589,7 @@ export class ClaudeAdapter implements AgentAdapter {
       if (conversation?.mode === "read-only" && !READ_ONLY_ALLOWED_TOOLS.has(tool)) {
         this.#respondAutomatically(requestId, {
           behavior: "deny",
-          message: "O modo Só leitura bloqueia esta ferramenta.",
+          message: "O modo Só ler bloqueia esta ferramenta.",
         });
         return;
       }

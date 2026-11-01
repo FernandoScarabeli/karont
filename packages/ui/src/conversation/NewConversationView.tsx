@@ -1,9 +1,8 @@
 import type { Agent, Conversation, ConversationAttachment } from "@karont/contract";
 import { BridgeError } from "@karont/contract";
-import { ChevronDown, Folder, TriangleAlert } from "lucide-react";
+import { Folder, TriangleAlert } from "lucide-react";
 import {
   type DragEventHandler,
-  type KeyboardEvent,
   type ReactNode,
   type RefObject,
   useCallback,
@@ -16,6 +15,7 @@ import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
 import { Composer } from "../components/Composer/Composer.tsx";
+import { ComposerMenu, type ComposerMenuOption } from "../components/ComposerMenu/ComposerMenu.tsx";
 import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { TextField } from "../components/TextField/TextField.tsx";
 import { t } from "../i18n/pt-BR.ts";
@@ -28,8 +28,11 @@ import {
 import {
   type AgentEffort,
   type AgentModels,
+  type ComposerPopoverName,
   ComposerPreferences,
-  effortsForModel,
+  effortSettingKey,
+  initialEffortForModel,
+  modelSettingKey,
 } from "./ComposerPreferences.tsx";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import styles from "./NewConversationView.module.css";
@@ -42,14 +45,6 @@ const TERMINAL_CHOICE = "terminal";
 const PERSONAL_FOLDER = "~";
 
 type AgentChoice = typeof TERMINAL_CHOICE | string;
-type ActiveMenu = "choice" | null;
-type MenuOption = {
-  id: string;
-  content: ReactNode;
-  selected: boolean;
-  onSelect: () => void;
-};
-
 export function NewConversationView({
   titleRef,
   headerActions,
@@ -71,8 +66,7 @@ export function NewConversationView({
   const [folderPath, setFolderPath] = useState(PERSONAL_FOLDER);
   const [homePath, setHomePath] = useState<string>();
   const [command, setCommand] = useState("");
-  const [activeMenu, setActiveMenu] = useState<ActiveMenu>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activePopover, setActivePopover] = useState<ComposerPopoverName>(null);
   const [isOpening, setIsOpening] = useState(false);
   const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false);
   const [folderDialogPath, setFolderDialogPath] = useState("");
@@ -83,19 +77,16 @@ export function NewConversationView({
   const [mode, setMode] = useState<Conversation["mode"]>("edit");
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState<AgentEffort | "">("");
+  const [preferredEffort, setPreferredEffort] = useState<AgentEffort | "">("");
   const [planMode, setPlanMode] = useState(false);
   const [greetingName, setGreetingName] = useState<string | null>(null);
   const [openingGreeting] = useState(() => ({
     hour: new Date().getHours(),
     sample: Math.random(),
   }));
-  const choiceTriggerRef = useRef<HTMLButtonElement>(null);
-  const menuRootRef = useRef<HTMLDivElement>(null);
-  const optionRefs = useRef<Array<HTMLDivElement | null>>([]);
   const choiceTouchedRef = useRef(false);
   const folderTouchedRef = useRef(false);
   const titleId = useId();
-  const choiceListboxId = useId();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const folderDialogFormId = useId();
 
@@ -198,20 +189,6 @@ export function NewConversationView({
     };
   }, [bridge, saveSetting, updateFolderPath]);
 
-  useEffect(() => {
-    if (activeMenu === null) return;
-    optionRefs.current[activeIndex]?.focus();
-  }, [activeIndex, activeMenu]);
-
-  useEffect(() => {
-    if (activeMenu === null) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!menuRootRef.current?.contains(event.target as Node)) setActiveMenu(null);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [activeMenu]);
-
   const selectedAgent = agents.find((agent) => agent.id === choice);
   const selectedTitle = selectedAgent?.name ?? t.conversation.terminal;
   const canAttachFiles = Boolean(
@@ -233,45 +210,87 @@ export function NewConversationView({
     : folderPath;
   const folderButtonLabel = `${t.conversation.folderAccessibleName(accessibleFolderPath)}`;
 
+  const selectedAgentId =
+    selectedAgent?.id === "claude" || selectedAgent?.id === "codex" ? selectedAgent.id : null;
+  const currentModels = models?.agent === selectedAgentId ? models : null;
+  const modelListAvailable = Boolean(currentModels?.models.length);
+  const currentModel = currentModels?.models.some((option) => option.id === model) ? model : "";
+  const currentEffort = currentModel ? effort : "";
+
   useEffect(() => {
-    if (
-      !bridge ||
-      !selectedAgent ||
-      (selectedAgent.id !== "claude" && selectedAgent.id !== "codex")
-    ) {
+    if (!bridge || !selectedAgentId) {
       setModels(null);
       setModel("");
       setEffort("");
+      setPreferredEffort("");
       return;
     }
-    const agentId = selectedAgent.id;
+    const agentId = selectedAgentId;
     let mounted = true;
     setModels(null);
-    void bridge
-      .request("agent.models", { agent: agentId })
-      .then((result) => {
-        if (mounted) setModels(result);
-      })
-      .catch(() => {
-        if (mounted) setModels({ agent: agentId, models: [], efforts: [] });
-      });
+    setModel("");
+    setEffort("");
+    void Promise.allSettled([
+      bridge.request("agent.models", { agent: agentId }),
+      bridge.request("settings.get", { key: modelSettingKey(agentId) }),
+      bridge.request("settings.get", { key: effortSettingKey(agentId) }),
+    ]).then(([modelsResult, storedModelResult, storedEffortResult]) => {
+      if (!mounted) return;
+      const result: AgentModels =
+        modelsResult.status === "fulfilled"
+          ? modelsResult.value
+          : { agent: agentId, models: [], efforts: [] };
+      setModels(result);
+      const storedModel =
+        storedModelResult.status === "fulfilled" &&
+        typeof storedModelResult.value.value === "string"
+          ? storedModelResult.value.value
+          : "";
+      const initialModel = result.models.some((option) => option.id === storedModel)
+        ? storedModel
+        : (result.models[0]?.id ?? "");
+      setModel(initialModel);
+      const knownEffort =
+        storedEffortResult.status === "fulfilled" &&
+        typeof storedEffortResult.value.value === "string" &&
+        (result.efforts?.includes(storedEffortResult.value.value as AgentEffort) ||
+          result.models.some((option) =>
+            (option.efforts ?? result.efforts ?? []).includes(
+              storedEffortResult.value.value as AgentEffort,
+            ),
+          ))
+          ? (storedEffortResult.value.value as AgentEffort)
+          : "";
+      setPreferredEffort(knownEffort);
+      setEffort(initialEffortForModel(result, initialModel, knownEffort));
+    });
     return () => {
       mounted = false;
     };
-  }, [bridge, selectedAgent]);
-
-  function closeMenu(returnFocus = true) {
-    setActiveMenu(null);
-    if (returnFocus) choiceTriggerRef.current?.focus();
-  }
+  }, [bridge, selectedAgentId]);
 
   function chooseAgent(option: AgentChoice) {
     choiceTouchedRef.current = true;
     if (option === TERMINAL_CHOICE) composerAttachments.clear();
     setChoice(option);
+    setActivePopover(null);
     setError("");
-    closeMenu();
     saveSetting(LAST_AGENT_SETTING, option, t.conversation.settingsSaveFailed);
+  }
+
+  function chooseModel(value: string) {
+    if (!selectedAgentId) return;
+    setModel(value);
+    setEffort(initialEffortForModel(currentModels, value, preferredEffort));
+    saveSetting(modelSettingKey(selectedAgentId), value, t.conversation.settingsSaveFailed);
+  }
+
+  function chooseEffort(value: AgentEffort | "") {
+    if (!selectedAgentId) return;
+    setEffort(value);
+    if (!value) return;
+    setPreferredEffort(value);
+    saveSetting(effortSettingKey(selectedAgentId), value, t.conversation.settingsSaveFailed);
   }
 
   function chooseFolder(path: string) {
@@ -282,7 +301,7 @@ export function NewConversationView({
     saveSetting(LAST_FOLDER_SETTING, selectedPath, t.conversation.settingsFolderSaveFailed);
   }
 
-  function buildChoiceOptions(): MenuOption[] {
+  function buildChoiceOptions(): ComposerMenuOption[] {
     return [
       ...agents.map((agent) => ({
         id: agent.id,
@@ -290,7 +309,7 @@ export function NewConversationView({
         content: (
           <>
             <AgentIcon agentId={agent.id} />
-            <span>{agent.name}</span>
+            <span className={styles.agentName}>{agent.name}</span>
           </>
         ),
         onSelect: () => chooseAgent(agent.id),
@@ -301,7 +320,7 @@ export function NewConversationView({
         content: (
           <>
             <AgentIcon agentId={TERMINAL_CHOICE} />
-            <span>{t.conversation.terminal}</span>
+            <span className={styles.agentName}>{t.conversation.terminal}</span>
           </>
         ),
         onSelect: () => chooseAgent(TERMINAL_CHOICE),
@@ -310,49 +329,17 @@ export function NewConversationView({
         id: "manage-agents",
         selected: false,
         content: <span>{t.conversation.manageAgents}</span>,
+        action: true,
         onSelect: () => {
-          setActiveMenu(null);
+          setActivePopover(null);
           navigate({ name: "settings", section: "agents" });
         },
       },
     ];
   }
 
-  function openMenu() {
-    const options = buildChoiceOptions();
-    const currentIndex = options.findIndex((option) => option.selected);
-    setActiveIndex(Math.max(currentIndex, 0));
-    setActiveMenu("choice");
-  }
-
-  function handleOptionKeyDown(
-    event: KeyboardEvent<HTMLDivElement>,
-    index: number,
-    options: MenuOption[],
-  ) {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setActiveIndex((index + 1) % options.length);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setActiveIndex((index - 1 + options.length) % options.length);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      setActiveIndex(0);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      setActiveIndex(options.length - 1);
-    } else if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      options[index]?.onSelect();
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      closeMenu();
-    }
-  }
-
   async function openFolderChooser() {
-    setActiveMenu(null);
+    setActivePopover(null);
     if (!bridge?.pickFolder) {
       setFolderDialogPath(folderPath === PERSONAL_FOLDER ? "" : folderPath);
       setFolderDialogError("");
@@ -436,7 +423,7 @@ export function NewConversationView({
   }
 
   async function openAgentConversation(value: string) {
-    if (!bridge || isOpening || !selectedAgent) return;
+    if (!bridge || isOpening || !selectedAgent || (modelListAvailable && !currentModel)) return;
     if (selectedAgent.id !== "claude" && selectedAgent.id !== "codex") {
       setError(t.chat.agentUnavailable);
       return;
@@ -457,7 +444,7 @@ export function NewConversationView({
         cwd,
         mode,
         title: t.conversation.title,
-        ...(model ? { model } : {}),
+        ...(modelListAvailable && currentModel ? { model: currentModel } : {}),
         ...(effort ? { effort } : {}),
         plan: planMode,
       });
@@ -488,41 +475,6 @@ export function NewConversationView({
 
   const choiceOptions = buildChoiceOptions();
 
-  function renderListbox() {
-    const options = choiceOptions;
-    const listboxId = choiceListboxId;
-    const listboxLabel = t.conversation.agentLabel;
-    return (
-      <div aria-label={listboxLabel} className={styles.listbox} id={listboxId} role="listbox">
-        {options.map((option, index) => (
-          <div
-            aria-selected={option.selected}
-            className={[styles.option, option.id === "manage-agents" ? styles.actionOption : ""]
-              .filter(Boolean)
-              .join(" ")}
-            id={`${listboxId}-${index}`}
-            key={option.id}
-            onBlur={(event) => {
-              if (!menuRootRef.current?.contains(event.relatedTarget as Node | null)) {
-                setActiveMenu(null);
-              }
-            }}
-            onClick={option.onSelect}
-            onKeyDown={(event) => handleOptionKeyDown(event, index, options)}
-            onMouseMove={() => setActiveIndex(index)}
-            ref={(element) => {
-              optionRefs.current[index] = element;
-            }}
-            role="option"
-            tabIndex={activeIndex === index ? 0 : -1}
-          >
-            {option.content}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -551,52 +503,40 @@ export function NewConversationView({
           disabled={choice !== TERMINAL_CHOICE && !selectedAgent}
           ariaDescription={t.conversation.composerKeyboardDescription}
           leading={
-            <div className={styles.controls} ref={menuRootRef}>
+            <div className={styles.controls}>
               {selectedAgent && (selectedAgent.id === "claude" || selectedAgent.id === "codex") ? (
                 <AttachmentPicker
                   disabled={!canAttachFiles}
                   onFiles={composerAttachments.addFiles}
                 />
               ) : null}
-              <div className={styles.choiceWrap}>
-                <button
-                  aria-controls={choiceListboxId}
-                  aria-expanded={activeMenu === "choice"}
-                  aria-haspopup="listbox"
-                  aria-label={`${t.conversation.agentLabel}: ${selectedTitle}`}
-                  className={styles.selectorButton}
-                  onClick={() => (activeMenu === "choice" ? closeMenu(false) : openMenu())}
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                      event.preventDefault();
-                      openMenu();
-                    }
-                  }}
-                  ref={choiceTriggerRef}
-                  type="button"
-                >
-                  <AgentIcon agentId={choice} />
-                  <span>{selectedTitle}</span>
-                  <ChevronDown aria-hidden="true" size={15} strokeWidth={1.8} />
-                </button>
-                {activeMenu === "choice" ? renderListbox() : null}
-              </div>
+              <ComposerMenu
+                label={t.conversation.agentLabel}
+                onOpenChange={(open) => setActivePopover(open ? "agent" : null)}
+                open={activePopover === "agent"}
+                options={choiceOptions}
+                triggerClassName={styles.selectorButton}
+                triggerContent={
+                  <>
+                    <AgentIcon agentId={choice} />
+                    <span className={styles.agentName}>{selectedTitle}</span>
+                  </>
+                }
+                triggerLabel={`${t.conversation.agentLabel}: ${selectedTitle}`}
+              />
               {selectedAgent && (selectedAgent.id === "claude" || selectedAgent.id === "codex") ? (
                 <ComposerPreferences
-                  effort={effort}
+                  activePopover={activePopover}
+                  effort={currentEffort}
                   mode={mode}
-                  model={model}
-                  models={models}
+                  model={currentModel}
+                  models={currentModels}
                   planMode={planMode}
                   disabled={isOpening}
-                  onEffortChange={setEffort}
+                  onActivePopoverChange={setActivePopover}
+                  onEffortChange={chooseEffort}
                   onModeChange={setMode}
-                  onModelChange={(value) => {
-                    setModel(value);
-                    if (effort && !effortsForModel(models, value).includes(effort)) {
-                      setEffort("");
-                    }
-                  }}
+                  onModelChange={chooseModel}
                   onPlanModeChange={setPlanMode}
                 />
               ) : null}
@@ -642,7 +582,9 @@ export function NewConversationView({
             isOpening ||
             composerAttachments.isPreparing ||
             (choice !== TERMINAL_CHOICE &&
-              (!selectedAgent || (!command.trim() && composerAttachments.attachments.length === 0)))
+              (!selectedAgent ||
+                (modelListAvailable && !currentModel) ||
+                (!command.trim() && composerAttachments.attachments.length === 0)))
           }
           dragActive={composerAttachments.isDragging}
           dropMessage={t.chat.dropAttachments}
