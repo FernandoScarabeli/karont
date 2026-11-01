@@ -91,7 +91,6 @@ export function ConversationView({
   const [interactionError, setInteractionError] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const [visibleMessageCount, setVisibleMessageCount] = useState(100);
-  const [openMessageId, setOpenMessageId] = useState<string | null>(null);
   const [isResponding, setIsResponding] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -287,7 +286,6 @@ export function ConversationView({
     setDraft("");
     setInteractionError("");
     setActivePopover(null);
-    setOpenMessageId(null);
   }, [id]);
 
   useEffect(() => {
@@ -339,32 +337,6 @@ export function ConversationView({
   }, [scrollVersion]);
 
   const announce = useCallback((text: string) => setAnnouncement(text), []);
-
-  const toggleMessageActions = useCallback((messageId: string) => {
-    setOpenMessageId((currentId) => (currentId === messageId ? null : messageId));
-  }, []);
-
-  useEffect(() => {
-    if (!openMessageId) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      const target = event.target instanceof Element ? event.target : null;
-      const message = target?.closest<HTMLElement>("article[data-message-id]");
-      if (message?.dataset.messageId === openMessageId) return;
-      setOpenMessageId(null);
-    };
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setOpenMessageId(null);
-      }
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [openMessageId]);
 
   const copyText = useCallback(
     async (text: string) => {
@@ -890,8 +862,6 @@ export function ConversationView({
           <MessageRow
             key={message.id}
             message={message}
-            isActionsOpen={openMessageId === message.id}
-            onToggleActions={toggleMessageActions}
             agent={conversation?.agent}
             cwd={conversation?.cwd ?? ""}
             onAnnounce={announce}

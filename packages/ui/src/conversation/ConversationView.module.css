@@ -217,10 +217,11 @@
 .agentTag {
   display: inline-flex;
   box-sizing: border-box;
-  width: var(--k-composer-agent-width);
+  width: fit-content;
+  max-width: var(--k-composer-agent-max-width);
   min-width: 0;
   height: var(--k-control-height-md);
-  flex: 0 0 var(--k-composer-agent-width);
+  flex: 0 1 auto;
   overflow: hidden;
   align-items: center;
   gap: var(--k-space-1);
@@ -301,7 +302,6 @@
 }
 
 .loadingAgent {
-  width: var(--k-composer-agent-width);
   height: var(--k-control-height-md);
 }
 
@@ -314,7 +314,6 @@
 }
 
 .loadingModel {
-  width: var(--k-composer-model-width);
   height: var(--k-control-height-md);
 }
 
