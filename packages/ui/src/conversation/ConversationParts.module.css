@@ -1,4 +1,5 @@
 .message {
+  position: relative;
   display: flex;
   width: min(100%, var(--k-chat-content-max-width));
   min-width: 0;
@@ -8,6 +9,18 @@
   padding-block: var(--k-space-3);
   content-visibility: auto;
   contain-intrinsic-size: auto var(--k-chat-message-intrinsic-size);
+}
+
+.message:focus-within {
+  border-radius: var(--k-radius-md);
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-chat-focus-outline-offset);
+}
+
+.messageOpen {
+  border-radius: var(--k-radius-md);
+  outline: var(--k-border-width) solid var(--k-color-border);
+  background: var(--k-color-bg-raised);
 }
 
 .userMessage {
@@ -67,18 +80,41 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--k-space-1);
+}
+
+.userMessage .messageActions {
+  justify-content: flex-end;
+}
+
+.messageOptions {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-rows: 0fr;
   opacity: 0;
-  transition: opacity var(--k-duration-fast) var(--k-ease);
+  pointer-events: none;
+  transition:
+    grid-template-rows var(--k-duration-fast) var(--k-ease),
+    opacity var(--k-duration-fast) var(--k-ease);
 }
 
-.userMessage:hover .messageActions,
-.userMessage:focus-within .messageActions {
+.messageOptionsOpen {
+  grid-template-rows: 1fr;
   opacity: 1;
+  pointer-events: auto;
 }
 
-@media (hover: none) {
-  .messageActions {
-    opacity: 1;
+.messageOptionsInner {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  gap: var(--k-space-2);
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messageOptions {
+    transition: none;
   }
 }
 
@@ -917,7 +953,6 @@
 
 .timelineToggle {
   align-self: flex-start;
-  margin-block-start: var(--k-space-2);
 }
 
 .timeline {
@@ -982,6 +1017,10 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+.message > .srOnly {
+  pointer-events: none;
 }
 
 .timelineChart {
