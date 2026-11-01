@@ -85,7 +85,23 @@ Branch `m2-chat` (sem PR; o dono testa no preview antes de juntar na `main`). De
 - Leveza do streaming: markdown em blocos memorizados, deltas a cada 64 ms; aba da UI 12–20% de CPU numa resposta de ~14 mil caracteres (antes 60–110%), serviço ~1–2% e 52 MB. Bundle inicial 464 kB (terminal e realce sob demanda).
 - UX: títulos automáticos (CLI do agente, modelo barato, em segundo plano; renomear com duplo clique), ações resumidas ("Leu 3 arquivos"; comando completo atrás de um botão; cartões de permissão mostram o comando inteiro), faixa pasta/branch mais estreita que o composer, saudação por horário com nome (`system.userName` + "Como te chamar" nas Configurações), placeholder digitando frases engraçadas (`TextType` próprio, sem gsap).
 
-Próximo (pedido do dono): rodada grande de UI/UX, num chat novo.
+### Rodada de UI/UX (2026-11-01, tarde) — já na `m2-chat`
+- **Barra do composer (F9):** agente sem pílula; modelo sem "Padrão", lembrado por agente (`composer.<agente>.model`), é o que de fato é enviado; esforço = ícone `Gauge` do Lucide cujo ponteiro gira, **clique avança o nível** (setas também), etiqueta "Esforço: X" some sozinha; botão de opções (`SlidersHorizontal`) com Acesso (**Só ler / Pedir antes / Acesso total**) e Planejar (switch), selos "Planejar"/"Acesso total" quando ativos. Salvamento otimista (nada pisca). Composer mais baixo (textarea mín. 40px).
+- **Lista de conversas (F10):** ⋯ no hover/foco e botão direito: Fixar, Renomear (inline), Abrir ao lado, Arquivar, Apagar (com confirmação). Grupos "Fixadas"/"Recentes"; "Ver arquivadas" no ⋯ do cabeçalho (⋯ à esquerda do `+`). Migração v9 (`pinned_at`, `archived_at`), `conversation.setPinned`/`setArchived`, `list({ archived })`. Scrollbar própria (`components/ScrollArea`, 12px no Chromium, `auto` no Firefox, `scrollbar-gutter: stable`, colada na borda da sidebar). Área de trabalho sem moldura (canto reto, uma linha só). Corrigido `Dialog` que roubava o foco na montagem.
+- **Status na sidebar (F11):** bolinha antes do ⋯: verde = resposta não vista, amarelo pulsando (2,4 s) = trabalhando, laranja-avermelhado = precisa de você, vazada = erro. Migração v10 (`unread_at`), `conversation.markSeen`. Status saiu do cabeçalho da conversa.
+- **Erros legíveis (F12):** `describeAgentError` no contrato (filtro de conteúdo, limite, sobrecarga, contexto longo, login, rede); parte `error` ganhou `details` (cru) atrás de "Ver detalhes".
+- **Opções da mensagem por clique (F15):** nada aparece sob as mensagens por padrão; um clique na mensagem mostra copiar/editar/tentar de novo e a **Linha do tempo**; Esc/clique fora fecha; seleção de texto e links não abrem.
+- A vitrine `#chat` (F13/F14) foi criada e **removida** a pedido do dono.
+
+### Decisões do dono nesta rodada
+- Sem letras de atalho de teclado nos menus.
+- Odeia cartões com faixa/borda colorida lateral (ex.: cartão de erro atual). Ainda **não escolheu** o novo modelo de erro; os 4 propostos foram: (1) inline sem cartão, (2) nota neutra com título, (3) rodapé com separador fino e ações à direita, (4) caixinha compacta de uma linha com botões de ícone e frase só nos detalhes.
+- Quer protótipo visual (tela provisória) antes de implementar mudanças grandes de visual.
+
+### Próximo (pedido do dono)
+- Redesenho da conversa com refs que ele vai mandar (o "Trabalhando…" atual é feio).
+- Trazer o que falta, usando como **referência** os componentes do Agent Elements (https://agent-elements.21st.dev, MIT; são Tailwind + várias libs, então **reescrever no nosso padrão, sem dependência nova**): edição com diff, subagente (Task do Claude), ferramenta MCP, "Trabalhando…" com shimmer, sugestões. Antes, conferir que dados os adaptadores já gravam de cada ferramenta.
+- Pendências pequenas: bundle inicial ~508 kB (passou de 500); aviso do PostCSS no build (`from` não passado, provavelmente o `composes` do ScrollArea).
 
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
