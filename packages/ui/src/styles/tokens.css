@@ -85,6 +85,15 @@
   --k-duration-highlight: 1.2s;
   --k-duration-status-pulse-slow: 2.4s;
   --k-duration-status-pulse-medium: 1.6s;
+  --k-working-dot-size: 2px;
+  --k-working-dot-gap: 2px;
+  --k-working-dot-cycle: 1.8s;
+  --k-working-dot-stagger: 200ms;
+  --k-working-shimmer-duration: 3.2s;
+  --k-working-transition-duration: 180ms;
+  --k-working-card-min-width: 440px;
+  --k-working-card-min-height: 300px;
+  --k-working-message-max-width: 420px;
   --k-ease: cubic-bezier(0.2, 0, 0, 1);
   --k-opacity-disabled: 0.5;
 
