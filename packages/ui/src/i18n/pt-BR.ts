@@ -277,6 +277,7 @@ export const t = {
     codeCopied: "Código copiado",
     thinking: "Pensando…",
     thinkingDone: "Pensou",
+    thinkingDuration: (seconds: number) => `Pensou por ${seconds}s`,
     actionGroup: (count: number) => `${count} ações`,
     actionStates: {
       running: "Executando",
@@ -296,6 +297,9 @@ export const t = {
     actionDetails: "Detalhes da ação",
     input: "Entrada",
     output: "Saída",
+    commandExitCode: (code: string) => `Código de saída ${code}`,
+    commandCompleted: "Concluído",
+    commandFailed: "Falhou",
     duration: (value: string) => `Duração: ${value}`,
     permissionRunCommand: "Rodar comando?",
     permissionEditFile: "Editar arquivo?",
@@ -317,6 +321,8 @@ export const t = {
     cancelAdjustment: "Cancelar ajuste",
     planResults: { approved: "Plano aprovado", rejected: "Plano ajustado" },
     todos: "Tarefas do agente",
+    todoSummary: (completed: number, total: number) =>
+      `Tarefas · ${completed} de ${total} concluídas`,
     todoStates: { pending: "Pendente", working: "Em andamento", done: "Feita" },
     retry: "Tentar de novo",
     errorTitle: "Erro na resposta do agente",
