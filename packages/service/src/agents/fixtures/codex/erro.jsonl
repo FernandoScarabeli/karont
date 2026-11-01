@@ -1,0 +1,2 @@
+{"direction":"out","stream":"stdin","line":"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"karont-fixture-recorder\",\"version\":\"0.1.0\",\"title\":\"Gravador de fixtures\"},\"capabilities\":{\"experimentalApi\":true}}}","at":"2026-11-01T00:20:20.297Z"}
+{"direction":"stderr","stream":"stderr","line":"falha ao iniciar CLI: spawn codex ENOENT","at":"2026-11-01T00:20:20.298Z"}

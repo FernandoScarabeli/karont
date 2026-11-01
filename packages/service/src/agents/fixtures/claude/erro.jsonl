@@ -1,0 +1,2 @@
+{"direction":"out","stream":"stdin","line":"{\"type\":\"control_request\",\"request_id\":\"karont-initialize\",\"request\":{\"subtype\":\"initialize\"}}","at":"2026-11-01T00:17:51.259Z"}
+{"direction":"stderr","stream":"stderr","line":"falha ao iniciar CLI: spawn claude ENOENT","at":"2026-11-01T00:17:51.262Z"}

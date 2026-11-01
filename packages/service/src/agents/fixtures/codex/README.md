@@ -1,0 +1,1 @@
+Capturas reais do Codex 0.166.0, sanitizadas pelo gravador. Os schemas derivados de `codex app-server generate-json-schema` estão em `schema/`; a auditoria dos fluxos exercitados e pendentes está em [../PROTOCOLO.md](../PROTOCOLO.md).
