@@ -160,7 +160,8 @@ export function Sidebar() {
                   <li className={styles.conversationItem} key={conversation.id}>
                     <button
                       aria-current={active ? "page" : undefined}
-                      aria-label={accessibleName}
+                      aria-description={stateText}
+                      aria-label={conversation.title}
                       className={styles.conversationButton}
                       onClick={() => navigate({ name: "conversation", id: conversation.id })}
                       title={accessibleName}
@@ -174,7 +175,6 @@ export function Sidebar() {
                       {conversation.state === "waiting" ? (
                         <span className={styles.needsYouMarker}>
                           <TriangleAlert aria-hidden="true" size={14} />
-                          {t.chat.waiting}
                         </span>
                       ) : null}
                     </button>

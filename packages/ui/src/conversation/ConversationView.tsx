@@ -1,4 +1,4 @@
-import type { Conversation, ConversationMessage, ResultOf } from "@karont/contract";
+import type { Conversation, ConversationMessage } from "@karont/contract";
 import { BridgeError } from "@karont/contract";
 import { Folder, MessageSquareText, TriangleAlert } from "lucide-react";
 import {
@@ -15,13 +15,16 @@ import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { getBridge } from "../bridge/index.ts";
 import { Composer } from "../components/Composer/Composer.tsx";
 import { t } from "../i18n/pt-BR.ts";
-import { agentDisplayName, ComposerPreferences } from "./ComposerPreferences.tsx";
+import {
+  type AgentModels,
+  agentDisplayName,
+  ComposerPreferences,
+  effortsForModel,
+} from "./ComposerPreferences.tsx";
 import { MessageRow, type ResponseInput, TodosPart } from "./ConversationParts.tsx";
 import styles from "./ConversationView.module.css";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
-
-type Models = ResultOf<"agent.models">;
 
 export function ConversationView({
   id,
@@ -43,7 +46,7 @@ export function ConversationView({
   const { conversation, messages, loading, error, liveText, addMessage, updateConversation } =
     useConversation(id);
   const [draft, setDraft] = useState("");
-  const [models, setModels] = useState<Models | null>(null);
+  const [models, setModels] = useState<AgentModels | null>(null);
   const [interactionError, setInteractionError] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const [visibleMessageCount, setVisibleMessageCount] = useState(100);
@@ -264,7 +267,7 @@ export function ConversationView({
   const homeTodos = isWorking ? lastTodos : null;
 
   return (
-    <main className={styles.page}>
+    <section aria-label={title} className={styles.page}>
       <header className={styles.header}>
         <h1 className={styles.title} ref={titleRef} tabIndex={-1} {...dragHandleProps}>
           {title}
@@ -337,11 +340,8 @@ export function ConversationView({
             <TodosPart part={homeTodos} />
           </div>
         ) : null}
-        {isWorking || isWaiting ? (
-          <p
-            className={`${styles.progress} ${isWaiting ? styles.progressWaiting : ""}`}
-            role="status"
-          >
+        {isWorking ? (
+          <p className={styles.progress} role="status">
             <span aria-hidden="true" className={styles.progressMark} />
             {stateLabel}
             {isStopping ? ` · ${t.chat.stopping}` : ""}
@@ -392,7 +392,15 @@ export function ConversationView({
                   models={models}
                   onEffortChange={(value) => void saveOptions({ effort: value || null })}
                   onModeChange={(value) => void saveOptions({ mode: value })}
-                  onModelChange={(value) => void saveOptions({ model: value || null })}
+                  onModelChange={(value) => {
+                    const supportedEfforts = effortsForModel(models, value);
+                    const clearEffort =
+                      conversation.effort && !supportedEfforts.includes(conversation.effort);
+                    void saveOptions({
+                      model: value || null,
+                      ...(clearEffort ? { effort: null } : {}),
+                    });
+                  }}
                 />
               </div>
             ) : null
@@ -409,7 +417,7 @@ export function ConversationView({
       <div aria-live="polite" className={styles.srOnly} role="status">
         {liveText ? t.chat.contentAnnounced(liveText) : announcement}
       </div>
-    </main>
+    </section>
   );
 }
 

@@ -303,16 +303,6 @@
   display: none;
 }
 
-.thinking summary::before,
-.action summary::before,
-.actionGroup summary::before {
-  width: var(--k-space-1);
-  height: var(--k-space-1);
-  border-radius: var(--k-radius-full);
-  background: var(--k-color-text-muted);
-  content: "";
-}
-
 .thinking summary:focus-visible,
 .action summary:focus-visible,
 .actionGroup summary:focus-visible {
@@ -322,6 +312,10 @@
 
 .thinkingIcon {
   color: var(--k-color-working);
+}
+
+.thinkingDoneIcon {
+  color: var(--k-color-text-muted);
 }
 
 .thinkingText {
@@ -436,7 +430,7 @@
 }
 
 .permissionCard {
-  border-inline-start: var(--k-space-1) solid var(--k-color-attention);
+  border-inline-start: var(--k-border-width) solid var(--k-color-attention);
 }
 
 .permissionCard h3,
@@ -456,10 +450,10 @@
   color: var(--k-color-attention);
 }
 
-.permissionCard p {
+.permissionDescription {
   margin: 0;
-  color: var(--k-color-text-primary);
-  font-size: var(--k-text-14);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
   line-height: var(--k-leading-normal);
   white-space: pre-wrap;
 }
@@ -471,7 +465,7 @@
   border-radius: var(--k-radius-sm);
   background: var(--k-color-bg-app);
   color: var(--k-color-code-text);
-  font-family: var(--k-font-mono);
+  font-family: var(--k-font-mono); /* taste-skill-ignore: comando literal */
   font-size: var(--k-text-12);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -486,7 +480,7 @@
 
 .questionCard {
   max-width: 100%;
-  border-inline-start: var(--k-space-1) solid var(--k-color-working);
+  border-inline-start: var(--k-border-width) solid var(--k-color-working);
 }
 
 .question {
@@ -564,12 +558,12 @@
 }
 
 .planCard {
-  border-inline-start: var(--k-space-1) solid var(--k-color-working);
+  border-inline-start: var(--k-border-width) solid var(--k-color-working);
 }
 
 .todos {
   display: grid;
-  gap: var(--k-space-2);
+  gap: var(--k-space-3);
   padding: var(--k-space-3) var(--k-space-4);
   border-radius: var(--k-radius-md);
   background: var(--k-color-bg-raised);
@@ -634,7 +628,7 @@
 }
 
 .errorCard {
-  border-inline-start: var(--k-space-1) solid var(--k-color-danger);
+  border-inline-start: var(--k-border-width) solid var(--k-color-danger);
 }
 
 .errorCard p {

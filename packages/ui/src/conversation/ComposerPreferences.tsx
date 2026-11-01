@@ -6,8 +6,19 @@ import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./ComposerPreferences.module.css";
 
-type AgentModels = ResultOf<"agent.models">;
+type AgentModelsResult = ResultOf<"agent.models">;
+export type AgentEffort = AgentModelsResult["efforts"][number];
+export type AgentModels = {
+  agent: AgentModelsResult["agent"];
+  models: Array<AgentModelsResult["models"][number] & { efforts?: AgentEffort[] }>;
+  efforts?: AgentEffort[];
+};
 type ConversationMode = Conversation["mode"];
+
+export function effortsForModel(models: AgentModels | null, modelId: string): AgentEffort[] {
+  const modelEfforts = models?.models.find((option) => option.id === modelId)?.efforts;
+  return modelEfforts ?? models?.efforts ?? [];
+}
 
 export function ComposerPreferences({
   models,
@@ -21,15 +32,17 @@ export function ComposerPreferences({
 }: {
   models: AgentModels | null;
   model: string;
-  effort: AgentModels["efforts"][number] | "";
+  effort: AgentEffort | "";
   mode: ConversationMode;
   disabled?: boolean;
   onModelChange: (value: string) => void;
-  onEffortChange: (value: AgentModels["efforts"][number] | "") => void;
+  onEffortChange: (value: AgentEffort | "") => void;
   onModeChange: (value: ConversationMode) => void;
 }) {
   const [confirmFull, setConfirmFull] = useState(false);
   const needsModelOption = model && !models?.models.some((option) => option.id === model);
+  const efforts = effortsForModel(models, model);
+  const selectedEffort = efforts.includes(effort as AgentEffort) ? effort : "";
 
   return (
     <fieldset aria-label={t.chat.composerOptions} className={styles.options}>
@@ -60,14 +73,12 @@ export function ComposerPreferences({
           <select
             aria-label={t.chat.effort}
             className={styles.select}
-            disabled={disabled || !models || models.efforts.length === 0}
-            onChange={(event) =>
-              onEffortChange(event.currentTarget.value as AgentModels["efforts"][number] | "")
-            }
-            value={effort}
+            disabled={disabled || !models || efforts.length === 0}
+            onChange={(event) => onEffortChange(event.currentTarget.value as AgentEffort | "")}
+            value={selectedEffort}
           >
             <option value="">{t.chat.effortDefault}</option>
-            {models?.efforts.map((level) => (
+            {efforts.map((level) => (
               <option key={level} value={level}>
                 {t.chat.efforts[level]}
               </option>
