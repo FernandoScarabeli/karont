@@ -29,7 +29,6 @@ import { MessageRow, type ResponseInput, TodosPart } from "./ConversationParts.t
 import styles from "./ConversationView.module.css";
 import { formatFolderPath } from "./displayText.ts";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
-import { isConversationPlanModeActive, setConversationPlanModeActive } from "./planMode.ts";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
 
@@ -51,7 +50,7 @@ export function ConversationView({
   const { conversation, messages, loading, error, liveText, addMessage, updateConversation } =
     useConversation(id);
   const [draft, setDraft] = useState("");
-  const [planMode, setPlanMode] = useState(() => isConversationPlanModeActive(id));
+  const planMode = conversation?.plan ?? false;
   const [models, setModels] = useState<AgentModels | null>(null);
   const [interactionError, setInteractionError] = useState("");
   const [announcement, setAnnouncement] = useState("");
@@ -194,7 +193,6 @@ export function ConversationView({
         const result = await bridge.request("conversation.send", {
           id,
           text: text || " ",
-          ...(planMode ? { plan: true } : {}),
           ...(files.length ? { attachments: files } : {}),
         });
         addMessage(result.userMessage);
@@ -220,7 +218,6 @@ export function ConversationView({
       isSending,
       isWaiting,
       isWorking,
-      planMode,
     ],
   );
 
@@ -250,10 +247,6 @@ export function ConversationView({
       setInteractionError("");
       try {
         await bridge.request("conversation.respond", { id, ...response });
-        if (response.responseType === "plan" && response.decision === "approve") {
-          setPlanMode(false);
-          setConversationPlanModeActive(id, false);
-        }
       } catch (responseError) {
         setInteractionError(
           responseError instanceof BridgeError && responseError.message
@@ -290,6 +283,7 @@ export function ConversationView({
       mode?: Conversation["mode"];
       model?: string | null;
       effort?: NonNullable<Conversation["effort"]> | null;
+      plan?: boolean;
     }) => {
       if (!bridge || !conversation) return;
       setIsSavingOptions(true);
@@ -495,10 +489,7 @@ export function ConversationView({
                       ...(clearEffort ? { effort: null } : {}),
                     });
                   }}
-                  onPlanModeChange={(value) => {
-                    setPlanMode(value);
-                    setConversationPlanModeActive(id, value);
-                  }}
+                  onPlanModeChange={(value) => void saveOptions({ plan: value })}
                 />
               </div>
             ) : null

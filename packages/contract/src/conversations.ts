@@ -12,6 +12,7 @@ export const conversationSchema = z.strictObject({
   mode: conversationModeSchema,
   model: z.string().min(1).max(80).optional(),
   effort: reasoningEffortSchema.optional(),
+  plan: z.boolean().optional(),
   state: conversationStateSchema,
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
@@ -120,6 +121,7 @@ export const conversationOptionsSchema = z.strictObject({
   mode: conversationModeSchema.optional(),
   model: z.string().min(1).max(80).nullable().optional(),
   effort: reasoningEffortSchema.nullable().optional(),
+  plan: z.boolean().optional(),
 });
 export const conversationAttachmentSchema = z.discriminatedUnion("kind", [
   z.strictObject({

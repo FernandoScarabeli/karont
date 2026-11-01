@@ -33,7 +33,6 @@ import {
 } from "./ComposerPreferences.tsx";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import styles from "./NewConversationView.module.css";
-import { setConversationPlanModeActive } from "./planMode.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
 
 const LAST_AGENT_SETTING = "newConversation.lastAgent";
@@ -432,17 +431,16 @@ export function NewConversationView({
         title: firstLine ? firstLine.slice(0, 240) : t.conversation.title,
         ...(model ? { model } : {}),
         ...(effort ? { effort } : {}),
+        plan: planMode,
       });
       created = result.conversation;
       upsertConversation(created);
       await bridge.request("conversation.send", {
         id: created.id,
         text: text || " ",
-        ...(planMode ? { plan: true } : {}),
         ...(files.length ? { attachments: files } : {}),
       });
       composerAttachments.clear();
-      setConversationPlanModeActive(created.id, planMode);
       navigate({ name: "conversation", id: created.id });
     } catch (openError) {
       setError(

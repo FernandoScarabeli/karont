@@ -148,7 +148,15 @@ export class ConversationManager {
       throw error;
     }
     const agentMessage = this.#newAgentMessage(id);
-    await this.#startTurn(conversation, agentMessage, text, plan, validatedAttachments.data);
+    // O desligado mantém a inferência textual já usada pelo adaptador Codex.
+    const requestedPlan = plan ?? (conversation.plan ? true : undefined);
+    await this.#startTurn(
+      conversation,
+      agentMessage,
+      text,
+      requestedPlan,
+      validatedAttachments.data,
+    );
     return { userMessage, agentMessage };
   }
 
@@ -208,6 +216,7 @@ export class ConversationManager {
       mode?: Conversation["mode"];
       model?: string | null;
       effort?: NonNullable<Conversation["effort"]> | null;
+      plan?: boolean;
     },
   ): Promise<Conversation> {
     const conversation = this.#requireConversation(id);
@@ -228,6 +237,7 @@ export class ConversationManager {
       if (options.effort === null) delete conversation.effort;
       else if (options.effort !== undefined) conversation.effort = options.effort;
     }
+    if (options.plan !== undefined) conversation.plan = options.plan;
     conversation.updatedAt = this.#now();
     updateConversation(this.#db, conversation);
     await this.#stateEvent(conversation);
