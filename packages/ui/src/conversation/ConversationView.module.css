@@ -9,6 +9,10 @@
   container-type: inline-size;
 }
 
+.page:focus {
+  outline: none;
+}
+
 .header {
   display: flex;
   min-height: var(--k-terminal-header-height);
@@ -35,6 +39,12 @@
 
 .title:active {
   cursor: grabbing;
+}
+
+.title:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+  border-radius: var(--k-radius-xs);
 }
 
 .state,

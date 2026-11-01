@@ -147,6 +147,14 @@ function renderParts(
   onAnnounce: (text: string) => void,
 ) {
   const elements: ReactNode[] = [];
+  const pendingPermissionCommands = parts.flatMap((part) => {
+    if (part.type !== "permission" || part.state !== "pending") return [];
+    const permission = part as typeof part & { command?: string };
+    const command = permission.command?.trim() || part.summary.trim();
+    return command.split(/\r?\n/).map(normalizeCommand).filter(Boolean);
+  });
+  const hasQuestionCard = parts.some((part) => part.type === "question");
+  const hasPlanCard = parts.some((part) => part.type === "plan");
   let index = 0;
   while (index < parts.length) {
     const part = parts[index];
@@ -161,7 +169,14 @@ function renderParts(
         if (action?.type === "action") actions.push(action);
         index += 1;
       }
-      elements.push(<ActionGroup actions={actions} key={actions[0]?.id ?? index} />);
+      const visibleActions = actions.filter(
+        (action) =>
+          !duplicatesPendingPermission(action, pendingPermissionCommands) &&
+          !duplicatesPendingCard(action, hasQuestionCard, hasPlanCard),
+      );
+      if (visibleActions.length > 0) {
+        elements.push(<ActionGroup actions={visibleActions} key={actions[0]?.id ?? index} />);
+      }
       continue;
     }
     elements.push(
@@ -357,7 +372,7 @@ const ActionItem = memo(function ActionItem({
 }) {
   const Icon = actionIcon(action.actionType);
   const duration =
-    action.durationMs === null || action.durationMs === undefined || action.durationMs === 0
+    action.durationMs === null || action.durationMs === undefined || action.durationMs < 1_000
       ? ""
       : formatDuration(action.durationMs);
   const waitingForUser = (action as { state: string }).state === "waiting";
@@ -423,8 +438,8 @@ const PermissionPart = memo(function PermissionPart({
     );
   }
   const permission = part as typeof part & { command?: string; description?: string };
-  const command = permission.command?.trim();
-  const description = permission.description ?? permission.summary;
+  const command = permission.command?.trim() || part.summary.trim();
+  const description = permission.description?.trim();
   const heading = permissionHeading(part.tool);
 
   return (
@@ -699,7 +714,7 @@ const TimelineView = memo(
         <ol>
           {steps.map((part) => {
             const duration = part.type === "action" ? (part.durationMs ?? null) : null;
-            const hasDuration = duration !== null && duration > 0;
+            const hasDuration = duration !== null && duration >= 1_000;
             const title = part.type === "action" ? part.title : t.chat.thinkingDone;
             const width = hasDuration ? `${Math.max(4, (duration / maxDuration) * 100)}%` : "0%";
             return (
@@ -707,19 +722,27 @@ const TimelineView = memo(
                 <span className={styles.timelineTitle}>{title}</span>
                 <div
                   aria-label={
-                    hasDuration ? formatDuration(duration) : t.chat.timelineDurationMissing
+                    hasDuration
+                      ? formatDuration(duration)
+                      : duration === null
+                        ? t.chat.timelineDurationMissing
+                        : t.chat.durationUnderSecond
                   }
                   className={styles.timelineTrack}
                   role="img"
                 >
-                  {!hasDuration ? (
-                    <span className={styles.timelineUnknown}>—</span>
-                  ) : (
+                  {hasDuration ? (
                     <span className={styles.timelineBar} style={{ width }} />
-                  )}
+                  ) : duration === null ? (
+                    <span className={styles.timelineUnknown}>—</span>
+                  ) : null}
                 </div>
                 <span className={styles.timelineDuration}>
-                  {hasDuration ? formatDuration(duration) : t.chat.timelineDurationMissing}
+                  {hasDuration
+                    ? formatDuration(duration)
+                    : duration === null
+                      ? t.chat.timelineDurationMissing
+                      : ""}
                 </span>
               </li>
             );
@@ -763,6 +786,45 @@ function permissionHeading(tool: string): string {
   }
   if (/(edit|write|file)/.test(normalizedTool)) return t.chat.permissionEditFile;
   return t.chat.permissionAction;
+}
+
+function normalizeCommand(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function duplicatesPendingPermission(
+  action: Extract<MessagePart, { type: "action" }>,
+  commands: string[],
+): boolean {
+  if (commands.length === 0) return false;
+  return [action.input, action.title].some((candidate) => {
+    const normalized = normalizeCommand(candidate);
+    return normalized.length > 0 && commands.includes(normalized);
+  });
+}
+
+function duplicatesPendingCard(
+  action: Extract<MessagePart, { type: "action" }>,
+  hasQuestionCard: boolean,
+  hasPlanCard: boolean,
+): boolean {
+  const tool = action.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isQuestionTool = [
+    "askuserquestion",
+    "requestuserinput",
+    "askquestion",
+    "userquestion",
+    "question",
+  ].some((name) => tool.includes(name));
+  const isPlanTool = [
+    "exitplanmode",
+    "updateplan",
+    "submitplan",
+    "planapproval",
+    "requestplanapproval",
+  ].some((name) => tool.includes(name));
+
+  return (hasQuestionCard && isQuestionTool) || (hasPlanCard && isPlanTool);
 }
 
 function isTimelinePart(
