@@ -562,6 +562,48 @@ test("setOptions reabre a sessão com novas flags de acesso, modelo e esforço",
   }
 });
 
+test("send usa Planejar salvo por setOptions quando não recebe substituição", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Planejar persistido",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    await harness.manager.setOptions(conversation.id, { plan: true });
+    await harness.manager.send(conversation.id, "Planeje e aguarde.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const permissionModeIndex = harness.spawnArgs[0]?.indexOf("--permission-mode") ?? -1;
+    assert.equal(harness.spawnArgs[0]?.[permissionModeIndex + 1], "plan");
+    assert.equal(harness.manager.get(conversation.id)?.conversation.plan, true);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("send aceita uma substituição explícita de Planejar sem mudar a preferência salva", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Substituição do composer",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      plan: true,
+    });
+    await harness.manager.send(conversation.id, "Responda diretamente.", false);
+    await waitForState(harness, conversation.id, "idle");
+
+    const permissionModeIndex = harness.spawnArgs[0]?.indexOf("--permission-mode") ?? -1;
+    assert.equal(harness.spawnArgs[0]?.[permissionModeIndex + 1], "acceptEdits");
+    assert.equal(harness.manager.get(conversation.id)?.conversation.plan, true);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("ClaudeAdapter preserva nome do executável no erro de binário ausente", () => {
   const error = new AgentCliError("cli-not-found", "Claude Code não encontrado.");
   assert.equal(error.errorType, "cli-not-found");

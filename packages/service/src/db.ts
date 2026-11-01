@@ -50,6 +50,10 @@ export const migrations: { version: number; up: string }[] = [
     version: 6,
     up: "ALTER TABLE messages ADD COLUMN attachments_json TEXT;",
   },
+  {
+    version: 7,
+    up: "ALTER TABLE conversations ADD COLUMN plan INTEGER NOT NULL DEFAULT 0 CHECK (plan IN (0, 1));",
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -62,19 +66,20 @@ export type CustomAgentRecord = {
 };
 
 export type NewConversation = Pick<Conversation, "agent" | "title" | "cwd" | "mode"> &
-  Partial<Pick<Conversation, "model" | "effort">>;
+  Partial<Pick<Conversation, "model" | "effort" | "plan">>;
 
 export function createConversation(db: DatabaseSync, input: NewConversation): Conversation {
   const now = new Date().toISOString();
   const conversation: Conversation = {
     id: randomUUID(),
     ...input,
+    plan: input.plan ?? false,
     state: "idle",
     createdAt: now,
     updatedAt: now,
   };
   db.prepare(
-    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     conversation.id,
     conversation.agent,
@@ -83,6 +88,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     conversation.mode,
     conversation.model ?? null,
     conversation.effort ?? null,
+    conversation.plan ? 1 : 0,
     conversation.state,
     now,
     now,
@@ -122,12 +128,13 @@ export function listConversations(
 
 export function updateConversation(db: DatabaseSync, conversation: Conversation): void {
   db.prepare(
-    "UPDATE conversations SET title=?,mode=?,model=?,effort=?,state=?,updated_at=? WHERE id=?",
+    "UPDATE conversations SET title=?,mode=?,model=?,effort=?,plan=?,state=?,updated_at=? WHERE id=?",
   ).run(
     conversation.title,
     conversation.mode,
     conversation.model ?? null,
     conversation.effort ?? null,
+    conversation.plan ? 1 : 0,
     conversation.state,
     conversation.updatedAt,
     conversation.id,
@@ -228,6 +235,7 @@ type ConversationRow = {
   mode: Conversation["mode"];
   model: string | null;
   effort: Conversation["effort"] | null;
+  plan: number;
   state: Conversation["state"];
   created_at: string;
   updated_at: string;
@@ -253,6 +261,7 @@ function mapConversation(row: ConversationRow): Conversation {
     mode: row.mode,
     ...(row.model ? { model: row.model } : {}),
     ...(row.effort ? { effort: row.effort } : {}),
+    plan: row.plan === 1,
     state: row.state,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

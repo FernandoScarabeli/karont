@@ -25,9 +25,31 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
   assert.equal(
     methods["conversation.setOptions"].params.safeParse({
       id: "c1",
-      options: { mode: "full", model: null, effort: "max" },
+      options: { mode: "full", model: null, effort: "max", plan: true },
     }).success,
     true,
+  );
+  assert.equal(
+    methods["conversation.create"].params.safeParse({
+      agent: "claude",
+      cwd: "/tmp",
+      plan: true,
+    }).success,
+    true,
+  );
+  assert.equal(
+    methods["conversation.get"].result.safeParse({
+      conversation: { ...conversation, plan: true },
+      messages: [],
+    }).success,
+    true,
+  );
+  assert.equal(
+    methods["conversation.setOptions"].params.safeParse({
+      id: "c1",
+      options: { plan: "sim" },
+    }).success,
+    false,
   );
   assert.equal(
     methods["conversation.respond"].params.safeParse({
