@@ -20,6 +20,7 @@ import {
   useComposerAttachments,
 } from "./ComposerAttachments.tsx";
 import {
+  type AgentEffort,
   type AgentModels,
   agentDisplayName,
   ComposerPreferences,
@@ -61,7 +62,9 @@ export function ConversationView({
   const [isSending, setIsSending] = useState(false);
   const previousConversationIdRef = useRef(id);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const composerSectionRef = useRef<HTMLElement>(null);
+  const scrollFrameRef = useRef<number | null>(null);
   const wasNearBottom = useRef(true);
   const previousScrollHeight = useRef(0);
   const restoreAfterOlder = useRef(false);
@@ -133,6 +136,26 @@ export function ConversationView({
 
   useEffect(() => {
     const list = messageListRef.current;
+    const sentinel = bottomSentinelRef.current;
+    if (!list || !sentinel) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry) wasNearBottom.current = entry.isIntersecting;
+      },
+      { root: list, rootMargin: "0px 0px 120px 0px", threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => {
+      observer.disconnect();
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const list = messageListRef.current;
     if (!list) return;
     const contentChanged = previousScrollVersion.current !== scrollVersion;
     previousScrollVersion.current = scrollVersion;
@@ -141,17 +164,15 @@ export function ConversationView({
       list.scrollTop += heightDifference;
       restoreAfterOlder.current = false;
     } else if (wasNearBottom.current && contentChanged) {
-      list.scrollTop = list.scrollHeight;
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+      scrollFrameRef.current = window.requestAnimationFrame(() => {
+        scrollFrameRef.current = null;
+        bottomSentinelRef.current?.scrollIntoView({ block: "end", inline: "nearest" });
+      });
     }
-    previousScrollHeight.current = list.scrollHeight;
   }, [scrollVersion]);
-
-  function trackScroll() {
-    const list = messageListRef.current;
-    if (!list) return;
-    wasNearBottom.current = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
-    previousScrollHeight.current = list.scrollHeight;
-  }
 
   const announce = useCallback((text: string) => setAnnouncement(text), []);
 
@@ -305,15 +326,18 @@ export function ConversationView({
     [bridge, conversation, id, updateConversation],
   );
 
-  async function copyFolderPath() {
+  const copyFolderPath = useCallback(async () => {
     if (!conversation) return;
     await copyText(conversation.cwd);
     setAnnouncement(t.chat.folderCopied);
-  }
+  }, [conversation, copyText]);
 
   const title = conversation?.title ?? t.chat.loading;
   const homeTodos = isWorking ? lastTodos : null;
-  const folderPath = conversation ? formatFolderPath(conversation.cwd) : null;
+  const folderPath = useMemo(
+    () => (conversation ? formatFolderPath(conversation.cwd) : null),
+    [conversation],
+  );
   const canAttachFiles = Boolean(
     conversation &&
       bridge &&
@@ -322,6 +346,113 @@ export function ConversationView({
       !isSavingOptions &&
       !isResponding &&
       !isSending,
+  );
+  const changeEffort = useCallback(
+    (value: AgentEffort | "") => void saveOptions({ effort: value || null }),
+    [saveOptions],
+  );
+  const changeMode = useCallback(
+    (value: NonNullable<Conversation["mode"]>) => void saveOptions({ mode: value }),
+    [saveOptions],
+  );
+  const changeModel = useCallback(
+    (value: string) => {
+      const supportedEfforts = effortsForModel(models, value);
+      const clearEffort = conversation?.effort && !supportedEfforts.includes(conversation.effort);
+      void saveOptions({
+        model: value || null,
+        ...(clearEffort ? { effort: null } : {}),
+      });
+    },
+    [conversation?.effort, models, saveOptions],
+  );
+  const changePlanMode = useCallback(
+    (value: boolean) => void saveOptions({ plan: value }),
+    [saveOptions],
+  );
+  const composerLeading = useMemo(
+    () =>
+      conversation ? (
+        <div className={styles.composerControls}>
+          <AttachmentPicker disabled={!canAttachFiles} onFiles={composerAttachments.addFiles} />
+          <span className={styles.agentTag}>
+            <AgentIcon agentId={conversation.agent} />
+            {agentDisplayName(conversation.agent)}
+          </span>
+          <ComposerPreferences
+            disabled={
+              isWorking ||
+              isWaiting ||
+              isSavingOptions ||
+              isResponding ||
+              isSending ||
+              loading ||
+              !bridge
+            }
+            effort={conversation.effort ?? ""}
+            mode={conversation.mode}
+            model={conversation.model ?? ""}
+            models={models}
+            planMode={planMode}
+            onEffortChange={changeEffort}
+            onModeChange={changeMode}
+            onModelChange={changeModel}
+            onPlanModeChange={changePlanMode}
+          />
+        </div>
+      ) : null,
+    [
+      bridge,
+      canAttachFiles,
+      changeEffort,
+      changeMode,
+      changeModel,
+      changePlanMode,
+      composerAttachments.addFiles,
+      conversation,
+      isResponding,
+      isSavingOptions,
+      isSending,
+      isWaiting,
+      isWorking,
+      loading,
+      models,
+      planMode,
+    ],
+  );
+  const composerAttachmentsNode = useMemo(
+    () => (
+      <AttachmentChips
+        attachments={composerAttachments.attachments}
+        disabled={isSending}
+        onRemove={composerAttachments.remove}
+      />
+    ),
+    [composerAttachments.attachments, composerAttachments.remove, isSending],
+  );
+  const composerBelow = useMemo(
+    () =>
+      conversation ? (
+        <div className={styles.folderStrip}>
+          <button
+            aria-label={t.chat.folderCopy(conversation.cwd)}
+            className={styles.folderButton}
+            onClick={() => void copyFolderPath()}
+            title={t.chat.folderCopy(conversation.cwd)}
+            type="button"
+          >
+            <Folder aria-hidden="true" size={15} />
+            <span title={folderPath?.title}>{folderPath?.text}</span>
+          </button>
+          <GitBranchLabel info={gitInfo} />
+        </div>
+      ) : null,
+    [conversation, copyFolderPath, folderPath, gitInfo],
+  );
+  const composerStop = useCallback(() => void stopAgent(), [stopAgent]);
+  const composerSubmit = useCallback(
+    () => void sendMessage(draft, composerAttachments.getRequestAttachments()),
+    [composerAttachments.getRequestAttachments, draft, sendMessage],
   );
 
   return (
@@ -346,12 +477,7 @@ export function ConversationView({
         {headerActions}
       </header>
 
-      <section
-        aria-label={t.chat.messageList}
-        className={styles.messageList}
-        onScroll={trackScroll}
-        ref={messageListRef}
-      >
+      <section aria-label={t.chat.messageList} className={styles.messageList} ref={messageListRef}>
         {loading ? <p className={styles.loading}>{t.chat.loading}</p> : null}
         {error ? (
           <p className={styles.error} role="alert">
@@ -392,6 +518,7 @@ export function ConversationView({
             onRetry={retry}
           />
         ))}
+        <div aria-hidden="true" className={styles.bottomSentinel} ref={bottomSentinelRef} />
       </section>
 
       <section
@@ -431,84 +558,21 @@ export function ConversationView({
         ) : null}
         <Composer
           ariaDescription={t.conversation.composerKeyboardDescription}
-          below={
-            conversation ? (
-              <div className={styles.folderStrip}>
-                <button
-                  aria-label={t.chat.folderCopy(conversation.cwd)}
-                  className={styles.folderButton}
-                  onClick={() => void copyFolderPath()}
-                  title={t.chat.folderCopy(conversation.cwd)}
-                  type="button"
-                >
-                  <Folder aria-hidden="true" size={15} />
-                  <span title={folderPath?.title}>{folderPath?.text}</span>
-                </button>
-                <GitBranchLabel info={gitInfo} />
-              </div>
-            ) : null
-          }
+          below={composerBelow}
           busy={isWorking}
           disabled={
             !conversation || loading || isWaiting || isSavingOptions || isResponding || isSending
           }
-          leading={
-            conversation ? (
-              <div className={styles.composerControls}>
-                <AttachmentPicker
-                  disabled={!canAttachFiles}
-                  onFiles={composerAttachments.addFiles}
-                />
-                <span className={styles.agentTag}>
-                  <AgentIcon agentId={conversation.agent} />
-                  {agentDisplayName(conversation.agent)}
-                </span>
-                <ComposerPreferences
-                  disabled={
-                    isWorking ||
-                    isWaiting ||
-                    isSavingOptions ||
-                    isResponding ||
-                    isSending ||
-                    loading ||
-                    !bridge
-                  }
-                  effort={conversation.effort ?? ""}
-                  mode={conversation.mode}
-                  model={conversation.model ?? ""}
-                  models={models}
-                  planMode={planMode}
-                  onEffortChange={(value) => void saveOptions({ effort: value || null })}
-                  onModeChange={(value) => void saveOptions({ mode: value })}
-                  onModelChange={(value) => {
-                    const supportedEfforts = effortsForModel(models, value);
-                    const clearEffort =
-                      conversation.effort && !supportedEfforts.includes(conversation.effort);
-                    void saveOptions({
-                      model: value || null,
-                      ...(clearEffort ? { effort: null } : {}),
-                    });
-                  }}
-                  onPlanModeChange={(value) => void saveOptions({ plan: value })}
-                />
-              </div>
-            ) : null
-          }
-          attachments={
-            <AttachmentChips
-              attachments={composerAttachments.attachments}
-              disabled={isSending}
-              onRemove={composerAttachments.remove}
-            />
-          }
+          leading={composerLeading}
+          attachments={composerAttachmentsNode}
           onChange={setDraft}
           onDragEnter={composerAttachments.onDragEnter}
           onDragLeave={composerAttachments.onDragLeave}
           onDragOver={composerAttachments.onDragOver}
           onDrop={composerAttachments.onDrop}
           onPaste={composerAttachments.onPaste}
-          onStop={() => void stopAgent()}
-          onSubmit={() => void sendMessage(draft, composerAttachments.getRequestAttachments())}
+          onStop={composerStop}
+          onSubmit={composerSubmit}
           placeholder={t.chat.messageInput}
           submitDisabled={
             !bridge ||

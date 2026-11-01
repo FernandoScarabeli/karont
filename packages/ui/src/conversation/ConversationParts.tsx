@@ -41,6 +41,7 @@ import { formatAttachmentSize } from "./attachmentUtils.ts";
 import styles from "./ConversationParts.module.css";
 import { cleanMarkdownPreview, formatConversationText } from "./displayText.ts";
 import { getAllowedExternalUrl } from "./externalLinks.ts";
+import { splitMarkdownBlocks } from "./markdownBlocks.ts";
 import type { ConversationMessage, MessagePart } from "./useConversation.ts";
 
 type HighlightPlugin = typeof import("rehype-highlight").default;
@@ -362,7 +363,13 @@ const PartItem = memo(
     let content: ReactNode;
     switch (part.type) {
       case "text":
-        content = <MarkdownBody markdown={part.markdown} onAnnounce={onAnnounce} />;
+        content = (
+          <MarkdownBody
+            isStreaming={isStreaming}
+            markdown={part.markdown}
+            onAnnounce={onAnnounce}
+          />
+        );
         break;
       case "thinking":
         content = <ThinkingPart isStreaming={isStreaming} part={part} />;
@@ -403,16 +410,21 @@ const PartItem = memo(
 
 const MarkdownBody = memo(function MarkdownBody({
   markdown,
+  isStreaming = false,
   onAnnounce,
 }: {
   markdown: string;
+  isStreaming?: boolean;
   onAnnounce: (text: string) => void;
 }) {
   const [highlightPlugin, setHighlightPlugin] = useState<HighlightPlugin | null>(null);
-  const hasCodeBlock = /(?:^|\n)\s*(?:`{3,}|~{3,})/u.test(markdown);
+  const blocks = useMemo(() => splitMarkdownBlocks(markdown), [markdown]);
+  const hasClosedCodeBlock = blocks.some(
+    (block) => block.hasFencedCode && (block.closed || !isStreaming),
+  );
 
   useEffect(() => {
-    if (!hasCodeBlock) return;
+    if (!hasClosedCodeBlock) return;
     let mounted = true;
     void loadHighlightPlugin().then((plugin) => {
       if (mounted && plugin) setHighlightPlugin(() => plugin);
@@ -420,38 +432,78 @@ const MarkdownBody = memo(function MarkdownBody({
     return () => {
       mounted = false;
     };
-  }, [hasCodeBlock]);
+  }, [hasClosedCodeBlock]);
 
   return (
     <div className={styles.markdown}>
-      <Markdown
-        components={{
-          a: ({ children, href }) => {
-            const externalUrl = getAllowedExternalUrl(href);
-            return externalUrl ? (
-              <button
-                className={styles.markdownLink}
-                onClick={() => void openExternalUrl(externalUrl, onAnnounce)}
-                type="button"
-              >
-                {children}
-              </button>
-            ) : (
-              <span className={styles.inertLink} title={t.chat.linkUnavailable}>
-                {children}
-              </span>
-            );
-          },
-          pre: ({ children }) => <CodeBlock onAnnounce={onAnnounce}>{children}</CodeBlock>,
-        }}
-        rehypePlugins={highlightPlugin ? [highlightPlugin] : []}
-        remarkPlugins={[remarkGfm]}
-      >
-        {markdown}
-      </Markdown>
+      {blocks.map((block) => (
+        <MarkdownBlock
+          block={block.markdown}
+          highlightPlugin={highlightPlugin}
+          key={block.start}
+          onAnnounce={onAnnounce}
+          useHighlight={
+            highlightPlugin !== null && block.hasFencedCode && (block.closed || !isStreaming)
+          }
+        />
+      ))}
     </div>
   );
 });
+
+const MarkdownBlock = memo(
+  function MarkdownBlock({
+    block,
+    highlightPlugin,
+    onAnnounce,
+    useHighlight,
+  }: {
+    block: string;
+    highlightPlugin: HighlightPlugin | null;
+    onAnnounce: (text: string) => void;
+    useHighlight: boolean;
+  }) {
+    const components = useMemo(
+      () => ({
+        a: ({ children, href }: { children?: ReactNode; href?: string }) => {
+          const externalUrl = getAllowedExternalUrl(href);
+          return externalUrl ? (
+            <button
+              className={styles.markdownLink}
+              onClick={() => void openExternalUrl(externalUrl, onAnnounce)}
+              type="button"
+            >
+              {children}
+            </button>
+          ) : (
+            <span className={styles.inertLink} title={t.chat.linkUnavailable}>
+              {children}
+            </span>
+          );
+        },
+        pre: ({ children }: { children?: ReactNode }) => (
+          <CodeBlock onAnnounce={onAnnounce}>{children}</CodeBlock>
+        ),
+      }),
+      [onAnnounce],
+    );
+
+    return (
+      <Markdown
+        components={components}
+        rehypePlugins={useHighlight && highlightPlugin ? [highlightPlugin] : []}
+        remarkPlugins={[remarkGfm]}
+      >
+        {block}
+      </Markdown>
+    );
+  },
+  (previous, next) =>
+    previous.block === next.block &&
+    previous.onAnnounce === next.onAnnounce &&
+    previous.useHighlight === next.useHighlight &&
+    (!next.useHighlight || previous.highlightPlugin === next.highlightPlugin),
+);
 
 async function openExternalUrl(url: string, onAnnounce: (text: string) => void): Promise<void> {
   try {

@@ -4,6 +4,7 @@ import {
   type DragEventHandler,
   type FormEvent,
   type KeyboardEvent,
+  memo,
   type ReactNode,
   useLayoutEffect,
   useRef,
@@ -36,7 +37,7 @@ export type ComposerProps = {
   below?: ReactNode;
 };
 
-export function Composer({
+export const Composer = memo(function Composer({
   value,
   onChange,
   onSubmit,
@@ -161,4 +162,4 @@ export function Composer({
       {hint ? <p className={styles.hint}>{hint}</p> : null}
     </div>
   );
-}
+});
