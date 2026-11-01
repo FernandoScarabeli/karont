@@ -13,6 +13,5 @@
 ## Do M2
 - Testes de `server.test.ts` usam socket Unix e não rodam no sandbox do Codex (pulados com `KARONT_SKIP_SOCKET_TESTS=1`); rodam fora dele no `npm run check`.
 - Limite de quadro subiu para 64 MiB para caber até 8 anexos; anexos grandes passam inteiros pela memória do serviço. Se pesar, trocar por envio em pedaços.
-- Botão Planejar volta para "Desligado" ao reabrir a conversa (não é guardado).
-- Medição de RAM/CPU com resposta chegando e conversa longa: ainda não feita.
+- Medição (preview, resposta de ~14 mil caracteres): serviço ~1–2% de CPU e 52 MB; aba da interface 12–20% de CPU durante o streaming (antes 60–110%), 0% parada. Repetir no Electron empacotado.
 - A skill `unslop` não está instalada no Codex; as revisões de UI usaram taste lint + Impeccable.
