@@ -11,16 +11,14 @@
   contain-intrinsic-size: auto var(--k-chat-message-intrinsic-size);
 }
 
-.message:focus-within {
+.message:has(:focus-visible) {
   border-radius: var(--k-radius-md);
   outline: var(--k-focus-ring-width) solid var(--k-color-focus);
   outline-offset: var(--k-chat-focus-outline-offset);
 }
 
 .messageOpen {
-  border-radius: var(--k-radius-md);
-  outline: var(--k-border-width) solid var(--k-color-border);
-  background: var(--k-color-bg-raised);
+  background: transparent;
 }
 
 .userMessage {
@@ -110,6 +108,22 @@
   min-height: 0;
   gap: var(--k-space-2);
   overflow: hidden;
+}
+
+.messageOptionsMeta {
+  display: grid;
+  min-width: 0;
+  gap: var(--k-space-1);
+}
+
+.messageTimestamp {
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-11);
+  line-height: var(--k-leading-normal);
+}
+
+.userMessage .messageTimestamp {
+  text-align: end;
 }
 
 @media (prefers-reduced-motion: reduce) {
