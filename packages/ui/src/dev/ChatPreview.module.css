@@ -135,7 +135,7 @@
 .errorModelGrid {
   display: grid;
   min-width: 0;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--k-space-4);
 }
 
@@ -143,22 +143,17 @@
   display: grid;
   min-width: 0;
   align-content: start;
-  gap: var(--k-space-3);
-}
-
-.errorModelHeader {
-  display: grid;
-  align-content: start;
   gap: var(--k-space-1);
 }
 
+.errorModelHeader {
+  min-width: 0;
+}
+
 .errorModelHeader h3,
-.errorModelHeader p,
-.interruptedExcerpt p,
-.errorInlineMessage p,
-.errorNoteMessage,
-.errorFooterMessage,
-.errorModelDetails p,
+.interruptedExcerpt,
+.errorInlineMessage,
+.errorModelMessage,
 .errorModelFeedback {
   margin: 0;
 }
@@ -170,8 +165,23 @@
   line-height: var(--k-leading-tight);
 }
 
-.errorModelHeader p {
-  color: var(--k-color-text-secondary);
+.errorModelStates {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--k-space-1);
+}
+
+.errorModelState {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--k-space-1);
+}
+
+.errorModelStateLabel {
+  margin: 0;
+  color: var(--k-color-text-muted);
   font-size: var(--k-text-12);
   line-height: var(--k-leading-normal);
 }
@@ -179,7 +189,7 @@
 .interruptedExcerpt {
   min-width: 0;
   color: var(--k-color-text-secondary);
-  font-size: var(--k-text-13);
+  font-size: var(--k-text-14);
   line-height: var(--k-leading-normal);
 }
 
@@ -188,171 +198,261 @@
 .errorFooter,
 .errorToast {
   min-width: 0;
-  color: var(--k-color-text-primary);
-  font-size: var(--k-text-13);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-14);
   line-height: var(--k-leading-normal);
 }
 
-.errorInline {
-  display: grid;
-  align-content: start;
-  gap: var(--k-space-2);
-}
-
-.errorInlineMessage,
-.errorNoteHeading,
-.errorFooterHeading,
-.errorToastHeading {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  gap: var(--k-space-2);
-}
-
-.errorInlineMessage svg,
-.errorNoteHeading svg,
-.errorToastHeading svg {
-  flex: 0 0 auto;
-  margin-block-start: var(--k-space-1);
+.errorInlineMessage > svg {
+  display: inline-block;
+  vertical-align: middle;
+  margin-inline-end: var(--k-space-1);
   color: color-mix(in srgb, var(--k-color-danger) 58%, var(--k-color-text-secondary));
 }
 
-.errorInlineMessage p,
-.errorNoteMessage,
-.errorFooterMessage,
-.errorModelDetails p {
+.errorModelHeading > svg {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--k-color-danger) 58%, var(--k-color-text-secondary));
+}
+
+.errorInlineMessage {
   min-width: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-14);
+  font-weight: var(--k-weight-regular);
+  line-height: var(--k-leading-normal);
   overflow-wrap: anywhere;
 }
 
-.errorNote {
-  display: grid;
-  align-content: start;
-  gap: var(--k-space-2);
-  padding: var(--k-space-3);
-  border-radius: var(--k-radius-md);
-  background: var(--k-color-bg-raised);
-}
-
-.errorNoteHeading,
-.errorToastHeading {
-  align-items: center;
-  font-weight: var(--k-weight-medium);
-}
-
-.errorNoteHeading svg,
-.errorToastHeading svg {
-  margin-block-start: 0;
-}
-
-.errorNoteMessage,
-.errorFooterMessage {
-  color: var(--k-color-text-secondary);
-}
-
-.errorFooter {
-  display: grid;
-  align-content: start;
-  gap: var(--k-space-2);
-  padding-block-start: var(--k-space-3);
-  border-block-start: var(--k-border-width) solid var(--k-color-border);
-}
-
-.errorFooterHeading {
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--k-space-2);
-}
-
-.errorToast {
-  display: grid;
-  justify-self: end;
-  align-content: start;
-  gap: var(--k-space-2);
-  width: fit-content;
-  max-width: 100%;
-  padding: var(--k-space-3);
-  border-radius: var(--k-radius-lg);
-  background: var(--k-color-bg-raised);
-}
-
-.errorToastActions,
 .errorModelActions {
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--k-space-1) var(--k-space-2);
+  gap: var(--k-space-1);
 }
 
-.errorModelTextAction {
+.errorInlineActions {
   display: inline-flex;
-  min-height: var(--k-control-height-sm);
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1);
+  margin-inline-start: var(--k-space-1);
+  vertical-align: middle;
+}
+
+.errorModelHeading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-1);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-14);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+}
+
+.errorModelHeading > svg {
+  width: var(--k-icon-size-md);
+  height: var(--k-icon-size-md);
+}
+
+.errorModelMessage {
+  min-width: 0;
+  color: var(--k-color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.errorNote,
+.errorFooter,
+.errorToast {
+  display: grid;
+  align-content: start;
+  gap: var(--k-space-1);
+}
+
+.errorNote {
+  width: fit-content;
+  max-width: 100%;
+  justify-self: start;
+  padding: var(--k-space-3);
+  border-radius: var(--k-radius-md);
+  background: var(--k-color-bg-raised);
+}
+
+.errorToast {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  height: var(--k-control-height-md);
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-1);
+  padding-inline: var(--k-space-2);
+  border: 0;
+  border-radius: var(--k-radius-md);
+  background: var(--k-color-bg-raised);
+  white-space: nowrap;
+}
+
+.errorToast > svg {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--k-color-danger) 58%, var(--k-color-text-secondary));
+}
+
+.errorToastTitle,
+.errorToastReason {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.errorToastTitle {
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-medium);
+}
+
+.errorToastSeparator {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+}
+
+.errorToastReason {
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+}
+
+.errorToastIconButton {
+  display: inline-flex;
+  width: var(--k-control-height-sm);
+  height: var(--k-control-height-sm);
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  gap: var(--k-space-1);
   padding: 0;
   border: 0;
   border-radius: var(--k-radius-sm);
   background: transparent;
   color: var(--k-color-text-secondary);
-  font: inherit;
-  font-size: var(--k-text-12);
-  text-align: start;
   cursor: pointer;
 }
 
-.errorModelTextAction:hover {
+.errorToastIconButton:hover {
+  background: var(--k-color-bg-hover);
   color: var(--k-color-text-primary);
-  text-decoration: underline;
-  text-underline-offset: var(--k-space-1);
 }
 
-.errorModelFooterAction {
-  flex: 0 0 auto;
+.errorToastIconButton:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.errorToastChevronOpen {
+  transform: rotate(180deg);
+}
+
+.errorToastDetails {
+  display: grid;
+  min-width: 0;
+  gap: var(--k-space-1);
+}
+
+.errorToastDetails[hidden] {
+  display: none;
+}
+
+.errorFooter {
+  padding-block-start: var(--k-space-3);
+  border-block-start: var(--k-border-width) solid var(--k-color-border);
+}
+
+.errorFooterHeading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-1);
+}
+
+.errorModelDetailsAction,
+.errorModelRetryAction {
+  display: inline-flex;
   min-height: var(--k-control-height-sm);
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-space-1);
   padding-inline: var(--k-space-2);
+  border: var(--k-border-width) solid transparent;
   border-radius: var(--k-radius-sm);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.errorModelDetailsAction {
+  background: transparent;
+  color: var(--k-color-text-muted);
+}
+
+.errorModelDetailsAction:hover {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
+.errorModelRetryAction {
+  border-color: var(--k-color-border);
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+}
+
+.errorModelRetryAction:hover {
+  border-color: var(--k-color-border-strong);
+}
+
+.errorModelPrimaryRetry {
+  border-color: transparent;
   background: var(--k-color-primary);
   color: var(--k-color-on-primary);
 }
 
-.errorModelFooterAction:hover {
+.errorModelPrimaryRetry:hover {
   background: var(--k-color-primary-hover);
   color: var(--k-color-on-primary);
-  text-decoration: none;
 }
 
-.errorModelTextAction:focus-visible {
+.errorModelDetailsAction:focus-visible,
+.errorModelRetryAction:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-color-focus);
   outline-offset: var(--k-focus-ring-offset);
 }
 
 .errorModelDetails {
-  display: grid;
+  width: 100%;
+  max-height: calc(var(--k-space-10) * 3);
   min-width: 0;
-  gap: var(--k-space-2);
+  overflow: auto;
+  margin: 0;
+  padding: var(--k-space-3);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-color-bg-app);
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-mono); /* taste-skill-ignore: raw error details */
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .errorModelDetails[hidden] {
   display: none;
-}
-
-.errorModelDetails p {
-  color: var(--k-color-text-secondary);
-  font-size: var(--k-text-12);
-}
-
-.errorModelDetails pre {
-  min-width: 0;
-  max-width: 100%;
-  margin: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-  color: var(--k-color-text-secondary);
-  font-family: var(--k-font-mono);
-  font-size: var(--k-text-12);
-  line-height: var(--k-leading-normal);
 }
 
 .errorModelFeedback {
@@ -381,16 +481,4 @@
   padding-inline: var(--k-space-2);
   color: var(--k-color-text-secondary);
   font-size: var(--k-text-12);
-}
-
-@media (max-width: 900px) {
-  .errorModelGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 560px) {
-  .errorModelGrid {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }

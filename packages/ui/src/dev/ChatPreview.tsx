@@ -1,5 +1,5 @@
 import type { Conversation, ConversationMessage, MessagePart } from "@karont/contract";
-import { AlertTriangle, RotateCw } from "lucide-react";
+import { AlertTriangle, ChevronDown, RotateCcw } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { Composer } from "../components/Composer/Composer.tsx";
@@ -81,7 +81,15 @@ const actionTypeLabels: Record<(typeof actionStateExamples)[number]["actionType"
   other: "Outra ação",
 };
 
-const errorModelExamples = [
+type ErrorModelDefinition = {
+  id: string;
+  title: string;
+  description: string;
+  variant: "inline" | "note" | "footer" | "toast";
+  shortReason?: string;
+};
+
+const errorModelExamples: ErrorModelDefinition[] = [
   {
     id: "inline",
     title: "Modelo 1",
@@ -105,34 +113,37 @@ const errorModelExamples = [
     title: "Modelo 4",
     description: "Aviso compacto no fim.",
     variant: "toast",
+    shortReason: "filtro de conteúdo",
   },
-] as const;
+];
 
 const interruptedResponse =
   "O Codex interrompeu a resposta: o filtro de conteúdo do provedor bloqueou o texto. Tente reformular o pedido.";
 const rawProviderError =
   "provider_error: content_filter\ncompletion_status: blocked\nmessage: The provider's content filter blocked the generated response.";
 
-type ErrorModelVariant = (typeof errorModelExamples)[number]["variant"];
+type ErrorModelVariant = ErrorModelDefinition["variant"];
 
-function ErrorModelExample({
-  description,
-  title,
+function ErrorModelState({
+  initiallyOpen,
+  shortReason,
   variant,
 }: {
-  description: string;
-  title: string;
+  initiallyOpen: boolean;
+  shortReason?: string;
   variant: ErrorModelVariant;
 }) {
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(initiallyOpen);
   const [retryNotice, setRetryNotice] = useState(false);
   const detailsId = useId();
+  const stateLabel = initiallyOpen ? "Detalhes abertos" : "Fechado";
+  const alertRole = initiallyOpen ? "group" : "alert";
 
   const detailsToggle = (
     <button
       aria-controls={detailsId}
       aria-expanded={detailsOpen}
-      className={styles.errorModelTextAction}
+      className={styles.errorModelDetailsAction}
       onClick={() => setDetailsOpen((open) => !open)}
       type="button"
     >
@@ -141,113 +152,136 @@ function ErrorModelExample({
   );
 
   const rawDetails = (
-    <div className={styles.errorModelDetails} hidden={!detailsOpen} id={detailsId}>
-      <p>{interruptedResponse}</p>
-      <pre>{rawProviderError}</pre>
-    </div>
+    <pre className={styles.errorModelDetails} hidden={!detailsOpen} id={detailsId}>
+      {rawProviderError}
+    </pre>
+  );
+
+  const toastDetailsToggle = (
+    <button
+      aria-controls={detailsId}
+      aria-expanded={detailsOpen}
+      aria-label={detailsOpen ? "Ocultar detalhes" : "Ver detalhes"}
+      className={styles.errorToastIconButton}
+      onClick={() => setDetailsOpen((open) => !open)}
+      title={detailsOpen ? "Ocultar detalhes" : "Ver detalhes"}
+      type="button"
+    >
+      <ChevronDown
+        aria-hidden="true"
+        className={detailsOpen ? styles.errorToastChevronOpen : undefined}
+        size={16}
+        strokeWidth={1.8}
+      />
+    </button>
+  );
+
+  const toastRetryButton = (
+    <button
+      aria-label="Tentar de novo"
+      className={styles.errorToastIconButton}
+      onClick={() => setRetryNotice(true)}
+      title="Tentar de novo"
+      type="button"
+    >
+      <RotateCcw aria-hidden="true" size={16} strokeWidth={1.8} />
+    </button>
   );
 
   const retryButton = (
     <button
       className={
-        variant === "footer"
-          ? `${styles.errorModelTextAction} ${styles.errorModelFooterAction}`
-          : styles.errorModelTextAction
+        variant === "inline"
+          ? styles.errorModelDetailsAction
+          : variant === "footer"
+            ? `${styles.errorModelRetryAction} ${styles.errorModelPrimaryRetry}`
+            : styles.errorModelRetryAction
       }
       onClick={() => setRetryNotice(true)}
       type="button"
     >
-      <RotateCw aria-hidden="true" size={14} strokeWidth={1.8} />
       Tentar de novo
     </button>
   );
 
-  return (
-    <article className={styles.errorModel}>
-      <header className={styles.errorModelHeader}>
-        <h3>{title}</h3>
-        <p>{description}</p>
-      </header>
+  const controls = (
+    <div className={styles.errorModelActions}>
+      {detailsToggle}
+      {retryButton}
+    </div>
+  );
+  const inlineControls = (
+    <span className={styles.errorInlineActions}>
+      {detailsToggle}
+      {retryButton}
+    </span>
+  );
 
-      <div className={styles.interruptedExcerpt}>
-        <p>
-          A validação separa imagens de arquivos de texto e recusa formatos que não fazem parte do
-          contrato.
-        </p>
-      </div>
+  const errorAttributes = {
+    "aria-label": `Erro do Codex: resposta interrompida, estado ${stateLabel.toLocaleLowerCase("pt-BR")}`,
+    role: alertRole,
+  } as const;
+
+  return (
+    <div className={styles.errorModelState}>
+      <p className={styles.errorModelStateLabel}>{stateLabel}</p>
 
       {variant === "inline" ? (
-        <div
-          aria-label="Erro do Codex: resposta interrompida"
-          className={styles.errorInline}
-          role="alert"
-        >
-          <div className={styles.errorInlineMessage}>
-            <AlertTriangle aria-hidden="true" size={15} strokeWidth={1.8} />
-            <p>{interruptedResponse}</p>
-          </div>
-          <div className={styles.errorModelActions}>
-            {detailsToggle}
-            {retryButton}
-          </div>
+        <div {...errorAttributes} className={styles.errorInline}>
+          <p className={styles.errorInlineMessage}>
+            <AlertTriangle aria-hidden="true" size={16} strokeWidth={1.8} />
+            <span>{interruptedResponse}</span>
+            {inlineControls}
+          </p>
           {rawDetails}
         </div>
       ) : null}
 
       {variant === "note" ? (
-        <div
-          aria-label="Erro do Codex: resposta interrompida"
-          className={styles.errorNote}
-          role="alert"
-        >
-          <div className={styles.errorNoteHeading}>
+        <div {...errorAttributes} className={styles.errorNote}>
+          <div className={styles.errorModelHeading}>
             <AlertTriangle aria-hidden="true" size={16} strokeWidth={1.8} />
             <span>Resposta interrompida</span>
           </div>
-          <p className={styles.errorNoteMessage}>{interruptedResponse}</p>
-          <div className={styles.errorModelActions}>
-            {detailsToggle}
-            {retryButton}
-          </div>
+          <p className={styles.errorModelMessage}>{interruptedResponse}</p>
+          {controls}
           {rawDetails}
         </div>
       ) : null}
 
       {variant === "footer" ? (
-        <div
-          aria-label="Erro do Codex: resposta interrompida"
-          className={styles.errorFooter}
-          role="alert"
-        >
+        <div {...errorAttributes} className={styles.errorFooter}>
           <div className={styles.errorFooterHeading}>
-            <div className={styles.errorNoteHeading}>
-              <AlertTriangle aria-hidden="true" size={15} strokeWidth={1.8} />
+            <div className={styles.errorModelHeading}>
+              <AlertTriangle aria-hidden="true" size={16} strokeWidth={1.8} />
               <span>Resposta interrompida</span>
             </div>
-            {retryButton}
+            {controls}
           </div>
-          <p className={styles.errorFooterMessage}>{interruptedResponse}</p>
-          <div className={styles.errorModelActions}>{detailsToggle}</div>
+          <p className={styles.errorModelMessage}>{interruptedResponse}</p>
           {rawDetails}
         </div>
       ) : null}
 
       {variant === "toast" ? (
-        <div
-          aria-label="Erro do Codex: resposta interrompida"
-          className={styles.errorToast}
-          role="alert"
-        >
-          <div className={styles.errorToastHeading}>
-            <AlertTriangle aria-hidden="true" size={15} strokeWidth={1.8} />
-            <span>Resposta interrompida</span>
+        <>
+          <div {...errorAttributes} className={styles.errorToast}>
+            <AlertTriangle aria-hidden="true" size={16} strokeWidth={1.8} />
+            <span className={styles.errorToastTitle}>Resposta interrompida</span>
+            <span aria-hidden="true" className={styles.errorToastSeparator}>
+              ·
+            </span>
+            <span className={styles.errorToastReason} title={shortReason}>
+              {shortReason}
+            </span>
+            {toastDetailsToggle}
+            {toastRetryButton}
           </div>
-          <div className={styles.errorToastActions}>
-            {detailsToggle}
-            {retryButton}
+          <div className={styles.errorToastDetails} hidden={!detailsOpen} id={detailsId}>
+            <p className={styles.errorModelMessage}>{interruptedResponse}</p>
+            <pre className={styles.errorModelDetails}>{rawProviderError}</pre>
           </div>
-          {rawDetails}
-        </div>
+        </>
       ) : null}
 
       {retryNotice ? (
@@ -255,6 +289,38 @@ function ErrorModelExample({
           Prévia: nenhuma nova solicitação foi enviada.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function ErrorModelExample({
+  description,
+  shortReason,
+  title,
+  variant,
+}: {
+  description: string;
+  shortReason?: string;
+  title: string;
+  variant: ErrorModelVariant;
+}) {
+  return (
+    <article className={styles.errorModel}>
+      <header className={styles.errorModelHeader}>
+        <h3>
+          {title} — {description}
+        </h3>
+      </header>
+
+      <p className={styles.interruptedExcerpt}>
+        A validação separa imagens de arquivos de texto e recusa formatos que não fazem parte do
+        contrato.
+      </p>
+
+      <div className={styles.errorModelStates}>
+        <ErrorModelState initiallyOpen={false} shortReason={shortReason} variant={variant} />
+        <ErrorModelState initiallyOpen={true} shortReason={shortReason} variant={variant} />
+      </div>
     </article>
   );
 }
@@ -575,6 +641,7 @@ export function ChatPreview() {
                 <ErrorModelExample
                   description={model.description}
                   key={model.id}
+                  shortReason={model.shortReason}
                   title={model.title}
                   variant={model.variant}
                 />
