@@ -24,7 +24,9 @@
 }
 
 .select {
+  width: max-content;
   max-width: var(--k-composer-select-max-width);
+  field-sizing: content;
   min-height: var(--k-control-height-md);
   appearance: none;
   padding: 0 calc(var(--k-space-4) + var(--k-space-1)) 0 var(--k-space-2);

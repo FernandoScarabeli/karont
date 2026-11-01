@@ -161,7 +161,7 @@
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  font-family: var(--k-font-mono);
+  font-family: var(--k-font-sans);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -187,9 +187,7 @@
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: var(--k-space-1);
   color: var(--k-color-attention);
-  font-size: var(--k-text-11);
 }
 
 .exitedMarker {

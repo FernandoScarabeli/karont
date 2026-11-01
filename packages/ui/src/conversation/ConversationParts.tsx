@@ -19,7 +19,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { type FormEvent, memo, useState } from "react";
+import { type FormEvent, memo, useEffect, useId, useState } from "react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -109,7 +109,14 @@ export const MessageRow = memo(function MessageRow({
             </button>
           ) : null}
           <div className={styles.parts}>
-            {renderParts(visibleParts, message.id, onRespond, onRetry, onAnnounce)}
+            {renderParts(
+              visibleParts,
+              message.id,
+              message.status === "streaming",
+              onRespond,
+              onRetry,
+              onAnnounce,
+            )}
           </div>
           {hasTimeline ? (
             <>
@@ -134,6 +141,7 @@ export const MessageRow = memo(function MessageRow({
 function renderParts(
   parts: MessagePart[],
   messageId: string,
+  isStreaming: boolean,
   onRespond: OnRespond,
   onRetry: (messageId: string) => void,
   onAnnounce: (text: string) => void,
@@ -159,6 +167,7 @@ function renderParts(
     elements.push(
       <PartItem
         key={part.id}
+        isStreaming={isStreaming}
         messageId={messageId}
         onAnnounce={onAnnounce}
         onRespond={onRespond}
@@ -175,12 +184,14 @@ const PartItem = memo(
   function PartItem({
     part,
     messageId,
+    isStreaming,
     onRespond,
     onRetry,
     onAnnounce,
   }: {
     part: MessagePart;
     messageId: string;
+    isStreaming: boolean;
     onRespond: OnRespond;
     onRetry: (messageId: string) => void;
     onAnnounce: (text: string) => void;
@@ -189,7 +200,7 @@ const PartItem = memo(
       case "text":
         return <MarkdownBody markdown={part.markdown} onAnnounce={onAnnounce} />;
       case "thinking":
-        return <ThinkingPart part={part} />;
+        return <ThinkingPart isStreaming={isStreaming} part={part} />;
       case "permission":
         return <PermissionPart onRespond={onRespond} part={part} />;
       case "question":
@@ -207,6 +218,7 @@ const PartItem = memo(
   (previous, next) =>
     previous.part === next.part &&
     previous.messageId === next.messageId &&
+    previous.isStreaming === next.isStreaming &&
     previous.onRespond === next.onRespond &&
     previous.onRetry === next.onRetry &&
     previous.onAnnounce === next.onAnnounce,
@@ -288,14 +300,27 @@ function getText(node: ReactNode): string {
 
 const ThinkingPart = memo(function ThinkingPart({
   part,
+  isStreaming,
 }: {
   part: Extract<MessagePart, { type: "thinking" }>;
+  isStreaming: boolean;
 }) {
+  const [expanded, setExpanded] = useState(isStreaming);
+  useEffect(() => setExpanded(isStreaming), [isStreaming]);
+
   return (
-    <details className={styles.thinking}>
+    <details
+      className={styles.thinking}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+      open={expanded}
+    >
       <summary>
-        <LoaderCircle aria-hidden="true" className={styles.thinkingIcon} size={15} />
-        {t.chat.thinking}
+        {isStreaming ? (
+          <LoaderCircle aria-hidden="true" className={styles.thinkingIcon} size={15} />
+        ) : (
+          <CheckCircle2 aria-hidden="true" className={styles.thinkingDoneIcon} size={15} />
+        )}
+        {isStreaming ? t.chat.thinking : t.chat.thinkingDone}
       </summary>
       <div className={styles.thinkingText}>{part.text}</div>
     </details>
@@ -331,7 +356,11 @@ const ActionItem = memo(function ActionItem({
   action: Extract<MessagePart, { type: "action" }>;
 }) {
   const Icon = actionIcon(action.actionType);
-  const duration = action.durationMs === null ? "" : formatDuration(action.durationMs);
+  const duration =
+    action.durationMs === null || action.durationMs === undefined || action.durationMs === 0
+      ? ""
+      : formatDuration(action.durationMs);
+  const waitingForUser = (action as { state: string }).state === "waiting";
   const title = action.title || `${t.chat.actionTypes[action.actionType]} ${action.input}`;
   return (
     <details className={styles.action}>
@@ -339,14 +368,18 @@ const ActionItem = memo(function ActionItem({
         <Icon aria-hidden="true" className={styles.actionIcon} size={15} />
         <span className={styles.actionTitle}>{title}</span>
         <span className={styles.actionState}>
-          {action.state === "running" ? (
+          {waitingForUser ? (
+            <Clock3 aria-hidden="true" size={14} />
+          ) : action.state === "running" ? (
             <LoaderCircle aria-hidden="true" className={styles.thinkingIcon} size={14} />
           ) : action.state === "ok" ? (
             <CheckCircle2 aria-hidden="true" size={14} />
           ) : (
             <XCircle aria-hidden="true" size={14} />
           )}
-          <span>{t.chat.actionStates[action.state]}</span>
+          <span>
+            {waitingForUser ? t.chat.actionStates.waiting : t.chat.actionStates[action.state]}
+          </span>
         </span>
         {duration ? <span className={styles.duration}>{duration}</span> : null}
       </summary>
@@ -378,6 +411,7 @@ const PermissionPart = memo(function PermissionPart({
   part: Extract<MessagePart, { type: "permission" }>;
   onRespond: OnRespond;
 }) {
+  const headingId = useId();
   if (part.state !== "pending") {
     return (
       <p className={styles.responseLine}>
@@ -388,15 +422,19 @@ const PermissionPart = memo(function PermissionPart({
       </p>
     );
   }
+  const permission = part as typeof part & { command?: string; description?: string };
+  const command = permission.command?.trim();
+  const description = permission.description ?? permission.summary;
+  const heading = permissionHeading(part.tool);
+
   return (
-    <section aria-label={t.chat.needsYou} className={styles.permissionCard}>
-      <h3>
+    <section aria-labelledby={headingId} className={styles.permissionCard}>
+      <h3 id={headingId}>
         <AlertTriangle aria-hidden="true" size={16} />
-        {t.chat.needsYou}
+        {heading}
       </h3>
-      <p>{t.chat.permissionPrompt}</p>
-      <span className={styles.detailLabel}>{`${part.tool} · ${t.chat.permissionCommand}`}</span>
-      <code className={styles.permissionCommand}>{part.summary}</code>
+      {command ? <code className={styles.permissionCommand}>{command}</code> : null}
+      {description ? <p className={styles.permissionDescription}>{description}</p> : null}
       <div className={styles.cardActions}>
         {part.options.includes("allow") ? (
           <Button
@@ -660,28 +698,28 @@ const TimelineView = memo(
         <p>{t.chat.timelineCaption}</p>
         <ol>
           {steps.map((part) => {
-            const duration = part.type === "action" ? part.durationMs : null;
+            const duration = part.type === "action" ? (part.durationMs ?? null) : null;
+            const hasDuration = duration !== null && duration > 0;
             const title = part.type === "action" ? part.title : t.chat.thinkingDone;
-            const width =
-              duration === null ? "0%" : `${Math.max(4, (duration / maxDuration) * 100)}%`;
+            const width = hasDuration ? `${Math.max(4, (duration / maxDuration) * 100)}%` : "0%";
             return (
               <li key={part.id}>
                 <span className={styles.timelineTitle}>{title}</span>
                 <div
                   aria-label={
-                    duration === null ? t.chat.timelineDurationMissing : formatDuration(duration)
+                    hasDuration ? formatDuration(duration) : t.chat.timelineDurationMissing
                   }
                   className={styles.timelineTrack}
                   role="img"
                 >
-                  {duration === null ? (
+                  {!hasDuration ? (
                     <span className={styles.timelineUnknown}>—</span>
                   ) : (
                     <span className={styles.timelineBar} style={{ width }} />
                   )}
                 </div>
                 <span className={styles.timelineDuration}>
-                  {duration === null ? t.chat.timelineDurationMissing : formatDuration(duration)}
+                  {hasDuration ? formatDuration(duration) : t.chat.timelineDurationMissing}
                 </span>
               </li>
             );
@@ -716,6 +754,15 @@ function actionIcon(type: Extract<MessagePart, { type: "action" }>["actionType"]
     case "other":
       return Wrench;
   }
+}
+
+function permissionHeading(tool: string): string {
+  const normalizedTool = tool.toLocaleLowerCase();
+  if (/(bash|shell|command|exec|terminal)/.test(normalizedTool)) {
+    return t.chat.permissionRunCommand;
+  }
+  if (/(edit|write|file)/.test(normalizedTool)) return t.chat.permissionEditFile;
+  return t.chat.permissionAction;
 }
 
 function isTimelinePart(
