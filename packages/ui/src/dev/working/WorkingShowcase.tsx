@@ -109,8 +109,8 @@ export function WorkingShowcase() {
       <div className={styles.content}>
         <header className={styles.pageHeader}>
           <div className={styles.headingGroup}>
-            <h1 className={styles.heading}>Indicador em conversa</h1>
-            <p className={styles.description}>Quatro variações no mesmo roteiro simulado.</p>
+            <h1 className={styles.heading}>Trabalhando</h1>
+            <p className={styles.description}>Quatro versões com o mesmo roteiro de exemplo</p>
           </div>
           <p className={styles.notice} role="note">
             Tela provisória · dados de exemplo
@@ -124,31 +124,23 @@ export function WorkingShowcase() {
                 <h2 className={styles.variantTitle}>{item.label}</h2>
               </div>
 
-              <div className={styles.conversation}>
-                <div className={styles.userMessage}>
-                  <span className={styles.messageAuthor}>Você</span>
-                  <p className={styles.userBubble}>
-                    Ajuste o carregamento em src/app.ts e valide com npm test.
-                  </p>
-                </div>
+              <div className={styles.thread}>
+                <p className={styles.userMessage}>
+                  Ajuste o carregamento em src/app.ts e valide com npm test.
+                </p>
 
                 <div className={styles.agentMessage}>
-                  <span className={styles.messageAuthor}>Agente</span>
                   <p className={styles.responseText}>
                     Vou conferir o fluxo atual antes de fazer a alteração.
+                    {item.id === "d" ? (
+                      <WorkingIndicator parts={beat.parts} variant={item.variant} inline />
+                    ) : null}
                   </p>
-                  {item.id === "d" ? (
-                    <div className={styles.cursorIndicator}>
-                      <WorkingIndicator parts={beat.parts} variant={item.variant} />
-                    </div>
+                  {item.id !== "d" ? (
+                    <WorkingIndicator parts={beat.parts} variant={item.variant} />
                   ) : null}
                 </div>
               </div>
-              {item.id !== "d" ? (
-                <div className={styles.fixedIndicator}>
-                  <WorkingIndicator parts={beat.parts} variant={item.variant} />
-                </div>
-              ) : null}
             </article>
           ))}
         </section>

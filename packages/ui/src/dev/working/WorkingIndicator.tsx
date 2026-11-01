@@ -8,20 +8,22 @@ const dotIds = [
   "top-left",
   "top-center",
   "top-right",
+  "middle-right",
+  "bottom-right",
+  "bottom-center",
+  "bottom-left",
   "middle-left",
   "center",
-  "middle-right",
-  "bottom-left",
-  "bottom-center",
-  "bottom-right",
 ];
 
 export function WorkingIndicator({
   parts,
   variant,
+  inline = false,
 }: {
   parts: readonly MessagePart[];
   variant: WorkingVariant;
+  inline?: boolean;
 }) {
   const label = deriveWorkingLabel(parts);
   if (!label) return null;
@@ -30,32 +32,38 @@ export function WorkingIndicator({
   const thinkingPart = currentPart?.type === "thinking" ? currentPart : undefined;
   const sentence = thinkingPart ? lastThinkingSentence(thinkingPart) : "";
   const files = currentActionFiles(parts);
+  const indicatorClass = inline
+    ? `${styles.indicator} ${styles.inlineIndicator}`
+    : styles.indicator;
 
   return (
-    <div className={styles.indicator} role="status" aria-atomic="true">
-      <span className={styles.dots} aria-hidden="true">
-        {dotIds.map((dotId) => (
-          <span className={styles.dot} key={dotId} />
-        ))}
-      </span>
-      <span className={styles.step}>
-        <span className={styles.shimmer} key={label}>
-          {label}
+    <span className={indicatorClass} role="status" aria-atomic="true">
+      <span className={styles.mainLine}>
+        <span className={styles.dots} aria-hidden="true">
+          {dotIds.map((dotId) => (
+            <span className={styles.dot} data-position={dotId} key={dotId} />
+          ))}
+        </span>
+        <span className={styles.step}>
+          <span className={styles.shimmer} key={label}>
+            {label}
+          </span>
         </span>
       </span>
+      {variant === "complete" ? (
+        <span className={styles.chipsRow} aria-hidden="true">
+          {files.length > 0 ? <FileChips files={files} key={currentPart?.id ?? "files"} /> : null}
+        </span>
+      ) : null}
 
-      {variant !== "minimal" && sentence ? (
+      {variant !== "minimal" ? (
         <span className={styles.ticker} aria-hidden="true">
-          <span className={styles.tickerText} key={sentence}>
-            {sentence}
+          <span className={styles.tickerText} data-empty={!sentence} key={sentence || "empty"}>
+            {sentence || "\u00a0"}
           </span>
         </span>
       ) : null}
-
-      {variant === "complete" && files.length > 0 ? (
-        <FileChips files={files} key={currentPart?.id ?? "files"} />
-      ) : null}
-    </div>
+    </span>
   );
 }
 
@@ -64,7 +72,7 @@ function FileChips({ files }: { files: string[] }) {
   const overflow = files.length - visibleFiles.length;
 
   return (
-    <span className={styles.chips} aria-hidden="true">
+    <span className={styles.chips}>
       {visibleFiles.map((file) => (
         <span className={styles.chip} key={file}>
           <FileText aria-hidden="true" className={styles.fileIcon} />
