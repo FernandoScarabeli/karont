@@ -1,4 +1,4 @@
-import type { Agent } from "@karont/contract";
+import type { Agent, Conversation, ResultOf } from "@karont/contract";
 import { BridgeError } from "@karont/contract";
 import { ChevronDown, Folder, TriangleAlert } from "lucide-react";
 import {
@@ -20,7 +20,9 @@ import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { TextField } from "../components/TextField/TextField.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
+import { ComposerPreferences } from "./ComposerPreferences.tsx";
 import styles from "./NewConversationView.module.css";
+import { upsertConversation } from "./useConversationIndex.ts";
 
 const LAST_AGENT_SETTING = "newConversation.lastAgent";
 const LAST_FOLDER_SETTING = "newConversation.lastFolder";
@@ -28,6 +30,7 @@ const TERMINAL_CHOICE = "terminal";
 const PERSONAL_FOLDER = "~";
 
 type AgentChoice = typeof TERMINAL_CHOICE | string;
+type Models = ResultOf<"agent.models">;
 type ActiveMenu = "choice" | null;
 type MenuOption = {
   id: string;
@@ -65,6 +68,10 @@ export function NewConversationView({
   const [folderDialogError, setFolderDialogError] = useState("");
   const [error, setError] = useState("");
   const [agentsError, setAgentsError] = useState(false);
+  const [models, setModels] = useState<Models | null>(null);
+  const [mode, setMode] = useState<Conversation["mode"]>("edit");
+  const [model, setModel] = useState("");
+  const [effort, setEffort] = useState<Models["efforts"][number] | "">("");
   const choiceTriggerRef = useRef<HTMLButtonElement>(null);
   const menuRootRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -102,7 +109,9 @@ export function NewConversationView({
       if (!mounted) return;
 
       if (agentsResult.status === "fulfilled") {
-        const foundAgents = agentsResult.value.agents.filter((agent) => agent.found);
+        const foundAgents = agentsResult.value.agents.filter(
+          (agent) => agent.found && (agent.id === "claude" || agent.id === "codex"),
+        );
         setAgents(foundAgents);
         if (
           !choiceTouchedRef.current &&
@@ -172,6 +181,33 @@ export function NewConversationView({
     : folderPath;
   const folderButtonLabel = `${t.conversation.folderAccessibleName(accessibleFolderPath)}`;
 
+  useEffect(() => {
+    if (
+      !bridge ||
+      !selectedAgent ||
+      (selectedAgent.id !== "claude" && selectedAgent.id !== "codex")
+    ) {
+      setModels(null);
+      setModel("");
+      setEffort("");
+      return;
+    }
+    const agentId = selectedAgent.id;
+    let mounted = true;
+    setModels(null);
+    void bridge
+      .request("agent.models", { agent: agentId })
+      .then((result) => {
+        if (mounted) setModels(result);
+      })
+      .catch(() => {
+        if (mounted) setModels({ agent: agentId, models: [], efforts: [] });
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [bridge, selectedAgent]);
+
   function closeMenu(returnFocus = true) {
     setActiveMenu(null);
     if (returnFocus) choiceTriggerRef.current?.focus();
@@ -200,9 +236,8 @@ export function NewConversationView({
         selected: agent.id === choice,
         content: (
           <>
-            <AgentIcon agentId={agent.id} className={styles.soonAgent} />
-            <span className={styles.soonAgent}>{agent.name}</span>
-            <span className={styles.soonMarker}>{t.conversation.soon}</span>
+            <AgentIcon agentId={agent.id} />
+            <span>{agent.name}</span>
           </>
         ),
         onSelect: () => chooseAgent(agent.id),
@@ -347,6 +382,51 @@ export function NewConversationView({
     }
   }
 
+  async function openAgentConversation(value: string) {
+    if (!bridge || isOpening || !selectedAgent) return;
+    if (selectedAgent.id !== "claude" && selectedAgent.id !== "codex") {
+      setError(t.chat.agentUnavailable);
+      return;
+    }
+    const text = value.trim();
+    if (!text) return;
+    setError("");
+    setIsOpening(true);
+    let created: Conversation | null = null;
+    try {
+      const cwd =
+        folderPath === PERSONAL_FOLDER
+          ? (homePath ?? (await bridge.request("system.info", {})).homeDir)
+          : folderPath;
+      const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? text;
+      const result = await bridge.request("conversation.create", {
+        agent: selectedAgent.id,
+        cwd,
+        mode,
+        title: firstLine.slice(0, 240),
+        ...(model ? { model } : {}),
+        ...(effort ? { effort } : {}),
+      });
+      created = result.conversation;
+      upsertConversation(created);
+      await bridge.request("conversation.send", { id: created.id, text });
+      navigate({ name: "conversation", id: created.id });
+    } catch (openError) {
+      setError(
+        openError instanceof BridgeError && openError.message
+          ? openError.message
+          : t.chat.createFailed,
+      );
+    } finally {
+      setIsOpening(false);
+    }
+  }
+
+  function submitComposer() {
+    if (choice === TERMINAL_CHOICE) void openTerminal(command);
+    else void openAgentConversation(command);
+  }
+
   const choiceOptions = buildChoiceOptions();
 
   function renderListbox() {
@@ -398,7 +478,7 @@ export function NewConversationView({
           {t.conversation.welcomeTitle}
         </p>
         <Composer
-          disabled={choice !== TERMINAL_CHOICE}
+          disabled={choice !== TERMINAL_CHOICE && !selectedAgent}
           ariaDescription={t.conversation.composerKeyboardDescription}
           leading={
             <div className={styles.controls} ref={menuRootRef}>
@@ -419,41 +499,52 @@ export function NewConversationView({
                   ref={choiceTriggerRef}
                   type="button"
                 >
-                  <AgentIcon
-                    agentId={choice}
-                    className={selectedAgent ? styles.soonAgent : undefined}
-                  />
-                  <span className={selectedAgent ? styles.soonAgent : undefined}>
-                    {selectedTitle}
-                  </span>
+                  <AgentIcon agentId={choice} />
+                  <span>{selectedTitle}</span>
                   <ChevronDown aria-hidden="true" size={15} strokeWidth={1.8} />
                 </button>
                 {activeMenu === "choice" ? renderListbox() : null}
               </div>
-
-              <div className={styles.folderWrap}>
-                <button
-                  aria-label={folderButtonLabel}
-                  className={styles.folderButton}
-                  onClick={() => void openFolderChooser()}
-                  title={folderButtonLabel}
-                  type="button"
-                >
-                  <Folder aria-hidden="true" size={16} strokeWidth={1.8} />
-                  <span>{folderName}</span>
-                </button>
-              </div>
+              {selectedAgent && (selectedAgent.id === "claude" || selectedAgent.id === "codex") ? (
+                <ComposerPreferences
+                  effort={effort}
+                  mode={mode}
+                  model={model}
+                  models={models}
+                  onEffortChange={setEffort}
+                  onModeChange={setMode}
+                  onModelChange={setModel}
+                />
+              ) : null}
+            </div>
+          }
+          below={
+            <div className={styles.folderStrip}>
+              <button
+                aria-label={folderButtonLabel}
+                className={styles.folderButton}
+                onClick={() => void openFolderChooser()}
+                title={folderButtonLabel}
+                type="button"
+              >
+                <Folder aria-hidden="true" size={16} strokeWidth={1.8} />
+                <span>{folderName}</span>
+              </button>
             </div>
           }
           mono={choice === TERMINAL_CHOICE}
           onChange={setCommand}
-          onSubmit={() => void openTerminal(command)}
+          onSubmit={submitComposer}
           placeholder={
             choice === TERMINAL_CHOICE
               ? t.conversation.terminalCommandPlaceholder
               : t.conversation.promptPlaceholder
           }
-          submitDisabled={!bridge || isOpening || choice !== TERMINAL_CHOICE}
+          submitDisabled={
+            !bridge ||
+            isOpening ||
+            (choice !== TERMINAL_CHOICE && (!selectedAgent || !command.trim()))
+          }
           submitLabel={
             choice === TERMINAL_CHOICE ? t.conversation.openTerminal : t.conversation.sendMessage
           }

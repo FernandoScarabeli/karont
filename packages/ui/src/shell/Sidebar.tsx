@@ -1,10 +1,12 @@
 import { BridgeError, type TerminalInfo } from "@karont/contract";
-import { ListTodo, Plus, Settings, SquarePen, SquareTerminal } from "lucide-react";
+import { ListTodo, Plus, Settings, SquarePen, SquareTerminal, TriangleAlert } from "lucide-react";
 import { type RefObject, useRef, useState } from "react";
+import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
 import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
+import { useConversationIndex } from "../conversation/useConversationIndex.ts";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { TerminalCloseButton } from "../terminal/TerminalCloseButton.tsx";
@@ -22,6 +24,7 @@ export function Sidebar() {
   const bridge = getBridge();
   const activePane = findPane(layout, activePaneId);
   const { terminals, error } = useTerminals();
+  const conversationIndex = useConversationIndex();
   const terminalTitles = getTerminalDisplayTitles(terminals);
   const [terminalToClose, setTerminalToClose] = useState<TerminalInfo | null>(null);
   const [isClosing, setIsClosing] = useState(false);
@@ -131,7 +134,56 @@ export function Sidebar() {
             <p className={styles.emptyList} role="status">
               <span>{t.shell.conversationsLoadError}</span>
             </p>
-          ) : terminals.length > 0 ? (
+          ) : null}
+          {conversationIndex.error ? (
+            <p className={styles.emptyList} role="status">
+              <span>{t.shell.conversationsLoadError}</span>
+            </p>
+          ) : null}
+          {conversationIndex.conversations.length > 0 ? (
+            <ul aria-label={t.shell.agentConversations} className={styles.conversationList}>
+              {conversationIndex.conversations.map((conversation) => {
+                const stateText =
+                  conversation.state === "working"
+                    ? t.chat.working
+                    : conversation.state === "waiting"
+                      ? t.chat.waiting
+                      : conversation.state === "error"
+                        ? t.shell.conversationError
+                        : t.chat.idle;
+                const accessibleName = `${conversation.title}, ${stateText}`;
+                const active =
+                  view.name === "workspace" &&
+                  activePane?.view.kind === "chat" &&
+                  activePane.view.conversationId === conversation.id;
+                return (
+                  <li className={styles.conversationItem} key={conversation.id}>
+                    <button
+                      aria-current={active ? "page" : undefined}
+                      aria-label={accessibleName}
+                      className={styles.conversationButton}
+                      onClick={() => navigate({ name: "conversation", id: conversation.id })}
+                      title={accessibleName}
+                      type="button"
+                    >
+                      <AgentIcon agentId={conversation.agent} />
+                      <span className={styles.conversationTitle}>{conversation.title}</span>
+                      {conversation.state === "working" ? (
+                        <span aria-hidden="true" className={styles.agentWorkingMarker} />
+                      ) : null}
+                      {conversation.state === "waiting" ? (
+                        <span className={styles.needsYouMarker}>
+                          <TriangleAlert aria-hidden="true" size={14} />
+                          {t.chat.waiting}
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          {terminals.length > 0 ? (
             <ul aria-label={t.shell.conversations} className={styles.conversationList}>
               {terminals.map((terminal) => {
                 const details = getTerminalDisplayDetails(terminal);
@@ -175,11 +227,11 @@ export function Sidebar() {
                 );
               })}
             </ul>
-          ) : (
+          ) : conversationIndex.conversations.length === 0 ? (
             <p className={styles.emptyList}>
               <span>{t.shell.noConversations}</span>
             </p>
-          )}
+          ) : null}
         </section>
       </nav>
 

@@ -1,4 +1,4 @@
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 import { type FormEvent, type KeyboardEvent, type ReactNode, useLayoutEffect, useRef } from "react";
 import styles from "./Composer.module.css";
 
@@ -15,6 +15,9 @@ export type ComposerProps = {
   disabled?: boolean;
   hint?: string;
   mono?: boolean;
+  busy?: boolean;
+  onStop?: () => void;
+  below?: ReactNode;
 };
 
 export function Composer({
@@ -30,9 +33,12 @@ export function Composer({
   disabled = false,
   hint,
   mono = false,
+  busy = false,
+  onStop,
+  below,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const cannotSubmit = disabled || submitDisabled;
+  const cannotSubmit = !busy && (disabled || submitDisabled);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -47,11 +53,16 @@ export function Composer({
 
   function submit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
+    if (busy) {
+      onStop?.();
+      return;
+    }
     if (cannotSubmit) return;
     onSubmit();
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (busy) return;
     if (
       event.key !== "Enter" ||
       event.shiftKey ||
@@ -89,16 +100,26 @@ export function Composer({
               aria-label={submitLabel}
               className={styles.submit}
               onClick={(event) => {
-                if (cannotSubmit) event.preventDefault();
+                if (busy) {
+                  event.preventDefault();
+                  onStop?.();
+                } else if (cannotSubmit) {
+                  event.preventDefault();
+                }
               }}
               title={submitLabel}
               type="submit"
             >
-              <ArrowUp aria-hidden="true" size={18} strokeWidth={2} />
+              {busy ? (
+                <Square aria-hidden="true" size={14} strokeWidth={2.2} />
+              ) : (
+                <ArrowUp aria-hidden="true" size={18} strokeWidth={2} />
+              )}
             </button>
           </div>
         </div>
       </form>
+      {below}
       {hint ? <p className={styles.hint}>{hint}</p> : null}
     </div>
   );

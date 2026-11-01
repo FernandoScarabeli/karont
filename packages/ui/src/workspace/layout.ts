@@ -74,6 +74,15 @@ export function findPaneByTerminal(tree: LayoutNode, terminalId: string): PaneNo
   );
 }
 
+export function findPaneByConversation(
+  tree: LayoutNode,
+  conversationId: string,
+): PaneNode | undefined {
+  return listPanes(tree).find(
+    (pane) => pane.view.kind === "chat" && pane.view.conversationId === conversationId,
+  );
+}
+
 export function selectTerminalPane(
   tree: LayoutNode,
   activePaneId: string,

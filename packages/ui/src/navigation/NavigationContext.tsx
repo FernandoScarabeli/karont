@@ -12,6 +12,7 @@ import {
   closePane as closePaneInLayout,
   createInitialLayout,
   findPane,
+  findPaneByConversation,
   findPaneByTerminal,
   isValidLayout,
   type LayoutNode,
@@ -36,6 +37,7 @@ export type View =
 export type NavigationTarget =
   | View
   | { name: "new-conversation" }
+  | { name: "conversation"; id: string }
   | { name: "terminal"; id: string };
 
 type NavigationState = {
@@ -152,6 +154,18 @@ export function NavigationProvider({ children }: PropsWithChildren) {
         const selected = selectTerminalPane(layout, activePaneId, target.id);
         if (selected.tree !== layout) setLayout(selected.tree);
         setActivePaneId(selected.paneId);
+        setView({ name: "workspace" });
+        return;
+      }
+      if (target.name === "conversation") {
+        const existing = findPaneByConversation(layout, target.id);
+        if (existing) {
+          setActivePaneId(existing.id);
+        } else {
+          setLayout((current) =>
+            setPaneView(current, activePaneId, { kind: "chat", conversationId: target.id }),
+          );
+        }
         setView({ name: "workspace" });
         return;
       }

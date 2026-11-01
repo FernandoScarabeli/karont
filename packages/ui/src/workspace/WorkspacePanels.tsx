@@ -1,7 +1,9 @@
 import {
   type DragEvent,
+  lazy,
   type ReactNode,
   type RefObject,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -22,6 +24,11 @@ import {
 } from "./layout.ts";
 import { PanelToolbar } from "./PanelToolbar.tsx";
 import styles from "./WorkspacePanels.module.css";
+
+const ConversationView = lazy(async () => {
+  const module = await import("../conversation/ConversationView.tsx");
+  return { default: module.ConversationView };
+});
 
 type DragTarget = { paneId: string; edge: PaneEdge } | null;
 
@@ -238,12 +245,21 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
     }
 
     return (
-      <div className={styles.chatPlaceholder}>
-        <h1 className={styles.chatTitle} ref={isActive ? titleRef : undefined} tabIndex={-1}>
-          {t.workspace.chatTitle}
-        </h1>
-        <p>{t.conversation.agentChatSoon}</p>
-      </div>
+      <Suspense
+        fallback={
+          <div className={styles.chatLoading} role="status">
+            {t.chat.loading}
+          </div>
+        }
+      >
+        <ConversationView
+          dragHandleProps={dragHandleProps}
+          headerActions={renderToolbar(pane)}
+          id={pane.view.conversationId}
+          key={pane.view.conversationId}
+          titleRef={isActive ? titleRef : undefined}
+        />
+      </Suspense>
     );
   }
 
