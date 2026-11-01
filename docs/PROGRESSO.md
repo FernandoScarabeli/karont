@@ -94,6 +94,8 @@ Branch `m2-chat` (sem PR; o dono testa no preview antes de juntar na `main`). De
 - A vitrine `#chat` (F13/F14) foi criada e **removida** a pedido do dono.
 - **Clique na mensagem (F17/F19):** sem moldura nem fundo ao abrir (foco visível só no teclado). Mensagem do usuário: data e hora em cima do balão, Copiar/Editar embaixo; "Reenviar" removido. Resposta do agente: data embaixo, acima das ações. Data e ícones alinhados à borda.
 - **Trocar de conversa sem piscar (F18):** caches pequenos em memória (`conversationCache.ts`: 20 conversas, modelos por agente, branch por pasta) mostram o último dado na hora e atualizam por trás; composer e faixa com a forma final enquanto carrega; "Carregando…" só após 300 ms. Medido quadro a quadro: nenhum quadro sem controles.
+- **Data e espaço (F21):** formato "17:14 · 1 de nov." (ano só se for outro); data em cima também na resposta do agente; espaço da data e das ações sempre reservado (abrir só faz fade, nada se move; só a Linha do tempo empurra).
+- **"Trabalhando" versão C (F20 protótipo → F22):** pontinhos 3×3 em espiral + frase do passo com shimmer (Pensando, Lendo X, Lendo N arquivos, Rodando X, Respondendo, Trabalhando, Parando) + linha do raciocínio + chips dos arquivos; fica logo abaixo da resposta que está chegando; some em `waiting`. Tela provisória `#trabalhando` apagada. Testado com Claude Haiku real.
 
 ### Decisões do dono nesta rodada
 - Sem letras de atalho de teclado nos menus.
