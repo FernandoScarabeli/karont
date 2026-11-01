@@ -1,5 +1,6 @@
 import type { Conversation, ConversationMessage, MessagePart } from "@karont/contract";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { AlertTriangle, RotateCw } from "lucide-react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { Composer } from "../components/Composer/Composer.tsx";
 import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
@@ -66,6 +67,7 @@ const sections = [
   ["chat-plans", "Plano"],
   ["chat-todos", "Tarefas"],
   ["chat-errors", "Erros"],
+  ["chat-error-models", "Erro — modelos"],
   ["chat-states", "Estado da conversa e linha do tempo"],
   ["chat-message-actions", "Ações da mensagem"],
 ] as const;
@@ -79,6 +81,184 @@ const actionTypeLabels: Record<(typeof actionStateExamples)[number]["actionType"
   web: "Busca na web",
   other: "Outra ação",
 };
+
+const errorModelExamples = [
+  {
+    id: "inline",
+    title: "Modelo 1",
+    description: "Sem cartão no fluxo.",
+    variant: "inline",
+  },
+  {
+    id: "note",
+    title: "Modelo 2",
+    description: "Nota em superfície neutra.",
+    variant: "note",
+  },
+  {
+    id: "footer",
+    title: "Modelo 3",
+    description: "Rodapé com nova tentativa.",
+    variant: "footer",
+  },
+  {
+    id: "toast",
+    title: "Modelo 4",
+    description: "Aviso compacto no fim.",
+    variant: "toast",
+  },
+] as const;
+
+const interruptedResponse =
+  "O Codex interrompeu a resposta: o filtro de conteúdo do provedor bloqueou o texto. Tente reformular o pedido.";
+const rawProviderError =
+  "provider_error: content_filter\ncompletion_status: blocked\nmessage: The provider's content filter blocked the generated response.";
+
+type ErrorModelVariant = (typeof errorModelExamples)[number]["variant"];
+
+function ErrorModelExample({
+  description,
+  title,
+  variant,
+}: {
+  description: string;
+  title: string;
+  variant: ErrorModelVariant;
+}) {
+  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [retryNotice, setRetryNotice] = useState(false);
+  const detailsId = useId();
+
+  const detailsToggle = (
+    <button
+      aria-controls={detailsId}
+      aria-expanded={detailsOpen}
+      className={styles.errorModelTextAction}
+      onClick={() => setDetailsOpen((open) => !open)}
+      type="button"
+    >
+      {detailsOpen ? "Ocultar detalhes" : "Ver detalhes"}
+    </button>
+  );
+
+  const rawDetails = (
+    <div className={styles.errorModelDetails} hidden={!detailsOpen} id={detailsId}>
+      <p>{interruptedResponse}</p>
+      <pre>{rawProviderError}</pre>
+    </div>
+  );
+
+  const retryButton = (
+    <button
+      className={
+        variant === "footer"
+          ? `${styles.errorModelTextAction} ${styles.errorModelFooterAction}`
+          : styles.errorModelTextAction
+      }
+      onClick={() => setRetryNotice(true)}
+      type="button"
+    >
+      <RotateCw aria-hidden="true" size={14} strokeWidth={1.8} />
+      Tentar de novo
+    </button>
+  );
+
+  return (
+    <article className={styles.errorModel}>
+      <header className={styles.errorModelHeader}>
+        <h3>{title}</h3>
+        <p>{description}</p>
+      </header>
+
+      <div className={styles.interruptedExcerpt}>
+        <p>
+          A validação separa imagens de arquivos de texto e recusa formatos que não fazem parte do
+          contrato.
+        </p>
+      </div>
+
+      {variant === "inline" ? (
+        <div
+          aria-label="Erro do Codex: resposta interrompida"
+          className={styles.errorInline}
+          role="alert"
+        >
+          <div className={styles.errorInlineMessage}>
+            <AlertTriangle aria-hidden="true" size={15} strokeWidth={1.8} />
+            <p>{interruptedResponse}</p>
+          </div>
+          <div className={styles.errorModelActions}>
+            {detailsToggle}
+            {retryButton}
+          </div>
+          {rawDetails}
+        </div>
+      ) : null}
+
+      {variant === "note" ? (
+        <div
+          aria-label="Erro do Codex: resposta interrompida"
+          className={styles.errorNote}
+          role="alert"
+        >
+          <div className={styles.errorNoteHeading}>
+            <AlertTriangle aria-hidden="true" size={16} strokeWidth={1.8} />
+            <span>Resposta interrompida</span>
+          </div>
+          <p className={styles.errorNoteMessage}>{interruptedResponse}</p>
+          <div className={styles.errorModelActions}>
+            {detailsToggle}
+            {retryButton}
+          </div>
+          {rawDetails}
+        </div>
+      ) : null}
+
+      {variant === "footer" ? (
+        <div
+          aria-label="Erro do Codex: resposta interrompida"
+          className={styles.errorFooter}
+          role="alert"
+        >
+          <div className={styles.errorFooterHeading}>
+            <div className={styles.errorNoteHeading}>
+              <AlertTriangle aria-hidden="true" size={15} strokeWidth={1.8} />
+              <span>Resposta interrompida</span>
+            </div>
+            {retryButton}
+          </div>
+          <p className={styles.errorFooterMessage}>{interruptedResponse}</p>
+          <div className={styles.errorModelActions}>{detailsToggle}</div>
+          {rawDetails}
+        </div>
+      ) : null}
+
+      {variant === "toast" ? (
+        <div
+          aria-label="Erro do Codex: resposta interrompida"
+          className={styles.errorToast}
+          role="alert"
+        >
+          <div className={styles.errorToastHeading}>
+            <AlertTriangle aria-hidden="true" size={15} strokeWidth={1.8} />
+            <span>Resposta interrompida</span>
+          </div>
+          <div className={styles.errorToastActions}>
+            {detailsToggle}
+            {retryButton}
+          </div>
+          {rawDetails}
+        </div>
+      ) : null}
+
+      {retryNotice ? (
+        <p className={styles.errorModelFeedback} role="status">
+          Prévia: nenhuma nova solicitação foi enviada.
+        </p>
+      ) : null}
+    </article>
+  );
+}
 
 const actionStateLabels: Record<Extract<MessagePart, { type: "action" }>["state"], string> = {
   running: "Em andamento",
@@ -369,6 +549,19 @@ export function ChatPreview() {
                 </div>
               ) : null;
             })}
+          </PreviewSection>
+
+          <PreviewSection id="chat-error-models" title="Erro — modelos">
+            <div className={styles.errorModelGrid}>
+              {errorModelExamples.map((model) => (
+                <ErrorModelExample
+                  description={model.description}
+                  key={model.id}
+                  title={model.title}
+                  variant={model.variant}
+                />
+              ))}
+            </div>
           </PreviewSection>
 
           <PreviewSection id="chat-states" title="Estado da conversa e linha do tempo">
