@@ -7,6 +7,7 @@ import {
   type Conversation,
   type ConversationAttachment,
   type ConversationMessage,
+  describeAgentError,
   type MessagePart,
 } from "@karont/contract";
 import { validateAttachments } from "../attachments.ts";
@@ -618,11 +619,13 @@ export class ConversationManager {
       const completedAt = this.#now();
       message.endedAt = endedAt;
       if (event.error) {
+        const description = describeAgentError(event.error.text, active.agent);
         const errorPart: MessagePart = {
           id: randomUUID(),
           type: "error",
           errorType: event.error.type,
-          text: event.error.text,
+          text: description.message,
+          ...(description.details ? { details: description.details } : {}),
           retryable: event.status !== "done",
           startedAt: endedAt,
           endedAt,
@@ -760,11 +763,13 @@ export class ConversationManager {
   ): Promise<void> {
     if (message.status !== "streaming") return;
     const endedAt = this.#epochNow();
+    const description = describeAgentError(text, conversation.agent);
     const part: MessagePart = {
       id: randomUUID(),
       type: "error",
       errorType: type,
-      text,
+      text: description.message,
+      ...(description.details ? { details: description.details } : {}),
       retryable: true,
       startedAt: endedAt,
       endedAt,

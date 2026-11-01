@@ -95,6 +95,7 @@ export const messagePartSchema = z.discriminatedUnion("type", [
     type: z.literal("error"),
     errorType: z.enum(["cli-not-found", "not-logged-in", "failed", "interrupted"]),
     text: z.string(),
+    details: z.string().max(8_192).optional(),
     retryable: z.boolean(),
   }),
 ]);
