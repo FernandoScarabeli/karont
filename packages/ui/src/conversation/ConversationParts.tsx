@@ -1,11 +1,13 @@
 import {
   AlertTriangle,
+  Brain,
   Check,
   CheckCircle2,
   Circle,
   Clock3,
   Copy,
   FileCode2,
+  FileText,
   Globe2,
   HelpCircle,
   ListTodo,
@@ -19,7 +21,17 @@ import {
   XCircle,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { type FormEvent, memo, useEffect, useId, useState } from "react";
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -58,6 +70,9 @@ export const MessageRow = memo(function MessageRow({
 }) {
   const [showTimeline, setShowTimeline] = useState(false);
   const [visiblePartCount, setVisiblePartCount] = useState(120);
+  const timelineId = useId();
+  const timelineToggleRef = useRef<HTMLButtonElement>(null);
+  const messageRef = useRef<HTMLElement>(null);
   const text =
     message.author === "user"
       ? message.parts
@@ -66,13 +81,53 @@ export const MessageRow = memo(function MessageRow({
           .join("\n")
       : "";
   const visibleParts = message.parts.slice(-visiblePartCount);
-  const hasTimeline = message.author === "agent" && message.parts.some(isTimelinePart);
+  const hasTimeline = message.author === "agent" && message.parts.length > 0;
+
+  const navigateToPart = useCallback(
+    (partId: string) => {
+      setVisiblePartCount(message.parts.length);
+      requestAnimationFrame(() => {
+        const target = Array.from(
+          messageRef.current?.querySelectorAll<HTMLElement>("[data-part-id]") ?? [],
+        ).find((element) => element.dataset.partId === partId);
+        if (!target) return;
+
+        for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+          if (parent instanceof HTMLDetailsElement) parent.open = true;
+        }
+        const scrollTarget =
+          target instanceof HTMLDetailsElement
+            ? (target.querySelector("summary") ?? target)
+            : target;
+        scrollTarget.scrollIntoView({ behavior: "smooth", block: "center" });
+        const highlightClass = styles.partHighlight;
+        if (!highlightClass) return;
+        target.classList.remove(highlightClass);
+        target.addEventListener(
+          "animationend",
+          (event) => {
+            if (event.target === target) target.classList.remove(highlightClass);
+          },
+          { once: true },
+        );
+        void target.offsetWidth;
+        target.classList.add(highlightClass);
+      });
+    },
+    [message.parts.length],
+  );
+
+  const closeTimeline = useCallback(() => {
+    setShowTimeline(false);
+    timelineToggleRef.current?.focus();
+  }, []);
 
   return (
     <article
       aria-label={message.author === "user" ? t.chat.userMessage : t.chat.agentMessage}
       className={`${styles.message} ${message.author === "user" ? styles.userMessage : styles.agentMessage}`}
       data-author={message.author}
+      ref={messageRef}
     >
       {message.author === "user" ? (
         <>
@@ -122,14 +177,23 @@ export const MessageRow = memo(function MessageRow({
             <>
               <button
                 aria-expanded={showTimeline}
+                aria-controls={timelineId}
                 className={styles.timelineToggle}
                 onClick={() => setShowTimeline((value) => !value)}
+                ref={timelineToggleRef}
                 type="button"
               >
                 <Clock3 aria-hidden="true" size={14} />
                 {t.chat.timeline}
               </button>
-              {showTimeline ? <TimelineView message={message} /> : null}
+              {showTimeline ? (
+                <TimelineView
+                  id={timelineId}
+                  message={message}
+                  onClose={closeTimeline}
+                  onNavigate={navigateToPart}
+                />
+              ) : null}
             </>
           ) : null}
         </>
@@ -147,6 +211,8 @@ function renderParts(
   onAnnounce: (text: string) => void,
 ) {
   const elements: ReactNode[] = [];
+  const permissionActionIds = attachGrantedPermissions(parts);
+  const permittedActionIds = new Set(permissionActionIds.values());
   const pendingPermissionCommands = parts.flatMap((part) => {
     if (part.type !== "permission" || part.state !== "pending") return [];
     const permission = part as typeof part & { command?: string };
@@ -162,20 +228,44 @@ function renderParts(
       index += 1;
       continue;
     }
+    if (part.type === "permission" && permissionActionIds.has(part.id)) {
+      index += 1;
+      continue;
+    }
     if (part.type === "action") {
-      const actions: Extract<MessagePart, { type: "action" }>[] = [];
-      while (parts[index]?.type === "action") {
+      const actions: Array<{
+        action: Extract<MessagePart, { type: "action" }>;
+        permitted: boolean;
+      }> = [];
+      while (index < parts.length) {
         const action = parts[index];
-        if (action?.type === "action") actions.push(action);
-        index += 1;
+        if (action?.type === "action") {
+          actions.push({
+            action,
+            permitted: permittedActionIds.has(action.id),
+          });
+          index += 1;
+          continue;
+        }
+        if (action?.type === "permission" && permissionActionIds.has(action.id)) {
+          index += 1;
+          continue;
+        }
+        break;
       }
       const visibleActions = actions.filter(
-        (action) =>
+        ({ action }) =>
           !duplicatesPendingPermission(action, pendingPermissionCommands) &&
           !duplicatesPendingCard(action, hasQuestionCard, hasPlanCard),
       );
       if (visibleActions.length > 0) {
-        elements.push(<ActionGroup actions={visibleActions} key={actions[0]?.id ?? index} />);
+        elements.push(
+          <ActionGroup
+            actions={visibleActions}
+            key={actions[0]?.action.id ?? index}
+            messageId={messageId}
+          />,
+        );
       }
       continue;
     }
@@ -211,24 +301,37 @@ const PartItem = memo(
     onRetry: (messageId: string) => void;
     onAnnounce: (text: string) => void;
   }) {
+    let content: ReactNode;
     switch (part.type) {
       case "text":
-        return <MarkdownBody markdown={part.markdown} onAnnounce={onAnnounce} />;
+        content = <MarkdownBody markdown={part.markdown} onAnnounce={onAnnounce} />;
+        break;
       case "thinking":
-        return <ThinkingPart isStreaming={isStreaming} part={part} />;
+        content = <ThinkingPart isStreaming={isStreaming} part={part} />;
+        break;
       case "permission":
-        return <PermissionPart onRespond={onRespond} part={part} />;
+        content = <PermissionPart onRespond={onRespond} part={part} />;
+        break;
       case "question":
-        return <QuestionPart onRespond={onRespond} part={part} />;
+        content = <QuestionPart onRespond={onRespond} part={part} />;
+        break;
       case "plan":
-        return <PlanPart onRespond={onRespond} part={part} />;
+        content = <PlanPart onRespond={onRespond} part={part} />;
+        break;
       case "todos":
-        return <TodosPart part={part} />;
+        content = <TodosPart part={part} />;
+        break;
       case "error":
-        return <ErrorPart messageId={messageId} onRetry={onRetry} part={part} />;
+        content = <ErrorPart messageId={messageId} onRetry={onRetry} part={part} />;
+        break;
       case "action":
         return null;
     }
+    return (
+      <div className={styles.partTarget} data-message-id={messageId} data-part-id={part.id}>
+        {content}
+      </div>
+    );
   },
   (previous, next) =>
     previous.part === next.part &&
@@ -343,9 +446,26 @@ const ThinkingPart = memo(function ThinkingPart({
 });
 
 const ActionGroup = memo(
-  function ActionGroup({ actions }: { actions: Extract<MessagePart, { type: "action" }>[] }) {
+  function ActionGroup({
+    actions,
+    messageId,
+  }: {
+    actions: Array<{
+      action: Extract<MessagePart, { type: "action" }>;
+      permitted: boolean;
+    }>;
+    messageId: string;
+  }) {
     const onlyAction = actions[0];
-    if (actions.length === 1 && onlyAction) return <ActionItem action={onlyAction} />;
+    if (actions.length === 1 && onlyAction) {
+      return (
+        <ActionItem
+          action={onlyAction.action}
+          messageId={messageId}
+          permitted={onlyAction.permitted}
+        />
+      );
+    }
     return (
       <details className={styles.actionGroup}>
         <summary>
@@ -353,8 +473,13 @@ const ActionGroup = memo(
           {t.chat.actionGroup(actions.length)}
         </summary>
         <div className={styles.actionGroupBody}>
-          {actions.map((action) => (
-            <ActionItem action={action} key={action.id} />
+          {actions.map(({ action, permitted }) => (
+            <ActionItem
+              action={action}
+              key={action.id}
+              messageId={messageId}
+              permitted={permitted}
+            />
           ))}
         </div>
       </details>
@@ -362,13 +487,21 @@ const ActionGroup = memo(
   },
   (previous, next) =>
     previous.actions.length === next.actions.length &&
-    previous.actions.every((action, index) => action === next.actions[index]),
+    previous.messageId === next.messageId &&
+    previous.actions.every(
+      ({ action, permitted }, index) =>
+        action === next.actions[index]?.action && permitted === next.actions[index]?.permitted,
+    ),
 );
 
 const ActionItem = memo(function ActionItem({
   action,
+  messageId,
+  permitted,
 }: {
   action: Extract<MessagePart, { type: "action" }>;
+  messageId: string;
+  permitted: boolean;
 }) {
   const Icon = actionIcon(action.actionType);
   const duration =
@@ -378,10 +511,13 @@ const ActionItem = memo(function ActionItem({
   const waitingForUser = (action as { state: string }).state === "waiting";
   const title = action.title || `${t.chat.actionTypes[action.actionType]} ${action.input}`;
   return (
-    <details className={styles.action}>
-      <summary>
+    <details className={styles.action} data-message-id={messageId} data-part-id={action.id}>
+      <summary aria-description={permitted ? t.chat.permissionGrantedDescription : undefined}>
         <Icon aria-hidden="true" className={styles.actionIcon} size={15} />
         <span className={styles.actionTitle}>{title}</span>
+        {permitted ? (
+          <LockKeyhole aria-hidden="true" className={styles.permittedIcon} size={13} />
+        ) : null}
         <span className={styles.actionState}>
           {waitingForUser ? (
             <Clock3 aria-hidden="true" size={14} />
@@ -723,64 +859,319 @@ const ErrorPart = memo(function ErrorPart({
 });
 
 const TimelineView = memo(
-  function TimelineView({ message }: { message: ConversationMessage }) {
-    const steps = message.parts.filter(isTimelinePart);
-    const maxDuration = Math.max(
-      1,
-      ...steps.map((part) => (part.type === "action" ? (part.durationMs ?? 0) : 0)),
-    );
+  function TimelineView({
+    id,
+    message,
+    onClose,
+    onNavigate,
+  }: {
+    id: string;
+    message: ConversationMessage;
+    onClose: () => void;
+    onNavigate: (partId: string) => void;
+  }) {
+    const regionRef = useRef<HTMLElement>(null);
+    const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
+    const [activeIndex, setActiveIndex] = useState(0);
+    const timeline = useMemo(() => buildTimeline(message.parts), [message.parts]);
+    const tickIntervalMs = timelineTickInterval(timeline.totalDurationMs);
+    const axisEndMs = Math.ceil(timeline.totalDurationMs / tickIntervalMs) * tickIntervalMs;
+    const ticks: number[] = [];
+    for (let tick = 0; tick <= axisEndMs; tick += tickIntervalMs) ticks.push(tick);
+
+    useEffect(() => {
+      regionRef.current?.focus();
+    }, []);
+
+    function handleTimelineKeyDown(event: KeyboardEvent<HTMLElement>) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const focusedRow = event.target instanceof HTMLButtonElement ? event.target : undefined;
+        const focusedIndex = focusedRow ? rowRefs.current.indexOf(focusedRow) : -1;
+        const index = focusedIndex >= 0 ? focusedIndex : activeIndex;
+        const row = timeline.rows[index];
+        if (row) onNavigate(row.part.id);
+        return;
+      }
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      event.preventDefault();
+      const focusedRow = event.target instanceof HTMLButtonElement ? event.target : undefined;
+      const focusedIndex = focusedRow ? rowRefs.current.indexOf(focusedRow) : -1;
+      const currentIndex = focusedIndex >= 0 ? focusedIndex : activeIndex;
+      const direction = event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 1;
+      const nextIndex =
+        focusedIndex < 0
+          ? direction < 0
+            ? timeline.rows.length - 1
+            : 0
+          : Math.max(0, Math.min(timeline.rows.length - 1, currentIndex + direction));
+      setActiveIndex(nextIndex);
+      rowRefs.current[nextIndex]?.focus();
+    }
+
     return (
-      <section aria-label={t.chat.timelineTitle} className={styles.timeline}>
-        <p>{t.chat.timelineCaption}</p>
-        <ol>
-          {steps.map((part) => {
-            const duration = part.type === "action" ? (part.durationMs ?? null) : null;
-            const hasDuration = duration !== null && duration >= 1_000;
-            const title = part.type === "action" ? part.title : t.chat.thinkingDone;
-            const width = hasDuration ? `${Math.max(4, (duration / maxDuration) * 100)}%` : "0%";
-            return (
-              <li key={part.id}>
-                <span className={styles.timelineTitle}>{title}</span>
-                <div
-                  aria-label={
-                    hasDuration
-                      ? formatDuration(duration)
-                      : duration === null
-                        ? t.chat.timelineDurationMissing
-                        : t.chat.durationUnderSecond
-                  }
-                  className={styles.timelineTrack}
-                  role="img"
-                >
-                  {hasDuration ? (
-                    <span className={styles.timelineBar} style={{ width }} />
-                  ) : duration === null ? (
-                    <span className={styles.timelineUnknown}>—</span>
-                  ) : null}
-                </div>
-                <span className={styles.timelineDuration}>
-                  {hasDuration
-                    ? formatDuration(duration)
-                    : duration === null
-                      ? t.chat.timelineDurationMissing
-                      : ""}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
+      <section
+        aria-label={t.chat.timelineTitle}
+        aria-describedby={`${id}-help`}
+        className={styles.timeline}
+        id={id}
+        ref={regionRef}
+        tabIndex={-1}
+        onKeyDown={handleTimelineKeyDown}
+      >
+        <div className={styles.timelineHeader}>
+          <h3>{t.chat.timelineTitle}</h3>
+          <p>
+            <span>{t.chat.timelineTotal}</span>
+            <strong>
+              {timeline.hasKnownDuration
+                ? formatDuration(timeline.totalDurationMs)
+                : t.chat.timelineDurationMissing}
+            </strong>
+          </p>
+        </div>
+        <p className={styles.timelineCaption}>{t.chat.timelineCaption}</p>
+        <p className={styles.srOnly} id={`${id}-help`}>
+          {t.chat.timelineNavigateHelp}
+        </p>
+        <div className={styles.timelineChart}>
+          <figure aria-label={t.chat.timelineAxis} className={styles.timelineAxis}>
+            <figcaption className={styles.srOnly}>{t.chat.timelineAxis}</figcaption>
+            <span className={styles.timelineAxisLabel}>{t.chat.timelineStepHeader}</span>
+            <div className={styles.timelineAxisTrack}>
+              {ticks.map((tick, index) => {
+                const position = axisEndMs > 0 ? (tick / axisEndMs) * 100 : 0;
+                const edgeClass =
+                  index === 0
+                    ? styles.timelineAxisTickFirst
+                    : index === ticks.length - 1
+                      ? styles.timelineAxisTickLast
+                      : "";
+                return (
+                  <span
+                    className={`${styles.timelineAxisTick} ${edgeClass}`}
+                    key={tick}
+                    style={{ left: `${position}%` }}
+                  >
+                    {formatAxisTick(tick)}
+                  </span>
+                );
+              })}
+            </div>
+            <span className={styles.timelineAxisEnd}>{t.chat.timelineDurationHeader}</span>
+          </figure>
+          <ol className={styles.timelineRows}>
+            {timeline.rows.map((row, index) => {
+              const icon = timelineIcon(row.part);
+              const durationLabel =
+                row.durationMs === null
+                  ? t.chat.timelineDurationMissing
+                  : formatDuration(row.durationMs);
+              const left =
+                row.startMs !== null && axisEndMs > 0
+                  ? `${(row.startMs / axisEndMs) * 100}%`
+                  : "0%";
+              const width =
+                row.durationMs !== null && axisEndMs > 0
+                  ? `${(row.durationMs / axisEndMs) * 100}%`
+                  : "0%";
+              return (
+                <li className={styles.timelineRow} key={row.part.id}>
+                  <button
+                    aria-current={activeIndex === index ? "step" : undefined}
+                    aria-label={`${row.kindLabel}. ${row.title}. ${durationLabel}`}
+                    className={styles.timelineStep}
+                    onClick={() => onNavigate(row.part.id)}
+                    onFocus={() => setActiveIndex(index)}
+                    ref={(element) => {
+                      rowRefs.current[index] = element;
+                    }}
+                    tabIndex={activeIndex === index ? 0 : -1}
+                    type="button"
+                    data-kind={row.kind}
+                  >
+                    <span aria-hidden="true" className={styles.timelineIcon}>
+                      {icon}
+                    </span>
+                    <span className={styles.timelineKind}>{row.kindLabel}</span>
+                    <span className={styles.timelineTitle}>{row.title}</span>
+                    <span aria-hidden="true" className={styles.timelineTrack}>
+                      {ticks.map((tick) => {
+                        const position = axisEndMs > 0 ? (tick / axisEndMs) * 100 : 0;
+                        return (
+                          <span
+                            className={styles.timelineGridTick}
+                            key={tick}
+                            style={{ left: `${position}%` }}
+                          />
+                        );
+                      })}
+                      {row.durationMs !== null && row.durationMs > 0 ? (
+                        <span className={styles.timelineBar} style={{ left, width }} />
+                      ) : null}
+                    </span>
+                    <span className={styles.timelineDuration}>{durationLabel}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
       </section>
     );
   },
   (previous, next) => {
-    const previousSteps = previous.message.parts.filter(isTimelinePart);
-    const nextSteps = next.message.parts.filter(isTimelinePart);
     return (
-      previousSteps.length === nextSteps.length &&
-      previousSteps.every((part, index) => part === nextSteps[index])
+      previous.id === next.id &&
+      previous.onClose === next.onClose &&
+      previous.onNavigate === next.onNavigate &&
+      previous.message.parts.length === next.message.parts.length &&
+      previous.message.parts.every((part, index) => part === next.message.parts[index])
     );
   },
 );
+
+type TimelineKind = "thinking" | "action" | "waiting" | "text" | "todo" | "error";
+
+type TimelineRow = {
+  part: MessagePart;
+  kind: TimelineKind;
+  kindLabel: string;
+  title: string;
+  durationMs: number | null;
+  startMs: number | null;
+};
+
+function buildTimeline(parts: MessagePart[]) {
+  let totalDurationMs = 0;
+  let hasKnownDuration = false;
+  const rows = parts.map((part): TimelineRow => {
+    let kind: TimelineKind;
+    let kindLabel: string;
+    let title: string;
+    let durationMs: number | null = null;
+    let startMs: number | null = null;
+
+    switch (part.type) {
+      case "thinking":
+        kind = "thinking";
+        kindLabel = t.chat.timelineThinking;
+        title = previewText(part.text) || t.chat.thinkingDone;
+        break;
+      case "action":
+        kind = part.state === "error" ? "error" : part.state === "waiting" ? "waiting" : "action";
+        kindLabel = t.chat.actionTypes[part.actionType];
+        title = `${part.title || t.chat.timelineAction} · ${t.chat.actionStates[part.state]}`;
+        durationMs = part.durationMs;
+        if (durationMs !== null) {
+          startMs = totalDurationMs;
+          totalDurationMs += durationMs;
+          hasKnownDuration = true;
+        }
+        break;
+      case "permission":
+        kind = "waiting";
+        kindLabel = t.chat.timelineWaiting;
+        title = `${
+          part.state === "allowed"
+            ? t.chat.permissionResults.allowed
+            : part.state === "denied"
+              ? t.chat.permissionResults.denied
+              : t.chat.timelinePermissionRequest
+        } · ${previewText(part.summary)}`;
+        break;
+      case "question": {
+        kind = "waiting";
+        kindLabel = t.chat.timelineWaiting;
+        const question = part.questions[0]?.question ?? t.chat.questionTitle;
+        title = `${part.state === "pending" ? t.chat.timelineQuestionPending : t.chat.questionAnswered} · ${previewText(question)}`;
+        break;
+      }
+      case "plan":
+        kind = "waiting";
+        kindLabel = t.chat.timelineWaiting;
+        title = `${
+          part.state === "pending"
+            ? t.chat.timelinePlanPending
+            : part.state === "approved"
+              ? t.chat.timelinePlanApproved
+              : t.chat.timelinePlanAdjusted
+        } · ${previewText(part.markdown)}`;
+        break;
+      case "text":
+        kind = "text";
+        kindLabel = t.chat.timelineText;
+        title = previewText(part.markdown) || t.chat.timelineText;
+        break;
+      case "todos":
+        kind = "todo";
+        kindLabel = t.chat.todos;
+        title = t.chat.timelineTaskCount(part.items.length);
+        break;
+      case "error":
+        kind = "error";
+        kindLabel = t.chat.timelineFailure;
+        title = previewText(part.text);
+        break;
+    }
+
+    return { part, kind, kindLabel, title, durationMs, startMs };
+  });
+
+  return { rows, totalDurationMs, hasKnownDuration };
+}
+
+function timelineIcon(part: MessagePart): ReactNode {
+  switch (part.type) {
+    case "thinking":
+      return <Brain size={14} />;
+    case "action": {
+      const Icon = actionIcon(part.actionType);
+      return <Icon size={14} />;
+    }
+    case "permission":
+      return part.state === "denied" ? <XCircle size={14} /> : <LockKeyhole size={14} />;
+    case "question":
+      return part.state === "answered" ? <CheckCircle2 size={14} /> : <HelpCircle size={14} />;
+    case "plan":
+      return part.state === "pending" ? (
+        <Clock3 size={14} />
+      ) : part.state === "approved" ? (
+        <CheckCircle2 size={14} />
+      ) : (
+        <Pencil size={14} />
+      );
+    case "text":
+      return <FileText size={14} />;
+    case "todos":
+      return <ListTodo size={14} />;
+    case "error":
+      return <AlertTriangle size={14} />;
+  }
+}
+
+function previewText(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > 140 ? `${normalized.slice(0, 140)}…` : normalized;
+}
+
+function formatAxisTick(milliseconds: number): string {
+  return `${milliseconds / 1_000} s`;
+}
+
+function timelineTickInterval(totalDurationMs: number): number {
+  const target = totalDurationMs / 8;
+  if (target <= 2_000) return 2_000;
+  const magnitude = 10 ** Math.floor(Math.log10(target));
+  const normalized = target / magnitude;
+  const step = normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return Math.max(2_000, step * magnitude);
+}
 
 function actionIcon(type: Extract<MessagePart, { type: "action" }>["actionType"]) {
   switch (type) {
@@ -811,6 +1202,31 @@ function permissionHeading(tool: string): string {
 
 function normalizeCommand(value: string): string {
   return value.trim().replace(/\s+/g, " ");
+}
+
+function attachGrantedPermissions(parts: MessagePart[]): Map<string, string> {
+  const attached = new Map<string, string>();
+  parts.forEach((part, index) => {
+    if (part.type !== "permission" || part.state !== "allowed") return;
+    const previous = parts[index - 1];
+    const next = parts[index + 1];
+    const neighbors = [previous, next].filter(
+      (neighbor): neighbor is Extract<MessagePart, { type: "action" }> =>
+        neighbor?.type === "action",
+    );
+    const summary = normalizeCommand(part.summary);
+    const matched = summary
+      ? neighbors.find((action) => {
+          const candidates = [action.input, action.title].map(normalizeCommand).filter(Boolean);
+          return candidates.some(
+            (candidate) => summary.includes(candidate) || candidate.includes(summary),
+          );
+        })
+      : undefined;
+    const action = matched ?? neighbors[0];
+    if (action) attached.set(part.id, action.id);
+  });
+  return attached;
 }
 
 function duplicatesPendingPermission(
@@ -846,12 +1262,6 @@ function duplicatesPendingCard(
   ].some((name) => tool.includes(name));
 
   return (hasQuestionCard && isQuestionTool) || (hasPlanCard && isPlanTool);
-}
-
-function isTimelinePart(
-  part: MessagePart,
-): part is Extract<MessagePart, { type: "action" | "thinking" }> {
-  return part.type === "action" || part.type === "thinking";
 }
 
 function formatDuration(milliseconds: number): string {

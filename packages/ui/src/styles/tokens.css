@@ -72,6 +72,7 @@
   --k-control-height-md: 32px;
   --k-control-height-lg: 36px;
   --k-duration-fast: 120ms;
+  --k-duration-highlight: 1.2s;
   --k-ease: cubic-bezier(0.2, 0, 0, 1);
   --k-opacity-disabled: 0.5;
 
@@ -126,6 +127,13 @@
   --k-chat-code-max-height: 360px;
   --k-chat-part-max-height: 240px;
   --k-chat-timeline-track-height: 12px;
+  --k-chat-timeline-axis-height: 32px;
+  --k-chat-timeline-kind-width: 144px;
+  --k-chat-timeline-detail-width: 180px;
+  --k-chat-timeline-track-width: 180px;
+  --k-chat-timeline-duration-width: 120px;
+  --k-chat-timeline-min-width: 640px;
+  --k-chat-timeline-row-height: 36px;
   --k-chat-scroll-size: 10px;
   --k-chat-action-mark-size: 18px;
   --k-chat-focus-outline-offset: 1px;
