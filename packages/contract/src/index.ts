@@ -12,6 +12,14 @@ export type {
   PickFolderResult,
 } from "./bridge.ts";
 export { pickFolderOptionsSchema } from "./bridge.ts";
+export type { Conversation, ConversationMessage, MessagePart } from "./conversations.ts";
+export {
+  agentModelsSchema,
+  conversationOptionsSchema,
+  conversationSchema,
+  messagePartSchema,
+  messageSchema,
+} from "./conversations.ts";
 export type {
   AuthFrame,
   ClientFrame,

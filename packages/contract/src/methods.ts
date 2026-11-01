@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  agentModelsSchema,
+  conversationOptionsSchema,
+  conversationSchema,
+  messageSchema,
+} from "./conversations.ts";
 
 export const MAX_SETTING_BYTES = 65_536;
 
@@ -144,6 +150,77 @@ export const methods = {
   "agents.remove": {
     params: z.strictObject({ id: z.string().min(1).max(80) }),
     result: z.strictObject({ removed: z.literal(true) }),
+  },
+  "conversation.create": {
+    params: z.strictObject({
+      agent: z.enum(["claude", "codex"]),
+      cwd: z.string().min(1).max(4_096),
+      mode: z.enum(["read-only", "edit", "full"]).default("edit"),
+      title: z.string().min(1).max(240).optional(),
+      model: z.string().min(1).max(80).optional(),
+      effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
+    }),
+    result: z.strictObject({ conversation: conversationSchema }),
+  },
+  "conversation.list": {
+    params: z.strictObject({
+      agent: z.enum(["claude", "codex"]).optional(),
+      cwd: z.string().optional(),
+      limit: z.number().int().min(1).max(500).default(100),
+    }),
+    result: z.strictObject({ conversations: z.array(conversationSchema) }),
+  },
+  "conversation.get": {
+    params: z.strictObject({ id: z.string().min(1) }),
+    result: z.strictObject({ conversation: conversationSchema, messages: z.array(messageSchema) }),
+  },
+  "conversation.send": {
+    params: z.strictObject({ id: z.string().min(1), text: z.string().min(1).max(65_536) }),
+    result: z.strictObject({ userMessage: messageSchema, agentMessage: messageSchema }),
+  },
+  "conversation.stop": {
+    params: z.strictObject({ id: z.string().min(1) }),
+    result: z.strictObject({ stopped: z.boolean() }),
+  },
+  "conversation.respond": {
+    params: z.discriminatedUnion("responseType", [
+      z.strictObject({
+        id: z.string().min(1),
+        partId: z.string().min(1),
+        responseType: z.literal("permission"),
+        decision: z.enum(["allow", "always", "deny"]),
+      }),
+      z.strictObject({
+        id: z.string().min(1),
+        partId: z.string().min(1),
+        responseType: z.literal("question"),
+        answers: z.record(z.string(), z.array(z.string())),
+      }),
+      z.strictObject({
+        id: z.string().min(1),
+        partId: z.string().min(1),
+        responseType: z.literal("plan"),
+        decision: z.enum(["approve", "reject"]),
+        comment: z.string().max(8_192).optional(),
+      }),
+    ]),
+    result: z.strictObject({ ok: z.literal(true) }),
+  },
+  "conversation.retry": {
+    params: z.strictObject({ id: z.string().min(1), messageId: z.string().min(1).optional() }),
+    result: z.strictObject({ agentMessage: messageSchema }),
+  },
+  "conversation.delete": {
+    params: z.strictObject({ id: z.string().min(1) }),
+    result: z.strictObject({ deleted: z.boolean() }),
+  },
+  "conversation.setOptions": {
+    params: z.strictObject({ id: z.string().min(1), options: conversationOptionsSchema }),
+    result: z.strictObject({ conversation: conversationSchema }),
+  },
+  "agent.models": {
+    params: z.strictObject({ agent: z.enum(["claude", "codex"]) }),
+    result: agentModelsSchema,
   },
   "folders.recent": {
     params: emptyParamsSchema,

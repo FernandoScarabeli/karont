@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { conversationSchema, messagePartSchema, messageSchema } from "./conversations.ts";
 import { recentFolderSchema, terminalInfoSchema } from "./methods.ts";
 
 export const events = {
@@ -31,6 +32,33 @@ export const events = {
     terminals: z.array(terminalInfoSchema),
   }),
   "folders.changed": z.strictObject({ folders: z.array(recentFolderSchema).max(8) }),
+  "conversation.messageCreated": z.strictObject({
+    conversationId: z.string(),
+    message: messageSchema,
+  }),
+  "conversation.partUpdated": z.discriminatedUnion("kind", [
+    z.strictObject({
+      conversationId: z.string(),
+      messageId: z.string(),
+      kind: z.literal("upsert"),
+      part: messagePartSchema,
+    }),
+    z.strictObject({
+      conversationId: z.string(),
+      messageId: z.string(),
+      kind: z.literal("delta"),
+      partId: z.string(),
+      delta: z.string(),
+    }),
+  ]),
+  "conversation.stateChanged": z.union([
+    z.strictObject({ conversation: conversationSchema }),
+    z.strictObject({
+      conversation: conversationSchema,
+      messageId: z.string(),
+      messageStatus: z.enum(["streaming", "done", "interrupted", "error"]),
+    }),
+  ]),
 } as const satisfies Record<string, z.ZodType>;
 
 export type EventName = keyof typeof events;
