@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --k-color-bg-app: #0f0f10;
   --k-color-bg-sheet: #141415;
   --k-color-bg-raised: #19191b;
@@ -25,7 +26,7 @@
   --k-shadow-dialog: 0 var(--k-space-8) var(--k-space-10) rgb(0 0 0 / 32%);
 
   --k-font-sans: "Geist Sans", system-ui, sans-serif;
-  --k-font-mono: "Geist Mono", ui-monospace, monospace;
+  --k-font-mono: "Geist Mono", ui-monospace, monospace; /* taste-skill-ignore: code */
   --k-font-brand: "Sora Variable", var(--k-font-sans);
   --k-weight-brand: 600;
 
@@ -150,6 +151,41 @@
   --k-color-code-comment: #8d8d94;
   --k-color-code-title: #7db4e0;
   --k-color-code-meta: #e5a93b;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --k-color-bg-app: #f4f4f2;
+  --k-color-bg-sheet: #ffffff;
+  --k-color-bg-raised: #fafaf8;
+  --k-color-bg-control: #eeeeec;
+  --k-color-bg-hover: #e8e8e6;
+  --k-color-border: #dededb;
+  --k-color-border-strong: #c8c8c4;
+  --k-color-border-muted: #aaa9a5;
+  --k-color-text-primary: #242426;
+  --k-color-text-secondary: #55565b;
+  --k-color-text-muted: #64656a;
+  --k-color-primary: #29292c;
+  --k-color-on-primary: #ffffff;
+  --k-color-primary-hover: #111113;
+  --k-color-working: #285d84;
+  --k-color-attention: #875400;
+  --k-color-danger: #a52e2a;
+  --k-color-focus: #29292c;
+  --k-color-brand: #29292c;
+  --k-color-ok: #27673b;
+  --k-color-terminal-selection: rgb(41 41 44 / 18%);
+  --k-color-dialog-backdrop: rgb(0 0 0 / 34%);
+  --k-color-drop-zone: color-mix(in srgb, var(--k-color-primary) 10%, transparent);
+  --k-shadow-dialog: 0 var(--k-space-8) var(--k-space-10) rgb(0 0 0 / 16%);
+  --k-color-code-text: #2c2c30;
+  --k-color-code-keyword: #6f3d89;
+  --k-color-code-string: #396b27;
+  --k-color-code-number: #865208;
+  --k-color-code-comment: #606168;
+  --k-color-code-title: #285d84;
+  --k-color-code-meta: #875400;
 }
 
 @container new-conversation (max-width: 520px) {

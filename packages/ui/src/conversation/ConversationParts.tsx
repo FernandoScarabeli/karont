@@ -33,12 +33,22 @@ import {
   useState,
 } from "react";
 import Markdown from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { Button } from "../components/Button/Button.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./ConversationParts.module.css";
+import { cleanMarkdownPreview, formatConversationText } from "./displayText.ts";
 import type { ConversationMessage, MessagePart } from "./useConversation.ts";
+
+type HighlightPlugin = typeof import("rehype-highlight").default;
+let highlightPluginPromise: Promise<HighlightPlugin | null> | null = null;
+
+function loadHighlightPlugin(): Promise<HighlightPlugin | null> {
+  highlightPluginPromise ??= import("rehype-highlight")
+    .then(({ default: rehypeHighlight }) => rehypeHighlight)
+    .catch(() => null);
+  return highlightPluginPromise;
+}
 
 export type ResponseInput =
   | { partId: string; responseType: "permission"; decision: "allow" | "always" | "deny" }
@@ -59,6 +69,7 @@ export const MessageRow = memo(function MessageRow({
   onRespond,
   onRetry,
   onAnnounce,
+  cwd,
 }: {
   message: ConversationMessage;
   onCopy: (text: string) => void;
@@ -67,6 +78,7 @@ export const MessageRow = memo(function MessageRow({
   onRespond: OnRespond;
   onRetry: (messageId: string) => void;
   onAnnounce: (text: string) => void;
+  cwd: string;
 }) {
   const [showTimeline, setShowTimeline] = useState(false);
   const [visiblePartCount, setVisiblePartCount] = useState(120);
@@ -171,6 +183,7 @@ export const MessageRow = memo(function MessageRow({
               onRespond,
               onRetry,
               onAnnounce,
+              cwd,
             )}
           </div>
           {hasTimeline ? (
@@ -190,6 +203,7 @@ export const MessageRow = memo(function MessageRow({
                 <TimelineView
                   id={timelineId}
                   message={message}
+                  cwd={cwd}
                   onClose={closeTimeline}
                   onNavigate={navigateToPart}
                 />
@@ -209,6 +223,7 @@ function renderParts(
   onRespond: OnRespond,
   onRetry: (messageId: string) => void,
   onAnnounce: (text: string) => void,
+  cwd: string,
 ) {
   const elements: ReactNode[] = [];
   const permissionActionIds = attachGrantedPermissions(parts);
@@ -262,6 +277,7 @@ function renderParts(
         elements.push(
           <ActionGroup
             actions={visibleActions}
+            cwd={cwd}
             key={actions[0]?.action.id ?? index}
             messageId={messageId}
           />,
@@ -278,6 +294,7 @@ function renderParts(
         onRespond={onRespond}
         onRetry={onRetry}
         part={part}
+        cwd={cwd}
       />,
     );
     index += 1;
@@ -293,6 +310,7 @@ const PartItem = memo(
     onRespond,
     onRetry,
     onAnnounce,
+    cwd,
   }: {
     part: MessagePart;
     messageId: string;
@@ -300,6 +318,7 @@ const PartItem = memo(
     onRespond: OnRespond;
     onRetry: (messageId: string) => void;
     onAnnounce: (text: string) => void;
+    cwd: string;
   }) {
     let content: ReactNode;
     switch (part.type) {
@@ -310,7 +329,7 @@ const PartItem = memo(
         content = <ThinkingPart isStreaming={isStreaming} part={part} />;
         break;
       case "permission":
-        content = <PermissionPart onRespond={onRespond} part={part} />;
+        content = <PermissionPart cwd={cwd} onRespond={onRespond} part={part} />;
         break;
       case "question":
         content = <QuestionPart onRespond={onRespond} part={part} />;
@@ -339,7 +358,8 @@ const PartItem = memo(
     previous.isStreaming === next.isStreaming &&
     previous.onRespond === next.onRespond &&
     previous.onRetry === next.onRetry &&
-    previous.onAnnounce === next.onAnnounce,
+    previous.onAnnounce === next.onAnnounce &&
+    previous.cwd === next.cwd,
 );
 
 const MarkdownBody = memo(function MarkdownBody({
@@ -349,6 +369,20 @@ const MarkdownBody = memo(function MarkdownBody({
   markdown: string;
   onAnnounce: (text: string) => void;
 }) {
+  const [highlightPlugin, setHighlightPlugin] = useState<HighlightPlugin | null>(null);
+  const hasCodeBlock = /(?:^|\n)\s*(?:`{3,}|~{3,})/u.test(markdown);
+
+  useEffect(() => {
+    if (!hasCodeBlock) return;
+    let mounted = true;
+    void loadHighlightPlugin().then((plugin) => {
+      if (mounted && plugin) setHighlightPlugin(() => plugin);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [hasCodeBlock]);
+
   return (
     <div className={styles.markdown}>
       <Markdown
@@ -360,7 +394,7 @@ const MarkdownBody = memo(function MarkdownBody({
           ),
           pre: ({ children }) => <CodeBlock onAnnounce={onAnnounce}>{children}</CodeBlock>,
         }}
-        rehypePlugins={[rehypeHighlight]}
+        rehypePlugins={highlightPlugin ? [highlightPlugin] : []}
         remarkPlugins={[remarkGfm]}
       >
         {markdown}
@@ -449,18 +483,21 @@ const ActionGroup = memo(
   function ActionGroup({
     actions,
     messageId,
+    cwd,
   }: {
     actions: Array<{
       action: Extract<MessagePart, { type: "action" }>;
       permitted: boolean;
     }>;
     messageId: string;
+    cwd: string;
   }) {
     const onlyAction = actions[0];
     if (actions.length === 1 && onlyAction) {
       return (
         <ActionItem
           action={onlyAction.action}
+          cwd={cwd}
           messageId={messageId}
           permitted={onlyAction.permitted}
         />
@@ -476,6 +513,7 @@ const ActionGroup = memo(
           {actions.map(({ action, permitted }) => (
             <ActionItem
               action={action}
+              cwd={cwd}
               key={action.id}
               messageId={messageId}
               permitted={permitted}
@@ -488,6 +526,7 @@ const ActionGroup = memo(
   (previous, next) =>
     previous.actions.length === next.actions.length &&
     previous.messageId === next.messageId &&
+    previous.cwd === next.cwd &&
     previous.actions.every(
       ({ action, permitted }, index) =>
         action === next.actions[index]?.action && permitted === next.actions[index]?.permitted,
@@ -498,10 +537,12 @@ const ActionItem = memo(function ActionItem({
   action,
   messageId,
   permitted,
+  cwd,
 }: {
   action: Extract<MessagePart, { type: "action" }>;
   messageId: string;
   permitted: boolean;
+  cwd: string;
 }) {
   const Icon = actionIcon(action.actionType);
   const duration =
@@ -510,11 +551,14 @@ const ActionItem = memo(function ActionItem({
       : formatDuration(action.durationMs);
   const waitingForUser = (action as { state: string }).state === "waiting";
   const title = action.title || `${t.chat.actionTypes[action.actionType]} ${action.input}`;
+  const displayTitle = formatConversationText(title, cwd, 92);
   return (
     <details className={styles.action} data-message-id={messageId} data-part-id={action.id}>
       <summary aria-description={permitted ? t.chat.permissionGrantedDescription : undefined}>
         <Icon aria-hidden="true" className={styles.actionIcon} size={15} />
-        <span className={styles.actionTitle}>{title}</span>
+        <span className={styles.actionTitle} title={displayTitle.title}>
+          {displayTitle.text}
+        </span>
         {permitted ? (
           <LockKeyhole aria-hidden="true" className={styles.permittedIcon} size={13} />
         ) : null}
@@ -558,9 +602,11 @@ const ActionItem = memo(function ActionItem({
 const PermissionPart = memo(function PermissionPart({
   part,
   onRespond,
+  cwd,
 }: {
   part: Extract<MessagePart, { type: "permission" }>;
   onRespond: OnRespond;
+  cwd: string;
 }) {
   const headingId = useId();
   if (part.state !== "pending") {
@@ -577,6 +623,8 @@ const PermissionPart = memo(function PermissionPart({
   const command = permission.command?.trim() || part.summary.trim();
   const description = permission.description?.trim();
   const heading = permissionHeading(part.tool);
+  const displayCommand = formatConversationText(command, cwd, 112);
+  const displayDescription = description ? formatConversationText(description, cwd, 144) : null;
 
   return (
     <section aria-labelledby={headingId} className={styles.permissionCard}>
@@ -584,8 +632,16 @@ const PermissionPart = memo(function PermissionPart({
         <AlertTriangle aria-hidden="true" size={16} />
         {heading}
       </h3>
-      {command ? <code className={styles.permissionCommand}>{command}</code> : null}
-      {description ? <p className={styles.permissionDescription}>{description}</p> : null}
+      {command ? (
+        <code className={styles.permissionCommand} title={displayCommand.title}>
+          {displayCommand.text}
+        </code>
+      ) : null}
+      {displayDescription ? (
+        <p className={styles.permissionDescription} title={displayDescription.title}>
+          {displayDescription.text}
+        </p>
+      ) : null}
       <div className={styles.cardActions}>
         {part.options.includes("allow") ? (
           <Button
@@ -862,11 +918,13 @@ const TimelineView = memo(
   function TimelineView({
     id,
     message,
+    cwd,
     onClose,
     onNavigate,
   }: {
     id: string;
     message: ConversationMessage;
+    cwd: string;
     onClose: () => void;
     onNavigate: (partId: string) => void;
   }) {
@@ -973,6 +1031,7 @@ const TimelineView = memo(
           <ol className={styles.timelineRows}>
             {timeline.rows.map((row, index) => {
               const icon = timelineIcon(row.part);
+              const displayTitle = formatConversationText(row.title, cwd, 34);
               const durationLabel =
                 row.durationMs === null
                   ? t.chat.timelineDurationMissing
@@ -991,7 +1050,7 @@ const TimelineView = memo(
                 <li className={styles.timelineRow} key={row.part.id}>
                   <button
                     aria-current={activeIndex === index ? "step" : undefined}
-                    aria-label={`${row.kindLabel}. ${row.title}. ${durationLabel}`}
+                    aria-label={`${row.kindLabel}. ${displayTitle.fullText}. ${durationLabel}`}
                     className={styles.timelineStep}
                     onClick={() => onNavigate(row.part.id)}
                     onFocus={() => setActiveIndex(index)}
@@ -1006,7 +1065,9 @@ const TimelineView = memo(
                       {icon}
                     </span>
                     <span className={styles.timelineKind}>{row.kindLabel}</span>
-                    <span className={styles.timelineTitle}>{row.title}</span>
+                    <span className={styles.timelineTitle} title={displayTitle.title}>
+                      {displayTitle.text}
+                    </span>
                     <span aria-hidden="true" className={styles.timelineTrack}>
                       {ticks.map((tick) => {
                         const position = axisEndMs > 0 ? (tick / axisEndMs) * 100 : 0;
@@ -1037,6 +1098,7 @@ const TimelineView = memo(
       previous.id === next.id &&
       previous.onClose === next.onClose &&
       previous.onNavigate === next.onNavigate &&
+      previous.cwd === next.cwd &&
       previous.message.parts.length === next.message.parts.length &&
       previous.message.parts.every((part, index) => part === next.message.parts[index])
     );
@@ -1182,7 +1244,7 @@ function timelineIcon(part: MessagePart): ReactNode {
 }
 
 function previewText(value: string): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
+  const normalized = cleanMarkdownPreview(value);
   return normalized.length > 140 ? `${normalized.slice(0, 140)}…` : normalized;
 }
 

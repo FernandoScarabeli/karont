@@ -13,7 +13,6 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { NewConversationView } from "../conversation/NewConversationView.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
-import { TerminalView } from "../terminal/TerminalView.tsx";
 import { getTerminalDisplayTitles, useTerminals } from "../terminal/useTerminals.ts";
 import {
   type LayoutNode,
@@ -28,6 +27,10 @@ import styles from "./WorkspacePanels.module.css";
 const ConversationView = lazy(async () => {
   const module = await import("../conversation/ConversationView.tsx");
   return { default: module.ConversationView };
+});
+const TerminalView = lazy(async () => {
+  const module = await import("../terminal/TerminalView.tsx");
+  return { default: module.TerminalView };
 });
 
 type DragTarget = { paneId: string; edge: PaneEdge } | null;
@@ -232,12 +235,20 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
 
     if (pane.view.kind === "terminal") {
       return (
-        <TerminalView
-          dragHandleProps={dragHandleProps}
-          headerActions={renderToolbar(pane)}
-          id={pane.view.terminalId}
-          titleRef={isActive ? titleRef : undefined}
-        />
+        <Suspense
+          fallback={
+            <div className={styles.chatLoading} role="status">
+              {t.chat.loading}
+            </div>
+          }
+        >
+          <TerminalView
+            dragHandleProps={dragHandleProps}
+            headerActions={renderToolbar(pane)}
+            id={pane.view.terminalId}
+            titleRef={isActive ? titleRef : undefined}
+          />
+        </Suspense>
       );
     }
 

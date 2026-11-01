@@ -22,6 +22,7 @@ import {
 } from "./ComposerPreferences.tsx";
 import { MessageRow, type ResponseInput, TodosPart } from "./ConversationParts.tsx";
 import styles from "./ConversationView.module.css";
+import { formatFolderPath } from "./displayText.ts";
 import { isConversationPlanModeActive, setConversationPlanModeActive } from "./planMode.ts";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
@@ -101,8 +102,8 @@ export function ConversationView({
         ? t.chat.conversationError
         : t.chat.idle;
   const lastTodos = useMemo(
-    () => findLatestTodos(messages.filter((message) => message.status === "streaming")),
-    [messages],
+    () => findLatestTodos(latestMessage?.status === "streaming" ? latestMessage : null),
+    [latestMessage],
   );
 
   useEffect(() => {
@@ -272,6 +273,7 @@ export function ConversationView({
 
   const title = conversation?.title ?? t.chat.loading;
   const homeTodos = isWorking ? lastTodos : null;
+  const folderPath = conversation ? formatFolderPath(conversation.cwd) : null;
 
   return (
     <section
@@ -332,6 +334,7 @@ export function ConversationView({
           <MessageRow
             key={message.id}
             message={message}
+            cwd={conversation?.cwd ?? ""}
             onAnnounce={announce}
             onCopy={copyText}
             onEdit={editMessage}
@@ -378,7 +381,7 @@ export function ConversationView({
                   type="button"
                 >
                   <Folder aria-hidden="true" size={15} />
-                  <span>{conversation.cwd}</span>
+                  <span title={folderPath?.title}>{folderPath?.text}</span>
                 </button>
               </div>
             ) : null
@@ -444,14 +447,11 @@ export function ConversationView({
   );
 }
 
-function findLatestTodos(messages: ConversationMessage[]) {
-  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
-    const message = messages[messageIndex];
-    if (message?.author !== "agent") continue;
-    for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex -= 1) {
-      const part = message.parts[partIndex];
-      if (part?.type === "todos") return part;
-    }
+function findLatestTodos(message: ConversationMessage | null) {
+  if (message?.author !== "agent") return null;
+  for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex -= 1) {
+    const part = message.parts[partIndex];
+    if (part?.type === "todos") return part;
   }
   return null;
 }
