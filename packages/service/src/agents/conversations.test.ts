@@ -3,6 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import type { AnyEvent, Conversation, MessagePart } from "@karont/contract";
 import {
   addMessage,
@@ -36,8 +37,13 @@ async function createHarness(
   const events: AnyEvent[] = [];
   const listeners = new Set<(event: AnyEvent) => void>();
   const spawnArgs: string[][] = [];
-  const fixturePath = new URL(`${scenario}.jsonl`, fixtureDir).pathname;
-  const env = { ...process.env, ...extraEnv };
+  const fixturePath = fileURLToPath(new URL(`${scenario}.jsonl`, fixtureDir));
+  const env = {
+    ...process.env,
+    ...extraEnv,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CLAUDE_CLI: "claude",
+  };
   const fakeSpawn = createFakeClaudeSpawn(fixturePath, fakeOptions);
   const manager = new ConversationManager({
     db,
