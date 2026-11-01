@@ -71,7 +71,6 @@
   gap: var(--k-space-1);
 }
 
-.state,
 .progress {
   display: inline-flex;
   flex: 0 0 auto;
@@ -81,7 +80,6 @@
   font-size: var(--k-text-12);
 }
 
-.stateMark,
 .progressMark {
   width: var(--k-dot-size);
   height: var(--k-dot-size);
@@ -89,30 +87,12 @@
   background: var(--k-color-text-muted);
 }
 
-.working :where(.stateMark),
 .progressMark {
   background: var(--k-color-working);
 }
 
-.working,
 .progress {
   color: var(--k-color-working);
-}
-
-.waiting :where(.stateMark) {
-  background: var(--k-color-attention);
-}
-
-.waiting {
-  color: var(--k-color-attention);
-}
-
-.failed {
-  color: var(--k-color-danger);
-}
-
-.failed :where(.stateMark) {
-  background: var(--k-color-danger);
 }
 
 .messageList {

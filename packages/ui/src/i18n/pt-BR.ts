@@ -100,6 +100,7 @@ export const t = {
     conversations: "Conversas",
     agentConversations: "Conversas com agentes",
     conversationError: "Resposta com erro",
+    unreadResponse: "Resposta nova",
     newLooseConversation: "Nova conversa solta",
     noConversations: "Nenhuma conversa ainda",
     noArchivedConversations: "Nenhuma conversa arquivada",

@@ -181,6 +181,10 @@ export const methods = {
     params: z.strictObject({ id: z.string().min(1) }),
     result: z.strictObject({ conversation: conversationSchema, messages: z.array(messageSchema) }),
   },
+  "conversation.markSeen": {
+    params: z.strictObject({ id: z.string().min(1) }),
+    result: z.strictObject({ conversation: conversationSchema }),
+  },
   "conversation.send": {
     params: conversationSendParamsSchema,
     result: z.strictObject({ userMessage: messageSchema, agentMessage: messageSchema }),

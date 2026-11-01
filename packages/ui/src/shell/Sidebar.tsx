@@ -14,7 +14,6 @@ import {
   SquarePen,
   SquareTerminal,
   Trash2,
-  TriangleAlert,
 } from "lucide-react";
 import { createRef, type RefObject, useEffect, useRef, useState } from "react";
 import { AgentIcon } from "../agents/AgentIcon.tsx";
@@ -62,6 +61,9 @@ export function Sidebar() {
   const [showArchived, setShowArchived] = useState(false);
   const conversationIndex = useConversationIndex(showArchived);
   const conversationList = conversationIndex.conversations;
+  const [documentVisible, setDocumentVisible] = useState(
+    () => document.visibilityState === "visible",
+  );
   const pinnedConversations = showArchived
     ? []
     : conversationList.filter((conversation) => conversation.pinnedAt !== null);
@@ -90,6 +92,14 @@ export function Sidebar() {
   const archivedBackRef = useRef<HTMLButtonElement>(null);
   const deleteCancelRef = useRef<HTMLButtonElement>(null);
   const deleteReturnFocusRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const updateDocumentVisibility = () => {
+      setDocumentVisible(document.visibilityState === "visible");
+    };
+    document.addEventListener("visibilitychange", updateDocumentVisibility);
+    return () => document.removeEventListener("visibilitychange", updateDocumentVisibility);
+  }, []);
 
   useEffect(() => {
     if (!editingConversationId) return;
@@ -369,13 +379,29 @@ export function Sidebar() {
           : conversation.state === "error"
             ? t.shell.conversationError
             : t.chat.idle;
+    const conversationOpenAndVisible =
+      documentVisible &&
+      view.name === "workspace" &&
+      findPaneByConversation(layout, conversation.id) !== undefined;
+    const isUnread = Boolean(conversation.unreadAt) && !conversationOpenAndVisible;
     const stateDetails = [
       stateText,
+      isUnread ? t.shell.unreadResponse : "",
       conversation.pinnedAt ? t.shell.pinnedState : "",
       showArchived ? t.shell.archivedState : "",
     ]
       .filter(Boolean)
       .join(", ");
+    const statusClass =
+      conversation.state === "waiting"
+        ? styles.conversationStatusNeedsYou
+        : conversation.state === "working"
+          ? styles.conversationStatusWorking
+          : conversation.state === "error"
+            ? styles.conversationStatusError
+            : isUnread
+              ? styles.conversationStatusUnread
+              : "";
     const active =
       view.name === "workspace" &&
       activePane?.view.kind === "chat" &&
@@ -439,16 +465,14 @@ export function Sidebar() {
           >
             <AgentIcon agentId={conversation.agent} />
             <span className={styles.conversationTitle}>{conversation.title}</span>
-            {conversation.state === "working" ? (
-              <span aria-hidden="true" className={styles.agentWorkingMarker} />
-            ) : null}
-            {conversation.state === "waiting" ? (
-              <span className={styles.needsYouMarker}>
-                <TriangleAlert aria-hidden="true" size={14} />
-              </span>
-            ) : null}
             {conversation.pinnedAt && !showArchived ? (
               <Pin aria-hidden="true" className={styles.pinnedMarker} size={13} />
+            ) : null}
+            {statusClass ? (
+              <span
+                aria-hidden="true"
+                className={`${styles.conversationStatusDot} ${statusClass}`}
+              />
             ) : null}
           </button>
         )}

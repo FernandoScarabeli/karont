@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import type { Conversation } from "@karont/contract";
+import type { AnyEvent, Conversation } from "@karont/contract";
 import { openDatabase } from "../db.ts";
 import type { AdapterEvent, AdapterFactory, AgentAdapter } from "./adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
@@ -108,6 +108,61 @@ test("parar e encerrar o serviço gravam o texto pendente imediatamente", async 
     assert.ok(message?.parts.some((part) => part.type === "text" && part.markdown === "rascunho"));
     harness.db.close();
   });
+});
+
+test("fim e erro da resposta marcam a conversa como não vista e emitem atualização", async () => {
+  const scenarios = [
+    { name: "conclusão", mode: "turn-end", status: "done" },
+    { name: "erro do agente", mode: "turn-end", status: "error" },
+    { name: "falha ao enviar", mode: "throw", status: "error" },
+  ] as const;
+  const completedAt = "2026-11-01T12:00:00.000Z";
+
+  for (const scenario of scenarios) {
+    const root = await mkdtemp(path.join(os.tmpdir(), "karont-unread-status-"));
+    const db = openDatabase(path.join(root, "karont.db"));
+    const events: AnyEvent[] = [];
+    const manager = new ConversationManager({
+      db,
+      env: { ...process.env, KARONT_AGENT_IDLE_MS: "10000" },
+      broadcast: async (event) => {
+        events.push(event);
+      },
+      adapterFactory: (_conversation, emit) => new FinishTestAdapter(emit, scenario),
+      now: () => completedAt,
+      titleGenerator: async () => null,
+    });
+    const conversation = manager.create({
+      agent: "claude",
+      title: `Resposta: ${scenario.name}`,
+      cwd: root,
+      mode: "edit",
+    });
+
+    try {
+      await manager.send(conversation.id, "Conclua esta tarefa.");
+      await waitForState(manager, conversation.id, scenario.status === "done" ? "idle" : "error");
+
+      const result = manager.get(conversation.id);
+      assert.equal(result?.conversation.unreadAt, completedAt, scenario.name);
+      assert.equal(result?.messages.at(-1)?.status, scenario.status, scenario.name);
+      const finalEvent = events
+        .filter(
+          (event) =>
+            event.event === "conversation.stateChanged" &&
+            "messageStatus" in event.payload &&
+            event.payload.conversation.id === conversation.id,
+        )
+        .at(-1);
+      assert.ok(finalEvent, scenario.name);
+      if (finalEvent?.event === "conversation.stateChanged") {
+        assert.equal(finalEvent.payload.conversation.unreadAt, completedAt, scenario.name);
+      }
+    } finally {
+      await manager.close();
+      db.close();
+    }
+  }
 });
 
 function messageSaveCount(db: ReturnType<typeof openDatabase>): number {
@@ -236,4 +291,41 @@ class LifecycleTestAdapter implements AgentAdapter {
   async dispose(): Promise<void> {
     this.#releaseSend?.();
   }
+}
+
+class FinishTestAdapter implements AgentAdapter {
+  readonly #emit: (event: AdapterEvent) => void;
+  readonly #scenario: {
+    mode: "turn-end" | "throw";
+    status: "done" | "error";
+  };
+
+  constructor(
+    emit: (event: AdapterEvent) => void,
+    scenario: { mode: "turn-end" | "throw"; status: "done" | "error" },
+  ) {
+    this.#emit = emit;
+    this.#scenario = scenario;
+  }
+
+  async start(): Promise<void> {}
+
+  async send(): Promise<void> {
+    if (this.#scenario.mode === "throw") throw new Error("Falha simulada no envio.");
+    this.#emit({
+      kind: "turn-end",
+      status: this.#scenario.status,
+      ...(this.#scenario.status === "error"
+        ? { error: { type: "failed" as const, text: "Falha simulada." } }
+        : {}),
+    });
+  }
+
+  async respond(): Promise<void> {}
+
+  async interrupt(): Promise<void> {
+    this.#emit({ kind: "turn-end", status: "interrupted" });
+  }
+
+  async dispose(): Promise<void> {}
 }

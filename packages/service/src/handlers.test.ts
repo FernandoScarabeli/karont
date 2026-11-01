@@ -139,6 +139,64 @@ test("conversation.rename persiste o título e emite conversation.stateChanged",
   db.close();
 });
 
+test("conversation.markSeen limpa uma vez, persiste e não emite ao repetir", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-conversation-mark-seen-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => {
+      events.push(event);
+    },
+    env: { PATH: "" },
+    homeDir: root,
+  });
+
+  try {
+    const created = (await handlers.handle(
+      request("conversation.create", { agent: "claude", cwd: root }),
+      connection([]),
+    )) as { conversation: { id: string; updatedAt: string } };
+    const unreadAt = "2026-11-01T12:00:00.000Z";
+    db.prepare("UPDATE conversations SET unread_at=? WHERE id=?").run(
+      unreadAt,
+      created.conversation.id,
+    );
+    db.exec(
+      "CREATE TABLE unread_write_count (count INTEGER NOT NULL); INSERT INTO unread_write_count VALUES (0); CREATE TRIGGER count_unread_clears AFTER UPDATE OF unread_at ON conversations WHEN OLD.unread_at IS NOT NULL AND NEW.unread_at IS NULL BEGIN UPDATE unread_write_count SET count=count+1; END;",
+    );
+
+    const first = (await handlers.handle(
+      request("conversation.markSeen", { id: created.conversation.id }),
+      connection(events),
+    )) as { conversation: { unreadAt: string | null; updatedAt: string } };
+    assert.equal(first.conversation.unreadAt, null);
+    assert.equal(first.conversation.updatedAt, created.conversation.updatedAt);
+    assert.equal(
+      (db.prepare("SELECT count FROM unread_write_count").get() as { count: number }).count,
+      1,
+    );
+    assert.equal(events.filter((event) => event.event === "conversation.stateChanged").length, 1);
+
+    events.length = 0;
+    const second = (await handlers.handle(
+      request("conversation.markSeen", { id: created.conversation.id }),
+      connection(events),
+    )) as { conversation: { unreadAt: string | null } };
+    assert.equal(second.conversation.unreadAt, null);
+    assert.equal(
+      (db.prepare("SELECT count FROM unread_write_count").get() as { count: number }).count,
+      1,
+    );
+    assert.equal(events.length, 0);
+  } finally {
+    db.close();
+  }
+});
+
 test("conversation.setPinned e setArchived persistem, notificam e arquivam sem parar a conversa", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ks-conversation-actions-"));
   const db = openDatabase(path.join(root, "karont.db"));

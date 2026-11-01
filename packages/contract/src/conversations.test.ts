@@ -13,6 +13,7 @@ const conversation = {
   state: "idle",
   pinnedAt: null,
   archivedAt: null,
+  unreadAt: null,
   createdAt: "2026-10-31T10:00:00Z",
   updatedAt: "2026-10-31T10:00:00Z",
 } as const;
@@ -42,6 +43,8 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
     methods["conversation.setArchived"].params.safeParse({ id: "c1", archived: true }).success,
     true,
   );
+  assert.equal(methods["conversation.markSeen"].params.safeParse({ id: "c1" }).success, true);
+  assert.equal(methods["conversation.markSeen"].result.safeParse({ conversation }).success, true);
   assert.equal(
     methods["conversation.setOptions"].params.safeParse({
       id: "c1",
