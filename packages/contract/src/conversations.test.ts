@@ -174,4 +174,31 @@ test("eventos de texto levam só o delta; eventos de método e parte passam pela
     params: { id: "c1", text: "Oi" },
   });
   assert.equal(request.ok, true);
+  assert.equal(
+    parseRequest({
+      type: "request",
+      id: "r2",
+      method: "conversation.send",
+      params: { id: "c1", text: "Planeje", plan: true },
+    }).ok,
+    true,
+  );
+  assert.equal(
+    parseRequest({
+      type: "request",
+      id: "r4",
+      method: "conversation.send",
+      params: { id: "c1", text: "Oi", plan: false },
+    }).ok,
+    true,
+  );
+  assert.equal(
+    parseRequest({
+      type: "request",
+      id: "r3",
+      method: "conversation.send",
+      params: { id: "c1", text: "Oi", plan: "sim" },
+    }).ok,
+    false,
+  );
 });

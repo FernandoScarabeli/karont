@@ -117,7 +117,7 @@ export function createHandlers({
       }
       case "conversation.send":
         return conversationManager
-          .send(request.params.id, request.params.text)
+          .send(request.params.id, request.params.text, request.params.plan)
           .catch((error: unknown) => {
             throw conversationError(error);
           });

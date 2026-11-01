@@ -175,7 +175,11 @@ export const methods = {
     result: z.strictObject({ conversation: conversationSchema, messages: z.array(messageSchema) }),
   },
   "conversation.send": {
-    params: z.strictObject({ id: z.string().min(1), text: z.string().min(1).max(65_536) }),
+    params: z.strictObject({
+      id: z.string().min(1),
+      text: z.string().min(1).max(65_536),
+      plan: z.boolean().optional(),
+    }),
     result: z.strictObject({ userMessage: messageSchema, agentMessage: messageSchema }),
   },
   "conversation.stop": {

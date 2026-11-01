@@ -38,6 +38,7 @@ async function createHarness(
     fakeError?: boolean;
     withoutCommandTiming?: boolean;
     withoutCommandStart?: boolean;
+    planDecision?: "approve" | "adjust";
   } = {},
 ): Promise<Harness> {
   const root = await mkdtemp(path.join(os.tmpdir(), "karont-codex-"));
@@ -70,6 +71,7 @@ async function createHarness(
               scenario === "continuar" && (options.resumeExisting === true || fakes.length > 0),
             withoutCommandTiming: options.withoutCommandTiming,
             withoutCommandStart: options.withoutCommandStart,
+            planDecision: options.planDecision,
           });
           fakes.push(fake);
           return fake(command, args, spawnOptions);
@@ -499,12 +501,13 @@ test("pergunta, plano aprovado e atualização da lista de tarefas", async (t) =
     const harness = await createHarness("plano");
     try {
       const conversation = createConversation(harness.manager);
-      await harness.manager.send(conversation.id, fixturePrompt("plano"));
+      await harness.manager.send(conversation.id, fixturePrompt("plano"), true);
       const plan = await waitForPart(
         harness,
         conversation.id,
         (part) => part.type === "plan" && part.state === "pending",
       );
+      await waitForState(harness, conversation.id, "waiting");
       await harness.manager.respond(conversation.id, plan.id, {
         responseType: "plan",
         decision: "approve",
@@ -515,16 +518,59 @@ test("pergunta, plano aprovado e atualização da lista de tarefas", async (t) =
           (part) => part.type === "plan" && part.state === "approved",
         ),
       );
-      assert.ok(
-        harness.fakes[0]?.messages[0]?.some(
-          (message) =>
-            message.method === "turn/start" &&
-            (
-              (message.params as { input?: { text?: string }[] } | undefined)?.input?.[0]?.text ??
-              ""
-            ).startsWith("Aprovado."),
-        ),
+      const turns = harness.fakes[0]?.messages[0]?.filter(
+        (message) => message.method === "turn/start",
       );
+      assert.equal(turns?.length, 2);
+      const approvalParams = turns?.[1]?.params as
+        | { input?: { text?: string }[]; collaborationMode?: { mode?: string } }
+        | undefined;
+      assert.equal(
+        approvalParams?.input?.[0]?.text,
+        "Execute o plano aprovado no modo de acesso escolhido para esta conversa.",
+      );
+      assert.equal(approvalParams?.collaborationMode?.mode, "default");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("ajustar", async () => {
+    const harness = await createHarness("plano", { planDecision: "adjust" });
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, fixturePrompt("plano"), true);
+      const plan = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "plan" && part.state === "pending",
+      );
+      await waitForState(harness, conversation.id, "waiting");
+      const comment = "Inclua a validação do resultado como segundo passo.";
+      await harness.manager.respond(conversation.id, plan.id, {
+        responseType: "plan",
+        decision: "reject",
+        comment,
+      });
+      const revisedPlan = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "plan" && part.state === "pending" && part.id !== plan.id,
+      );
+      assert.equal(revisedPlan.type, "plan");
+      await waitForState(harness, conversation.id, "waiting");
+      const rejectedPlan = latestAgent(harness, conversation.id)?.parts.find(
+        (part) => part.id === plan.id,
+      );
+      assert.equal(rejectedPlan?.type === "plan" ? rejectedPlan.state : undefined, "rejected");
+      const turns = harness.fakes[0]?.messages[0]?.filter(
+        (message) => message.method === "turn/start",
+      );
+      const adjustmentParams = turns?.[1]?.params as
+        | { input?: { text?: string }[]; collaborationMode?: { mode?: string } }
+        | undefined;
+      assert.equal(adjustmentParams?.input?.[0]?.text, comment);
+      assert.equal(adjustmentParams?.collaborationMode?.mode, "plan");
     } finally {
       await harness.close();
     }
