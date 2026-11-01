@@ -5,6 +5,8 @@ import type { MethodName, ParamsOf, ResultOf } from "./methods.ts";
 
 export const CONTRACT_VERSION = 1;
 
+export type { AgentErrorAgent, AgentErrorDescription } from "./agentErrors.ts";
+export { describeAgentError } from "./agentErrors.ts";
 export type {
   NativeBridge,
   NativeResult,

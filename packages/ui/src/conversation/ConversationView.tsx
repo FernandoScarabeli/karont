@@ -762,6 +762,7 @@ export function ConversationView({
           <MessageRow
             key={message.id}
             message={message}
+            agent={conversation?.agent}
             cwd={conversation?.cwd ?? ""}
             onAnnounce={announce}
             onCopy={copyText}

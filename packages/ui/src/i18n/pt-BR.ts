@@ -255,6 +255,8 @@ export const t = {
     copy: "Copiar mensagem",
     copied: "Mensagem copiada",
     copyFailed: "Não foi possível copiar a mensagem.",
+    showDetails: "Ver detalhes",
+    hideDetails: "Ocultar detalhes",
     sentAttachments: "Anexos da mensagem",
     edit: "Editar",
     resend: "Reenviar",

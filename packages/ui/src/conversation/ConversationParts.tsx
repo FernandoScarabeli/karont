@@ -1,3 +1,4 @@
+import { type AgentErrorAgent, describeAgentError } from "@karont/contract";
 import {
   AlertTriangle,
   Brain,
@@ -82,8 +83,10 @@ export const MessageRow = memo(function MessageRow({
   onRetry,
   onAnnounce,
   cwd,
+  agent,
 }: {
   message: ConversationMessage;
+  agent?: AgentErrorAgent;
   onCopy: (text: string) => void;
   onCopyCode?: (code: string) => void;
   onEdit: (text: string) => void;
@@ -234,6 +237,7 @@ export const MessageRow = memo(function MessageRow({
               onAnnounce,
               onCopyCode,
               cwd,
+              agent,
             )}
           </div>
           {hasTimeline ? (
@@ -275,6 +279,7 @@ function renderParts(
   onAnnounce: (text: string) => void,
   onCopyCode: ((code: string) => void) | undefined,
   cwd: string,
+  agent?: AgentErrorAgent,
 ) {
   const elements: ReactNode[] = [];
   const permissionActionIds = attachGrantedPermissions(parts);
@@ -347,6 +352,7 @@ function renderParts(
         onRetry={onRetry}
         part={part}
         cwd={cwd}
+        agent={agent}
       />,
     );
     index += 1;
@@ -364,6 +370,7 @@ const PartItem = memo(
     onAnnounce,
     onCopyCode,
     cwd,
+    agent,
   }: {
     part: MessagePart;
     messageId: string;
@@ -373,6 +380,7 @@ const PartItem = memo(
     onAnnounce: (text: string) => void;
     onCopyCode: ((code: string) => void) | undefined;
     cwd: string;
+    agent?: AgentErrorAgent;
   }) {
     let content: ReactNode;
     switch (part.type) {
@@ -402,7 +410,7 @@ const PartItem = memo(
         content = <TodosPart part={part} />;
         break;
       case "error":
-        content = <ErrorPart messageId={messageId} onRetry={onRetry} part={part} />;
+        content = <ErrorPart agent={agent} messageId={messageId} onRetry={onRetry} part={part} />;
         break;
       case "action":
         return null;
@@ -421,7 +429,8 @@ const PartItem = memo(
     previous.onRetry === next.onRetry &&
     previous.onAnnounce === next.onAnnounce &&
     previous.onCopyCode === next.onCopyCode &&
-    previous.cwd === next.cwd,
+    previous.cwd === next.cwd &&
+    previous.agent === next.agent,
 );
 
 const MarkdownBody = memo(function MarkdownBody({
@@ -1143,17 +1152,39 @@ const ErrorPart = memo(function ErrorPart({
   part,
   messageId,
   onRetry,
+  agent,
 }: {
   part: Extract<MessagePart, { type: "error" }>;
   messageId: string;
   onRetry: (messageId: string) => void;
+  agent?: AgentErrorAgent;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsId = useId();
+  const description = describeAgentError(part.text, agent);
+  const details = part.details ?? description.details;
   return (
     <section aria-label={t.chat.errorTitle} className={styles.errorCard}>
       <p>
         <AlertTriangle aria-hidden="true" size={16} />
-        {part.text}
+        {description.message}
       </p>
+      {details ? (
+        <div className={styles.errorDetails}>
+          <button
+            aria-controls={detailsId}
+            aria-expanded={detailsOpen}
+            className={styles.errorDetailsToggle}
+            onClick={() => setDetailsOpen((value) => !value)}
+            type="button"
+          >
+            {detailsOpen ? t.chat.hideDetails : t.chat.showDetails}
+          </button>
+          <pre className={styles.errorDetailsText} hidden={!detailsOpen} id={detailsId}>
+            {details}
+          </pre>
+        </div>
+      ) : null}
       {part.retryable ? (
         <Button onClick={() => onRetry(messageId)} variant="secondary">
           {t.chat.retry}
