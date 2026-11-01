@@ -107,6 +107,11 @@ export const conversationOptionsSchema = z.strictObject({
   model: z.string().min(1).max(80).nullable().optional(),
   effort: reasoningEffortSchema.nullable().optional(),
 });
+export const conversationSendParamsSchema = z.strictObject({
+  id: z.string().min(1),
+  text: z.string().min(1).max(65_536),
+  plan: z.boolean().optional(),
+});
 export const agentModelsSchema = z.strictObject({
   agent: conversationAgentSchema,
   models: z.array(

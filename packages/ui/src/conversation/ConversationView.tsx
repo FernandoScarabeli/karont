@@ -22,6 +22,7 @@ import {
 } from "./ComposerPreferences.tsx";
 import { MessageRow, type ResponseInput, TodosPart } from "./ConversationParts.tsx";
 import styles from "./ConversationView.module.css";
+import { isConversationPlanModeActive, setConversationPlanModeActive } from "./planMode.ts";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
 
@@ -43,6 +44,7 @@ export function ConversationView({
   const { conversation, messages, loading, error, liveText, addMessage, updateConversation } =
     useConversation(id);
   const [draft, setDraft] = useState("");
+  const [planMode, setPlanMode] = useState(() => isConversationPlanModeActive(id));
   const [models, setModels] = useState<AgentModels | null>(null);
   const [interactionError, setInteractionError] = useState("");
   const [announcement, setAnnouncement] = useState("");
@@ -154,7 +156,11 @@ export function ConversationView({
       setIsSending(true);
       setDraft("");
       try {
-        const result = await bridge.request("conversation.send", { id, text });
+        const result = await bridge.request("conversation.send", {
+          id,
+          text,
+          ...(planMode ? { plan: true } : {}),
+        });
         addMessage(result.userMessage);
         addMessage(result.agentMessage);
       } catch (sendError) {
@@ -168,7 +174,7 @@ export function ConversationView({
         setIsSending(false);
       }
     },
-    [addMessage, bridge, conversation, id, isSending, isWaiting, isWorking],
+    [addMessage, bridge, conversation, id, isSending, isWaiting, isWorking, planMode],
   );
 
   const stopAgent = useCallback(async () => {
@@ -197,6 +203,10 @@ export function ConversationView({
       setInteractionError("");
       try {
         await bridge.request("conversation.respond", { id, ...response });
+        if (response.responseType === "plan" && response.decision === "approve") {
+          setPlanMode(false);
+          setConversationPlanModeActive(id, false);
+        }
       } catch (responseError) {
         setInteractionError(
           responseError instanceof BridgeError && responseError.message
@@ -386,12 +396,19 @@ export function ConversationView({
                 </span>
                 <ComposerPreferences
                   disabled={
-                    isWorking || isWaiting || isSavingOptions || isResponding || loading || !bridge
+                    isWorking ||
+                    isWaiting ||
+                    isSavingOptions ||
+                    isResponding ||
+                    isSending ||
+                    loading ||
+                    !bridge
                   }
                   effort={conversation.effort ?? ""}
                   mode={conversation.mode}
                   model={conversation.model ?? ""}
                   models={models}
+                  planMode={planMode}
                   onEffortChange={(value) => void saveOptions({ effort: value || null })}
                   onModeChange={(value) => void saveOptions({ mode: value })}
                   onModelChange={(value) => {
@@ -402,6 +419,10 @@ export function ConversationView({
                       model: value || null,
                       ...(clearEffort ? { effort: null } : {}),
                     });
+                  }}
+                  onPlanModeChange={(value) => {
+                    setPlanMode(value);
+                    setConversationPlanModeActive(id, value);
                   }}
                 />
               </div>

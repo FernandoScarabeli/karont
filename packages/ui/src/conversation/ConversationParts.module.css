@@ -620,6 +620,48 @@
   border-inline-start: var(--k-border-width) solid var(--k-color-working);
 }
 
+.planResult {
+  max-width: 100%;
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-12);
+}
+
+.planResult > summary.planSummary {
+  display: flex;
+  width: fit-content;
+  min-height: var(--k-control-height-md);
+  align-items: center;
+  gap: var(--k-space-2);
+  padding-inline: var(--k-space-2);
+  border-radius: var(--k-radius-sm);
+  cursor: pointer;
+}
+
+.planResult > summary.planSummary:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-chat-focus-outline-offset);
+}
+
+.planResult[open] > summary.planSummary {
+  background: var(--k-color-bg-raised);
+}
+
+.planResultBody {
+  display: grid;
+  max-width: 100%;
+  gap: var(--k-space-2);
+  padding: var(--k-space-3) var(--k-space-4);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-color-bg-raised);
+}
+
+.planComment {
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
 .todos {
   display: grid;
   gap: var(--k-space-3);

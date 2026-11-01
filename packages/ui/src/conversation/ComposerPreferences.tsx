@@ -1,5 +1,5 @@
 import type { Conversation, ResultOf } from "@karont/contract";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ListTodo } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../components/Button/Button.tsx";
 import { Dialog } from "../components/Dialog/Dialog.tsx";
@@ -25,19 +25,23 @@ export function ComposerPreferences({
   model,
   effort,
   mode,
+  planMode,
   disabled = false,
   onModelChange,
   onEffortChange,
   onModeChange,
+  onPlanModeChange,
 }: {
   models: AgentModels | null;
   model: string;
   effort: AgentEffort | "";
   mode: ConversationMode;
+  planMode: boolean;
   disabled?: boolean;
   onModelChange: (value: string) => void;
   onEffortChange: (value: AgentEffort | "") => void;
   onModeChange: (value: ConversationMode) => void;
+  onPlanModeChange: (value: boolean) => void;
 }) {
   const [confirmFull, setConfirmFull] = useState(false);
   const needsModelOption = model && !models?.models.some((option) => option.id === model);
@@ -111,6 +115,20 @@ export function ComposerPreferences({
           <ChevronDown aria-hidden="true" className={styles.chevron} size={13} />
         </span>
       </label>
+      <button
+        aria-label={t.chat.planMode}
+        aria-pressed={planMode}
+        className={styles.planToggle}
+        disabled={disabled}
+        onClick={() => onPlanModeChange(!planMode)}
+        type="button"
+      >
+        <ListTodo aria-hidden="true" size={14} />
+        <span>{t.chat.planMode}</span>
+        <span aria-hidden="true" className={styles.planToggleState}>
+          {planMode ? t.chat.planModeOn : t.chat.planModeOff}
+        </span>
+      </button>
       <Dialog
         description={t.chat.fullAccessDescription}
         footer={
