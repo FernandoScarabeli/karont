@@ -15,16 +15,27 @@ import {
   setAgentSession,
   updateConversation,
 } from "../db.ts";
-import type { AdapterEvent, AdapterFactory, AdapterResponse, AgentAdapter } from "./adapter.ts";
+import type {
+  AdapterEvent,
+  AdapterFactory,
+  AdapterModelList,
+  AdapterResponse,
+  AgentAdapter,
+} from "./adapter.ts";
 import { AgentCliError, createClaudeAdapterFactory } from "./claude-adapter.ts";
+import { createCodexAdapterFactory } from "./codex-adapter.ts";
 
 type ActiveConversation = {
   adapter: AgentAdapter;
+  agent: Conversation["agent"];
   sessionId: string;
   startPromise: Promise<void>;
   idleTimer?: ReturnType<typeof setTimeout>;
+  messageSaveTimer?: ReturnType<typeof setTimeout>;
+  messageToSave?: ConversationMessage;
   currentMessage?: ConversationMessage;
   coalescers: Map<string, DeltaCoalescer>;
+  eventQueue: Promise<void>;
 };
 export type ConversationManagerOptions = {
   db: DatabaseSync;
@@ -42,12 +53,22 @@ export class ConversationManager {
   readonly #now: () => string;
   readonly #active = new Map<string, ActiveConversation>();
   readonly #pendingParts = new Map<string, { conversationId: string; messageId: string }>();
+  #codexModelList: AdapterModelList = {
+    models: [],
+    efforts: ["low", "medium", "high", "xhigh", "max"],
+  };
+  #closing = false;
 
   constructor(options: ConversationManagerOptions) {
     this.#db = options.db;
     this.#broadcast = options.broadcast;
     this.#env = options.env ?? process.env;
-    this.#factory = options.adapterFactory ?? createClaudeAdapterFactory({ env: this.#env });
+    const claudeFactory = createClaudeAdapterFactory({ env: this.#env });
+    const codexFactory = createCodexAdapterFactory({ env: this.#env });
+    this.#factory =
+      options.adapterFactory ??
+      ((conversation, emit) =>
+        (conversation.agent === "codex" ? codexFactory : claudeFactory)(conversation, emit));
     this.#now = options.now ?? (() => new Date().toISOString());
   }
 
@@ -136,6 +157,8 @@ export class ConversationManager {
   async stop(id: string): Promise<boolean> {
     const active = this.#active.get(id);
     if (!active?.currentMessage) return false;
+    await this.#flushCoalescers(active);
+    this.#flushMessageSave(active);
     await active.adapter.interrupt();
     return true;
   }
@@ -191,35 +214,57 @@ export class ConversationManager {
     return deleteConversation(this.#db, id);
   }
 
-  models(agent: "claude" | "codex"): {
+  async models(agent: "claude" | "codex"): Promise<{
     agent: "claude" | "codex";
     models: { id: string; name: string }[];
     efforts: ("low" | "medium" | "high" | "xhigh" | "max")[];
-  } {
+  }> {
     const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
+    if (agent === "codex") {
+      const active = [...this.#active.values()].find((entry) => entry.agent === "codex");
+      if (active) {
+        try {
+          await active.startPromise;
+          const modelList = await active.adapter.getModels?.();
+          if (modelList) this.#codexModelList = modelList;
+        } catch {
+          // Keep the latest list discovered by a previous Codex process.
+        }
+      }
+      return {
+        agent,
+        models: this.#codexModelList.models.map(({ id, name }) => ({ id, name })),
+        efforts: [...this.#codexModelList.efforts],
+      };
+    }
     return {
       agent,
-      models:
-        agent === "claude"
-          ? [
-              { id: "opus", name: "Opus" },
-              { id: "sonnet", name: "Sonnet" },
-              { id: "haiku", name: "Haiku" },
-            ]
-          : [],
+      models: [
+        { id: "opus", name: "Opus" },
+        { id: "sonnet", name: "Sonnet" },
+        { id: "haiku", name: "Haiku" },
+      ],
       efforts: [...efforts],
     };
   }
 
   async close(): Promise<void> {
+    this.#closing = true;
     const adapters = [...this.#active.values()];
-    this.#active.clear();
     await Promise.all(
       adapters.map(async (active) => {
         if (active.idleTimer) clearTimeout(active.idleTimer);
         await active.adapter.dispose();
       }),
     );
+    await Promise.all(adapters.map((active) => active.eventQueue));
+    await Promise.all(
+      adapters.map(async (active) => {
+        await this.#flushCoalescers(active);
+        this.#flushMessageSave(active);
+      }),
+    );
+    this.#active.clear();
   }
 
   async #startTurn(
@@ -240,36 +285,39 @@ export class ConversationManager {
     // Ponto único para aplicar o limite/fila de agentes quando a configuração da M3 existir.
     let active = this.#active.get(conversation.id);
     if (!active) {
-      if (conversation.agent !== "claude") {
-        await this.#finishWithError(
-          conversation,
-          message,
-          "failed",
-          "O adaptador Codex será adicionado na M2-B2.",
-        );
-        return;
-      }
       const previousSession = getAgentSession(this.#db, conversation.id);
       const sessionId = previousSession ?? randomUUID();
       let activeRef: ActiveConversation;
       const adapter = this.#factory(conversation, (event) => {
-        void this.#handleAdapterEvent(conversation.id, event).catch(() => undefined);
+        activeRef.eventQueue = activeRef.eventQueue
+          .then(() => this.#handleAdapterEvent(conversation.id, event))
+          .catch(() => undefined);
       });
       activeRef = {
         adapter,
+        agent: conversation.agent,
         sessionId,
         startPromise: Promise.resolve(),
         coalescers: new Map(),
         currentMessage: message,
+        eventQueue: Promise.resolve(),
       };
       active = activeRef;
       this.#active.set(conversation.id, activeRef);
       activeRef.startPromise = adapter
         .start(conversation, sessionId, previousSession !== null)
+        .then(async () => {
+          await activeRef.eventQueue;
+          if (conversation.agent !== "codex") return;
+          const modelList = await adapter.getModels?.();
+          if (modelList) this.#codexModelList = modelList;
+        })
         .catch(async (error: unknown) => {
-          const kind = error instanceof AgentCliError ? error.errorType : "failed";
-          const detail = error instanceof Error ? error.message : String(error);
-          await this.#finishWithError(conversation, message, kind, detail);
+          if (!this.#closing) {
+            const kind = error instanceof AgentCliError ? error.errorType : "failed";
+            const detail = error instanceof Error ? error.message : String(error);
+            await this.#finishWithError(conversation, message, kind, detail);
+          }
           await adapter.dispose();
           if (this.#active.get(conversation.id) === activeRef) this.#active.delete(conversation.id);
           throw error;
@@ -285,7 +333,7 @@ export class ConversationManager {
       await active.startPromise;
       await active.adapter.send(text);
     } catch (error) {
-      if (message.status === "streaming") {
+      if (message.status === "streaming" && !this.#closing) {
         const kind = error instanceof AgentCliError ? error.errorType : "failed";
         await this.#finishWithError(
           conversation,
@@ -308,6 +356,11 @@ export class ConversationManager {
     }
     if (event.kind === "state") {
       const conversation = this.#requireConversation(conversationId);
+      if (event.state === "working" && message.status !== "streaming") {
+        message.status = "streaming";
+        message.updatedAt = this.#now();
+        saveMessage(this.#db, message);
+      }
       conversation.state = event.state;
       conversation.updatedAt = this.#now();
       updateConversation(this.#db, conversation);
@@ -330,7 +383,7 @@ export class ConversationManager {
         else this.#pendingParts.delete(event.part.id);
       }
       message.updatedAt = this.#now();
-      saveMessage(this.#db, message);
+      this.#flushMessageSave(active, message);
       await this.#emit({
         event: "conversation.partUpdated",
         payload: { conversationId, messageId: message.id, kind: "upsert", part: event.part },
@@ -357,7 +410,7 @@ export class ConversationManager {
             if (part.type === "text") part.markdown += delta;
             else if (part.type === "thinking") part.text += delta;
             message.updatedAt = this.#now();
-            saveMessage(this.#db, message);
+            this.#scheduleMessageSave(active, message);
             await this.#emit({
               event: "conversation.partUpdated",
               payload: {
@@ -394,19 +447,24 @@ export class ConversationManager {
       }
       message.status = event.status;
       message.updatedAt = this.#now();
-      saveMessage(this.#db, message);
-      active.currentMessage = undefined;
-      for (const [partId, pending] of this.#pendingParts)
-        if (pending.messageId === message.id) this.#pendingParts.delete(partId);
+      this.#flushMessageSave(active, message);
+      const pendingPlan =
+        event.status === "done" &&
+        message.parts.some((part) => part.type === "plan" && part.state === "pending");
+      if (!pendingPlan) {
+        active.currentMessage = undefined;
+        for (const [partId, pending] of this.#pendingParts)
+          if (pending.messageId === message.id) this.#pendingParts.delete(partId);
+      }
       const conversation = this.#requireConversation(conversationId);
-      conversation.state = event.status === "error" ? "error" : "idle";
+      conversation.state = event.status === "error" ? "error" : pendingPlan ? "waiting" : "idle";
       conversation.updatedAt = this.#now();
       updateConversation(this.#db, conversation);
       await this.#stateEvent(conversation, {
         messageId: message.id,
         messageStatus: message.status,
       });
-      this.#scheduleIdleDispose(conversationId, active);
+      if (!pendingPlan) this.#scheduleIdleDispose(conversationId, active);
     }
   }
 
@@ -431,6 +489,25 @@ export class ConversationManager {
     active.coalescers.clear();
   }
 
+  #scheduleMessageSave(active: ActiveConversation, message: ConversationMessage): void {
+    active.messageToSave = message;
+    if (active.messageSaveTimer) return;
+    const configured = Number(this.#env.KARONT_MESSAGE_SAVE_DEBOUNCE_MS ?? 1_000);
+    const delayMs =
+      Number.isFinite(configured) && configured >= 0 ? Math.min(configured, 60_000) : 1_000;
+    active.messageSaveTimer = setTimeout(() => this.#flushMessageSave(active), delayMs);
+    active.messageSaveTimer.unref?.();
+  }
+
+  #flushMessageSave(active: ActiveConversation, message?: ConversationMessage): void {
+    if (active.messageSaveTimer) clearTimeout(active.messageSaveTimer);
+    active.messageSaveTimer = undefined;
+    const pending = active.messageToSave;
+    active.messageToSave = undefined;
+    if (pending) saveMessage(this.#db, pending);
+    if (message && pending?.id !== message.id) saveMessage(this.#db, message);
+  }
+
   async #finishWithError(
     conversation: Conversation,
     message: ConversationMessage,
@@ -448,7 +525,9 @@ export class ConversationManager {
     message.parts.push(part);
     message.status = type === "interrupted" ? "interrupted" : "error";
     message.updatedAt = this.#now();
-    saveMessage(this.#db, message);
+    const active = this.#active.get(conversation.id);
+    if (active) this.#flushMessageSave(active, message);
+    else saveMessage(this.#db, message);
     await this.#emit({
       event: "conversation.partUpdated",
       payload: { conversationId: conversation.id, messageId: message.id, kind: "upsert", part },
@@ -457,7 +536,6 @@ export class ConversationManager {
     conversation.updatedAt = this.#now();
     updateConversation(this.#db, conversation);
     await this.#stateEvent(conversation, { messageId: message.id, messageStatus: message.status });
-    const active = this.#active.get(conversation.id);
     if (active?.currentMessage?.id === message.id) active.currentMessage = undefined;
   }
 

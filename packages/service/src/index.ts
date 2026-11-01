@@ -1,6 +1,7 @@
 export type {
   AdapterEvent,
   AdapterFactory,
+  AdapterModelList,
   AdapterResponse,
   AgentAdapter,
 } from "./agents/adapter.ts";
@@ -9,6 +10,7 @@ export {
   ClaudeAdapter,
   createClaudeAdapterFactory,
 } from "./agents/claude-adapter.ts";
+export { CodexAdapter, createCodexAdapterFactory } from "./agents/codex-adapter.ts";
 export { ConversationManager } from "./agents/conversation-manager.ts";
 export { computeMac, createNonce, createSecret, readSecret, verifyMac } from "./auth.ts";
 export { connectService, type ServiceClient } from "./client.ts";
