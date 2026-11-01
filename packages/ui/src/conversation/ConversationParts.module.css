@@ -869,6 +869,52 @@
   color: var(--k-color-danger);
 }
 
+.errorDetails {
+  display: grid;
+  justify-items: start;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+
+.errorDetailsToggle {
+  min-height: var(--k-control-height-sm);
+  padding-inline: var(--k-space-2);
+  border: 0;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-12);
+  cursor: pointer;
+}
+
+.errorDetailsToggle:hover {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
+.errorDetailsToggle:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-chat-focus-outline-offset);
+}
+
+.errorDetailsText {
+  width: 100%;
+  max-height: var(--k-chat-part-max-height);
+  min-width: 0;
+  overflow: auto;
+  margin: 0;
+  padding: var(--k-space-3);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-color-bg-app);
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-mono); /* taste-skill-ignore: detalhes técnicos crus do erro */
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .timelineToggle {
   align-self: flex-start;
   margin-block-start: var(--k-space-2);

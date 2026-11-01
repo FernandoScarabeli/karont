@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import type { AnyEvent, Conversation } from "@karont/contract";
-import { openDatabase } from "../db.ts";
+import { getMessage, openDatabase } from "../db.ts";
 import type { AdapterEvent, AdapterFactory, AgentAdapter } from "./adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
 
@@ -162,6 +162,58 @@ test("fim e erro da resposta marcam a conversa como não vista e emitem atualiza
       await manager.close();
       db.close();
     }
+  }
+});
+
+test("serviço grava erro JSON do Codex em texto legível e preserva detalhes", async () => {
+  const raw =
+    '{"type":"error","error":{"message":"regurg plugin blocked the output stream.","type":"invalid_request_error","param":null,"code":"safety_violation"},"status":400,"sequence_number":53}';
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-agent-error-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  const manager = new ConversationManager({
+    db,
+    env: { ...process.env, KARONT_AGENT_IDLE_MS: "10000" },
+    broadcast: async (event) => {
+      events.push(event);
+    },
+    adapterFactory: (_conversation, emit) => new RawErrorTestAdapter(emit, raw),
+    titleGenerator: async () => null,
+  });
+  const conversation = manager.create({
+    agent: "codex",
+    title: "Erro do Codex",
+    cwd: root,
+    mode: "edit",
+  });
+
+  try {
+    await manager.send(conversation.id, "Responda.");
+    await waitForState(manager, conversation.id, "error");
+    const inMemoryMessage = manager
+      .get(conversation.id)
+      ?.messages.find((message) => message.author === "agent");
+    const persistedMessage = inMemoryMessage ? getMessage(db, inMemoryMessage.id) : null;
+    const persistedPart = persistedMessage?.parts.find((part) => part.type === "error");
+    assert.equal(persistedPart?.type, "error");
+    if (persistedPart?.type !== "error") return;
+    assert.equal(
+      persistedPart.text,
+      "O Codex interrompeu a resposta: o filtro de conteúdo do provedor bloqueou o texto. Tente reformular o pedido.",
+    );
+    assert.equal(persistedPart.details, raw);
+    assert.ok(
+      events.some(
+        (event) =>
+          event.event === "conversation.partUpdated" &&
+          event.payload.kind === "upsert" &&
+          event.payload.part.type === "error" &&
+          event.payload.part.details === raw,
+      ),
+    );
+  } finally {
+    await manager.close();
+    db.close();
   }
 });
 
@@ -327,5 +379,29 @@ class FinishTestAdapter implements AgentAdapter {
     this.#emit({ kind: "turn-end", status: "interrupted" });
   }
 
+  async dispose(): Promise<void> {}
+}
+
+class RawErrorTestAdapter implements AgentAdapter {
+  readonly #emit: (event: AdapterEvent) => void;
+  readonly #raw: string;
+
+  constructor(emit: (event: AdapterEvent) => void, raw: string) {
+    this.#emit = emit;
+    this.#raw = raw;
+  }
+
+  async start(): Promise<void> {}
+
+  async send(): Promise<void> {
+    this.#emit({
+      kind: "turn-end",
+      status: "error",
+      error: { type: "failed", text: this.#raw },
+    });
+  }
+
+  async respond(): Promise<void> {}
+  async interrupt(): Promise<void> {}
   async dispose(): Promise<void> {}
 }

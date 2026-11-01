@@ -5,7 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { createInterface } from "node:readline";
-import type { Conversation, ConversationAttachment, MessagePart } from "@karont/contract";
+import {
+  type Conversation,
+  type ConversationAttachment,
+  describeAgentError,
+  type MessagePart,
+} from "@karont/contract";
 import type {
   AdapterEvent,
   AdapterFactory,
@@ -973,18 +978,14 @@ function usesPlanMode(text: string): boolean {
 
 function classifyStartError(error: unknown, command: string): AgentCliError {
   if (isRecord(error) && error.code === "ENOENT")
-    return new AgentCliError(
-      "cli-not-found",
-      `Não foi possível encontrar a CLI Codex (${command}).`,
-    );
+    return new AgentCliError("cli-not-found", `spawn ${command} ENOENT`);
   const message = error instanceof Error ? error.message : String(error);
-  return new AgentCliError("failed", message);
+  const errorType = classifyErrorText(message);
+  return new AgentCliError(errorType, message);
 }
 
 function classifyErrorText(text: string): "not-logged-in" | "failed" {
-  return /not logged in|please log in|login required|authentication required|logged out|oauth.{0,20}(expired|invalid)/i.test(
-    text,
-  )
+  return describeAgentError(text, "codex").message.startsWith("Codex não está conectado.")
     ? "not-logged-in"
     : "failed";
 }

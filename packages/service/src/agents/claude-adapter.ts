@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import {
   type Conversation,
   type ConversationAttachment,
+  describeAgentError,
   MAX_FRAME_BYTES,
   type MessagePart,
 } from "@karont/contract";
@@ -95,6 +96,7 @@ export class ClaudeAdapter implements AgentAdapter {
   #disposed = false;
   #interruptTimer: ReturnType<typeof setTimeout> | undefined;
   #interruptResolve: (() => void) | undefined;
+  #stderrErrorText = "";
 
   constructor(emit: (event: AdapterEvent) => void, options: ClaudeAdapterOptions = {}) {
     this.#emit = emit;
@@ -117,6 +119,7 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#sessionId = sessionId;
     this.#resumeSession = resume;
     this.#stderrErrorType = undefined;
+    this.#stderrErrorText = "";
     const command =
       this.#env.KARONT_CLAUDE_CLI ||
       (await resolveAgentCommand("claude", {
@@ -166,7 +169,8 @@ export class ClaudeAdapter implements AgentAdapter {
     lines.on("line", (line) => this.#handleLine(line));
     stderr.setEncoding("utf8");
     stderr.on("data", (chunk: string) => {
-      const errorType = classifyErrorText(chunk);
+      this.#stderrErrorText = `${this.#stderrErrorText}${chunk}`.slice(-8_192);
+      const errorType = classifyErrorText(this.#stderrErrorText);
       if (errorType !== "failed") this.#stderrErrorType = errorType;
     });
     this.#initPromise = new Promise<void>((resolve, reject) => {
@@ -190,7 +194,10 @@ export class ClaudeAdapter implements AgentAdapter {
     });
     const timer = setTimeout(() => {
       const errorType = this.#stderrErrorType ?? "failed";
-      this.#initReject?.(new AgentCliError(errorType, friendlyError(errorType)));
+      const text =
+        this.#stderrErrorText.trim() ||
+        "Claude Code encerrou antes de concluir a resposta. Tente de novo.";
+      this.#initReject?.(new AgentCliError(errorType, text));
     }, 15_000);
     try {
       await this.#initPromise;
@@ -427,7 +434,7 @@ export class ClaudeAdapter implements AgentAdapter {
               ? value.message
               : "Claude Code reportou um erro de execução.";
         const errorType = classifyErrorText(detail);
-        this.#completeTurn("error", { type: errorType, text: friendlyError(errorType) });
+        this.#completeTurn("error", { type: errorType, text: detail });
       }
       if (value.subtype === "permission_denied") this.#emit({ kind: "state", state: "working" });
       return;
@@ -488,8 +495,10 @@ export class ClaudeAdapter implements AgentAdapter {
             text: "Resposta interrompida pelo usuário.",
           });
         else {
-          const errorType = classifyErrorText(errors.join(" "));
-          this.#completeTurn("error", { type: errorType, text: friendlyError(errorType) });
+          const text =
+            errors.join(" ") || "Claude Code encerrou antes de concluir a resposta. Tente de novo.";
+          const errorType = classifyErrorText(text);
+          this.#completeTurn("error", { type: errorType, text });
         }
       } else this.#completeTurn("done");
     }
@@ -750,15 +759,16 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#rejectControlRequests(
       new AgentCliError("failed", "Claude Code encerrou antes de responder ao controle."),
     );
-    const type = this.#stderrErrorType ?? classifyErrorText(error.message);
-    if (this.#initReject) this.#initReject(new AgentCliError(type, friendlyError(type)));
+    const text = this.#stderrErrorText.trim() || error.message;
+    const type = this.#stderrErrorType ?? classifyErrorText(text);
+    if (this.#initReject) this.#initReject(new AgentCliError(type, text));
     if (this.#turnOpen) {
       if (this.#stopRequested)
         this.#completeTurn("interrupted", {
           type: "interrupted",
           text: "Resposta interrompida pelo usuário.",
         });
-      else this.#completeTurn("error", { type, text: friendlyError(type) });
+      else this.#completeTurn("error", { type, text });
     }
   }
 
@@ -858,26 +868,20 @@ function permissionModeFor(conversation: Conversation): string {
 }
 
 function classifyStartError(error: unknown, command: string): AgentCliError {
-  if (isRecord(error) && error.code === "ENOENT")
-    return new AgentCliError("cli-not-found", `CLI do Claude Code não encontrada (${command}).`);
-  const message = error instanceof Error ? error.message : String(error);
+  const message =
+    isRecord(error) && error.code === "ENOENT"
+      ? `spawn ${command} ENOENT`
+      : error instanceof Error
+        ? error.message
+        : String(error);
   const errorType = classifyErrorText(message);
-  return new AgentCliError(errorType, friendlyError(errorType));
+  return new AgentCliError(errorType, message);
 }
 function classifyErrorText(text: string): "cli-not-found" | "not-logged-in" | "failed" {
   if (/\bENOENT\b|spawn\s+claude\s+ENOENT/i.test(text)) return "cli-not-found";
-  return /not logged in|please log in|run\s+\/login|authentication required|logged out|oauth.*(expired|invalid)/i.test(
-    text,
-  )
+  return describeAgentError(text, "claude").message.startsWith("Claude Code não está conectado.")
     ? "not-logged-in"
     : "failed";
-}
-function friendlyError(type: "cli-not-found" | "not-logged-in" | "failed"): string {
-  if (type === "cli-not-found")
-    return "Claude Code não encontrado. Instale a CLI e tente novamente.";
-  if (type === "not-logged-in")
-    return "Claude Code não está conectado. Faça login na CLI e tente novamente.";
-  return "Claude Code encerrou antes de concluir a resposta. Tente de novo.";
 }
 function actionType(
   tool: string,
