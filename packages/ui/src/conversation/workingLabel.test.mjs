@@ -65,6 +65,15 @@ test("usa rótulos de trabalho conforme a última parte e o estado", () => {
     deriveWorkingLabel(action("search", "search", "Buscou arquivos"), []),
     "Buscando arquivos",
   );
+  assert.equal(deriveWorkingLabel(action("subagent", "subagent", "Task"), []), "Rodando subagente");
+  assert.equal(
+    deriveWorkingLabel({ ...action("mcp", "mcp", "lookup"), server: "docs", tool: "lookup" }, []),
+    "Chamando docs · lookup",
+  );
+  assert.equal(
+    deriveWorkingLabel(action("image", "image", "Gerou uma imagem"), []),
+    "Gerando imagem",
+  );
   assert.equal(deriveWorkingLabel(reading, [reading], true), "Parando");
   assert.equal(
     deriveWorkingLabel(action("done", "read", "Read · README.md", "", "ok"), []),

@@ -683,6 +683,16 @@
   background: var(--k-color-bg-raised);
 }
 
+.actionChildren {
+  display: grid;
+  gap: var(--k-space-1);
+  min-inline-size: 0;
+  margin: var(--k-space-2) 0 0 var(--k-space-2);
+  padding: 0 0 0 var(--k-space-3);
+  border: 0;
+  border-inline-start: var(--k-border-width) solid var(--k-color-border);
+}
+
 .actionGroupBody .actionDetails {
   max-height: none;
   margin-block-start: 0;

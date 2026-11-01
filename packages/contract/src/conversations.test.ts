@@ -202,7 +202,7 @@ test("contratos guardam partes interativas ordenadas e estados explícitos", () 
   );
 });
 
-test("aceita ações especiais e preserva compatibilidade convertendo-as em other na leitura", () => {
+test("preserva os tipos novos de ação e seus campos opcionais na leitura", () => {
   for (const actionType of ["subagent", "mcp", "image"] as const) {
     const parsed = messagePartSchema.safeParse({
       id: `a-${actionType}`,
@@ -218,8 +218,14 @@ test("aceita ações especiais e preserva compatibilidade convertendo-as em othe
       ...(actionType === "subagent" ? { parentId: "task-parent" } : {}),
     });
     assert.equal(parsed.success, true);
-    if (parsed.success && parsed.data.type === "action")
-      assert.equal(parsed.data.actionType, "other");
+    if (parsed.success && parsed.data.type === "action") {
+      assert.equal(parsed.data.actionType, actionType);
+      if (actionType === "mcp") {
+        assert.equal(parsed.data.server, "docs");
+        assert.equal(parsed.data.tool, "lookup");
+      }
+      if (actionType === "subagent") assert.equal(parsed.data.parentId, "task-parent");
+    }
   }
 });
 

@@ -147,7 +147,7 @@ As fixtures reais disponíveis não contêm chamadas Claude `Edit`, `MultiEdit`,
 - Codex `fileChange.changes[]` contém `FileUpdateChange { path, kind, diff }`, com `kind` como variante marcada (`{ type: "add" | "update" | "delete" }`); o serviço conserva essa forma no JSON. Também aceita o formato legado indexado por caminho.
 - Codex `mcpToolCall` fornece `server`, `tool`, `arguments` e `result`; `collabAgentToolCall` fornece `tool` e `prompt`; `imageGeneration` fornece `savedPath` e `revisedPrompt`. A imagem guarda apenas o caminho e o prompt revisado; leitura e validação do arquivo ficam para outra tarefa.
 - Entradas e saídas são limitadas a 8 KiB e 64 KiB, respectivamente. Quando há truncamento, `truncated` fica `true`; a lista JSON de diffs continua válida.
-- O schema aceita `actionType: "subagent" | "mcp" | "image"`, mas normaliza esses valores para `other` ao validar partes destinadas à UI existente. A UI continua tipada e renderiza essas ações como genéricas até uma tarefa de interface consumir os tipos e campos novos.
+- O schema preserva `actionType: "subagent" | "mcp" | "image"` e os campos opcionais `parentId`, `server` e `tool`; a F24 consome esses dados para agrupar ações de subagentes e detalhar MCP/imagem.
 
 ## Armadilhas
 

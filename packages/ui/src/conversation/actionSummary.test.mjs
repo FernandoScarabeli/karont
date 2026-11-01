@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   categoryForAction,
+  groupActionsByParentId,
   groupConsecutiveActions,
   summarizeAction,
+  summarizeActionDiff,
   summarizeActionGroup,
 } from "./actionSummary.ts";
 
@@ -66,4 +68,51 @@ test("agrupa apenas ações consecutivas do mesmo tipo", () => {
   );
   assert.equal(summarizeActionGroup(groups[0], "/home/dev/app"), "Leu 2 arquivos");
   assert.equal(summarizeActionGroup(groups[1], "/home/dev/app"), "Editou src/app.ts");
+});
+
+test("resume subagente, MCP e geração de imagem", () => {
+  const subagent = {
+    ...action("subagent", "Pesquisar documentação"),
+    title: "Pesquisar documentação",
+  };
+  const mcp = { ...action("mcp", "lookup"), server: "docs", tool: "lookup" };
+  const image = action("image", "Gerou uma imagem");
+
+  assert.equal(summarizeAction(subagent, "/repo"), "Subagente · Pesquisar documentação");
+  assert.equal(summarizeAction(mcp, "/repo"), "docs · lookup");
+  assert.equal(summarizeAction(action("mcp", "mcp__docs__lookup"), "/repo"), "docs · lookup");
+  assert.equal(summarizeAction(image, "/repo"), "Gerou uma imagem");
+  assert.deepEqual(
+    groupConsecutiveActions([subagent, { ...subagent, id: "subagent-2" }]).map(
+      (group) => group.actions.length,
+    ),
+    [1, 1],
+  );
+});
+
+test("resume diff estruturado do Claude com caminho e contagem de linhas", () => {
+  const edit = {
+    ...action("edit", "Edit · /repo/app.ts", "/repo/app.ts"),
+    output: JSON.stringify([
+      {
+        path: "/repo/app.ts",
+        kind: { type: "update" },
+        diff: "--- app.ts\n+++ app.ts\n@@ -1,2 +1,3 @@\n linha\n-antiga\n+nova\n+outra",
+      },
+    ]),
+  };
+
+  assert.equal(summarizeActionDiff(edit, "/repo"), "Editou app.ts +2 −1");
+});
+
+test("agrupa filhos do subagente e omite ações parentadas órfãs", () => {
+  const parent = { ...action("subagent", "Revise o módulo"), id: "task-1" };
+  const child = { ...action("read", "Read · src/app.ts"), id: "read-1", parentId: "task-1" };
+  const orphan = { ...action("command", "npm test"), id: "orphan", parentId: "missing" };
+  const standalone = action("edit", "Edit · src/ui.ts");
+
+  assert.deepEqual(groupActionsByParentId([parent, child, orphan, standalone]), [
+    { action: parent, children: [child] },
+    { action: standalone, children: [] },
+  ]);
 });

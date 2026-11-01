@@ -27,13 +27,18 @@ const messagePartBase = {
   startedAt: z.number().int().nonnegative().optional(),
   endedAt: z.number().int().nonnegative().optional(),
 };
-const actionTypeSchema = z
-  .enum(["read", "edit", "write", "command", "search", "web", "subagent", "mcp", "image", "other"])
-  .transform((actionType) =>
-    actionType === "subagent" || actionType === "mcp" || actionType === "image"
-      ? "other"
-      : actionType,
-  );
+const actionTypeSchema = z.enum([
+  "read",
+  "edit",
+  "write",
+  "command",
+  "search",
+  "web",
+  "subagent",
+  "mcp",
+  "image",
+  "other",
+]);
 export const questionOptionSchema = z.strictObject({
   label: z.string(),
   description: z.string().optional(),
