@@ -47,10 +47,12 @@ type ConversationOptionsPatch = {
 
 export function ConversationView({
   id,
+  isActivePane,
   headerActions,
   dragHandleProps,
 }: {
   id: string;
+  isActivePane: boolean;
   headerActions?: ReactNode;
   dragHandleProps?: {
     draggable: boolean;
@@ -60,8 +62,17 @@ export function ConversationView({
   };
 }) {
   const bridge = getBridge();
-  const { conversation, messages, loading, error, liveText, addMessage, updateConversation } =
-    useConversation(id);
+  const {
+    conversation,
+    messages,
+    loading,
+    error,
+    liveText,
+    responseFinishedId,
+    addMessage,
+    updateConversation,
+  } = useConversation(id);
+  const markSeenInFlight = useRef(false);
   const [draft, setDraft] = useState("");
   const [models, setModels] = useState<AgentModels | null>(null);
   const [activePopover, setActivePopover] = useState<ComposerPopoverName>(null);
@@ -73,6 +84,45 @@ export function ConversationView({
   const [isStopping, setIsStopping] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isRenamingTitle, setIsRenamingTitle] = useState(false);
+
+  const markSeen = useCallback(async () => {
+    if (
+      !bridge ||
+      document.visibilityState !== "visible" ||
+      !conversation?.unreadAt ||
+      markSeenInFlight.current
+    ) {
+      return;
+    }
+
+    markSeenInFlight.current = true;
+    try {
+      const result = await bridge.request("conversation.markSeen", { id });
+      updateConversation(result.conversation);
+      upsertConversation(result.conversation);
+    } catch {
+      // Um próximo foco ou retorno à aba pode tentar marcar a resposta como vista.
+    } finally {
+      markSeenInFlight.current = false;
+    }
+  }, [bridge, conversation?.unreadAt, id, updateConversation]);
+
+  useEffect(() => {
+    void markSeen();
+    const updateOnVisibility = () => {
+      if (document.visibilityState === "visible") void markSeen();
+    };
+    document.addEventListener("visibilitychange", updateOnVisibility);
+    return () => document.removeEventListener("visibilitychange", updateOnVisibility);
+  }, [markSeen]);
+
+  useEffect(() => {
+    if (isActivePane) void markSeen();
+  }, [isActivePane, markSeen]);
+
+  useEffect(() => {
+    if (responseFinishedId) void markSeen();
+  }, [markSeen, responseFinishedId]);
   const [titleDraft, setTitleDraft] = useState("");
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const previousConversationIdRef = useRef(id);
@@ -616,6 +666,7 @@ export function ConversationView({
       aria-label={title}
       className={styles.page}
       data-focus-context="conversation"
+      onFocusCapture={() => void markSeen()}
       tabIndex={-1}
     >
       <header className={styles.header}>
@@ -678,13 +729,6 @@ export function ConversationView({
               size="sm"
             />
           </div>
-        ) : conversation ? (
-          <span
-            className={`${styles.state} ${isWaiting ? styles.waiting : isWorking ? styles.working : isError ? styles.failed : ""}`}
-          >
-            <span aria-hidden="true" className={styles.stateMark} />
-            {stateLabel}
-          </span>
         ) : null}
         {headerActions}
       </header>

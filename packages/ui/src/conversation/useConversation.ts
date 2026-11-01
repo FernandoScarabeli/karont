@@ -11,6 +11,7 @@ type State = {
   loading: boolean;
   error: string;
   liveText: string;
+  responseFinishedId: string | null;
 };
 
 type Action =
@@ -38,6 +39,7 @@ const initialState: State = {
   loading: true,
   error: "",
   liveText: "",
+  responseFinishedId: null,
 };
 
 export function useConversation(conversationId: string) {
@@ -192,6 +194,12 @@ function reducer(state: State, action: Action): State {
               [message.id]: { ...message, status: action.event.payload.messageStatus },
             },
           };
+        }
+        if (
+          action.event.payload.messageStatus === "done" ||
+          action.event.payload.messageStatus === "error"
+        ) {
+          next = { ...next, responseFinishedId: action.event.payload.messageId };
         }
       }
       return next;

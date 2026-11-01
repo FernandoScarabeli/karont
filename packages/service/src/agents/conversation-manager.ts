@@ -20,6 +20,7 @@ import {
   getSetting,
   listConversations,
   listMessages,
+  markConversationSeen,
   type NewConversation,
   saveMessage,
   setAgentSession,
@@ -159,6 +160,13 @@ export class ConversationManager {
   get(id: string): { conversation: Conversation; messages: ConversationMessage[] } | null {
     const conversation = getConversation(this.#db, id);
     return conversation ? { conversation, messages: listMessages(this.#db, id) } : null;
+  }
+
+  async markSeen(id: string): Promise<Conversation> {
+    const result = markConversationSeen(this.#db, id);
+    if (!result.conversation) throw new Error("Conversa não encontrada.");
+    if (result.changed) await this.#stateEvent(result.conversation);
+    return result.conversation;
   }
 
   async send(
@@ -607,6 +615,7 @@ export class ConversationManager {
       await this.#flushCoalescers(active);
       active.deltaTimes.clear();
       const endedAt = this.#epochNow();
+      const completedAt = this.#now();
       message.endedAt = endedAt;
       if (event.error) {
         const errorPart: MessagePart = {
@@ -625,7 +634,7 @@ export class ConversationManager {
         });
       }
       message.status = event.status;
-      message.updatedAt = this.#now();
+      message.updatedAt = completedAt;
       this.#flushMessageSave(active, message);
       const pendingPlan =
         event.status === "done" &&
@@ -637,7 +646,10 @@ export class ConversationManager {
       }
       const conversation = this.#requireConversation(conversationId);
       conversation.state = event.status === "error" ? "error" : pendingPlan ? "waiting" : "idle";
-      conversation.updatedAt = this.#now();
+      conversation.updatedAt = completedAt;
+      if (event.status === "done" || event.status === "error") {
+        conversation.unreadAt = completedAt;
+      }
       updateConversation(this.#db, conversation);
       await this.#stateEvent(conversation, {
         messageId: message.id,
@@ -759,7 +771,8 @@ export class ConversationManager {
     };
     message.parts.push(part);
     message.status = type === "interrupted" ? "interrupted" : "error";
-    message.updatedAt = this.#now();
+    const completedAt = this.#now();
+    message.updatedAt = completedAt;
     message.endedAt = endedAt;
     const active = this.#active.get(conversation.id);
     if (active) this.#flushMessageSave(active, message);
@@ -769,7 +782,8 @@ export class ConversationManager {
       payload: { conversationId: conversation.id, messageId: message.id, kind: "upsert", part },
     });
     conversation.state = message.status === "error" ? "error" : "idle";
-    conversation.updatedAt = this.#now();
+    conversation.updatedAt = completedAt;
+    if (message.status === "error") conversation.unreadAt = completedAt;
     updateConversation(this.#db, conversation);
     await this.#stateEvent(conversation, { messageId: message.id, messageStatus: message.status });
     if (active?.currentMessage?.id === message.id) active.currentMessage = undefined;

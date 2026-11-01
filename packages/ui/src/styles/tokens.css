@@ -17,6 +17,9 @@
   --k-color-working: #7db4e0;
   --k-color-attention: #e5a93b;
   --k-color-danger: #ef7b73;
+  --k-color-status-unread: #82c996;
+  --k-color-status-working: #d2b768;
+  --k-color-status-needs-you: #e38c76;
   --k-color-focus: var(--k-color-primary);
   --k-color-brand: #f3eee3;
   --k-color-ok: #6fcf97;
@@ -80,6 +83,8 @@
   --k-duration-fast: 120ms;
   --k-duration-cursor-blink: 500ms;
   --k-duration-highlight: 1.2s;
+  --k-duration-status-pulse-slow: 2.4s;
+  --k-duration-status-pulse-medium: 1.6s;
   --k-ease: cubic-bezier(0.2, 0, 0, 1);
   --k-opacity-disabled: 0.5;
 
@@ -91,6 +96,8 @@
   --k-sidebar-footer-gap: 8px;
   --k-sheet-padding: 40px;
   --k-dot-size: 8px;
+  --k-status-dot-size-small: 6px;
+  --k-status-dot-size-large: 8px;
   --k-icon-size-md: 16px;
   --k-brand-mark-size: 14px;
   --k-brand-mark-height: 22px;

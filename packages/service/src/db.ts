@@ -63,6 +63,10 @@ export const migrations: { version: number; up: string }[] = [
     up: `ALTER TABLE conversations ADD COLUMN pinned_at TEXT;
     ALTER TABLE conversations ADD COLUMN archived_at TEXT;`,
   },
+  {
+    version: 10,
+    up: "ALTER TABLE conversations ADD COLUMN unread_at TEXT;",
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -85,12 +89,13 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     plan: input.plan ?? false,
     pinnedAt: null,
     archivedAt: null,
+    unreadAt: null,
     state: "idle",
     createdAt: now,
     updatedAt: now,
   };
   db.prepare(
-    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,state,created_at,updated_at,title_manually_set,pinned_at,archived_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     conversation.id,
     conversation.agent,
@@ -106,6 +111,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     conversation.title === "Nova conversa" ? 0 : 1,
     conversation.pinnedAt,
     conversation.archivedAt,
+    conversation.unreadAt,
   );
   return conversation;
 }
@@ -143,7 +149,7 @@ export function listConversations(
 
 export function updateConversation(db: DatabaseSync, conversation: Conversation): void {
   db.prepare(
-    "UPDATE conversations SET title=?,mode=?,model=?,effort=?,plan=?,state=?,updated_at=?,pinned_at=?,archived_at=? WHERE id=?",
+    "UPDATE conversations SET title=?,mode=?,model=?,effort=?,plan=?,state=?,updated_at=?,pinned_at=?,archived_at=?,unread_at=? WHERE id=?",
   ).run(
     conversation.title,
     conversation.mode,
@@ -154,8 +160,20 @@ export function updateConversation(db: DatabaseSync, conversation: Conversation)
     conversation.updatedAt,
     conversation.pinnedAt,
     conversation.archivedAt,
+    conversation.unreadAt,
     conversation.id,
   );
+}
+
+export function markConversationSeen(
+  db: DatabaseSync,
+  id: string,
+): { conversation: Conversation | null; changed: boolean } {
+  const changed =
+    db
+      .prepare("UPDATE conversations SET unread_at=NULL WHERE id=? AND unread_at IS NOT NULL")
+      .run(id).changes > 0;
+  return { conversation: getConversation(db, id), changed };
 }
 
 export function setConversationTitle(
@@ -275,6 +293,7 @@ type ConversationRow = {
   plan: number;
   pinned_at: string | null;
   archived_at: string | null;
+  unread_at: string | null;
   state: Conversation["state"];
   created_at: string;
   updated_at: string;
@@ -303,6 +322,7 @@ function mapConversation(row: ConversationRow): Conversation {
     plan: row.plan === 1,
     pinnedAt: row.pinned_at,
     archivedAt: row.archived_at,
+    unreadAt: row.unread_at,
     state: row.state,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

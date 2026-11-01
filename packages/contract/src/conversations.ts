@@ -15,6 +15,7 @@ export const conversationSchema = z.strictObject({
   plan: z.boolean().optional(),
   pinnedAt: z.iso.datetime({ offset: true }).nullable(),
   archivedAt: z.iso.datetime({ offset: true }).nullable(),
+  unreadAt: z.iso.datetime({ offset: true }).nullable(),
   state: conversationStateSchema,
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),

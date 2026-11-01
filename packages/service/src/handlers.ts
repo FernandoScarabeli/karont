@@ -118,6 +118,13 @@ export function createHandlers({
         if (!result) throw new ServiceError("unavailable", "Conversa não encontrada.");
         return result;
       }
+      case "conversation.markSeen":
+        return conversationManager
+          .markSeen(request.params.id)
+          .then((conversation) => ({ conversation }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
       case "conversation.send":
         return conversationManager
           .send(

@@ -264,6 +264,7 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
           dragHandleProps={dragHandleProps}
           headerActions={renderToolbar(pane)}
           id={pane.view.conversationId}
+          isActivePane={isActive}
           key={pane.view.conversationId}
         />
       </Suspense>

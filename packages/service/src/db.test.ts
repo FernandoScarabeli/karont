@@ -27,7 +27,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    9,
+    10,
   );
   assert.equal(
     (
@@ -52,6 +52,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   );
   assert.ok(conversationColumns.has("pinned_at"));
   assert.ok(conversationColumns.has("archived_at"));
+  assert.ok(conversationColumns.has("unread_at"));
   setSetting(db, "appearance.theme", { mode: "dark", enabled: true });
   assert.deepEqual(getSetting(db, "appearance.theme"), { mode: "dark", enabled: true });
   assert.equal((await stat(dbPath)).mode & 0o777, 0o600);
@@ -74,7 +75,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    9,
+    10,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();
@@ -132,6 +133,7 @@ test("migra conversas antigas sem perder preferências existentes nem mensagens"
       plan: conversation?.plan,
       pinnedAt: conversation?.pinnedAt,
       archivedAt: conversation?.archivedAt,
+      unreadAt: conversation?.unreadAt,
     },
     {
       agent: "claude",
@@ -143,6 +145,7 @@ test("migra conversas antigas sem perder preferências existentes nem mensagens"
       plan: false,
       pinnedAt: null,
       archivedAt: null,
+      unreadAt: null,
     },
   );
   const legacyMessages = listMessages(db, "legacy-1");
