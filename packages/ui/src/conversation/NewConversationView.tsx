@@ -202,7 +202,7 @@ export function NewConversationView({
     choice === TERMINAL_CHOICE ? "terminal" : "agent",
   );
   const gitPath = folderPath === PERSONAL_FOLDER ? homePath : folderPath;
-  const gitInfo = useGitInfo(gitPath, "new-conversation");
+  const { info: gitInfo } = useGitInfo(gitPath, "new-conversation");
   const isPersonalFolderSelected = folderPath === PERSONAL_FOLDER || folderPath === homePath;
   const folderName = isPersonalFolderSelected ? PERSONAL_FOLDER : getFolderName(folderPath);
   const accessibleFolderPath = isPersonalFolderSelected
@@ -561,7 +561,9 @@ export function NewConversationView({
                 <Folder aria-hidden="true" size={16} strokeWidth={1.8} />
                 <span>{folderName}</span>
               </button>
-              <GitBranchLabel info={gitInfo} />
+              <span className={styles.branchSlot}>
+                <GitBranchLabel info={gitInfo} />
+              </span>
             </div>
           }
           attachments={

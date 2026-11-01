@@ -1,6 +1,6 @@
 .branch {
   display: inline-flex;
-  max-width: 40%;
+  max-width: 100%;
   flex: 0 1 auto;
   min-width: 0;
   align-items: center;

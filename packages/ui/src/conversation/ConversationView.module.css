@@ -112,6 +112,10 @@
   flex: 0 0 var(--k-border-width);
 }
 
+.messageList[data-reveal="true"] > :not(.bottomSentinel) {
+  animation: conversationDataReveal var(--k-duration-fast) var(--k-ease) both;
+}
+
 .loading,
 .error {
   display: flex;
@@ -206,8 +210,12 @@
 
 .agentTag {
   display: inline-flex;
-  flex: 0 0 auto;
-  min-height: var(--k-control-height-md);
+  box-sizing: border-box;
+  width: var(--k-composer-agent-width);
+  min-width: 0;
+  height: var(--k-control-height-md);
+  flex: 0 0 var(--k-composer-agent-width);
+  overflow: hidden;
   align-items: center;
   gap: var(--k-space-1);
   padding-inline: var(--k-space-1);
@@ -215,6 +223,13 @@
   color: var(--k-color-text-primary);
   font-size: var(--k-text-12);
   font-weight: var(--k-weight-medium);
+}
+
+.agentName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .folderStrip {
@@ -230,6 +245,16 @@
   padding: var(--k-space-2) var(--k-space-3);
   border-radius: 0 0 var(--k-radius-lg) var(--k-radius-lg);
   background: var(--k-color-bg-raised);
+}
+
+.branchSlot {
+  display: inline-flex;
+  width: 40%;
+  max-width: 40%;
+  min-width: 0;
+  flex: 0 1 40%;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .folderButton {
@@ -253,6 +278,75 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.loadingPlaceholder {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  border-radius: var(--k-radius-sm);
+  background: var(--k-color-bg-control);
+}
+
+.loadingAttachment,
+.loadingIcon {
+  width: var(--k-control-height-md);
+  height: var(--k-control-height-md);
+}
+
+.loadingAgent {
+  width: var(--k-composer-agent-width);
+  height: var(--k-control-height-md);
+}
+
+.loadingPreferences {
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.loadingModel {
+  width: var(--k-composer-model-width);
+  height: var(--k-control-height-md);
+}
+
+.loadingFolder {
+  cursor: default;
+}
+
+.loadingFolderText {
+  width: var(--k-composer-agent-width);
+  height: var(--k-text-11);
+}
+
+.loadingBranch {
+  width: 100%;
+  min-height: var(--k-control-height-sm);
+  justify-content: flex-end;
+  gap: var(--k-space-1);
+  background: transparent;
+}
+
+.loadingBranchText {
+  width: var(--k-composer-agent-width);
+  height: var(--k-text-11);
+  border-radius: var(--k-radius-xs);
+  background: var(--k-color-bg-control);
+}
+
+.dataReveal {
+  animation: conversationDataReveal var(--k-duration-fast) var(--k-ease) both;
+}
+
+@keyframes conversationDataReveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .folderButton:hover {
@@ -296,5 +390,12 @@
 
   .composerSection {
     width: calc(100% - var(--k-space-4) - var(--k-space-4));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dataReveal,
+  .messageList[data-reveal="true"] > :not(.bottomSentinel) {
+    animation: none;
   }
 }

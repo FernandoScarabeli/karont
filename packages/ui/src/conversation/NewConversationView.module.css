@@ -85,6 +85,15 @@
   background: var(--k-color-bg-raised);
 }
 
+.branchSlot {
+  display: inline-flex;
+  max-width: 40%;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .folderWrap {
   position: relative;
   min-width: 0;
