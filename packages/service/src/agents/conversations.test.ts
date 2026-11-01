@@ -31,7 +31,15 @@ type Harness = {
 async function createHarness(
   scenario: string,
   extraEnv: NodeJS.ProcessEnv = {},
-  fakeOptions: { exitAfterResult?: boolean; planDecision?: "approve" | "adjust" } = {},
+  fakeOptions: {
+    exitAfterResult?: boolean;
+    planDecision?: "approve" | "adjust";
+    titleGenerator?: (
+      agent: Conversation["agent"],
+      userMessage: string,
+      agentResponse: string,
+    ) => Promise<string | null>;
+  } = {},
 ): Promise<Harness> {
   const root = await mkdtemp(path.join(os.tmpdir(), "karont-conversations-"));
   const db = openDatabase(path.join(root, "karont.db"));
@@ -61,6 +69,7 @@ async function createHarness(
           return fakeSpawn(command, args, options);
         },
       }),
+    ...(fakeOptions.titleGenerator ? { titleGenerator: fakeOptions.titleGenerator } : {}),
   });
   return {
     manager,
@@ -191,6 +200,90 @@ test("Claude transmite texto em deltas e converte leitura em ação", async () =
     );
     assert.ok(
       message?.parts.some((part) => part.type === "text" && part.markdown.includes("README")),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("gera título em segundo plano usando só o início da primeira troca", async () => {
+  let captured: { agent: string; userMessage: string; agentResponse: string } | undefined;
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      titleGenerator: async (agent, userMessage, agentResponse) => {
+        captured = { agent, userMessage, agentResponse };
+        return "Entender a primeira resposta";
+      },
+    },
+  );
+  try {
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Nova conversa",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    await harness.manager.send(conversation.id, "P".repeat(1_100));
+    await waitForState(harness, conversation.id, "idle");
+    for (
+      let attempt = 0;
+      attempt < 100 && harness.manager.get(conversation.id)?.conversation.title === "Nova conversa";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    const updated = harness.manager.get(conversation.id)?.conversation;
+    assert.equal(captured?.agent, "claude");
+    assert.equal(captured?.userMessage.length, 1_000);
+    assert.ok(captured?.agentResponse.startsWith("Oi!"));
+    assert.equal(updated?.title, "Entender a primeira resposta");
+    assert.ok(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          event.payload.conversation.id === conversation.id &&
+          event.payload.conversation.title === "Entender a primeira resposta",
+      ),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("não substitui o título quando a pessoa renomeia durante a geração", async () => {
+  let resolveTitle: ((title: string | null) => void) | undefined;
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      titleGenerator: () =>
+        new Promise((resolve) => {
+          resolveTitle = resolve;
+        }),
+    },
+  );
+  try {
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Nova conversa",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    await harness.manager.send(conversation.id, "Me ajuda com esse código.");
+    await waitForState(harness, conversation.id, "idle");
+    for (let attempt = 0; attempt < 100 && !resolveTitle; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(typeof resolveTitle, "function");
+    await harness.manager.rename(conversation.id, "Título escolhido por mim");
+    resolveTitle?.("Título automático curto");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(
+      harness.manager.get(conversation.id)?.conversation.title,
+      "Título escolhido por mim",
     );
   } finally {
     await harness.close();

@@ -23,6 +23,7 @@ import {
   type NewConversation,
   saveMessage,
   setAgentSession,
+  setConversationTitle,
   setSetting,
   updateConversation,
 } from "../db.ts";
@@ -35,6 +36,7 @@ import type {
 } from "./adapter.ts";
 import { AgentCliError, createClaudeAdapterFactory } from "./claude-adapter.ts";
 import { createCodexAdapterFactory, createCodexModelLoader } from "./codex-adapter.ts";
+import { generateConversationTitle } from "./title-generator.ts";
 
 const CODEX_MODELS_SETTING = "agent.codex.models";
 
@@ -58,6 +60,11 @@ export type ConversationManagerOptions = {
   adapterFactory?: AdapterFactory;
   codexModelLoader?: (cwd: string) => Promise<AdapterModelList>;
   now?: () => string;
+  titleGenerator?: (
+    agent: Conversation["agent"],
+    userMessage: string,
+    agentResponse: string,
+  ) => Promise<string | null>;
 };
 
 export class ConversationManager {
@@ -67,8 +74,10 @@ export class ConversationManager {
   readonly #factory: AdapterFactory;
   readonly #codexModelLoader: (cwd: string) => Promise<AdapterModelList>;
   readonly #now: () => string;
+  readonly #titleGenerator: NonNullable<ConversationManagerOptions["titleGenerator"]>;
   readonly #active = new Map<string, ActiveConversation>();
   readonly #pendingParts = new Map<string, { conversationId: string; messageId: string }>();
+  readonly #titleRequests = new Map<string, { userMessage: string; attempted: boolean }>();
   #codexModelList: AdapterModelList = {
     models: [],
     efforts: ["low", "medium", "high", "xhigh", "max"],
@@ -89,6 +98,12 @@ export class ConversationManager {
       ((conversation, emit) =>
         (conversation.agent === "codex" ? codexFactory : claudeFactory)(conversation, emit));
     this.#now = options.now ?? (() => new Date().toISOString());
+    this.#titleGenerator =
+      options.titleGenerator ??
+      ((agent, userMessage, agentResponse) =>
+        generateConversationTitle(agent, userMessage, agentResponse, {
+          env: this.#env,
+        }));
     const cached = readCodexModelCache(getSetting(this.#db, CODEX_MODELS_SETTING));
     if (cached) {
       this.#codexModelList = cached.modelList;
@@ -98,6 +113,14 @@ export class ConversationManager {
 
   create(input: NewConversation): Conversation {
     return createConversation(this.#db, input);
+  }
+
+  async rename(id: string, title: string): Promise<Conversation> {
+    const conversation = setConversationTitle(this.#db, id, title.trim(), this.#now(), true);
+    if (!conversation) throw new Error("Conversa não encontrada.");
+    this.#titleRequests.delete(id);
+    await this.#stateEvent(conversation);
+    return conversation;
   }
 
   list(filters: { agent?: string; cwd?: string; limit: number }): Conversation[] {
@@ -120,6 +143,12 @@ export class ConversationManager {
     if (conversation.state === "working" || conversation.state === "waiting")
       throw new Error("A conversa já está em andamento.");
     const now = this.#now();
+    if (
+      !listMessages(this.#db, id).some((message) => message.author === "user") &&
+      conversation.title === "Nova conversa"
+    ) {
+      this.#titleRequests.set(id, { userMessage: text.slice(0, 1_000), attempted: false });
+    }
     const userMessage: ConversationMessage = {
       id: randomUUID(),
       conversationId: id,
@@ -585,6 +614,7 @@ export class ConversationManager {
         messageId: message.id,
         messageStatus: message.status,
       });
+      if (event.status === "done") this.#scheduleConversationTitle(conversation, message);
       if (!pendingPlan) this.#scheduleIdleDispose(conversationId, active);
     }
   }
@@ -601,6 +631,29 @@ export class ConversationManager {
       void active.adapter.dispose();
     }, idleMs);
     active.idleTimer.unref?.();
+  }
+
+  #scheduleConversationTitle(conversation: Conversation, message: ConversationMessage): void {
+    const request = this.#titleRequests.get(conversation.id);
+    if (!request || request.attempted || conversation.title !== "Nova conversa") return;
+    const response = message.parts
+      .flatMap((part) =>
+        part.type === "text" ? [part.markdown] : part.type === "plan" ? [part.markdown] : [],
+      )
+      .join("\n")
+      .slice(0, 1_200);
+    if (!response.trim()) return;
+
+    request.attempted = true;
+    const { userMessage } = request;
+    this.#titleRequests.delete(conversation.id);
+    void this.#titleGenerator(conversation.agent, userMessage, response)
+      .then(async (title) => {
+        if (!title) return;
+        const updated = setConversationTitle(this.#db, conversation.id, title, this.#now(), false);
+        if (updated) await this.#stateEvent(updated);
+      })
+      .catch(() => undefined);
   }
 
   async #flushCoalescers(active: ActiveConversation): Promise<void> {

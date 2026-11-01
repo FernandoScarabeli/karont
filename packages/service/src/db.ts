@@ -54,6 +54,10 @@ export const migrations: { version: number; up: string }[] = [
     version: 7,
     up: "ALTER TABLE conversations ADD COLUMN plan INTEGER NOT NULL DEFAULT 0 CHECK (plan IN (0, 1));",
   },
+  {
+    version: 8,
+    up: "ALTER TABLE conversations ADD COLUMN title_manually_set INTEGER NOT NULL DEFAULT 0 CHECK (title_manually_set IN (0, 1));",
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -79,7 +83,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     updatedAt: now,
   };
   db.prepare(
-    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,state,created_at,updated_at,title_manually_set) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     conversation.id,
     conversation.agent,
@@ -92,6 +96,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     conversation.state,
     now,
     now,
+    conversation.title === "Nova conversa" ? 0 : 1,
   );
   return conversation;
 }
@@ -139,6 +144,26 @@ export function updateConversation(db: DatabaseSync, conversation: Conversation)
     conversation.updatedAt,
     conversation.id,
   );
+}
+
+export function setConversationTitle(
+  db: DatabaseSync,
+  id: string,
+  title: string,
+  updatedAt: string,
+  manual: boolean,
+): Conversation | null {
+  const result = manual
+    ? db
+        .prepare("UPDATE conversations SET title=?,title_manually_set=1,updated_at=? WHERE id=?")
+        .run(title, updatedAt, id)
+    : db
+        .prepare(
+          "UPDATE conversations SET title=?,updated_at=? WHERE id=? AND title_manually_set=0 AND title='Nova conversa'",
+        )
+        .run(title, updatedAt, id);
+  if (result.changes === 0) return null;
+  return getConversation(db, id);
 }
 
 export function addMessage(db: DatabaseSync, message: ConversationMessage): void {

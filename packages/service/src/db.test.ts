@@ -16,6 +16,7 @@ import {
   openDatabase,
   recordRecentFolder,
   removeCustomAgent,
+  setConversationTitle,
   setSetting,
 } from "./db.ts";
 
@@ -25,7 +26,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    7,
+    8,
   );
   assert.equal(
     (
@@ -65,7 +66,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    7,
+    8,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();
@@ -155,6 +156,38 @@ test("migra conversas antigas sem perder preferências existentes nem mensagens"
   });
   assert.equal(getConversation(db, planned.id)?.plan, true);
   assert.equal(defaulted.plan, false);
+  const untitled = createConversation(db, {
+    agent: "claude",
+    title: "Nova conversa",
+    cwd: "/tmp",
+    mode: "edit",
+  });
+  const generated = setConversationTitle(
+    db,
+    untitled.id,
+    "Título criado pelo agente",
+    "2026-10-31T10:02:00.000Z",
+    false,
+  );
+  assert.equal(generated?.title, "Título criado pelo agente");
+  setConversationTitle(
+    db,
+    untitled.id,
+    "Título escolhido pela pessoa",
+    "2026-10-31T10:03:00.000Z",
+    true,
+  );
+  assert.equal(
+    setConversationTitle(
+      db,
+      untitled.id,
+      "Outro título automático",
+      "2026-10-31T10:04:00.000Z",
+      false,
+    ),
+    null,
+  );
+  assert.equal(getConversation(db, untitled.id)?.title, "Título escolhido pela pessoa");
   db.close();
 });
 

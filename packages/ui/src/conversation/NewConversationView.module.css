@@ -72,10 +72,14 @@
 
 .folderStrip {
   display: flex;
+  box-sizing: border-box;
+  width: calc(100% - var(--k-space-6));
+  max-width: 100%;
   min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: var(--k-space-3);
+  margin-inline: auto;
   padding: var(--k-space-2) var(--k-space-3);
   border-radius: 0 0 var(--k-radius-lg) var(--k-radius-lg);
   background: var(--k-color-bg-raised);
@@ -89,6 +93,8 @@
 
 .selectorButton,
 .folderButton {
+  flex: 1 1 auto;
+  max-width: 70%;
   display: inline-flex;
   min-width: 0;
   min-height: var(--k-control-height-lg);

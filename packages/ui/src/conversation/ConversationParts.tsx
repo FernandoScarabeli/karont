@@ -3,6 +3,7 @@ import {
   Brain,
   Check,
   CheckCircle2,
+  ChevronRight,
   Circle,
   Clock3,
   Copy,
@@ -37,6 +38,12 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "../components/Button/Button.tsx";
 import { t } from "../i18n/pt-BR.ts";
+import {
+  type ConversationAction,
+  groupConsecutiveActions,
+  summarizeAction,
+  summarizeActionGroup,
+} from "./actionSummary.ts";
 import { formatAttachmentSize } from "./attachmentUtils.ts";
 import styles from "./ConversationParts.module.css";
 import { cleanMarkdownPreview, formatConversationText } from "./displayText.ts";
@@ -607,35 +614,38 @@ const ActionGroup = memo(
     messageId: string;
     cwd: string;
   }) {
-    const onlyAction = actions[0];
-    if (actions.length === 1 && onlyAction) {
-      return (
-        <ActionItem
-          action={onlyAction.action}
-          cwd={cwd}
-          messageId={messageId}
-          permitted={onlyAction.permitted}
-        />
-      );
-    }
     return (
-      <details className={styles.actionGroup}>
-        <summary>
-          <Wrench aria-hidden="true" size={15} />
-          {t.chat.actionGroup(actions.length)}
-        </summary>
-        <div className={styles.actionGroupBody}>
-          {actions.map(({ action, permitted }) => (
-            <ActionItem
-              action={action}
+      <>
+        {groupConsecutiveActions(actions.map(({ action }) => action)).map((group) => {
+          const groupActions = group.actions.flatMap((action) => {
+            const entry = actions.find((item) => item.action.id === action.id);
+            return entry ? [entry] : [];
+          });
+          const label = summarizeActionGroup(group, cwd);
+          if (groupActions.length === 1) {
+            const item = groupActions[0];
+            return item ? (
+              <ActionItem
+                action={item.action}
+                cwd={cwd}
+                key={item.action.id}
+                messageId={messageId}
+                permitted={item.permitted}
+                summary={label}
+              />
+            ) : null;
+          }
+          return (
+            <ActionBatch
+              actions={groupActions}
               cwd={cwd}
-              key={action.id}
+              key={group.actions[0]?.id ?? label}
+              label={label}
               messageId={messageId}
-              permitted={permitted}
             />
-          ))}
-        </div>
-      </details>
+          );
+        })}
+      </>
     );
   },
   (previous, next) =>
@@ -653,27 +663,38 @@ const ActionItem = memo(function ActionItem({
   messageId,
   permitted,
   cwd,
+  summary,
 }: {
-  action: Extract<MessagePart, { type: "action" }>;
+  action: ConversationAction;
   messageId: string;
   permitted: boolean;
   cwd: string;
+  summary: string;
 }) {
   const Icon = actionIcon(action.actionType);
+  const [expanded, setExpanded] = useState(false);
   const duration =
     action.durationMs === null || action.durationMs === undefined || action.durationMs < 1_000
       ? ""
       : formatDuration(action.durationMs);
   const waitingForUser = (action as { state: string }).state === "waiting";
-  const title = action.title || `${t.chat.actionTypes[action.actionType]} ${action.input}`;
-  const displayTitle = formatConversationText(title, cwd, 92);
+  const displayTitle = formatConversationText(summary, cwd, 92);
+  const detailsId = useId();
   return (
-    <details className={styles.action} data-message-id={messageId} data-part-id={action.id}>
-      <summary aria-description={permitted ? t.chat.permissionGrantedDescription : undefined}>
+    <div className={styles.action} data-message-id={messageId} data-part-id={action.id}>
+      <button
+        aria-controls={detailsId}
+        aria-description={permitted ? t.chat.permissionGrantedDescription : undefined}
+        aria-expanded={expanded}
+        className={styles.actionToggle}
+        onClick={() => setExpanded((value) => !value)}
+        type="button"
+      >
         <Icon aria-hidden="true" className={styles.actionIcon} size={15} />
         <span className={styles.actionTitle} title={displayTitle.title}>
           {displayTitle.text}
         </span>
+        <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
         {permitted ? (
           <LockKeyhole aria-hidden="true" className={styles.permittedIcon} size={13} />
         ) : null}
@@ -692,27 +713,107 @@ const ActionItem = memo(function ActionItem({
           </span>
         </span>
         {duration ? <span className={styles.duration}>{duration}</span> : null}
-      </summary>
-      <div className={styles.actionDetails}>
-        {action.input ? (
-          <div>
-            <span className={styles.detailLabel}>{t.chat.input}</span>
-            <pre>{action.input}</pre>
-          </div>
-        ) : null}
-        {action.output ? (
-          <div>
-            <span className={styles.detailLabel}>{t.chat.output}</span>
-            <pre>
-              {action.output}
-              {action.truncated ? "\n…" : ""}
-            </pre>
-          </div>
-        ) : null}
+      </button>
+      <div hidden={!expanded} id={detailsId}>
+        <ActionDetails action={action} />
       </div>
-    </details>
+    </div>
   );
 });
+
+const ActionBatch = memo(function ActionBatch({
+  actions,
+  cwd,
+  label,
+  messageId,
+}: {
+  actions: Array<{ action: ConversationAction; permitted: boolean }>;
+  cwd: string;
+  label: string;
+  messageId: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
+  const state = actions.some(({ action }) => action.state === "running")
+    ? "running"
+    : actions.some(({ action }) => action.state === "waiting")
+      ? "waiting"
+      : actions.some(({ action }) => action.state === "error")
+        ? "error"
+        : "ok";
+  return (
+    <div className={styles.actionGroup} data-expanded={expanded}>
+      <button
+        aria-controls={detailsId}
+        aria-expanded={expanded}
+        className={styles.actionGroupToggle}
+        onClick={() => setExpanded((value) => !value)}
+        type="button"
+      >
+        <Wrench aria-hidden="true" size={15} />
+        <span className={styles.actionTitle}>{label}</span>
+        <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
+        <ActionState state={state} />
+      </button>
+      <div className={styles.actionGroupBody} hidden={!expanded} id={detailsId}>
+        {actions.map(({ action, permitted }) => (
+          <div
+            className={styles.actionBatchItem}
+            data-message-id={messageId}
+            data-part-id={action.id}
+            key={action.id}
+          >
+            <div className={styles.actionBatchTitle}>
+              <span>{summarizeAction(action, cwd)}</span>
+              {permitted ? <LockKeyhole aria-hidden="true" size={13} /> : null}
+              <ActionState state={action.state} />
+            </div>
+            <ActionDetails action={action} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
+
+function ActionDetails({ action }: { action: ConversationAction }) {
+  return (
+    <div className={styles.actionDetails}>
+      {action.input ? (
+        <div>
+          <span className={styles.detailLabel}>{t.chat.input}</span>
+          <pre>{action.input}</pre>
+        </div>
+      ) : null}
+      {action.output ? (
+        <div>
+          <span className={styles.detailLabel}>{t.chat.output}</span>
+          <pre>
+            {action.output}
+            {action.truncated ? "\n…" : ""}
+          </pre>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ActionState({ state }: { state: ConversationAction["state"] }) {
+  return (
+    <span className={styles.actionState}>
+      {state === "waiting" ? (
+        <Clock3 aria-hidden="true" size={14} />
+      ) : state === "running" ? (
+        <LoaderCircle aria-hidden="true" className={styles.thinkingIcon} size={14} />
+      ) : state === "ok" ? (
+        <CheckCircle2 aria-hidden="true" size={14} />
+      ) : (
+        <XCircle aria-hidden="true" size={14} />
+      )}
+      <span>{state === "waiting" ? t.chat.actionStates.waiting : t.chat.actionStates[state]}</span>
+    </span>
+  );
+}
 
 const PermissionPart = memo(function PermissionPart({
   part,
@@ -1047,8 +1148,8 @@ const TimelineView = memo(
     const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
     const [activeIndex, setActiveIndex] = useState(0);
     const timeline = useMemo(
-      () => buildTimeline(message.parts, message.startedAt),
-      [message.parts, message.startedAt],
+      () => buildTimeline(message.parts, message.startedAt, cwd),
+      [message.parts, message.startedAt, cwd],
     );
     const tickIntervalMs = timelineTickInterval(timeline.totalDurationMs);
     const axisEndMs = Math.ceil(timeline.totalDurationMs / tickIntervalMs) * tickIntervalMs;
@@ -1231,7 +1332,7 @@ type TimelineRow = {
   startMs: number | null;
 };
 
-function buildTimeline(parts: MessagePart[], messageStartedAt?: number) {
+function buildTimeline(parts: MessagePart[], messageStartedAt?: number, cwd = "") {
   const origin = messageStartedAt;
   const isLegacy = messageStartedAt === undefined;
   let totalDurationMs = 0;
@@ -1252,8 +1353,8 @@ function buildTimeline(parts: MessagePart[], messageStartedAt?: number) {
         break;
       case "action":
         kind = part.state === "error" ? "error" : part.state === "waiting" ? "waiting" : "action";
-        kindLabel = t.chat.actionTypes[part.actionType];
-        title = `${part.title || t.chat.timelineAction} · ${t.chat.actionStates[part.state]}`;
+        kindLabel = t.chat.timelineAction;
+        title = summarizeAction(part, cwd);
         break;
       case "permission":
         kind = "waiting";

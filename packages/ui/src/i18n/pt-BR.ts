@@ -1,3 +1,84 @@
+type GreetingPeriod = "dawn" | "morning" | "afternoon" | "night";
+type GreetingLine = (name: string) => string;
+
+const greetingLines: Record<GreetingPeriod, GreetingLine[]> = {
+  dawn: [
+    (name) => `Madrugada produtiva, ${name}?`,
+    (name) => `Um commit antes do sol, ${name}?`,
+    (name) => `Silêncio, café e código, ${name}?`,
+    (name) => `E aí, ${name}, o que sai hoje?`,
+    (name) => `Ainda dá tempo de criar algo, ${name}.`,
+    (name) => `Qual ideia não pode esperar, ${name}?`,
+  ],
+  morning: [
+    (name) => `Bom dia, ${name}.`,
+    (name) => `Bom dia, ${name}. O que vamos construir?`,
+    (name) => `E aí, ${name}, bora criar?`,
+    (name) => `Mais um dia, ${name}. Vamos codar?`,
+    (name) => `Qual é o plano de hoje, ${name}?`,
+    (name) => `Café na mão, ${name}? Vamos começar.`,
+  ],
+  afternoon: [
+    (name) => `Boa tarde, ${name}. Bora codar?`,
+    (name) => `E aí, ${name}, o que vamos criar?`,
+    (name) => `Vamos tirar essa ideia do papel, ${name}?`,
+    (name) => `Qual parte do projeto vem agora, ${name}?`,
+    (name) => `A tarde é nossa, ${name}. Por onde começamos?`,
+    (name) => `Mais um bom commit, ${name}?`,
+  ],
+  night: [
+    (name) => `Boa noite, ${name}. Bora codar?`,
+    (name) => `E aí, ${name}, o que vamos construir?`,
+    (name) => `Uma ideia boa para fechar o dia, ${name}?`,
+    (name) => `Qual bug perde a vez hoje, ${name}?`,
+    (name) => `Noite tranquila para criar, ${name}.`,
+    (name) => `Vamos deixar esse projeto melhor, ${name}?`,
+  ],
+};
+
+function greetingFor(name: string | null, hour: number, sample: number): string {
+  const period: GreetingPeriod =
+    hour < 5 ? "dawn" : hour < 12 ? "morning" : hour < 18 ? "afternoon" : "night";
+  const lines = greetingLines[period];
+  const index = Math.min(lines.length - 1, Math.floor(sample * lines.length));
+  if (name?.trim()) return lines[index]?.(name.trim()) ?? "Vamos trabalhar";
+  const noNameLines: Record<GreetingPeriod, string[]> = {
+    dawn: [
+      "Madrugada produtiva?",
+      "Um commit antes do sol?",
+      "Silêncio, café e código?",
+      "E aí, o que sai hoje?",
+      "Ainda dá tempo de criar algo.",
+      "Qual ideia não pode esperar?",
+    ],
+    morning: [
+      "Bom dia.",
+      "Bom dia. O que vamos construir?",
+      "E aí, bora criar?",
+      "Mais um dia. Vamos codar?",
+      "Qual é o plano de hoje?",
+      "Café na mão? Vamos começar.",
+    ],
+    afternoon: [
+      "Boa tarde. Bora codar?",
+      "E aí, o que vamos criar?",
+      "Vamos tirar essa ideia do papel?",
+      "Qual parte do projeto vem agora?",
+      "A tarde é nossa. Por onde começamos?",
+      "Mais um bom commit?",
+    ],
+    night: [
+      "Boa noite. Bora codar?",
+      "E aí, o que vamos construir?",
+      "Uma ideia boa para fechar o dia?",
+      "Qual bug perde a vez hoje?",
+      "Noite tranquila para criar.",
+      "Vamos deixar esse projeto melhor?",
+    ],
+  };
+  return noNameLines[period][index] ?? "Vamos trabalhar";
+}
+
 export const t = {
   brand: {
     name: "karont",
@@ -40,8 +121,8 @@ export const t = {
   },
   conversation: {
     title: "Nova conversa",
-    welcomeTitle: "Vamos trabalhar",
-    promptPlaceholder: "Vamos começar uma nova ideia?",
+    welcomeTitle: greetingFor,
+    promptPlaceholder: "Digite sua mensagem",
     composerKeyboardDescription:
       "Enter envia a mensagem ou abre o terminal. Shift+Enter quebra a linha.",
     agentLabel: "Agente",
@@ -209,6 +290,12 @@ export const t = {
     timelineApproval: "Sua aprovação",
     timelineTaskCount: (count: number) => `${count} tarefas do agente`,
     timelineFailure: "Falha",
+    renameTitleHint: "Dê dois cliques para renomear; pressione F2 ou Enter com o título focado.",
+    renameTitleInput: "Título da conversa",
+    saveTitle: "Salvar título",
+    cancelTitleRename: "Cancelar renomeação",
+    titleRequired: "Informe um título para a conversa.",
+    renameTitleFailed: "Não foi possível renomear a conversa.",
     timelinePermissionRequest: "Pedido de permissão",
     timelineQuestionPending: "Pergunta aguardando resposta",
     timelinePlanPending: "Plano aguardando aprovação",
@@ -280,6 +367,13 @@ export const t = {
     closeBehaviorQuit: "Fechar tudo",
     closeBehaviorQuitDescription: "Encerra agentes e terminais e sai do Karont.",
     preferenceSaved: "Preferência salva",
+    userNameLabel: "Como te chamar",
+    userNamePlaceholder: "Seu primeiro nome",
+    userNameSave: "Salvar nome",
+    userNameSaving: "Salvando…",
+    userNameSaved: "Nome salvo",
+    userNameLoadFailed: "Não foi possível carregar o nome do perfil.",
+    userNameSaveFailed: "Não foi possível salvar o nome do perfil.",
     loadingPreference: "Carregando preferência…",
     closeBehaviorLoadFailed: "Não foi possível carregar a preferência.",
     closeBehaviorSaveFailed: "Não foi possível salvar a preferência.",
