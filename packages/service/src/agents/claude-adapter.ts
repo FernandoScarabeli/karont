@@ -7,6 +7,7 @@ import type { AdapterEvent, AdapterFactory, AdapterResponse, AgentAdapter } from
 import { resolveAgentCommand } from "./detect.ts";
 
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
+const CONTROL_REQUEST_TIMEOUT_MS = 10_000;
 const READ_ONLY_ALLOWED_TOOLS = new Set([
   "Read",
   "Glob",
@@ -20,6 +21,11 @@ const READ_ONLY_ALLOWED_TOOLS = new Set([
 const READ_ONLY_TOOLS =
   "Read,Glob,Grep,WebSearch,WebFetch,AskUserQuestion,ExitPlanMode,TaskCreate,TaskUpdate,TodoWrite";
 type SpawnFunction = (command: string, args: string[], options: SpawnOptions) => ChildProcess;
+type ControlRequest = {
+  resolve(): void;
+  reject(error: Error): void;
+  timer: ReturnType<typeof setTimeout>;
+};
 
 export class AgentCliError extends Error {
   readonly errorType: "cli-not-found" | "not-logged-in" | "failed";
@@ -57,10 +63,13 @@ export class ClaudeAdapter implements AgentAdapter {
   >();
   readonly #taskIds = new Map<string, string>();
   readonly #parts = new Map<string, MessagePart>();
+  readonly #controlRequests = new Map<string, ControlRequest>();
   #child: ChildProcess | undefined;
   #conversation: Conversation | undefined;
   #sessionId = "";
   #resumeSession = false;
+  #permissionMode = "";
+  #nextControlRequestId = 0;
   #initResolve: (() => void) | undefined;
   #initReject: ((error: Error) => void) | undefined;
   #initPromise: Promise<void> | undefined;
@@ -90,9 +99,15 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#platform = options.platform ?? process.platform;
   }
 
-  async start(conversation: Conversation, sessionId: string, resume: boolean): Promise<void> {
+  async start(
+    conversation: Conversation,
+    sessionId: string,
+    resume: boolean,
+    plan = false,
+  ): Promise<void> {
     if (this.#child && this.#child.exitCode === null && this.#child.signalCode === null) return;
     this.#child = undefined;
+    this.#disposed = false;
     this.#conversation = conversation;
     this.#sessionId = sessionId;
     this.#resumeSession = resume;
@@ -118,15 +133,12 @@ export class ClaudeAdapter implements AgentAdapter {
       "--permission-prompt-tool",
       "stdio",
     ];
-    const permissionMode =
-      conversation.mode === "read-only"
-        ? "dontAsk"
-        : conversation.mode === "edit"
-          ? "acceptEdits"
-          : "bypassPermissions";
+    const permissionMode = plan ? "plan" : permissionModeFor(conversation);
+    this.#permissionMode = permissionMode;
     args.push("--permission-mode", permissionMode);
     if (conversation.mode === "read-only") args.push("--tools", READ_ONLY_TOOLS);
-    if (conversation.mode === "full") args.push("--dangerously-skip-permissions");
+    if (conversation.mode === "full")
+      args.push(plan ? "--allow-dangerously-skip-permissions" : "--dangerously-skip-permissions");
     if (conversation.model) args.push("--model", conversation.model);
     if (conversation.effort) args.push("--effort", conversation.effort);
     args.push(resume ? "--resume" : "--session-id", sessionId);
@@ -186,12 +198,15 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#emit({ kind: "session", sessionId });
   }
 
-  async send(text: string): Promise<void> {
+  async send(text: string, plan = false): Promise<void> {
     if (!this.#child || this.#child.exitCode !== null || this.#child.signalCode !== null) {
       if (!this.#conversation || !this.#sessionId)
         throw new AgentCliError("failed", "A CLI não está ativa.");
-      await this.start(this.#conversation, this.#sessionId, this.#resumeSession);
+      await this.start(this.#conversation, this.#sessionId, this.#resumeSession, plan);
     }
+    const conversation = this.#conversation;
+    if (!conversation) throw new AgentCliError("failed", "A conversa Claude não foi iniciada.");
+    await this.#ensurePermissionMode(plan ? "plan" : permissionModeFor(conversation));
     this.#turnOpen = true;
     this.#stopRequested = false;
     this.#activeTextPartId = undefined;
@@ -233,9 +248,17 @@ export class ClaudeAdapter implements AgentAdapter {
       state = "answered";
     } else {
       const allow = response.decision === "approve";
+      if (allow) {
+        if (!this.#conversation)
+          throw new AgentCliError("failed", "A conversa Claude não foi iniciada.");
+        await this.#setPermissionMode(permissionModeFor(this.#conversation));
+      }
       toolResponse = allow
         ? { behavior: "allow", updatedInput: pending.input }
-        : { behavior: "deny", message: response.comment || "Plano rejeitado pelo usuário." };
+        : {
+            behavior: "deny",
+            message: response.comment?.trim() || "Plano rejeitado pelo usuário.",
+          };
       state = allow ? "approved" : "rejected";
     }
     this.#pending.delete(partId);
@@ -299,6 +322,7 @@ export class ClaudeAdapter implements AgentAdapter {
 
   async dispose(): Promise<void> {
     this.#disposed = true;
+    this.#rejectControlRequests(new AgentCliError("failed", "A CLI Claude foi encerrada."));
     if (this.#interruptTimer) clearTimeout(this.#interruptTimer);
     this.#interruptTimer = undefined;
     if (this.#child && this.#child.exitCode === null) {
@@ -338,6 +362,20 @@ export class ClaudeAdapter implements AgentAdapter {
       const control = value.response as Record<string, unknown> | undefined;
       if (control?.request_id === "karont-initialize" && control.subtype === "success")
         this.#initResolve?.();
+      else if (typeof control?.request_id === "string") {
+        const pending = this.#controlRequests.get(control.request_id);
+        if (!pending) return;
+        this.#controlRequests.delete(control.request_id);
+        clearTimeout(pending.timer);
+        if (control.subtype === "success") pending.resolve();
+        else {
+          const detail =
+            typeof control.error === "string"
+              ? control.error
+              : "Claude Code recusou a troca de modo de permissão.";
+          pending.reject(new AgentCliError("failed", detail));
+        }
+      }
       return;
     }
     if (type === "system") {
@@ -674,6 +712,9 @@ export class ClaudeAdapter implements AgentAdapter {
     if (this.#child !== child) return;
     this.#child = undefined;
     if (this.#disposed) return;
+    this.#rejectControlRequests(
+      new AgentCliError("failed", "Claude Code encerrou antes de responder ao controle."),
+    );
     const type = this.#stderrErrorType ?? classifyErrorText(error.message);
     if (this.#initReject) this.#initReject(new AgentCliError(type, friendlyError(type)));
     if (this.#turnOpen) {
@@ -714,12 +755,72 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#taskIds.clear();
     this.#lastPlan = "";
   }
+
+  async #setPermissionMode(mode: string): Promise<void> {
+    if (this.#permissionMode === mode) return;
+    const requestId = `karont-mode-${++this.#nextControlRequestId}`;
+    const response = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#controlRequests.delete(requestId);
+        reject(new AgentCliError("failed", "Claude Code não confirmou a troca do modo de acesso."));
+      }, CONTROL_REQUEST_TIMEOUT_MS);
+      timer.unref?.();
+      this.#controlRequests.set(requestId, { resolve, reject, timer });
+    });
+    void response.catch(() => undefined);
+    try {
+      await this.#write({
+        type: "control_request",
+        request_id: requestId,
+        request: { subtype: "set_permission_mode", mode },
+      });
+      await response;
+      this.#permissionMode = mode;
+    } catch (error) {
+      const pending = this.#controlRequests.get(requestId);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.#controlRequests.delete(requestId);
+      }
+      throw error;
+    }
+  }
+
+  async #ensurePermissionMode(mode: string): Promise<void> {
+    try {
+      await this.#setPermissionMode(mode);
+    } catch (error) {
+      if (this.#turnOpen) throw error;
+      const conversation = this.#conversation;
+      if (!conversation || !this.#sessionId) throw error;
+      const sessionId = this.#sessionId;
+      await this.dispose();
+      await this.start(conversation, sessionId, true, mode === "plan");
+      if (this.#permissionMode !== mode) throw error;
+    }
+  }
+
+  #rejectControlRequests(error: Error): void {
+    for (const [requestId, pending] of this.#controlRequests) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+      this.#controlRequests.delete(requestId);
+    }
+  }
 }
 
 export const createClaudeAdapterFactory =
   (options: ClaudeAdapterOptions = {}): AdapterFactory =>
   (_conversation, emit) =>
     new ClaudeAdapter(emit, options);
+
+function permissionModeFor(conversation: Conversation): string {
+  return conversation.mode === "read-only"
+    ? "dontAsk"
+    : conversation.mode === "edit"
+      ? "acceptEdits"
+      : "bypassPermissions";
+}
 
 function classifyStartError(error: unknown, command: string): AgentCliError {
   if (isRecord(error) && error.code === "ENOENT")

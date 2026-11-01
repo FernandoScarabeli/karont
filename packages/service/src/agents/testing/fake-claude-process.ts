@@ -4,14 +4,37 @@ import { readFileSync } from "node:fs";
 import { PassThrough } from "node:stream";
 
 type FixtureLine = { direction: string; stream: string; line: string };
+type FakeClaudeOptions = {
+  exitAfterResult?: boolean;
+  planDecision?: "approve" | "adjust";
+};
+
+export type FakeClaudeSpawn = ((
+  command: string,
+  args: string[],
+  options: SpawnOptions,
+) => ChildProcess) & {
+  controlRequests: Array<{ subtype: string; mode?: string }>;
+  controlResponses: Record<string, unknown>[];
+};
 
 /** Process-compatible Claude fake. It consumes host JSONL and replays captured fixture lines. */
 export function createFakeClaudeSpawn(
   fixturePath: string,
-  options: { exitAfterResult?: boolean } = {},
-): (command: string, args: string[], options: SpawnOptions) => ChildProcess {
-  return () =>
-    new FakeClaudeProcess(fixturePath, options.exitAfterResult === true) as unknown as ChildProcess;
+  options: FakeClaudeOptions = {},
+): FakeClaudeSpawn {
+  const controlRequests: FakeClaudeSpawn["controlRequests"] = [];
+  const controlResponses: FakeClaudeSpawn["controlResponses"] = [];
+  const spawn = (() =>
+    new FakeClaudeProcess(
+      fixturePath,
+      options,
+      controlRequests,
+      controlResponses,
+    ) as unknown as ChildProcess) as unknown as FakeClaudeSpawn;
+  spawn.controlRequests = controlRequests;
+  spawn.controlResponses = controlResponses;
+  return spawn;
 }
 
 class FakeClaudeProcess extends EventEmitter {
@@ -22,12 +45,23 @@ class FakeClaudeProcess extends EventEmitter {
   signalCode: NodeJS.Signals | null = null;
   readonly #records: FixtureLine[];
   readonly #exitAfterResult: boolean;
+  readonly #options: FakeClaudeOptions;
+  readonly #controlRequests: FakeClaudeSpawn["controlRequests"];
+  readonly #controlResponses: FakeClaudeSpawn["controlResponses"];
   #cursor = 0;
   #pending = "";
 
-  constructor(fixturePath: string, exitAfterResult: boolean) {
+  constructor(
+    fixturePath: string,
+    options: FakeClaudeOptions,
+    controlRequests: FakeClaudeSpawn["controlRequests"],
+    controlResponses: FakeClaudeSpawn["controlResponses"],
+  ) {
     super();
-    this.#exitAfterResult = exitAfterResult;
+    this.#options = options;
+    this.#exitAfterResult = options.exitAfterResult === true;
+    this.#controlRequests = controlRequests;
+    this.#controlResponses = controlResponses;
     this.#records = readFileSync(fixturePath, "utf8")
       .split(/\r?\n/)
       .filter(Boolean)
@@ -68,6 +102,20 @@ class FakeClaudeProcess extends EventEmitter {
         this.#pump();
         return;
       }
+      if (request?.subtype === "set_permission_mode" && typeof request.mode === "string") {
+        this.#controlRequests.push({ subtype: request.subtype, mode: request.mode });
+        this.stdout.write(
+          `${JSON.stringify({
+            type: "control_response",
+            response: {
+              subtype: "success",
+              request_id: value.request_id,
+              response: { mode: request.mode },
+            },
+          })}\n`,
+        );
+        return;
+      }
     }
     if (value.type === "user") {
       this.#consumeHost("user");
@@ -77,12 +125,13 @@ class FakeClaudeProcess extends EventEmitter {
     if (value.type === "control_response") {
       const response = value.response as Record<string, unknown> | undefined;
       const actual = response?.response as Record<string, unknown> | undefined;
+      this.#controlResponses.push(response ?? {});
       const record = this.#consumeHost("control_response");
       if (record) {
         const captured = JSON.parse(record.line) as Record<string, unknown>;
         const wrapper = captured.response as Record<string, unknown> | undefined;
         const expected = wrapper?.response as Record<string, unknown> | undefined;
-        if (expected?.behavior !== actual?.behavior)
+        if (this.#options.planDecision !== "adjust" && expected?.behavior !== actual?.behavior)
           this.#fail("A decisão do host não corresponde à fixture.");
         if (
           expected?.updatedPermissions &&
@@ -90,7 +139,25 @@ class FakeClaudeProcess extends EventEmitter {
         )
           this.#fail("updatedPermissions difere da fixture.");
       }
-      this.#pump();
+      if (this.#options.planDecision === "adjust" && actual?.behavior === "deny") {
+        this.#replayPlan();
+      } else this.#pump();
+    }
+  }
+
+  #replayPlan(): void {
+    const userIndex = this.#records.findIndex((record) => {
+      if (record.direction !== "out" || record.stream !== "stdin") return false;
+      return (JSON.parse(record.line) as { type?: string }).type === "user";
+    });
+    const responseIndex = this.#records.findIndex((record, index) => {
+      if (index <= userIndex || record.direction !== "out" || record.stream !== "stdin")
+        return false;
+      return (JSON.parse(record.line) as { type?: string }).type === "control_response";
+    });
+    for (const record of this.#records.slice(userIndex + 1, responseIndex)) {
+      if (record.direction === "in" && record.stream === "stdout")
+        this.stdout.write(`${record.line}\n`);
     }
   }
 

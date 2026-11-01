@@ -27,8 +27,13 @@ export type AdapterModelList = {
 };
 
 export interface AgentAdapter {
-  start(conversation: Conversation, sessionId: string, resume: boolean): Promise<void>;
-  send(text: string): Promise<void>;
+  start(
+    conversation: Conversation,
+    sessionId: string,
+    resume: boolean,
+    plan?: boolean,
+  ): Promise<void>;
+  send(text: string, plan?: boolean): Promise<void>;
   respond(partId: string, response: AdapterResponse): Promise<void>;
   interrupt(): Promise<void>;
   dispose(): Promise<void>;

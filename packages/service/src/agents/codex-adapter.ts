@@ -133,14 +133,14 @@ export class CodexAdapter implements AgentAdapter {
     }
   }
 
-  async send(text: string): Promise<void> {
+  async send(text: string, plan?: boolean): Promise<void> {
     if (!isRunning(this.#child)) {
       if (!this.#conversation || !this.#threadId)
         throw new AgentCliError("failed", "O processo Codex não está ativo.");
       await this.start(this.#conversation, this.#threadId, true);
     }
     this.#approvedPlanPartId = undefined;
-    await this.#startTurn(text, usesPlanMode(text));
+    await this.#startTurn(text, (plan ?? usesPlanMode(text)) ? "plan" : undefined);
   }
 
   async respond(partId: string, response: AdapterResponse): Promise<void> {
@@ -190,13 +190,10 @@ export class CodexAdapter implements AgentAdapter {
       });
       if (approved) this.#approvedPlanPartId = partId;
       this.#emit({ kind: "state", state: "working" });
-      const taskPlan = /\*\*[^*]+:\*\*/.test(part.markdown);
       const approval = approved
-        ? taskPlan
-          ? "Aprovado. Atualize o plano estruturado mantendo as duas tarefas originais e marcando ambas como completed. Não responda só em texto; não execute comandos nem altere arquivos."
-          : "Aprovado. Atualize o plano estruturado mantendo os mesmos dois passos e marcando ambos como completed. Não responda só em texto; não execute comandos nem altere arquivos."
-        : `Plano rejeitado${response.comment ? `: ${response.comment}` : "."} Não execute os passos rejeitados.`;
-      await this.#startTurn(approval, true);
+        ? "Execute o plano aprovado no modo de acesso escolhido para esta conversa."
+        : response.comment?.trim() || "Revise o plano conforme solicitado.";
+      await this.#startTurn(approval, approved ? "default" : "plan");
       return;
     }
 
@@ -293,7 +290,7 @@ export class CodexAdapter implements AgentAdapter {
     await this.#notify("initialized", {});
   }
 
-  async #startTurn(text: string, planMode: boolean): Promise<void> {
+  async #startTurn(text: string, collaborationMode?: "default" | "plan"): Promise<void> {
     if (!this.#threadId) throw new AgentCliError("failed", "A conversa Codex não foi iniciada.");
     this.#turnOpen = true;
     this.#stopRequested = false;
@@ -307,9 +304,9 @@ export class CodexAdapter implements AgentAdapter {
       model: this.#modelId,
       effort: this.#effort,
     };
-    if (planMode) {
+    if (collaborationMode) {
       params.collaborationMode = {
-        mode: "plan",
+        mode: collaborationMode,
         settings: {
           model: this.#modelId,
           reasoning_effort: this.#effort,

@@ -109,6 +109,7 @@ export class ConversationManager {
   async send(
     id: string,
     text: string,
+    plan?: boolean,
   ): Promise<{ userMessage: ConversationMessage; agentMessage: ConversationMessage }> {
     const conversation = this.#requireConversation(id);
     if (conversation.state === "working" || conversation.state === "waiting")
@@ -139,7 +140,7 @@ export class ConversationManager {
       throw error;
     }
     const agentMessage = this.#newAgentMessage(id);
-    await this.#startTurn(conversation, agentMessage, text);
+    await this.#startTurn(conversation, agentMessage, text, plan);
     return { userMessage, agentMessage };
   }
 
@@ -340,6 +341,7 @@ export class ConversationManager {
     conversation: Conversation,
     message: ConversationMessage,
     text: string,
+    plan?: boolean,
   ): Promise<void> {
     addMessage(this.#db, message);
     conversation.state = "working";
@@ -374,7 +376,7 @@ export class ConversationManager {
       active = activeRef;
       this.#active.set(conversation.id, activeRef);
       activeRef.startPromise = adapter
-        .start(conversation, sessionId, previousSession !== null)
+        .start(conversation, sessionId, previousSession !== null, plan)
         .then(async () => {
           await activeRef.eventQueue;
           if (conversation.agent !== "codex") return;
@@ -400,7 +402,7 @@ export class ConversationManager {
     active.currentMessage = message;
     try {
       await active.startPromise;
-      await active.adapter.send(text);
+      await active.adapter.send(text, plan);
     } catch (error) {
       if (message.status === "streaming" && !this.#closing) {
         const kind = error instanceof AgentCliError ? error.errorType : "failed";

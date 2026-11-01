@@ -40,6 +40,8 @@ O host envia uma mensagem por linha, por exemplo `{"type":"user","message":{"rol
 
 Interrupção: o host envia `{"type":"control_request","request_id":"r1","request":{"subtype":"interrupt"}}`. A gravação real recebeu a resposta de controle e encerrou com `result.subtype: "error_during_execution"`.
 
+O `claude --help` disponível nesta worktree lista `plan` entre os valores de `--permission-mode`. A troca durante a sessão usa o pedido de controle `set_permission_mode`, documentado pela [API de permissões do Agent SDK](https://code.claude.com/docs/en/agent-sdk/permissions): `{"type":"control_request","request_id":"r3","request":{"subtype":"set_permission_mode","mode":"plan"}}`. A CLI confirma com `control_response` de subtipo `success`. As fixtures existentes não capturam essa troca; o fake do serviço responde a esse pedido para testar a sequência. Assim, o serviço entra em plano sem reiniciar e volta ao modo escolhido antes de permitir `ExitPlanMode`. Se uma versão futura da CLI não confirmar o pedido, a entrada em plano pode ser retomada por processo novo com `--permission-mode plan --resume <id>`.
+
 ### Permissão, pergunta, plano e tarefas
 
 O pedido real de Bash chega assim, com `input.command` e `input.description`. `permission_suggestions` trouxe três alternativas: `addRules` para `localSettings`, `addDirectories` para `session` e `setMode` para `session`.
@@ -58,7 +60,7 @@ Permitir uma vez: a resposta `control_response` tem `response.subtype: "success"
 
 `AskUserQuestion` aparece como `assistant` com `tool_use`, seguido de `control_request/can_use_tool` para `AskUserQuestion`. O `input` contém `questions`; a resposta real do host permite a ferramenta e devolve `updatedInput` com `questions` e `answers`, mapeando o texto da pergunta para a opção escolhida.
 
-`ExitPlanMode` aparece como `tool_use` e depois `control_request/can_use_tool` com `tool_name: "ExitPlanMode"`, `input: {}` e sugestões vazias. O host aprova com `control_response` contendo `behavior: "allow"` e `updatedInput: {}`. O cenário real também teve `Write` antes de `ExitPlanMode` para preparar o plano.
+`ExitPlanMode` aparece como `tool_use` e depois `control_request/can_use_tool` com `tool_name: "ExitPlanMode"`, `input: {}` e sugestões vazias. Ao aprovar, o host troca primeiro para o modo de acesso da conversa e responde com `behavior: "allow"` e `updatedInput: {}`. Ao ajustar, responde `behavior: "deny"` com o comentário do usuário em `message`; a CLI segue no modo plano. O cenário real também teve `Write` antes de `ExitPlanMode` para preparar o plano.
 
 Tarefas são chamadas nativas em `assistant.message.content`: `TaskCreate` com `input.subject`/`input.description` e `TaskUpdate` com `input.taskId`/`input.status`. A captura real criou duas tarefas e atualizou ambas para `completed`; não houve `TodoWrite`.
 
@@ -94,9 +96,9 @@ O pedido estruturado de pergunta foi capturado como `item/tool/requestUserInput`
 
 O schema traz `turn/plan/updated`, mas ele não apareceu nas gravações Codex 0.166.0. O plano real chegou por itens: `item/started` com `item.type: "plan"`, várias notificações `item/plan/delta` com `threadId`, `turnId`, `itemId` e `delta`, e `item/completed` com `item.type: "plan"` e o texto final em `item.text`. O texto observado continha dois passos numerados.
 
-Nas capturas cruas recentes, o cenário `plano` enviou `collaborationMode: "plan"` e completou o item `plan`, mas o gravador antigo esperava `turn/plan/updated`; por isso não enviou a mensagem de aprovação. O cenário `tarefas` também completou um item `plan` com duas tarefas marcadas como pendentes, mas a mesma validação rígida impediu o segundo turno. O gravador agora detecta o item concluído, envia a aprovação em um `turn/start` com uma mensagem explícita de aprovação e, para tarefas, exige em seguida um item/atualização de plano com duas etapas marcadas como concluídas. Os dois cenários precisam ser regravados para registrar o segundo turno real.
+Nas capturas cruas recentes, o cenário `plano` enviou `collaborationMode: "plan"` e completou o item `plan`, mas o gravador antigo esperava `turn/plan/updated`; por isso não enviou a mensagem de aprovação. O cenário `tarefas` também completou um item `plan` com duas tarefas marcadas como pendentes, mas a mesma validação rígida impediu o segundo turno. O serviço agora inicia o turno de aprovação com `collaborationMode: "default"` e um pedido explícito para executar o plano. Para ajustar, envia o comentário em um novo `turn/start` com `collaborationMode: "plan"`. As fixtures preservam a resposta gravada do plano para validar essas duas formas de envio; a saída do segundo turno ainda não representa uma execução real.
 
-Não há pedido JSON-RPC separado para aprovar um plano no schema observado. O host demonstra aprovação enviando a segunda mensagem em `turn/start`. Para tarefas, o plano é texto livre, não uma lista de tarefas com enum de status; a validação verifica as duas etapas e seus marcadores textuais.
+Não há pedido JSON-RPC separado para aprovar um plano no schema observado. O host demonstra aprovação enviando a segunda mensagem em `turn/start` com modo de colaboração `default`; para ajustar, inicia a mensagem em modo `plan`. Para tarefas, o plano é texto livre, não uma lista de tarefas com enum de status.
 
 ### Interrupção, retomada, erro e modos Karont
 

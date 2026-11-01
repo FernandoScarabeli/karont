@@ -14,7 +14,7 @@ import {
 } from "../db.ts";
 import { AgentCliError, ClaudeAdapter } from "./claude-adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
-import { createFakeClaudeSpawn } from "./testing/fake-claude-process.ts";
+import { createFakeClaudeSpawn, type FakeClaudeSpawn } from "./testing/fake-claude-process.ts";
 
 const fixtureDir = new URL("./fixtures/claude/", import.meta.url);
 
@@ -24,13 +24,14 @@ type Harness = {
   events: AnyEvent[];
   subscribe(listener: (event: AnyEvent) => void): () => void;
   spawnArgs: string[][];
+  claudeFake: FakeClaudeSpawn;
   close(): Promise<void>;
 };
 
 async function createHarness(
   scenario: string,
   extraEnv: NodeJS.ProcessEnv = {},
-  fakeOptions: { exitAfterResult?: boolean } = {},
+  fakeOptions: { exitAfterResult?: boolean; planDecision?: "approve" | "adjust" } = {},
 ): Promise<Harness> {
   const root = await mkdtemp(path.join(os.tmpdir(), "karont-conversations-"));
   const db = openDatabase(path.join(root, "karont.db"));
@@ -70,6 +71,7 @@ async function createHarness(
       return () => listeners.delete(listener);
     },
     spawnArgs,
+    claudeFake: fakeSpawn,
     close: async () => {
       await manager.close();
       db.close();
@@ -305,12 +307,13 @@ test("pergunta e plano aguardam decisão do usuário", async (t) => {
     const harness = await createHarness("plano");
     try {
       const conversation = createConversation(harness.manager);
-      await harness.manager.send(conversation.id, "Planeje.");
+      await harness.manager.send(conversation.id, "Planeje.", true);
       const plan = await waitForPart(
         harness,
         conversation.id,
         (part) => part.type === "plan" && part.state === "pending",
       );
+      await waitForState(harness, conversation.id, "waiting");
       await harness.manager.respond(conversation.id, plan.id, {
         responseType: "plan",
         decision: "approve",
@@ -321,6 +324,50 @@ test("pergunta e plano aguardam decisão do usuário", async (t) => {
           (part) => part.type === "plan" && part.state === "approved",
         ),
       );
+      const permissionModeIndex = harness.spawnArgs[0]?.indexOf("--permission-mode") ?? -1;
+      assert.equal(harness.spawnArgs[0]?.[permissionModeIndex + 1], "plan");
+      assert.deepEqual(harness.claudeFake.controlRequests, [
+        { subtype: "set_permission_mode", mode: "acceptEdits" },
+      ]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("ajustar mantém o modo plano e envia o comentário ao Claude", async () => {
+    const harness = await createHarness("plano", {}, { planDecision: "adjust" });
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, "Planeje.", true);
+      const plan = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "plan" && part.state === "pending",
+      );
+      await waitForState(harness, conversation.id, "waiting");
+      const comment = "Inclua a validação do resultado como segundo passo.";
+      await harness.manager.respond(conversation.id, plan.id, {
+        responseType: "plan",
+        decision: "reject",
+        comment,
+      });
+      const revisedPlan = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "plan" && part.state === "pending" && part.id !== plan.id,
+      );
+      assert.equal(revisedPlan.type, "plan");
+      await waitForState(harness, conversation.id, "waiting");
+      const rejectedPlan = latestAgent(harness, conversation.id)?.parts.find(
+        (part) => part.id === plan.id,
+      );
+      assert.equal(rejectedPlan?.type === "plan" ? rejectedPlan.state : undefined, "rejected");
+      const response = harness.claudeFake.controlResponses.at(-1)?.response as
+        | { behavior?: string; message?: string }
+        | undefined;
+      assert.equal(response?.behavior, "deny");
+      assert.equal(response?.message, comment);
+      assert.deepEqual(harness.claudeFake.controlRequests, []);
     } finally {
       await harness.close();
     }
