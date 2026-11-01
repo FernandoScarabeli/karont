@@ -191,7 +191,10 @@ export function Sidebar() {
                 const terminalState = terminal.exited ? t.shell.exited : t.terminal.running;
                 const accessibleName = t.terminal.sidebarAccessibleName(title, terminalState);
                 return (
-                  <li className={styles.conversationItem} key={terminal.id}>
+                  <li
+                    className={`${styles.conversationItem} ${styles.terminalConversationItem}`}
+                    key={terminal.id}
+                  >
                     <button
                       aria-current={
                         view.name === "workspace" &&

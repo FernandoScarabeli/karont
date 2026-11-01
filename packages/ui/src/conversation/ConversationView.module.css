@@ -241,6 +241,8 @@
 }
 
 .folderButton:hover {
+  border-radius: var(--k-radius-sm);
+  background: var(--k-color-bg-hover);
   color: var(--k-color-text-primary);
 }
 

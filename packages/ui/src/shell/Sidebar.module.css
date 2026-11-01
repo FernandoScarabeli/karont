@@ -206,6 +206,16 @@
   visibility: hidden;
 }
 
+@media (hover: none) {
+  .terminalConversationItem .endTerminalButton {
+    opacity: 1;
+  }
+
+  .terminalConversationItem .conversationButton {
+    padding-inline-end: calc(var(--k-control-height-sm) + var(--k-space-1));
+  }
+}
+
 .footer {
   display: flex;
   flex: 0 0 auto;

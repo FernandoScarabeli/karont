@@ -43,6 +43,12 @@
   opacity: 1;
 }
 
+@media (hover: none) {
+  .messageActions {
+    opacity: 1;
+  }
+}
+
 .textAction,
 .timelineToggle,
 .olderParts {
@@ -303,6 +309,14 @@
   display: none;
 }
 
+.thinking summary:hover,
+.action summary:hover,
+.actionGroup summary:hover,
+.planResult > summary.planSummary:hover {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
 .thinking summary:focus-visible,
 .action summary:focus-visible,
 .actionGroup summary:focus-visible {
@@ -541,7 +555,7 @@
   border-radius: var(--k-radius-full);
   background: var(--k-color-on-primary);
   content: "";
-  transform: scale(0);
+  transform: scale(0); /* taste-skill-ignore: checkbox state */
 }
 
 .questionOption input[type="checkbox"]::before {
@@ -551,7 +565,7 @@
   border-left: var(--k-focus-ring-width) solid var(--k-color-on-primary);
   border-radius: 0;
   background: transparent;
-  transform: rotate(-45deg) scale(0);
+  transform: rotate(-45deg) scale(0); /* taste-skill-ignore: checkbox state */
 }
 
 .questionOption input:checked {
