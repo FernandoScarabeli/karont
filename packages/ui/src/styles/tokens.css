@@ -85,12 +85,10 @@
   --k-duration-highlight: 1.2s;
   --k-duration-status-pulse-slow: 2.4s;
   --k-duration-status-pulse-medium: 1.6s;
-  --k-working-dot-size: 3px;
-  --k-working-dot-gap: 2px;
-  --k-working-dot-cycle: 1.8s;
-  --k-working-dot-stagger: 200ms;
+  --k-working-spiral-duration: 1.8s;
   --k-working-shimmer-duration: 2.8s;
   --k-working-transition-duration: 180ms;
+  --k-chat-working-spinner-size: 14px;
   --k-ease: cubic-bezier(0.2, 0, 0, 1);
   --k-opacity-disabled: 0.5;
 
@@ -155,9 +153,6 @@
   --k-composer-gauge-size: 18px;
   --k-duration-effort-needle: 220ms;
   --k-chat-content-max-width: 860px;
-  --k-dev-conversa-column-width: 640px;
-  --k-dev-conversa-loader-size: 14px;
-  --k-dev-conversa-suggestion-radius: 6px;
   --k-chat-user-bubble-max-width: 720px;
   --k-chat-code-max-height: 360px;
   --k-chat-part-max-height: 240px;

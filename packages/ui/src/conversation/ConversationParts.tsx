@@ -40,14 +40,17 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "../components/Button/Button.tsx";
 import { t } from "../i18n/pt-BR.ts";
+import { countDiffLines, parseFileChanges } from "./actionDiff.ts";
 import {
   type ConversationAction,
+  categoryForAction,
   groupConsecutiveActions,
   summarizeAction,
   summarizeActionGroup,
 } from "./actionSummary.ts";
 import { formatAttachmentSize } from "./attachmentUtils.ts";
 import styles from "./ConversationParts.module.css";
+import { formatWorkDuration, splitFinalAnswer } from "./conversationDisplay.ts";
 import { cleanMarkdownPreview, formatConversationText } from "./displayText.ts";
 import { getAllowedExternalUrl } from "./externalLinks.ts";
 import { splitMarkdownBlocks } from "./markdownBlocks.ts";
@@ -279,27 +282,56 @@ export const MessageRow = memo(function MessageRow({
         </>
       ) : (
         <>
-          {message.parts.length > visibleParts.length ? (
-            <button
-              className={styles.olderParts}
-              onClick={() => setVisiblePartCount((count) => count + 120)}
-              type="button"
-            >
-              {t.chat.showOlderParts}
-            </button>
-          ) : null}
-          <div className={styles.parts}>
-            {renderParts(
-              visibleParts,
-              message.id,
-              message.status === "streaming",
-              onRespond,
-              onAnnounce,
-              onCopyCode,
-              cwd,
-              agent,
-            )}
-          </div>
+          {message.status === "done" ? (
+            <>
+              {message.parts.length > visibleParts.length ? (
+                <button
+                  className={styles.olderParts}
+                  onClick={() => setVisiblePartCount((count) => count + 120)}
+                  type="button"
+                >
+                  {t.chat.showOlderParts}
+                </button>
+              ) : null}
+              {renderCompletedMessage(
+                message,
+                {
+                  onRespond,
+                  onAnnounce,
+                  onCopyCode,
+                  onRetry,
+                  cwd,
+                  agent,
+                },
+                visiblePartCount,
+              )}
+            </>
+          ) : (
+            <>
+              {message.parts.length > visibleParts.length ? (
+                <button
+                  className={styles.olderParts}
+                  onClick={() => setVisiblePartCount((count) => count + 120)}
+                  type="button"
+                >
+                  {t.chat.showOlderParts}
+                </button>
+              ) : null}
+              <div className={styles.parts}>
+                {renderParts(
+                  visibleParts,
+                  message.id,
+                  message.status === "streaming",
+                  onRespond,
+                  onAnnounce,
+                  onCopyCode,
+                  cwd,
+                  onRetry,
+                  agent,
+                )}
+              </div>
+            </>
+          )}
           {workingIndicator ? (
             <WorkingIndicator {...workingIndicator} onExitComplete={onWorkingIndicatorExit} />
           ) : null}
@@ -417,6 +449,7 @@ function renderParts(
   onAnnounce: (text: string) => void,
   onCopyCode: ((code: string) => void) | undefined,
   cwd: string,
+  onRetry: (messageId: string) => void,
   agent?: AgentErrorAgent,
 ) {
   const elements: ReactNode[] = [];
@@ -486,6 +519,7 @@ function renderParts(
         messageId={messageId}
         onAnnounce={onAnnounce}
         onCopyCode={onCopyCode}
+        onRetry={onRetry}
         onRespond={onRespond}
         part={part}
         cwd={cwd}
@@ -497,6 +531,108 @@ function renderParts(
   return elements;
 }
 
+function isAlwaysVisiblePart(part: MessagePart): boolean {
+  return (
+    part.type === "error" ||
+    (part.type === "permission" && part.state === "pending") ||
+    (part.type === "question" && part.state === "pending") ||
+    (part.type === "plan" && part.state === "pending")
+  );
+}
+
+function renderCompletedMessage(
+  message: ConversationMessage,
+  options: {
+    onRespond: OnRespond;
+    onAnnounce: (text: string) => void;
+    onCopyCode?: (code: string) => void;
+    onRetry: (messageId: string) => void;
+    cwd: string;
+    agent?: AgentErrorAgent;
+  },
+  visiblePartCount: number,
+) {
+  const pendingParts = message.parts.filter(isAlwaysVisiblePart);
+  const pendingPermissionCommands = pendingParts.flatMap((part) => {
+    if (part.type !== "permission") return [];
+    const permission = part as typeof part & { command?: string };
+    const command = permission.command?.trim() || part.summary.trim();
+    return command.split(/\r?\n/u).map(normalizeCommand).filter(Boolean);
+  });
+  const hasQuestionCard = pendingParts.some((part) => part.type === "question");
+  const hasPlanCard = pendingParts.some((part) => part.type === "plan");
+  const responseParts = message.parts.filter(
+    (part) =>
+      !isAlwaysVisiblePart(part) &&
+      !(
+        part.type === "action" &&
+        (duplicatesPendingPermission(part, pendingPermissionCommands) ||
+          duplicatesPendingCard(part, hasQuestionCard, hasPlanCard))
+      ),
+  );
+  const { history, finalAnswer } = splitFinalAnswer(responseParts);
+  const visiblePartIds = new Set(message.parts.slice(-visiblePartCount).map((part) => part.id));
+  const historyParts = history.filter((part) => visiblePartIds.has(part.id));
+  const durationMs =
+    message.startedAt !== undefined && message.endedAt !== undefined
+      ? message.endedAt - message.startedAt
+      : undefined;
+
+  return (
+    <div className={styles.parts}>
+      {historyParts.length > 0 ? (
+        <details className={styles.workHistory}>
+          <summary className={styles.workHistoryToggle}>
+            <span>{formatWorkDuration(durationMs)}</span>
+            <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
+          </summary>
+          <div className={styles.workHistoryBody}>
+            {renderParts(
+              historyParts,
+              message.id,
+              false,
+              options.onRespond,
+              options.onAnnounce,
+              options.onCopyCode,
+              options.cwd,
+              options.onRetry,
+              options.agent,
+            )}
+          </div>
+        </details>
+      ) : null}
+      {pendingParts.map((part) => (
+        <PartItem
+          key={part.id}
+          isStreaming={false}
+          messageId={message.id}
+          onAnnounce={options.onAnnounce}
+          onCopyCode={options.onCopyCode}
+          onRetry={options.onRetry}
+          onRespond={options.onRespond}
+          part={part}
+          cwd={options.cwd}
+          agent={options.agent}
+        />
+      ))}
+      {finalAnswer.map((part) => (
+        <PartItem
+          key={part.id}
+          isStreaming={false}
+          messageId={message.id}
+          onAnnounce={options.onAnnounce}
+          onCopyCode={options.onCopyCode}
+          onRetry={options.onRetry}
+          onRespond={options.onRespond}
+          part={part}
+          cwd={options.cwd}
+          agent={options.agent}
+        />
+      ))}
+    </div>
+  );
+}
+
 const PartItem = memo(
   function PartItem({
     part,
@@ -505,6 +641,7 @@ const PartItem = memo(
     onRespond,
     onAnnounce,
     onCopyCode,
+    onRetry,
     cwd,
     agent,
   }: {
@@ -514,6 +651,7 @@ const PartItem = memo(
     onRespond: OnRespond;
     onAnnounce: (text: string) => void;
     onCopyCode: ((code: string) => void) | undefined;
+    onRetry: (messageId: string) => void;
     cwd: string;
     agent?: AgentErrorAgent;
   }) {
@@ -542,10 +680,10 @@ const PartItem = memo(
         content = <PlanPart onCopyCode={onCopyCode} onRespond={onRespond} part={part} />;
         break;
       case "todos":
-        content = <TodosPart part={part} />;
+        content = <TodosDisclosure part={part} />;
         break;
       case "error":
-        content = <ErrorPart agent={agent} part={part} />;
+        content = <ErrorPart agent={agent} messageId={messageId} onRetry={onRetry} part={part} />;
         break;
       case "action":
         return null;
@@ -563,6 +701,7 @@ const PartItem = memo(
     previous.onRespond === next.onRespond &&
     previous.onAnnounce === next.onAnnounce &&
     previous.onCopyCode === next.onCopyCode &&
+    previous.onRetry === next.onRetry &&
     previous.cwd === next.cwd &&
     previous.agent === next.agent,
 );
@@ -748,6 +887,10 @@ const ThinkingPart = memo(function ThinkingPart({
   isStreaming: boolean;
 }) {
   const [expanded, setExpanded] = useState(isStreaming);
+  const duration =
+    part.startedAt !== undefined && part.endedAt !== undefined
+      ? Math.max(0, Math.round((part.endedAt - part.startedAt) / 1_000))
+      : null;
   useEffect(() => setExpanded(isStreaming), [isStreaming]);
 
   return (
@@ -762,7 +905,11 @@ const ThinkingPart = memo(function ThinkingPart({
         ) : (
           <CheckCircle2 aria-hidden="true" className={styles.thinkingDoneIcon} size={15} />
         )}
-        {isStreaming ? t.chat.thinking : t.chat.thinkingDone}
+        {isStreaming
+          ? t.chat.thinking
+          : duration === null
+            ? t.chat.thinkingDone
+            : t.chat.thinkingDuration(duration)}
       </summary>
       <div className={styles.thinkingText}>{part.text}</div>
     </details>
@@ -841,14 +988,9 @@ export const ActionItem = memo(function ActionItem({
   summary: string;
   initialExpanded?: boolean;
 }) {
-  const Icon = actionIcon(action.actionType);
+  const Icon = actionCategoryIcon(action);
   const [expanded, setExpanded] = useState(initialExpanded);
-  const duration =
-    action.durationMs === null || action.durationMs === undefined || action.durationMs < 1_000
-      ? ""
-      : formatDuration(action.durationMs);
-  const waitingForUser = (action as { state: string }).state === "waiting";
-  const displayTitle = formatConversationText(summary, cwd, 92);
+  const displayTitle = formatConversationText(actionRowLabel(action, cwd, summary), cwd, 160);
   const detailsId = useId();
   return (
     <div className={styles.action} data-message-id={messageId} data-part-id={action.id}>
@@ -860,32 +1002,14 @@ export const ActionItem = memo(function ActionItem({
         onClick={() => setExpanded((value) => !value)}
         type="button"
       >
-        <Icon aria-hidden="true" className={styles.actionIcon} size={15} />
+        <Icon aria-hidden="true" className={styles.actionIcon} size={14} />
         <span className={styles.actionTitle} title={displayTitle.title}>
           {displayTitle.text}
         </span>
         <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
-        {permitted ? (
-          <LockKeyhole aria-hidden="true" className={styles.permittedIcon} size={13} />
-        ) : null}
-        <span className={styles.actionState}>
-          {waitingForUser ? (
-            <Clock3 aria-hidden="true" size={14} />
-          ) : action.state === "running" ? (
-            <LoaderCircle aria-hidden="true" className={styles.thinkingIcon} size={14} />
-          ) : action.state === "ok" ? (
-            <CheckCircle2 aria-hidden="true" size={14} />
-          ) : (
-            <XCircle aria-hidden="true" size={14} />
-          )}
-          <span>
-            {waitingForUser ? t.chat.actionStates.waiting : t.chat.actionStates[action.state]}
-          </span>
-        </span>
-        {duration ? <span className={styles.duration}>{duration}</span> : null}
       </button>
       <div hidden={!expanded} id={detailsId}>
-        <ActionDetails action={action} />
+        <ActionDetails action={action} cwd={cwd} />
       </div>
     </div>
   );
@@ -904,13 +1028,8 @@ const ActionBatch = memo(function ActionBatch({
 }) {
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
-  const state = actions.some(({ action }) => action.state === "running")
-    ? "running"
-    : actions.some(({ action }) => action.state === "waiting")
-      ? "waiting"
-      : actions.some(({ action }) => action.state === "error")
-        ? "error"
-        : "ok";
+  const Icon = actionCategoryIcon(actions[0]?.action);
+  const displayLabel = formatConversationText(actionBatchLabel(actions, label), cwd, 160);
   return (
     <div className={styles.actionGroup} data-expanded={expanded}>
       <button
@@ -920,10 +1039,11 @@ const ActionBatch = memo(function ActionBatch({
         onClick={() => setExpanded((value) => !value)}
         type="button"
       >
-        <Wrench aria-hidden="true" size={15} />
-        <span className={styles.actionTitle}>{label}</span>
+        <Icon aria-hidden="true" className={styles.actionIcon} size={14} />
+        <span className={styles.actionTitle} title={displayLabel.title}>
+          {displayLabel.text}
+        </span>
         <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
-        <ActionState state={state} />
       </button>
       <div className={styles.actionGroupBody} hidden={!expanded} id={detailsId}>
         {actions.map(({ action, permitted }) => (
@@ -934,11 +1054,12 @@ const ActionBatch = memo(function ActionBatch({
             key={action.id}
           >
             <div className={styles.actionBatchTitle}>
-              <span>{summarizeAction(action, cwd)}</span>
-              {permitted ? <LockKeyhole aria-hidden="true" size={13} /> : null}
-              <ActionState state={action.state} />
+              <span>{formatConversationText(actionRowLabel(action, cwd), cwd, 160).text}</span>
+              {permitted ? (
+                <span className={styles.srOnly}>{t.chat.permissionGrantedDescription}</span>
+              ) : null}
             </div>
-            <ActionDetails action={action} />
+            <ActionDetails action={action} cwd={cwd} />
           </div>
         ))}
       </div>
@@ -946,43 +1067,275 @@ const ActionBatch = memo(function ActionBatch({
   );
 });
 
-function ActionDetails({ action }: { action: ConversationAction }) {
+function ActionDetails({ action, cwd }: { action: ConversationAction; cwd: string }) {
+  const category = categoryForAction(action);
+  const paths = actionPaths(action, cwd);
+  const changes = parseFileChanges(action.output);
+
+  if (category === "read") {
+    return (
+      <div className={styles.actionDetails}>
+        <span className={styles.detailLabel}>{t.chat.input}</span>
+        <ul className={styles.detailPaths}>
+          {paths.map((path) => (
+            <li key={path}>{path}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  if (category === "search") {
+    return (
+      <div className={styles.actionDetails}>
+        {actionSearchQuery(action) ? (
+          <div>
+            <span className={styles.detailLabel}>{t.chat.input}</span>
+            <pre>{actionSearchQuery(action)}</pre>
+          </div>
+        ) : null}
+        {action.output ? (
+          <div>
+            <span className={styles.detailLabel}>{t.chat.output}</span>
+            <pre>{withTruncation(action.output, action.truncated)}</pre>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (category === "edit" || category === "write") {
+    const hasDiff = changes.some((change) => change.diff.trim());
+    return (
+      <div className={styles.actionDetails}>
+        {hasDiff ? (
+          changes.map((change) => (
+            <div className={styles.diffFile} key={change.path}>
+              <span className={styles.detailLabel}>{change.path}</span>
+              {change.diff ? (
+                <pre className={styles.diffOutput}>{renderDiff(change.diff)}</pre>
+              ) : null}
+            </div>
+          ))
+        ) : (
+          <ul className={styles.detailPaths}>
+            {paths.map((path) => (
+              <li key={path}>{path}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  if (category === "web") {
+    return (
+      <div className={styles.actionDetails}>
+        <span className={styles.detailLabel}>{action.input || action.title}</span>
+        {action.output ? <pre>{withTruncation(action.output, action.truncated)}</pre> : null}
+      </div>
+    );
+  }
+
+  if (category === "command" || category === "test" || category === "list") {
+    const command = actionCommand(action);
+    const { output, exitCode } = commandOutput(action.output);
+    const resultLabel =
+      exitCode !== null
+        ? t.chat.commandExitCode(exitCode)
+        : action.state === "error"
+          ? t.chat.commandFailed
+          : action.state === "ok"
+            ? t.chat.commandCompleted
+            : action.state === "waiting"
+              ? t.chat.actionStates.waiting
+              : action.state === "running"
+                ? t.chat.actionStates.running
+                : "";
+    return (
+      <div className={styles.actionDetails}>
+        <div className={styles.commandHeader}>
+          <span className={styles.detailLabel}>{command}</span>
+          {resultLabel ? <span className={styles.exitCode}>{resultLabel}</span> : null}
+        </div>
+        {output ? <pre>{withTruncation(output, action.truncated)}</pre> : null}
+      </div>
+    );
+  }
+
   return (
     <div className={styles.actionDetails}>
       {action.input ? (
         <div>
           <span className={styles.detailLabel}>{t.chat.input}</span>
-          <pre>{action.input}</pre>
+          <pre>{formatRawValue(action.input)}</pre>
         </div>
       ) : null}
       {action.output ? (
         <div>
           <span className={styles.detailLabel}>{t.chat.output}</span>
-          <pre>
-            {action.output}
-            {action.truncated ? "\n…" : ""}
-          </pre>
+          <pre>{withTruncation(formatRawValue(action.output), action.truncated)}</pre>
         </div>
       ) : null}
     </div>
   );
 }
 
-function ActionState({ state }: { state: ConversationAction["state"] }) {
-  return (
-    <span className={styles.actionState}>
-      {state === "waiting" ? (
-        <Clock3 aria-hidden="true" size={14} />
-      ) : state === "running" ? (
-        <LoaderCircle aria-hidden="true" className={styles.thinkingIcon} size={14} />
-      ) : state === "ok" ? (
-        <CheckCircle2 aria-hidden="true" size={14} />
-      ) : (
-        <XCircle aria-hidden="true" size={14} />
-      )}
-      <span>{state === "waiting" ? t.chat.actionStates.waiting : t.chat.actionStates[state]}</span>
-    </span>
-  );
+function actionRowLabel(action: ConversationAction, cwd: string, fallback?: string): string {
+  const changes = parseFileChanges(action.output).filter((change) => change.diff.trim());
+  if (!changes.length) {
+    const category = categoryForAction(action);
+    if (category === "edit" || category === "write") {
+      const paths = actionPaths(action, cwd);
+      const verb = category === "write" ? "Criou" : "Editou";
+      if (paths.length === 1) return `${verb} ${paths[0]}`;
+      if (paths.length > 1) return `${verb} ${paths.length} arquivos`;
+    }
+    return fallback ?? summarizeAction(action, cwd);
+  }
+  const paths = [
+    ...new Set(changes.map((change) => displayPath(change.path, cwd)).filter(Boolean)),
+  ];
+  const added = changes.reduce((total, change) => total + countDiffLines(change.diff).added, 0);
+  const removed = changes.reduce((total, change) => total + countDiffLines(change.diff).removed, 0);
+  const createsFiles =
+    action.actionType === "write" || changes.every((change) => change.kind === "add");
+  const verb = createsFiles ? "Criou" : "Editou";
+  const target = paths.length === 1 ? paths[0] : `${paths.length} arquivos`;
+  return `${verb} ${target} +${added} −${removed}`;
+}
+
+function actionBatchLabel(
+  actions: Array<{ action: ConversationAction; permitted: boolean }>,
+  fallback: string,
+): string {
+  const changes = actions
+    .flatMap(({ action }) => parseFileChanges(action.output))
+    .filter((change) => change.diff.trim());
+  if (!changes.length) return fallback;
+  const added = changes.reduce((total, change) => total + countDiffLines(change.diff).added, 0);
+  const removed = changes.reduce((total, change) => total + countDiffLines(change.diff).removed, 0);
+  return `${fallback} +${added} −${removed}`;
+}
+
+function actionPaths(action: ConversationAction, cwd: string): string[] {
+  const paths = parseFileChanges(action.output).map((change) => change.path);
+  let parsedInput: unknown;
+  try {
+    parsedInput = JSON.parse(action.input);
+  } catch {
+    parsedInput = null;
+  }
+  if (isRecord(parsedInput)) {
+    for (const key of ["file_path", "path", "filename"]) {
+      const value = parsedInput[key];
+      if (typeof value === "string") paths.push(value);
+    }
+    for (const key of ["files", "paths"]) {
+      const value = parsedInput[key];
+      if (Array.isArray(value))
+        paths.push(...value.filter((item): item is string => typeof item === "string"));
+    }
+  } else if (action.actionType !== "command") {
+    paths.push(...action.input.split(/\r?\n/u));
+  }
+  if (action.actionType === "command") {
+    const command = actionCommand(action);
+    const matches =
+      command.match(
+        /(?:^|[\s'"])((?:\.{0,2}\/|\/)?[\w@.-][\w./@-]*\.[A-Za-z0-9_-]+)(?=$|[\s'"])/gu,
+      ) ?? [];
+    paths.push(...matches.map((match) => match.trim().replace(/^[\s'"]+/u, "")));
+  }
+  const titlePath = action.title.match(/(?:·|:)\s*(.+)$/u)?.[1];
+  if (titlePath) paths.push(titlePath);
+  return [...new Set(paths.map((path) => displayPath(path, cwd)).filter(isLikelyPath))];
+}
+
+function displayPath(path: string, cwd: string): string {
+  const clean = path.trim().replace(/^[`"']+|[`"',;:)]+$/gu, "");
+  if (!clean) return "";
+  return formatConversationText(clean, cwd, 180).text;
+}
+
+function isLikelyPath(value: string): boolean {
+  return Boolean(value && !/^(?:arquivos|um arquivo|uma ação|files?)$/iu.test(value));
+}
+
+function actionCommand(action: ConversationAction): string {
+  try {
+    const parsed: unknown = JSON.parse(action.input);
+    if (isRecord(parsed) && typeof parsed.command === "string") return parsed.command;
+  } catch {
+    // Entradas que não são JSON já contêm o comando em texto.
+  }
+  return action.input || action.title;
+}
+
+function actionSearchQuery(action: ConversationAction): string {
+  try {
+    const parsed: unknown = JSON.parse(action.input);
+    if (isRecord(parsed)) {
+      const query = [parsed.pattern, parsed.query].find(
+        (value): value is string => typeof value === "string" && Boolean(value.trim()),
+      );
+      if (query) return query;
+    }
+  } catch {
+    // A entrada pode ser uma busca em texto simples.
+  }
+  return action.input || action.title;
+}
+
+function commandOutput(value: string): { output: string; exitCode: string | null } {
+  const match = value.match(/(?:Código de saída|Exit code):?\s*(-?\d+)/iu);
+  return {
+    output: match ? value.replace(match[0], "").trimEnd() : value,
+    exitCode: match?.[1] ?? null,
+  };
+}
+
+function renderDiff(diff: string): ReactNode[] {
+  const occurrences = new Map<string, number>();
+  let inHunk = false;
+  return diff.split(/\r?\n/u).map((line) => {
+    const occurrence = occurrences.get(line) ?? 0;
+    occurrences.set(line, occurrence + 1);
+    if (line.startsWith("@@")) inHunk = true;
+    const isFileHeader =
+      !inHunk &&
+      (line === "+++" || line.startsWith("+++ ") || line === "---" || line.startsWith("--- "));
+    const className = isFileHeader
+      ? ""
+      : line.startsWith("+")
+        ? styles.diffAdded
+        : line.startsWith("-")
+          ? styles.diffRemoved
+          : line.startsWith("@@")
+            ? styles.diffHunk
+            : "";
+    return (
+      <span className={className} key={`${line}:${occurrence}`}>
+        {line || " "}
+      </span>
+    );
+  });
+}
+
+function formatRawValue(value: string): string {
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+}
+
+function withTruncation(value: string, truncated: boolean): string {
+  return truncated ? `${value}\n…` : value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 const PermissionPart = memo(function PermissionPart({
@@ -996,13 +1349,22 @@ const PermissionPart = memo(function PermissionPart({
 }) {
   const headingId = useId();
   if (part.state !== "pending") {
+    const stateLabel =
+      part.state === "allowed" ? t.chat.permissionResults.allowed : t.chat.permissionResults.denied;
     return (
-      <p className={styles.responseLine}>
-        <LockKeyhole aria-hidden="true" size={15} />
-        {part.state === "allowed"
-          ? t.chat.permissionResults.allowed
-          : t.chat.permissionResults.denied}
-      </p>
+      <details className={styles.responseDisclosure}>
+        <summary>
+          <LockKeyhole aria-hidden="true" className={styles.actionIcon} size={14} />
+          <span>{`${stateLabel} · ${part.tool}`}</span>
+          <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
+        </summary>
+        <div className={styles.actionDetails}>
+          <p className={styles.permissionDescription}>{part.summary}</p>
+          {part.description ? (
+            <p className={styles.permissionDescription}>{part.description}</p>
+          ) : null}
+        </div>
+      </details>
     );
   }
   const permission = part as typeof part & { command?: string; description?: string };
@@ -1075,7 +1437,33 @@ const QuestionPart = memo(function QuestionPart({
   const [freeText, setFreeText] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   if (part.state === "answered") {
-    return <p className={styles.responseLine}>{t.chat.questionAnswered}</p>;
+    return (
+      <details className={styles.responseDisclosure}>
+        <summary>
+          <HelpCircle aria-hidden="true" className={styles.actionIcon} size={14} />
+          <span>{t.chat.questionAnswered}</span>
+          <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
+        </summary>
+        <div className={styles.actionDetails}>
+          {part.questions.map((question) => (
+            <div
+              className={styles.answeredQuestion}
+              key={`${part.id}-${question.header ?? question.question}`}
+            >
+              <span className={styles.detailLabel}>{question.question}</span>
+              <ul>
+                {question.options.map((option) => (
+                  <li key={option.label}>
+                    <span>{option.label}</span>
+                    {option.description ? <span>{option.description}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </details>
+    );
   }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1254,6 +1642,36 @@ const PlanPart = memo(function PlanPart({
   );
 });
 
+const TodosDisclosure = memo(function TodosDisclosure({
+  part,
+}: {
+  part: Extract<MessagePart, { type: "todos" }>;
+}) {
+  const completed = part.items.filter((item) => item.state === "done").length;
+  return (
+    <details className={styles.todosDisclosure}>
+      <summary>
+        <ListTodo aria-hidden="true" className={styles.actionIcon} size={14} />
+        <span>{t.chat.todoSummary(completed, part.items.length)}</span>
+        <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
+      </summary>
+      <ul>
+        {part.items.map((item) => {
+          const Icon =
+            item.state === "done" ? CheckCircle2 : item.state === "working" ? Play : Circle;
+          return (
+            <li className={styles[`todo_${item.state}`]} key={item.id}>
+              <Icon aria-hidden="true" size={14} />
+              <span>{item.title}</span>
+              <span className={styles.todoState}>{t.chat.todoStates[item.state]}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
+});
+
 export const TodosPart = memo(function TodosPart({
   part,
 }: {
@@ -1285,9 +1703,13 @@ export const TodosPart = memo(function TodosPart({
 const ErrorPart = memo(function ErrorPart({
   part,
   agent,
+  messageId,
+  onRetry,
 }: {
   part: Extract<MessagePart, { type: "error" }>;
   agent?: AgentErrorAgent;
+  messageId: string;
+  onRetry: (messageId: string) => void;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const detailsId = useId();
@@ -1299,21 +1721,29 @@ const ErrorPart = memo(function ErrorPart({
         <AlertTriangle aria-hidden="true" size={16} />
         {description.message}
       </p>
-      {details ? (
-        <div className={styles.errorDetails}>
+      <div className={styles.errorActions}>
+        {part.retryable ? (
+          <button className={styles.errorAction} onClick={() => onRetry(messageId)} type="button">
+            <Play aria-hidden="true" size={14} />
+            {t.chat.retry}
+          </button>
+        ) : null}
+        {details ? (
           <button
             aria-controls={detailsId}
             aria-expanded={detailsOpen}
-            className={styles.errorDetailsToggle}
+            className={styles.errorAction}
             onClick={() => setDetailsOpen((value) => !value)}
             type="button"
           >
             {detailsOpen ? t.chat.hideDetails : t.chat.showDetails}
           </button>
-          <pre className={styles.errorDetailsText} hidden={!detailsOpen} id={detailsId}>
-            {details}
-          </pre>
-        </div>
+        ) : null}
+      </div>
+      {details ? (
+        <pre className={styles.errorDetailsText} hidden={!detailsOpen} id={detailsId}>
+          {details}
+        </pre>
       ) : null}
     </section>
   );
@@ -1676,6 +2106,27 @@ function actionIcon(type: Extract<MessagePart, { type: "action" }>["actionType"]
     case "edit":
     case "write":
       return Pencil;
+    case "command":
+      return SquareTerminal;
+    case "search":
+      return Search;
+    case "web":
+      return Globe2;
+    case "other":
+      return Wrench;
+  }
+}
+
+function actionCategoryIcon(action: ConversationAction | undefined) {
+  if (!action) return Wrench;
+  switch (categoryForAction(action)) {
+    case "read":
+      return FileCode2;
+    case "edit":
+    case "write":
+      return Pencil;
+    case "test":
+    case "list":
     case "command":
       return SquareTerminal;
     case "search":
