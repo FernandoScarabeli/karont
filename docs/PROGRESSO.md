@@ -77,6 +77,16 @@ Branch `m2-chat` (sem PR). Feito e testado com as CLIs reais no preview (Haiku /
 - Leveza: app parado ≈ 340 MB de memória real (PSS, janela + serviço + preview), CPU ≈ 0%.
 - Fixtures reais em `packages/service/src/agents/fixtures/` e protocolo em `PROTOCOLO.md`.
 
+## M2 — estado em 2026-11-01 (com o dono)
+Branch `m2-chat` (sem PR; o dono testa no preview antes de juntar na `main`). Depois do estado anterior, entrou:
+- Cartões do Codex (permissão, pergunta, plano) testados de verdade na tela. Corrigido: resposta de pergunta não chegava (chave por índice) e "Pode editar" do Codex agora usa `approvalPolicy: untrusted`.
+- Anexos (botão, colar, arrastar; imagem até 5 MB, texto até 200 kB; só metadados no banco), branch do Git na faixa (`folders.gitInfo`), links abrem no navegador (`openExternal` validado no main).
+- Planejar lembrado por conversa (migração v7).
+- Leveza do streaming: markdown em blocos memorizados, deltas a cada 64 ms; aba da UI 12–20% de CPU numa resposta de ~14 mil caracteres (antes 60–110%), serviço ~1–2% e 52 MB. Bundle inicial 464 kB (terminal e realce sob demanda).
+- UX: títulos automáticos (CLI do agente, modelo barato, em segundo plano; renomear com duplo clique), ações resumidas ("Leu 3 arquivos"; comando completo atrás de um botão; cartões de permissão mostram o comando inteiro), faixa pasta/branch mais estreita que o composer, saudação por horário com nome (`system.userName` + "Como te chamar" nas Configurações), placeholder digitando frases engraçadas (`TextType` próprio, sem gsap).
+
+Próximo (pedido do dono): rodada grande de UI/UX, num chat novo.
+
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
 - Node 24 roda `.ts` direto (type stripping): testes e serviço em dev rodam sem build. Por isso o TS usa `erasableSyntaxOnly` (sem `enum`/`namespace`) e imports com extensão `.ts`.
@@ -84,7 +94,8 @@ Branch `m2-chat` (sem PR). Feito e testado com as CLIs reais no preview (Haiku /
 - Electron 45.2.1 traz Node 24.22.1 com `node:sqlite`: o serviço pode rodar como `ELECTRON_RUN_AS_NODE=1` no app empacotado.
 - Tokens de cor vêm da "Direção A · Lua" do `karont.pen`. Só `--k-color-danger` (`#EF7B73`) não estava no design: proposta do orquestrador, ajustável.
 - Biome usa `"preset": "recommended"` (o `biome migrate` tinha trocado para `none`, o que desliga as regras).
-- Preview web: `npm run preview:web` na raiz → http://127.0.0.1:5173/. Reaproveita um serviço já rodando; se não houver, inicia um em modo dev (`KARONT_DEV=1`) e o encerra ao sair.
+- Codex: `.claude/settings.local.json` libera `codex exec` sem pedir permissão (dono pediu "libera o codex"). Tarefas: uma worktree por tarefa em `~/karont-worktrees/<tarefa>` + `<tarefa>-ref/` (tarefa.md, resposta.md, codex.log); seguimento com `codex exec ... resume <SID>`.
+- Preview web: `npm run preview:web` na raiz → http://127.0.0.1:5173/. Reaproveita um serviço já rodando; se não houver, inicia um em modo dev (`KARONT_DEV=1`) e o encerra ao sair. Depois de mudar o serviço, reinicie o preview (`kill $(pgrep -f '^node src/preview/main.ts')` e rode de novo). Testes de tela: scripts Playwright temporários na raiz (`.x.mjs`, apagar depois), Claude com Haiku.
 - Rodar o app: `npm run start:desktop` (com `CHROME_DEVEL_SANDBOX=/usr/local/lib/karont-dev/chrome-sandbox`). E2E: `npm run test:e2e` (mesma variável). Rodada completa local: ~6 s de checagens + ~2 s de E2E.
 - O E2E usa `chromiumSandbox: true`: o Playwright passa `--no-sandbox` ao Electron por padrão.
 - O serviço destacado é iniciado por um `bash` mínimo que fecha os descritores herdados acima de 2. O Chromium deixa caches da GPU e sockets internos sem CLOEXEC, e o serviço os seguraria por horas (isso também travava o `app.close()` do Playwright).
