@@ -66,15 +66,16 @@ function loadHighlightPlugin(): Promise<HighlightPlugin | null> {
 const messageDateFormatter = new Intl.DateTimeFormat("pt-BR", {
   day: "numeric",
   month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
 });
 const messageDateFormatterWithYear = new Intl.DateTimeFormat("pt-BR", {
   day: "numeric",
   month: "short",
   year: "numeric",
+});
+const messageTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
   hour: "2-digit",
   minute: "2-digit",
+  hourCycle: "h23",
 });
 
 function formatMessageDateTime(createdAt: string): string {
@@ -83,7 +84,7 @@ function formatMessageDateTime(createdAt: string): string {
     date.getFullYear() === new Date().getFullYear()
       ? messageDateFormatter
       : messageDateFormatterWithYear;
-  return formatter.format(date);
+  return `${messageTimeFormatter.format(date)} · ${formatter.format(date)}`;
 }
 
 export type ResponseInput =
@@ -211,7 +212,7 @@ export const MessageRow = memo(function MessageRow({
       ref={messageRef}
     >
       <button
-        aria-controls={isUserMessage ? `${timestampId} ${optionsId}` : optionsId}
+        aria-controls={`${timestampId} ${optionsId}`}
         aria-expanded={isActionsOpen}
         aria-label={message.author === "user" ? t.chat.userMessage : t.chat.agentMessage}
         className={styles.srOnly}
@@ -219,20 +220,20 @@ export const MessageRow = memo(function MessageRow({
         tabIndex={0}
         type="button"
       />
+      <div
+        aria-hidden={!isActionsOpen}
+        className={`${styles.messageDateOptions} ${isActionsOpen ? styles.messageDateOptionsOpen : ""}`}
+        id={timestampId}
+        inert={!isActionsOpen}
+      >
+        <div className={styles.messageDateOptionsInner}>
+          <time className={styles.messageTimestamp} dateTime={message.createdAt}>
+            {formatMessageDateTime(message.createdAt)}
+          </time>
+        </div>
+      </div>
       {isUserMessage ? (
         <>
-          <div
-            aria-hidden={!isActionsOpen}
-            className={`${styles.messageDateOptions} ${isActionsOpen ? styles.messageDateOptionsOpen : ""}`}
-            id={timestampId}
-            inert={!isActionsOpen}
-          >
-            <div className={styles.messageDateOptionsInner}>
-              <time className={styles.messageTimestamp} dateTime={message.createdAt}>
-                {formatMessageDateTime(message.createdAt)}
-              </time>
-            </div>
-          </div>
           {message.attachments?.length ? (
             <section aria-label={t.chat.sentAttachments} className={styles.sentAttachments}>
               {message.attachments.map((attachment) => {
@@ -299,11 +300,6 @@ export const MessageRow = memo(function MessageRow({
       >
         <div className={styles.messageOptionsInner}>
           <div className={styles.messageOptionsMeta}>
-            {!isUserMessage ? (
-              <time className={styles.messageTimestamp} dateTime={message.createdAt}>
-                {formatMessageDateTime(message.createdAt)}
-              </time>
-            ) : null}
             <div className={styles.messageActions}>
               {message.author === "user" && text.trim() ? (
                 <>

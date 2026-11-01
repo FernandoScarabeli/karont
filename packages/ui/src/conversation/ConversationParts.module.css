@@ -6,7 +6,7 @@
   flex-direction: column;
   gap: var(--k-space-2);
   margin-inline: auto;
-  padding-block: var(--k-space-3);
+  padding-block: var(--k-space-1);
   content-visibility: auto;
   contain-intrinsic-size: auto var(--k-chat-message-intrinsic-size);
 }
@@ -82,6 +82,7 @@
 
 .messageActions {
   display: flex;
+  min-height: var(--k-control-height-sm);
   flex-wrap: wrap;
   gap: var(--k-space-1);
 }
@@ -95,19 +96,22 @@
   display: grid;
   width: 100%;
   min-width: 0;
-  grid-template-rows: 0fr;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
   transition:
-    grid-template-rows var(--k-duration-fast) var(--k-ease),
-    opacity var(--k-duration-fast) var(--k-ease);
+    opacity var(--k-duration-fast) var(--k-ease),
+    visibility 0s linear var(--k-duration-fast);
 }
 
 .messageDateOptionsOpen,
 .messageOptionsOpen {
-  grid-template-rows: 1fr;
   opacity: 1;
+  visibility: visible;
   pointer-events: auto;
+  transition:
+    opacity var(--k-duration-fast) var(--k-ease),
+    visibility 0s;
 }
 
 .messageDateOptionsInner {
@@ -135,6 +139,14 @@
   padding-block-end: var(--k-space-2);
 }
 
+.agentMessage .messageDateOptions {
+  margin-block-end: calc(var(--k-space-2) * -1);
+}
+
+.agentMessage .messageDateOptionsInner {
+  padding-block-end: var(--k-space-2);
+}
+
 .userMessage .messageOptionsInner {
   padding-block-start: var(--k-space-2);
 }
@@ -147,6 +159,10 @@
 
 .userMessage .messageTimestamp {
   text-align: end;
+}
+
+.agentMessage .messageTimestamp {
+  text-align: start;
 }
 
 @media (prefers-reduced-motion: reduce) {
