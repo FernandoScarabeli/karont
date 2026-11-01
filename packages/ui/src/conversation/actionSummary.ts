@@ -1,5 +1,5 @@
 import type { MessagePart } from "@karont/contract";
-import { countDiffLines, parseFileChanges } from "./actionDiff.ts";
+import { countDiffLines, formatDiffStats, parseFileChanges } from "./actionDiff.ts";
 
 export type ConversationAction = Extract<MessagePart, { type: "action" }>;
 export type ActionSummaryCategory =
@@ -75,7 +75,7 @@ export function summarizeActionDiff(action: ConversationAction, cwd: string): st
     action.actionType === "write" || changes.every((change) => change.kind === "add");
   const verb = createsFiles ? "Criou" : "Editou";
   const target = paths.length === 1 ? paths[0] : `${paths.length} arquivos`;
-  return `${verb} ${target} +${added} −${removed}`;
+  return [`${verb} ${target}`, formatDiffStats(added, removed)].filter(Boolean).join(" ");
 }
 
 export function mcpActionLabel(action: ConversationAction): string {

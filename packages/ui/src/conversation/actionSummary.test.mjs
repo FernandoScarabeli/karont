@@ -105,6 +105,32 @@ test("resume diff estruturado do Claude com caminho e contagem de linhas", () =>
   assert.equal(summarizeActionDiff(edit, "/repo"), "Editou app.ts +2 −1");
 });
 
+test("omite contagens de diff iguais a zero no resumo da ação", () => {
+  const create = {
+    ...action("write", "Write · /repo/a.txt", "/repo/a.txt"),
+    output: JSON.stringify([
+      {
+        path: "/repo/a.txt",
+        kind: "add",
+        diff: "@@ -0,0 +1,3 @@\n+um\n+dois\n+três",
+      },
+    ]),
+  };
+  const remove = {
+    ...action("edit", "Edit · /repo/a.txt", "/repo/a.txt"),
+    output: JSON.stringify([
+      {
+        path: "/repo/a.txt",
+        kind: "update",
+        diff: "@@ -1,2 +0,0 @@\n-um\n-dois",
+      },
+    ]),
+  };
+
+  assert.equal(summarizeActionDiff(create, "/repo"), "Criou a.txt +3");
+  assert.equal(summarizeActionDiff(remove, "/repo"), "Editou a.txt −2");
+});
+
 test("agrupa filhos do subagente e omite ações parentadas órfãs", () => {
   const parent = { ...action("subagent", "Revise o módulo"), id: "task-1" };
   const child = { ...action("read", "Read · src/app.ts"), id: "read-1", parentId: "task-1" };
