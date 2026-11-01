@@ -236,10 +236,6 @@
   display: grid;
   gap: var(--k-space-3);
   margin-block-start: var(--k-space-2);
-  padding: var(--k-space-3);
-  border: var(--k-border-width) solid var(--k-color-border);
-  border-radius: var(--k-radius-md);
-  background: var(--k-color-bg-raised);
 }
 
 .workHistoryBody[hidden] {
@@ -741,6 +737,7 @@
 
 .diffHunk {
   color: var(--k-color-text-muted);
+  font-size: var(--k-text-11);
 }
 
 .commandHeader {

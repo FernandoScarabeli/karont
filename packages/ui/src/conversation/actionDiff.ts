@@ -1,4 +1,8 @@
 export type FileChangeDetail = { path: string; kind: string; diff: string };
+export type DiffDisplayLine = {
+  text: string;
+  kind: "added" | "removed" | "hunk" | "context";
+};
 
 export function parseFileChanges(output: string): FileChangeDetail[] {
   let parsed: unknown;
@@ -17,19 +21,48 @@ export function parseFileChanges(output: string): FileChangeDetail[] {
 export function countDiffLines(diff: string): { added: number; removed: number } {
   let added = 0;
   let removed = 0;
-  let inHunk = false;
-  for (const line of diff.split(/\r?\n/u)) {
-    if (line.startsWith("@@")) inHunk = true;
-    if (
-      !inHunk &&
-      (line === "+++" || line.startsWith("+++ ") || line === "---" || line.startsWith("--- "))
-    ) {
-      continue;
-    }
-    if (line.startsWith("+")) added += 1;
-    else if (line.startsWith("-")) removed += 1;
+  for (const line of getDiffDisplayLines(diff)) {
+    if (line.kind === "added") added += 1;
+    else if (line.kind === "removed") removed += 1;
   }
   return { added, removed };
+}
+
+export function formatDiffStats(added: number, removed: number): string {
+  const stats: string[] = [];
+  if (added > 0) stats.push(`+${added}`);
+  if (removed > 0) stats.push(`−${removed}`);
+  return stats.join(" ");
+}
+
+export function getDiffDisplayLines(diff: string): DiffDisplayLine[] {
+  const lines = diff.split(/\r?\n/u);
+  const hunkCount = lines.filter((line) => line.startsWith("@@")).length;
+  let inHunk = false;
+  const displayLines: DiffDisplayLine[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("diff --git ")) {
+      inHunk = false;
+      continue;
+    }
+    if (line.startsWith("index ")) continue;
+    if (line.startsWith("@@")) {
+      inHunk = true;
+      if (hunkCount > 1) displayLines.push({ text: line, kind: "hunk" });
+      continue;
+    }
+    if (!inHunk && isFileHeader(line)) continue;
+
+    const kind: DiffDisplayLine["kind"] = line.startsWith("+")
+      ? "added"
+      : line.startsWith("-")
+        ? "removed"
+        : "context";
+    displayLines.push({ text: line, kind });
+  }
+
+  return displayLines;
 }
 
 function fileChangeItem(value: unknown, fallbackPath = ""): FileChangeDetail[] {
@@ -59,4 +92,8 @@ function fileChangeItem(value: unknown, fallbackPath = ""): FileChangeDetail[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isFileHeader(line: string): boolean {
+  return line === "+++" || line.startsWith("+++ ") || line === "---" || line.startsWith("--- ");
 }
