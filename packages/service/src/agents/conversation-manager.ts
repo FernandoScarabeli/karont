@@ -36,7 +36,7 @@ import type {
 } from "./adapter.ts";
 import { AgentCliError, createClaudeAdapterFactory } from "./claude-adapter.ts";
 import { createCodexAdapterFactory, createCodexModelLoader } from "./codex-adapter.ts";
-import { generateConversationTitle } from "./title-generator.ts";
+import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
 const CODEX_MODELS_SETTING = "agent.codex.models";
 
@@ -64,6 +64,7 @@ export type ConversationManagerOptions = {
     agent: Conversation["agent"],
     userMessage: string,
     agentResponse: string,
+    options?: Pick<TitleGeneratorOptions, "codexModel" | "codexEffort">,
   ) => Promise<string | null>;
 };
 
@@ -100,9 +101,10 @@ export class ConversationManager {
     this.#now = options.now ?? (() => new Date().toISOString());
     this.#titleGenerator =
       options.titleGenerator ??
-      ((agent, userMessage, agentResponse) =>
+      ((agent, userMessage, agentResponse, titleOptions) =>
         generateConversationTitle(agent, userMessage, agentResponse, {
           env: this.#env,
+          ...titleOptions,
         }));
     const cached = readCodexModelCache(getSetting(this.#db, CODEX_MODELS_SETTING));
     if (cached) {
@@ -647,7 +649,11 @@ export class ConversationManager {
     request.attempted = true;
     const { userMessage } = request;
     this.#titleRequests.delete(conversation.id);
-    void this.#titleGenerator(conversation.agent, userMessage, response)
+    const titleOptions =
+      conversation.agent === "codex"
+        ? codexTitleOptions(conversation, this.#codexModelList)
+        : undefined;
+    void this.#titleGenerator(conversation.agent, userMessage, response, titleOptions)
       .then(async (title) => {
         if (!title) return;
         const updated = setConversationTitle(this.#db, conversation.id, title, this.#now(), false);
@@ -787,6 +793,33 @@ export class ConversationManager {
   async #emit(event: AnyEvent): Promise<void> {
     await this.#broadcast(event);
   }
+}
+
+function codexTitleOptions(
+  conversation: Conversation,
+  modelList: AdapterModelList,
+): Pick<TitleGeneratorOptions, "codexModel" | "codexEffort"> {
+  const modelId = conversation.model?.trim() || cheapestListedModel(modelList)?.id;
+  const model = modelList.models.find((option) => option.id === modelId);
+  const minimumEffort = ["low", "medium", "high", "xhigh", "max"].find((effort) =>
+    model?.efforts.includes(effort as NonNullable<Conversation["effort"]>),
+  );
+  return {
+    ...(modelId ? { codexModel: modelId } : {}),
+    codexEffort: minimumEffort ?? "low",
+  };
+}
+
+function cheapestListedModel(
+  modelList: AdapterModelList,
+): AdapterModelList["models"][number] | undefined {
+  for (const tier of ["nano", "micro", "mini", "small"]) {
+    const model = modelList.models.find((option) =>
+      new RegExp(`\\b${tier}\\b`, "i").test(`${option.id} ${option.name}`),
+    );
+    if (model) return model;
+  }
+  return modelList.models[0];
 }
 
 function readCodexModelCache(

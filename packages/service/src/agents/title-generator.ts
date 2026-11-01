@@ -7,7 +7,6 @@ import { resolveAgentCommand } from "./detect.ts";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TITLE_OUTPUT = 4_096;
 const TITLE_RESPONSE_LENGTH = 1_200;
-const CODEX_TITLE_MODEL = "gpt-5.1-codex-mini";
 
 type SpawnFunction = typeof nodeSpawn;
 export type TitleGeneratorOptions = {
@@ -16,6 +15,9 @@ export type TitleGeneratorOptions = {
   spawn?: SpawnFunction;
   homeDir?: string;
   platform?: NodeJS.Platform;
+  codexModel?: string;
+  codexEffort?: string;
+  logger?: Pick<Console, "error">;
 };
 
 export async function generateConversationTitle(
@@ -28,18 +30,40 @@ export async function generateConversationTitle(
   const spawn = options.spawn ?? nodeSpawn;
   const homeDir = options.homeDir ?? os.homedir();
   const platform = options.platform ?? process.platform;
-  const executable =
-    env[agent === "claude" ? "KARONT_CLAUDE_CLI" : "KARONT_CODEX_CLI"] ||
-    (await resolveAgentCommand(agent, { env, homeDir, platform }));
-  if (!executable) return null;
+  const logger = options.logger ?? console;
+  let executable: string | undefined;
+  try {
+    executable =
+      env[agent === "claude" ? "KARONT_CLAUDE_CLI" : "KARONT_CODEX_CLI"] ||
+      (await resolveAgentCommand(agent, { env, homeDir, platform }));
+  } catch {
+    reportFailure(logger, "não foi possível localizar a CLI");
+    return null;
+  }
+  if (!executable) {
+    reportFailure(logger, "CLI não encontrada");
+    return null;
+  }
 
   let workingDirectory: string | undefined;
   try {
     workingDirectory = await mkdtemp(path.join(os.tmpdir(), "karont-title-"));
     const prompt = buildTitlePrompt(userMessage, agentResponse);
-    const args = buildTitleArgs(agent, workingDirectory, prompt);
-    return await runTitleCommand(executable, args, workingDirectory, env, spawn, options.timeoutMs);
+    const args = buildTitleArgs(agent, workingDirectory, prompt, {
+      codexModel: options.codexModel,
+      codexEffort: options.codexEffort,
+    });
+    return await runTitleCommand(
+      executable,
+      args,
+      workingDirectory,
+      env,
+      spawn,
+      logger,
+      options.timeoutMs,
+    );
   } catch {
+    reportFailure(logger, "falha ao preparar a execução");
     return null;
   } finally {
     if (workingDirectory)
@@ -62,6 +86,7 @@ export function buildTitleArgs(
   agent: "claude" | "codex",
   workingDirectory: string,
   prompt: string,
+  options: Pick<TitleGeneratorOptions, "codexModel" | "codexEffort"> = {},
 ): string[] {
   if (agent === "claude") {
     return [
@@ -78,7 +103,7 @@ export function buildTitleArgs(
       prompt,
     ];
   }
-  return [
+  const args = [
     "exec",
     "--ephemeral",
     "--ignore-user-config",
@@ -87,14 +112,14 @@ export function buildTitleArgs(
     "read-only",
     "--cd",
     workingDirectory,
-    "--model",
-    CODEX_TITLE_MODEL,
     "--config",
-    'model_reasoning_effort="low"',
+    `model_reasoning_effort="${options.codexEffort || "low"}"`,
     "--color",
     "never",
-    prompt,
   ];
+  if (options.codexModel?.trim()) args.push("--model", options.codexModel.trim());
+  args.push(prompt);
+  return args;
 }
 
 async function runTitleCommand(
@@ -103,6 +128,7 @@ async function runTitleCommand(
   cwd: string,
   env: NodeJS.ProcessEnv,
   spawn: SpawnFunction,
+  logger: Pick<Console, "error">,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<string | null> {
   return new Promise((resolve) => {
@@ -114,6 +140,7 @@ async function runTitleCommand(
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch {
+      reportFailure(logger, "não foi possível iniciar a CLI");
       resolve(null);
       return;
     }
@@ -128,6 +155,7 @@ async function runTitleCommand(
     };
     const timer = setTimeout(
       () => {
+        reportFailure(logger, `timeout após ${Math.max(1, timeoutMs)} ms`);
         child.kill("SIGKILL");
         finish(null);
       },
@@ -141,22 +169,56 @@ async function runTitleCommand(
       output += chunk.slice(0, MAX_TITLE_OUTPUT - output.length);
     });
     child.stderr?.on("data", () => undefined);
-    child.once("error", () => finish(null));
-    child.once("close", (code) => {
-      finish(code === 0 ? parseTitle(output) : null);
+    child.once("error", () => {
+      if (settled) return;
+      reportFailure(logger, "a CLI encerrou com erro de processo");
+      finish(null);
+    });
+    child.once("close", (code, signal) => {
+      if (settled) return;
+      if (code !== 0) {
+        reportFailure(
+          logger,
+          `código de saída ${code ?? "desconhecido"}${signal ? ` (sinal ${signal})` : ""}`,
+        );
+        finish(null);
+        return;
+      }
+      const title = parseTitle(output);
+      if (!title) reportFailure(logger, "resposta sem título válido");
+      finish(title);
     });
   });
 }
 
-function parseTitle(output: string): string | null {
-  const title = output
+export function parseTitle(output: string): string | null {
+  const lines = output
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .find(Boolean)
-    ?.replace(/^["'“”]+|["'“”]+$/g, "")
-    .replace(/[.\s]+$/u, "")
-    .trim();
-  if (!title || /[\p{Cc}]/u.test(title)) return null;
-  const words = title.split(/\s+/u);
-  return words.length >= 3 && words.length <= 6 ? title.slice(0, 240) : null;
+    .filter((line) => line && !/^`{3,}(?:[\w+-]+)?`*$/u.test(line));
+  for (const line of lines) {
+    const title = line
+      .replace(/^\uFEFF/u, "")
+      .replace(/^\s*#{1,6}\s*/u, "")
+      .replace(/^\s*(?:[-+*]|\d+[.)])\s+/u, "")
+      .replace(/\*\*|__/gu, "")
+      .replace(/`/gu, "")
+      .trim()
+      .replace(/^(?:(?:t[ií]tulo|title)\s*:\s*)+/iu, "")
+      .replace(/^[\s"'“”‘’*_#]+|[\s"'“”‘’*_#]+$/gu, "")
+      .replace(/[.\s]+$/u, "")
+      .trim();
+    if (!title || /^(?:t[ií]tulo|title)\s*:?$/iu.test(title)) continue;
+    const safeTitle = title
+      .replace(/[\p{Cc}]/gu, " ")
+      .replace(/\s+/gu, " ")
+      .trim();
+    if (!safeTitle) continue;
+    return safeTitle.split(/\s+/u).slice(0, 6).join(" ").slice(0, 240);
+  }
+  return null;
+}
+
+function reportFailure(logger: Pick<Console, "error">, reason: string): void {
+  logger.error(`[Karont] Falha ao gerar título da conversa: ${reason}.`);
 }

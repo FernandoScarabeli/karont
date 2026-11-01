@@ -111,8 +111,16 @@
 }
 
 .selectorButton {
+  width: max-content;
+  max-width: 100%;
+  flex: 0 0 auto;
   background: var(--k-color-bg-control);
   color: var(--k-color-text-primary);
+  white-space: nowrap;
+}
+
+.selectorButton > span {
+  white-space: nowrap;
 }
 
 .folderButton {

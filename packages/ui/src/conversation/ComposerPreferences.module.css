@@ -39,6 +39,7 @@
   font-size: var(--k-text-12);
   font-weight: var(--k-weight-medium);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .select:hover:not(:disabled),
