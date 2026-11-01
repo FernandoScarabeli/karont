@@ -259,7 +259,6 @@ export const t = {
     hideDetails: "Ocultar detalhes",
     sentAttachments: "Anexos da mensagem",
     edit: "Editar",
-    resend: "Reenviar",
     actionCopyCode: "Copiar código",
     codeCopied: "Código copiado",
     thinking: "Pensando…",

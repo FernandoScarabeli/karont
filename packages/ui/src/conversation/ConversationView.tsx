@@ -432,8 +432,6 @@ export function ConversationView({
     }
   }, [bridge, conversation, id, isStopping]);
 
-  const resendMessage = useCallback((text: string) => void sendMessage(text), [sendMessage]);
-
   const respond = useCallback(
     async (response: ResponseInput) => {
       if (!bridge || !conversation || isResponding) return;
@@ -856,7 +854,6 @@ export function ConversationView({
             onAnnounce={announce}
             onCopy={copyText}
             onEdit={editMessage}
-            onResend={resendMessage}
             onRespond={respond}
             onRetry={retry}
           />
