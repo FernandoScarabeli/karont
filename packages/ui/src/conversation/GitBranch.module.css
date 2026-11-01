@@ -1,0 +1,14 @@
+.branch {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-1);
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-11);
+}
+
+.branch span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
