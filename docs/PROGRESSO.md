@@ -101,6 +101,12 @@ Branch `m2-chat` (sem PR; o dono testa no preview antes de juntar na `main`). De
 ### Próximo (pedido do dono)
 - Redesenho da conversa com refs que ele vai mandar (o "Trabalhando…" atual é feio).
 - Trazer o que falta, usando como **referência** os componentes do Agent Elements (https://agent-elements.21st.dev, MIT; são Tailwind + várias libs, então **reescrever no nosso padrão, sem dependência nova**): edição com diff, subagente (Task do Claude), ferramenta MCP, "Trabalhando…" com shimmer, sugestões. Antes, conferir que dados os adaptadores já gravam de cada ferramenta.
+- **Levantamento dos dados (feito em 2026-11-01)** — o que os adaptadores já gravam em `action` (`input` ≤ 8 kB, `output` ≤ 64 kB):
+  - **Diff de edição.** Claude: `Edit`/`Write` guardam **só o caminho** (`summarizeInput` descarta `old_string`/`new_string`/`content`); `MultiEdit` cai em `other`. Precisa mudar o serviço para guardar a edição estruturada. Codex: `fileChange` guarda em `output` o JSON de `changes` com `diff` (unificado) por arquivo (`FileUpdateChange { path, kind, diff }`) → **dá para mostrar diff já**, só a UI.
+  - **Subagente.** Claude `Task` → `other` (título "Task · …", input = `description`); chamadas internas do subagente não são agrupadas. Codex `collabAgentToolCall` → `other` com o item cru em JSON. Precisa `actionType` novo e agrupamento.
+  - **MCP.** Claude `mcp__<servidor>__<ferramenta>` → `other`, input só com os nomes dos parâmetros ("Parâmetros: a, b"). Codex `mcpToolCall` → `other`, título = `item.tool`, input = item cru. Precisa `actionType: "mcp"` com servidor, ferramenta e parâmetros.
+  - **Geração de imagem.** Codex tem `imageGeneration` (com `savedPath`, `revisedPrompt`) e hoje cai em `other` sem mostrar a imagem. Dá para exibir a imagem gerada (ler o arquivo pelo serviço, com validação de caminho).
+  - **"Trabalhando…" com shimmer.** Só UI, não depende de dados.
 - Pendências pequenas: bundle inicial ~508 kB (passou de 500); aviso do PostCSS no build (`from` não passado, provavelmente o `composes` do ScrollArea).
 
 ## Notas técnicas
