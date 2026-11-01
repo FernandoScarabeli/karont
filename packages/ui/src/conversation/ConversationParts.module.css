@@ -135,6 +135,14 @@
   padding-block-end: var(--k-space-2);
 }
 
+.agentMessage .messageDateOptions {
+  margin-block-end: calc(var(--k-space-2) * -1);
+}
+
+.agentMessage .messageDateOptionsInner {
+  padding-block-end: var(--k-space-2);
+}
+
 .userMessage .messageOptionsInner {
   padding-block-start: var(--k-space-2);
 }
@@ -147,6 +155,10 @@
 
 .userMessage .messageTimestamp {
   text-align: end;
+}
+
+.agentMessage .messageTimestamp {
+  text-align: start;
 }
 
 @media (prefers-reduced-motion: reduce) {

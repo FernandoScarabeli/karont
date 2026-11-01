@@ -32,6 +32,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -128,6 +129,7 @@ export const MessageRow = memo(function MessageRow({
   const timestampId = useId();
   const timelineId = useId();
   const messageRef = useRef<HTMLElement>(null);
+  const dateOptionsRef = useRef<HTMLDivElement>(null);
   const isUserMessage = message.author === "user";
   const text = isUserMessage
     ? message.parts
@@ -145,6 +147,34 @@ export const MessageRow = memo(function MessageRow({
   useEffect(() => {
     if (!isActionsOpen) setShowTimeline(false);
   }, [isActionsOpen]);
+
+  useLayoutEffect(() => {
+    if (!isActionsOpen || isUserMessage) return;
+    const messageElement = messageRef.current;
+    const dateOptions = dateOptionsRef.current;
+    if (!messageElement || !dateOptions) return;
+
+    const scrollContainer = findScrollContainer(messageElement);
+    if (!scrollContainer) return;
+
+    let previousDateHeight = 0;
+    const keepVisibleContentInPlace = () => {
+      const dateHeight = dateOptions.getBoundingClientRect().height;
+      const addedHeight = dateHeight - previousDateHeight;
+      previousDateHeight = dateHeight;
+      if (addedHeight <= 0) return;
+
+      const visibleTop = scrollContainer.getBoundingClientRect().top + scrollContainer.clientTop;
+      if (messageElement.getBoundingClientRect().top < visibleTop) {
+        scrollContainer.scrollTop += addedHeight;
+      }
+    };
+
+    const observer = new ResizeObserver(keepVisibleContentInPlace);
+    observer.observe(dateOptions);
+    keepVisibleContentInPlace();
+    return () => observer.disconnect();
+  }, [isActionsOpen, isUserMessage]);
 
   const navigateToPart = useCallback(
     (partId: string) => {
@@ -211,7 +241,7 @@ export const MessageRow = memo(function MessageRow({
       ref={messageRef}
     >
       <button
-        aria-controls={isUserMessage ? `${timestampId} ${optionsId}` : optionsId}
+        aria-controls={`${timestampId} ${optionsId}`}
         aria-expanded={isActionsOpen}
         aria-label={message.author === "user" ? t.chat.userMessage : t.chat.agentMessage}
         className={styles.srOnly}
@@ -219,20 +249,21 @@ export const MessageRow = memo(function MessageRow({
         tabIndex={0}
         type="button"
       />
+      <div
+        aria-hidden={!isActionsOpen}
+        className={`${styles.messageDateOptions} ${isActionsOpen ? styles.messageDateOptionsOpen : ""}`}
+        id={timestampId}
+        inert={!isActionsOpen}
+        ref={dateOptionsRef}
+      >
+        <div className={styles.messageDateOptionsInner}>
+          <time className={styles.messageTimestamp} dateTime={message.createdAt}>
+            {formatMessageDateTime(message.createdAt)}
+          </time>
+        </div>
+      </div>
       {isUserMessage ? (
         <>
-          <div
-            aria-hidden={!isActionsOpen}
-            className={`${styles.messageDateOptions} ${isActionsOpen ? styles.messageDateOptionsOpen : ""}`}
-            id={timestampId}
-            inert={!isActionsOpen}
-          >
-            <div className={styles.messageDateOptionsInner}>
-              <time className={styles.messageTimestamp} dateTime={message.createdAt}>
-                {formatMessageDateTime(message.createdAt)}
-              </time>
-            </div>
-          </div>
           {message.attachments?.length ? (
             <section aria-label={t.chat.sentAttachments} className={styles.sentAttachments}>
               {message.attachments.map((attachment) => {
@@ -299,11 +330,6 @@ export const MessageRow = memo(function MessageRow({
       >
         <div className={styles.messageOptionsInner}>
           <div className={styles.messageOptionsMeta}>
-            {!isUserMessage ? (
-              <time className={styles.messageTimestamp} dateTime={message.createdAt}>
-                {formatMessageDateTime(message.createdAt)}
-              </time>
-            ) : null}
             <div className={styles.messageActions}>
               {message.author === "user" && text.trim() ? (
                 <>
@@ -356,6 +382,14 @@ export const MessageRow = memo(function MessageRow({
     </article>
   );
 });
+
+function findScrollContainer(element: HTMLElement): HTMLElement | null {
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+    const overflowY = window.getComputedStyle(parent).overflowY;
+    if (overflowY === "auto" || overflowY === "scroll") return parent;
+  }
+  return null;
+}
 
 function isMessageToggleTarget(
   target: EventTarget | null,
