@@ -203,12 +203,18 @@ export async function mapClaudeToolAction(
       truncated: boundedInput.truncated || output.truncated,
     });
   }
-  if (name === "Task") {
+  // Claude Code 2.1.x chama o subagente de `Agent`; versões antigas usam `Task`.
+  if (name === "Task" || name === "Agent") {
     const description = stringValue(input.description);
-    const boundedInput = truncateUtf8(stringValue(input.prompt) || description, 8 * 1024);
+    const subagentType = stringValue(input.subagent_type);
+    const prompt = stringValue(input.prompt) || description;
+    const boundedInput = truncateUtf8(
+      subagentType ? `${subagentType} · ${prompt}` : prompt,
+      8 * 1024,
+    );
     return withParent({
       actionType: "subagent" as Action["actionType"],
-      title: description || "Subagente",
+      title: description || subagentType || "Subagente",
       input: boundedInput.text,
       output: "",
       truncated: boundedInput.truncated,

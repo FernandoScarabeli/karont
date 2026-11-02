@@ -149,6 +149,14 @@ As fixtures reais disponíveis não contêm chamadas Claude `Edit`, `MultiEdit`,
 - Entradas e saídas são limitadas a 8 KiB e 64 KiB, respectivamente. Quando há truncamento, `truncated` fica `true`; a lista JSON de diffs continua válida.
 - O schema preserva `actionType: "subagent" | "mcp" | "image"` e os campos opcionais `parentId`, `server` e `tool`; a F24 consome esses dados para agrupar ações de subagentes e detalhar MCP/imagem.
 
+## Subagentes (Claude Code 2.1.x)
+
+- A ferramenta do subagente se chama `Agent` (não `Task`) nas versões 2.1.x. Entrada: `subagent_type`, `description`, `prompt`, `run_in_background`. `Task` continua aceito para CLIs antigas.
+- As ações do subagente chegam como `assistant`/`user` normais com `parent_tool_use_id` igual ao ID do `tool_use` do `Agent`. Esse ID é o `parentId` da parte filha.
+- O resultado final do subagente vem no `tool_result` do `Agent`, com um quadro do harness em volta do relatório; o adaptador guarda só o relatório.
+- Eventos `system` com `subtype` `task_started`, `task_progress`, `task_updated` e `task_notification` acompanham o subagente. Não geram partes: o adaptador os ignora.
+- `claude/subagente-agent.jsonl` é uma fixture sanitizada desse fluxo, gerada a partir de uma captura real com ids e caminhos fictícios.
+
 ## Armadilhas
 
 - Claude precisa de `--permission-prompt-tool stdio` com `--permission-prompts host`; sem a primeira flag, pode negar antes de enviar `can_use_tool`.

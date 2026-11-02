@@ -58,6 +58,8 @@ export class ClaudeAdapter implements AgentAdapter {
   readonly #homeDir: string;
   readonly #platform: NodeJS.Platform;
   readonly #actions = new Map<string, { partId: string; startedAt: number }>();
+  // Mantém todas as partes de ações: filhos de subagentes chegam depois do resultado do Agent.
+  readonly #partIdByToolUse = new Map<string, string>();
   readonly #pending = new Map<
     string,
     {
@@ -564,7 +566,7 @@ export class ClaudeAdapter implements AgentAdapter {
       return;
     }
     const partId = randomUUID();
-    const parentId = parentToolUseId ? this.#actions.get(parentToolUseId)?.partId : undefined;
+    const parentId = parentToolUseId ? this.#partIdByToolUse.get(parentToolUseId) : undefined;
     const mapped = await mapClaudeToolAction(name, input, parentId, this.#conversation?.cwd);
     const action: MessagePart = {
       id: partId,
@@ -581,6 +583,7 @@ export class ClaudeAdapter implements AgentAdapter {
       durationMs: null,
     };
     this.#actions.set(id, { partId, startedAt: Date.now() });
+    this.#partIdByToolUse.set(id, partId);
     this.#part(action);
     if (name === "Write" && typeof input.content === "string") this.#lastPlan = input.content;
   }
@@ -590,8 +593,12 @@ export class ClaudeAdapter implements AgentAdapter {
     const actionInfo = this.#actions.get(toolId);
     if (!actionInfo) return;
     const output = contentToText(item.content);
-    const bounded = truncateUtf8(output, MAX_ACTION_OUTPUT_BYTES);
     const existing = this.#pendingPart(actionInfo.partId);
+    const text =
+      existing?.type === "action" && existing.actionType === "subagent"
+        ? subagentReport(output)
+        : output;
+    const bounded = truncateUtf8(text, MAX_ACTION_OUTPUT_BYTES);
     if (existing?.type === "action") {
       const keepStructuredDiff =
         (existing.actionType === "edit" || existing.actionType === "write") && existing.output;
@@ -909,6 +916,18 @@ function classifyErrorText(text: string): "cli-not-found" | "not-logged-in" | "f
   return describeAgentError(text, "claude").message.startsWith("Claude Code não está conectado.")
     ? "not-logged-in"
     : "failed";
+}
+// O harness envolve o relatório final do subagente em um quadro de aviso; mantém só o relatório.
+function subagentReport(text: string): string {
+  const marker = "The report follows:\n";
+  const index = text.indexOf(marker);
+  if (index < 0) return text;
+  return text
+    .slice(index + marker.length)
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^ {2}/, ""))
+    .join("\n")
+    .trim();
 }
 function contentToText(content: unknown): string {
   if (typeof content === "string") return content;

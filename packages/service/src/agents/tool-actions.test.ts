@@ -5,6 +5,18 @@ import path from "node:path";
 import { test } from "node:test";
 import { mapClaudeToolAction, mapCodexSpecialAction } from "./tool-actions.ts";
 
+test("Claude 2.1.x nomeia o subagente como Agent e mostra o tipo antes do prompt", async () => {
+  const agent = await mapClaudeToolAction("Agent", {
+    subagent_type: "Explore",
+    description: "Listar arquivos",
+    prompt: "Liste os arquivos.",
+  });
+  assert.equal(agent.actionType, "subagent");
+  assert.equal(agent.title, "Listar arquivos");
+  assert.equal(agent.input, "Explore · Liste os arquivos.");
+  assert.equal(agent.parentId, undefined);
+});
+
 test("Claude limita prompt e diff em bytes e mantém o JSON do diff válido", async () => {
   const task = await mapClaudeToolAction("Task", {
     description: "Revisar arquivos",
