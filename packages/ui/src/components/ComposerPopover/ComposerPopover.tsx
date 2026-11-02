@@ -26,6 +26,7 @@ export function ComposerPopover({
   anchorPoint,
   initialFocus,
   onClose,
+  restoreFocusOnOutside = true,
   children,
   className,
   id,
@@ -40,10 +41,11 @@ export function ComposerPopover({
   anchorPoint?: { x: number; y: number };
   initialFocus?: () => HTMLElement | null;
   onClose: () => void;
+  restoreFocusOnOutside?: boolean;
   children: ReactNode;
   className?: string;
   id?: string;
-  role?: "group" | "dialog" | "menu";
+  role?: "group" | "dialog" | "menu" | "listbox";
   label?: string;
   fluidHoverAxis?: FluidHoverAxis;
   fluidHoverGapClick?: FluidHoverGapClick;
@@ -130,11 +132,11 @@ export function ComposerPopover({
       const focusWasInside = Boolean(popoverRef.current?.contains(document.activeElement));
       const clickedAnotherTrigger = Boolean(target.closest("[data-composer-menu-trigger]"));
       onClose();
-      if (focusWasInside && !clickedAnotherTrigger) restoreFocus();
+      if (restoreFocusOnOutside && focusWasInside && !clickedAnotherTrigger) restoreFocus();
     };
     document.addEventListener("pointerdown", handlePointerDown, true);
     return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [anchorRef, onClose, open, restoreFocus]);
+  }, [anchorRef, onClose, open, restoreFocus, restoreFocusOnOutside]);
 
   useEffect(() => {
     if (!open) return;
@@ -166,6 +168,22 @@ export function ComposerPopover({
         id={id}
         ref={fluidHover.containerRef}
         role="dialog"
+        style={style}
+        tabIndex={-1}
+      >
+        <FluidHoverProvider controller={fluidHover}>
+          <FluidHoverHighlight controller={fluidHover} />
+          {children}
+        </FluidHoverProvider>
+      </div>
+    ) : role === "listbox" ? (
+      <div
+        aria-label={label}
+        aria-multiselectable="false"
+        className={classNames}
+        id={id}
+        ref={fluidHover.containerRef}
+        role="listbox"
         style={style}
         tabIndex={-1}
       >

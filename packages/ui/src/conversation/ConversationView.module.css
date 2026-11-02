@@ -95,6 +95,16 @@
   color: var(--k-color-working);
 }
 
+.messageRegion {
+  --k-conversation-history-dim-opacity: 0.42;
+  --k-history-blur-radius: 4px;
+
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
 .messageList {
   display: flex;
   width: 100%;
@@ -104,8 +114,32 @@
   overflow: auto;
   overscroll-behavior: contain;
   padding: var(--k-space-4) var(--k-space-6);
+  padding-block-end: calc(var(--k-space-4) + var(--history-navigation-space, 0px));
   scroll-behavior: auto;
   overflow-anchor: none;
+}
+
+.messageRegion[data-history-open="true"] .messageList {
+  opacity: var(--k-conversation-history-dim-opacity);
+  transition: opacity var(--k-motion-moderate) var(--k-ease);
+}
+
+.historyBackdrop {
+  position: absolute;
+  z-index: var(--k-layer-menu);
+  inset: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.historyBackdrop {
+  backdrop-filter: blur(var(--k-history-blur-radius)); /* taste-skill-ignore: solicitado. */
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .historyBackdrop {
+    backdrop-filter: none; /* taste-skill-ignore: fallback para transparência reduzida. */
+  }
 }
 
 .branchContextNotice {

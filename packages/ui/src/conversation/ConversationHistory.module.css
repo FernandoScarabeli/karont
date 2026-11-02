@@ -1,0 +1,59 @@
+.trigger {
+  color: var(--k-color-text-secondary);
+}
+
+.popover {
+  display: flex;
+  width: min(var(--k-dialog-width-sm), calc(100vw - var(--k-space-8)));
+  max-height: min(52vh, var(--k-menu-max-height));
+  flex-direction: column;
+  gap: var(--k-space-1);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--k-space-2);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none; /* taste-skill-ignore: variante A deixa a lista sem caixa. */
+  scrollbar-gutter: stable;
+}
+
+.option {
+  display: flex;
+  min-height: var(--k-control-height-lg);
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  padding-inline: var(--k-space-1);
+  color: var(--k-color-text-primary);
+  cursor: pointer;
+}
+
+.preview {
+  display: -webkit-box;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: var(--k-space-2) var(--k-space-3);
+  border-radius: var(--k-radius-2xl);
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+  overflow-wrap: anywhere;
+  text-align: end;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.option:hover .preview,
+.option[aria-selected="true"] .preview {
+  background: color-mix(in srgb, var(--k-color-bg-control) 88%, var(--k-color-text-primary));
+}
+
+.option:focus-visible {
+  outline: none;
+}
+
+.option:focus-visible .preview {
+  outline: var(--k-border-width) solid var(--k-color-focus);
+  outline-offset: var(--k-border-width);
+}

@@ -193,6 +193,7 @@ export const MessageRow = memo(function MessageRow({
   onAnnounce,
   cwd,
   agent,
+  historyHighlighted = false,
   workingIndicator,
   onWorkingIndicatorExit,
 }: {
@@ -208,6 +209,7 @@ export const MessageRow = memo(function MessageRow({
   canBranch: boolean;
   onAnnounce: (text: string) => void;
   cwd: string;
+  historyHighlighted?: boolean;
   workingIndicator?: {
     active: boolean;
     actions: readonly Extract<MessagePart, { type: "action" }>[];
@@ -289,6 +291,7 @@ export const MessageRow = memo(function MessageRow({
       aria-label={message.author === "user" ? t.chat.userMessage : t.chat.agentMessage}
       className={`${styles.message} ${message.author === "user" ? styles.userMessage : styles.agentMessage}`}
       data-author={message.author}
+      data-history-highlighted={historyHighlighted ? "true" : undefined}
       data-message-id={message.id}
       ref={messageRef}
     >
