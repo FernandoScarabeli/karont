@@ -316,6 +316,23 @@ export function ConversationView({
     };
   }, []);
 
+  // O texto digitado cresce entre um delta e outro. Enquanto o usuário está no fim,
+  // acompanha a altura da última mensagem; se ele subiu, não mexe na rolagem.
+  useEffect(() => {
+    const list = messageListRef.current;
+    const latestId = latestMessage?.id;
+    if (!list || !latestId) return;
+    const latestArticle = list.querySelector<HTMLElement>(
+      `:scope > article[data-message-id="${CSS.escape(latestId)}"]`,
+    );
+    if (!latestArticle) return;
+    const observer = new ResizeObserver(() => {
+      if (wasNearBottom.current) list.scrollTop = list.scrollHeight;
+    });
+    observer.observe(latestArticle);
+    return () => observer.disconnect();
+  }, [latestMessage?.id]);
+
   useEffect(() => {
     const list = messageListRef.current;
     if (!list) return;

@@ -1944,3 +1944,56 @@
     animation-duration: var(--k-duration-fast);
   }
 }
+
+/* Cursor de bloco do texto em digitação. Sólido enquanto chega, pisca quando parado
+   e some em fade depois de done (a duração bate com CARET_FADE_MS em typewriter.ts). */
+.streamingCaret {
+  display: inline-block;
+  width: var(--k-space-2);
+  height: 1.05em;
+  margin-left: var(--k-space-1);
+  vertical-align: text-bottom;
+  background: var(--k-color-text-primary);
+}
+
+.markdown[data-caret="idle"] .streamingCaret {
+  animation: streamingCaretBlink var(--k-duration-caret-blink) step-end infinite;
+}
+
+.markdown[data-caret="done"] .streamingCaret {
+  animation: streamingCaretFade var(--k-duration-caret-fade) var(--k-ease) forwards;
+}
+
+@keyframes streamingCaretBlink {
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes streamingCaretFade {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown[data-caret="idle"] .streamingCaret {
+    animation: none;
+  }
+
+  .markdown[data-caret="done"] .streamingCaret {
+    display: none;
+  }
+}

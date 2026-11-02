@@ -67,10 +67,15 @@ import { formatWorkDuration, splitFinalAnswer } from "./conversationDisplay.ts";
 import { cleanMarkdownPreview, formatConversationText } from "./displayText.ts";
 import { getAllowedExternalUrl } from "./externalLinks.ts";
 import { splitMarkdownBlocks } from "./markdownBlocks.ts";
+import { rehypeCaret } from "./rehypeCaret.ts";
+import { CARET_FADE_MS } from "./typewriter.ts";
 import type { ConversationMessage, MessagePart } from "./useConversation.ts";
+import { useTypewriterText } from "./useTypewriterText.ts";
 import { WorkingIndicator } from "./WorkingIndicator.tsx";
 
 type HighlightPlugin = typeof import("rehype-highlight").default;
+// Fases do cursor de bloco: sólido enquanto chega, piscando parado, sumindo após done.
+type CaretPhase = "streaming" | "idle" | "done";
 let highlightPluginPromise: Promise<HighlightPlugin | null> | null = null;
 
 function loadHighlightPlugin(): Promise<HighlightPlugin | null> {
@@ -186,6 +191,9 @@ export const MessageRow = memo(function MessageRow({
 }) {
   const [showTimeline, setShowTimeline] = useState(false);
   const [visiblePartCount, setVisiblePartCount] = useState(120);
+  // Verdadeiro enquanto a última parte de texto ainda está sendo digitada depois de
+  // done. Só muda duas vezes por mensagem; o ritmo por quadro fica no componente.
+  const [typewriterPending, setTypewriterPending] = useState(() => message.status === "streaming");
   const timelineId = useId();
   const messageRef = useRef<HTMLElement>(null);
   const isUserMessage = message.author === "user";
@@ -196,6 +204,12 @@ export const MessageRow = memo(function MessageRow({
         .join("\n")
     : "";
   const visibleParts = message.parts.slice(-visiblePartCount);
+  const typewriterPartId =
+    message.author === "agent" ? findLastTextPartId(visibleParts) : undefined;
+  const typewriterLive =
+    typewriterPartId !== undefined &&
+    (message.status === "streaming" || (message.status === "done" && typewriterPending));
+  const handleTypewriterSettled = useCallback(() => setTypewriterPending(false), []);
   const hasTimeline = message.author === "agent" && message.parts.length > 0;
   const hasRetryableError =
     message.author === "agent" &&
@@ -290,7 +304,7 @@ export const MessageRow = memo(function MessageRow({
         </>
       ) : (
         <>
-          {message.status === "done" ? (
+          {message.status === "done" && !typewriterLive ? (
             <>
               {message.parts.length > visibleParts.length ? (
                 <button
@@ -336,6 +350,9 @@ export const MessageRow = memo(function MessageRow({
                   cwd,
                   onRetry,
                   agent,
+                  typewriterLive && typewriterPartId
+                    ? { partId: typewriterPartId, onSettled: handleTypewriterSettled }
+                    : undefined,
                 )}
               </div>
             </>
@@ -411,6 +428,7 @@ function renderParts(
   cwd: string,
   onRetry: (messageId: string) => void,
   agent?: AgentErrorAgent,
+  typewriter?: { partId: string; onSettled: () => void },
 ) {
   const elements: ReactNode[] = [];
   const permissionActionIds = attachGrantedPermissions(parts);
@@ -513,11 +531,22 @@ function renderParts(
         part={part}
         cwd={cwd}
         agent={agent}
+        typewriterSettled={
+          typewriter && typewriter.partId === part.id ? typewriter.onSettled : undefined
+        }
       />,
     );
     index += 1;
   }
   return elements;
+}
+
+function findLastTextPartId(parts: MessagePart[]): string | undefined {
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    const part = parts[index];
+    if (part?.type === "text") return part.id;
+  }
+  return undefined;
 }
 
 function isAlwaysVisiblePart(part: MessagePart): boolean {
@@ -633,6 +662,7 @@ const PartItem = memo(
     onRetry,
     cwd,
     agent,
+    typewriterSettled,
   }: {
     part: MessagePart;
     messageId: string;
@@ -643,11 +673,20 @@ const PartItem = memo(
     onRetry: (messageId: string) => void;
     cwd: string;
     agent?: AgentErrorAgent;
+    typewriterSettled?: () => void;
   }) {
     let content: ReactNode;
     switch (part.type) {
       case "text":
-        content = (
+        content = typewriterSettled ? (
+          <TypewriterMarkdownBody
+            done={!isStreaming}
+            markdown={part.markdown}
+            onAnnounce={onAnnounce}
+            onCopyCode={onCopyCode}
+            onSettled={typewriterSettled}
+          />
+        ) : (
           <MarkdownBody
             isStreaming={isStreaming}
             markdown={part.markdown}
@@ -692,17 +731,62 @@ const PartItem = memo(
     previous.onCopyCode === next.onCopyCode &&
     previous.onRetry === next.onRetry &&
     previous.cwd === next.cwd &&
-    previous.agent === next.agent,
+    previous.agent === next.agent &&
+    previous.typewriterSettled === next.typewriterSettled,
 );
+
+// Texto da última parte de uma mensagem em streaming. Revela caractere a caractere;
+// quando done e em dia, o cursor some em fade e avisa onSettled para voltar à
+// renderização comum.
+function TypewriterMarkdownBody({
+  done,
+  markdown,
+  onAnnounce,
+  onCopyCode,
+  onSettled,
+}: {
+  done: boolean;
+  markdown: string;
+  onAnnounce: (text: string) => void;
+  onCopyCode?: (code: string) => void;
+  onSettled: () => void;
+}) {
+  const revealed = useTypewriterText(markdown, done);
+  const caughtUp = revealed.length === markdown.length;
+  const caretPhase: CaretPhase = !caughtUp ? "streaming" : done ? "done" : "idle";
+
+  useEffect(() => {
+    if (!done || !caughtUp) return;
+    const timer = window.setTimeout(onSettled, CARET_FADE_MS);
+    return () => window.clearTimeout(timer);
+  }, [caughtUp, done, onSettled]);
+
+  return (
+    <MarkdownBody
+      caretPhase={caretPhase}
+      isStreaming={!done}
+      markdown={revealed}
+      onAnnounce={onAnnounce}
+      onCopyCode={onCopyCode}
+    />
+  );
+}
+
+const CARET_PLUGIN: [typeof rehypeCaret, { className: string }] = [
+  rehypeCaret,
+  { className: styles.streamingCaret ?? "" },
+];
 
 const MarkdownBody = memo(function MarkdownBody({
   markdown,
   isStreaming = false,
+  caretPhase,
   onAnnounce,
   onCopyCode,
 }: {
   markdown: string;
   isStreaming?: boolean;
+  caretPhase?: CaretPhase;
   onAnnounce: (text: string) => void;
   onCopyCode?: (code: string) => void;
 }) {
@@ -724,10 +808,11 @@ const MarkdownBody = memo(function MarkdownBody({
   }, [hasClosedCodeBlock]);
 
   return (
-    <div className={styles.markdown}>
-      {blocks.map((block) => (
+    <div className={styles.markdown} data-caret={caretPhase}>
+      {blocks.map((block, index) => (
         <MarkdownBlock
           block={block.markdown}
+          caret={caretPhase !== undefined && index === blocks.length - 1}
           highlightPlugin={highlightPlugin}
           key={block.start}
           onAnnounce={onAnnounce}
@@ -744,12 +829,14 @@ const MarkdownBody = memo(function MarkdownBody({
 const MarkdownBlock = memo(
   function MarkdownBlock({
     block,
+    caret,
     highlightPlugin,
     onAnnounce,
     onCopyCode,
     useHighlight,
   }: {
     block: string;
+    caret: boolean;
     highlightPlugin: HighlightPlugin | null;
     onAnnounce: (text: string) => void;
     onCopyCode?: (code: string) => void;
@@ -785,7 +872,10 @@ const MarkdownBlock = memo(
     return (
       <Markdown
         components={components}
-        rehypePlugins={useHighlight && highlightPlugin ? [highlightPlugin] : []}
+        rehypePlugins={[
+          ...(useHighlight && highlightPlugin ? [highlightPlugin] : []),
+          ...(caret ? [CARET_PLUGIN] : []),
+        ]}
         remarkPlugins={[remarkGfm]}
       >
         {block}
@@ -794,6 +884,7 @@ const MarkdownBlock = memo(
   },
   (previous, next) =>
     previous.block === next.block &&
+    previous.caret === next.caret &&
     previous.onAnnounce === next.onAnnounce &&
     previous.onCopyCode === next.onCopyCode &&
     previous.useHighlight === next.useHighlight &&
