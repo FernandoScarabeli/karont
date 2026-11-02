@@ -550,6 +550,8 @@ export function NewConversationView({
                 open={activePopover === "agent"}
                 options={choiceOptions}
                 triggerClassName={styles.selectorButton}
+                tooltipAlign="start"
+                tooltipLabel={t.chat.agentTooltip(selectedTitle)}
                 triggerContent={
                   <>
                     <AgentIcon agentId={choice} />
@@ -628,6 +630,9 @@ export function NewConversationView({
           dropMessage={t.chat.dropAttachments}
           submitLabel={
             choice === TERMINAL_CHOICE ? t.conversation.openTerminal : t.conversation.sendMessage
+          }
+          submitTooltipLabel={
+            choice === TERMINAL_CHOICE ? t.conversation.openTerminal : t.chat.sendTooltip
           }
           value={command}
         />

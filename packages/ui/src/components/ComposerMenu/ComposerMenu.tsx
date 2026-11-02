@@ -11,6 +11,7 @@ import {
 } from "react";
 import { ComposerPopover, ComposerPopoverHeading } from "../ComposerPopover/ComposerPopover.tsx";
 import { useRegisterFluidHoverItem } from "../FluidHover/FluidHover.tsx";
+import { Tooltip, type TooltipAlign } from "../Tooltip/Tooltip.tsx";
 import styles from "./ComposerMenu.module.css";
 
 export type ComposerMenuOption = {
@@ -28,6 +29,8 @@ export function ComposerMenu({
   triggerClassName,
   options,
   heading,
+  tooltipLabel,
+  tooltipAlign = "center",
   open,
   onOpenChange,
   disabled = false,
@@ -39,6 +42,8 @@ export function ComposerMenu({
   triggerClassName?: string;
   options: ComposerMenuOption[];
   heading?: string;
+  tooltipLabel: string;
+  tooltipAlign?: TooltipAlign;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   disabled?: boolean;
@@ -109,28 +114,31 @@ export function ComposerMenu({
 
   return (
     <div className={styles.wrap}>
-      <button
-        aria-controls={listboxId}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-label={triggerLabel}
-        className={[styles.trigger, triggerClassName].filter(Boolean).join(" ")}
-        data-composer-menu-trigger
-        disabled={disabled}
-        onClick={handleTriggerClick}
-        onKeyDown={(event) => {
-          if (!open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-            event.preventDefault();
-            openMenu(true);
-          }
-        }}
-        ref={triggerRef}
-        title={triggerLabel}
-        type="button"
-      >
-        {triggerContent}
-        {iconOnly ? null : <ChevronDown aria-hidden="true" className={styles.chevron} size={14} />}
-      </button>
+      <Tooltip align={tooltipAlign} label={tooltipLabel} open={open}>
+        <button
+          aria-controls={listboxId}
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-label={triggerLabel}
+          className={[styles.trigger, triggerClassName].filter(Boolean).join(" ")}
+          data-composer-menu-trigger
+          disabled={disabled}
+          onClick={handleTriggerClick}
+          onKeyDown={(event) => {
+            if (!open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+              event.preventDefault();
+              openMenu(true);
+            }
+          }}
+          ref={triggerRef}
+          type="button"
+        >
+          {triggerContent}
+          {iconOnly ? null : (
+            <ChevronDown aria-hidden="true" className={styles.chevron} size={14} />
+          )}
+        </button>
+      </Tooltip>
       <ComposerPopover
         anchorRef={triggerRef}
         initialFocus={() =>

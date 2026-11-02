@@ -99,48 +99,6 @@
   transition: transform var(--k-duration-effort-needle) var(--k-ease);
 }
 
-.effortTooltip {
-  position: absolute;
-  z-index: var(--k-layer-popover);
-  bottom: calc(100% + var(--k-space-1));
-  left: 50%;
-  padding: var(--k-space-1) var(--k-space-2);
-  border: var(--k-border-width) solid var(--k-color-border-strong);
-  border-radius: var(--k-radius-md);
-  background: var(--k-color-bg-raised);
-  box-shadow: var(--k-shadow-dialog);
-  color: var(--k-color-text-secondary);
-  font-family: var(--k-font-sans);
-  font-size: var(--k-text-11);
-  line-height: var(--k-leading-tight);
-  opacity: 0;
-  pointer-events: none;
-  transform: translate(-50%, var(--k-space-1));
-  transition:
-    opacity var(--k-motion-fast-exit) var(--k-ease),
-    transform var(--k-motion-fast-exit) var(--k-ease),
-    visibility 0s linear var(--k-motion-fast-exit);
-  visibility: hidden;
-  white-space: nowrap;
-}
-
-.effortTooltip[data-visible="true"],
-.effortTrigger:hover + .effortTooltip,
-.effortTrigger:focus-visible + .effortTooltip {
-  opacity: 1;
-  transform: translate(-50%, 0);
-  transition-delay: 0s;
-  transition-duration: var(--k-motion-fast);
-  visibility: visible;
-}
-
-.effortControl[data-popover-open="true"] .effortTooltip {
-  opacity: 0;
-  transform: translate(-50%, var(--k-space-1));
-  transition: none;
-  visibility: hidden;
-}
-
 .configGroup {
   position: relative;
   display: inline-flex;
@@ -378,7 +336,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .gaugeNeedle,
-  .effortTooltip,
   .switchTrack,
   .switchThumb {
     transition: none;

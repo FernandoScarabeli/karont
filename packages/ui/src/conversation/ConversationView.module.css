@@ -223,6 +223,10 @@
   gap: var(--k-space-1);
 }
 
+.agentTooltip {
+  flex: 0 1 auto;
+}
+
 .agentTag {
   display: inline-flex;
   box-sizing: border-box;

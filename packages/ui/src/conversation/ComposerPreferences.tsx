@@ -17,6 +17,7 @@ import {
 } from "../components/ComposerPopover/ComposerPopover.tsx";
 import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { useRegisterFluidHoverItem } from "../components/FluidHover/FluidHover.tsx";
+import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./ComposerPreferences.module.css";
 
@@ -103,6 +104,9 @@ export function ComposerPreferences({
   onFastModeChange: (value: boolean) => void;
 }) {
   const [confirmFull, setConfirmFull] = useState(false);
+  const [timedFastTooltip, setTimedFastTooltip] = useState(false);
+  const [fastTooltipLabel, setFastTooltipLabel] = useState("");
+  const fastTooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [configAnchorName, setConfigAnchorName] = useState<"config" | "plan" | "full">("config");
   const configTriggerRef = useRef<HTMLButtonElement>(null);
   const planBadgeRef = useRef<HTMLButtonElement>(null);
@@ -113,6 +117,7 @@ export function ComposerPreferences({
   const configContentId = useId();
   const planDescriptionId = useId();
   const modelName = modelDisplayName(models, model);
+  const modelTooltipLabel = model ? t.chat.modelTooltip(modelName) : t.chat.model;
   const modelOptions: ComposerMenuOption[] = (models?.models ?? []).map((option) => ({
     id: option.id,
     content: <span className={styles.modelOption}>{option.name}</span>,
@@ -139,6 +144,28 @@ export function ComposerPreferences({
         ? fullAccessBadgeRef
         : configTriggerRef;
   const active = (name: Exclude<ComposerPopoverName, null>) => activePopover === name;
+
+  useEffect(
+    () => () => {
+      if (fastTooltipTimerRef.current) clearTimeout(fastTooltipTimerRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!activePopover) return;
+    setTimedFastTooltip(false);
+    if (fastTooltipTimerRef.current) clearTimeout(fastTooltipTimerRef.current);
+  }, [activePopover]);
+
+  function toggleFastMode() {
+    const nextValue = !fastMode;
+    setFastTooltipLabel(nextValue ? t.chat.fastModeOnTooltip : t.chat.fastModeOffTooltip);
+    setTimedFastTooltip(true);
+    if (fastTooltipTimerRef.current) clearTimeout(fastTooltipTimerRef.current);
+    fastTooltipTimerRef.current = setTimeout(() => setTimedFastTooltip(false), 1200);
+    onFastModeChange(nextValue);
+  }
 
   function openConfig(target: HTMLButtonElement, fromKeyboard: boolean) {
     const anchorName = (target.dataset.configAnchor ?? "config") as "config" | "plan" | "full";
@@ -184,6 +211,7 @@ export function ComposerPreferences({
         triggerClassName={styles.modelTrigger}
         triggerContent={<span className={styles.modelName}>{modelName}</span>}
         triggerLabel={model ? `${t.chat.model}: ${modelName}` : t.chat.model}
+        tooltipLabel={modelTooltipLabel}
       />
       {efforts.length > 0 ? (
         <EffortButton
@@ -195,77 +223,91 @@ export function ComposerPreferences({
         />
       ) : null}
       {supportsFast ? (
-        <button
-          aria-label={fastMode ? t.chat.fastModeEnabled : t.chat.fastMode}
-          aria-pressed={fastMode}
-          className={[styles.iconTrigger, styles.fastTrigger].join(" ")}
-          data-active={fastMode}
-          data-composer-menu-trigger
-          disabled={disabled}
-          onClick={() => onFastModeChange(!fastMode)}
-          title={fastMode ? t.chat.fastModeEnabled : t.chat.fastMode}
-          type="button"
+        <Tooltip
+          label={
+            timedFastTooltip
+              ? fastTooltipLabel
+              : fastMode
+                ? t.chat.fastModeOnTooltip
+                : t.chat.fastModeOffTooltip
+          }
+          open={activePopover !== null}
+          visible={timedFastTooltip}
         >
-          <Zap aria-hidden="true" size={16} strokeWidth={1.8} />
-        </button>
+          <button
+            aria-label={fastMode ? t.chat.fastModeEnabled : t.chat.fastMode}
+            aria-pressed={fastMode}
+            className={[styles.iconTrigger, styles.fastTrigger].join(" ")}
+            data-active={fastMode}
+            data-composer-menu-trigger
+            disabled={disabled}
+            onClick={toggleFastMode}
+            type="button"
+          >
+            <Zap aria-hidden="true" size={16} strokeWidth={1.8} />
+          </button>
+        </Tooltip>
       ) : null}
       <div className={styles.configGroup}>
-        <button
-          aria-controls={configPopoverId}
-          aria-expanded={active("config")}
-          aria-haspopup="dialog"
-          aria-label={t.chat.configLabel}
-          className={styles.iconTrigger}
-          data-config-anchor="config"
-          data-composer-menu-trigger
-          disabled={disabled}
-          onClick={handleConfigClick}
-          onKeyDown={handleConfigKeyDown}
-          ref={configTriggerRef}
-          title={t.chat.configLabel}
-          type="button"
-        >
-          <SlidersHorizontal aria-hidden="true" size={16} strokeWidth={1.8} />
-        </button>
-        {planMode ? (
+        <Tooltip label={t.chat.configTooltip} open={active("config")}>
           <button
             aria-controls={configPopoverId}
             aria-expanded={active("config")}
             aria-haspopup="dialog"
-            aria-label={t.chat.planBadgeAccessibleName}
-            className={styles.badge}
-            data-config-anchor="plan"
+            aria-label={t.chat.configLabel}
+            className={styles.iconTrigger}
+            data-config-anchor="config"
             data-composer-menu-trigger
             disabled={disabled}
             onClick={handleConfigClick}
             onKeyDown={handleConfigKeyDown}
-            ref={planBadgeRef}
-            title={t.chat.configLabel}
+            ref={configTriggerRef}
             type="button"
           >
-            <ListTodo aria-hidden="true" size={13} />
-            <span>{t.chat.planMode}</span>
+            <SlidersHorizontal aria-hidden="true" size={16} strokeWidth={1.8} />
           </button>
+        </Tooltip>
+        {planMode ? (
+          <Tooltip label={t.chat.configTooltip} open={active("config")}>
+            <button
+              aria-controls={configPopoverId}
+              aria-expanded={active("config")}
+              aria-haspopup="dialog"
+              aria-label={t.chat.planBadgeAccessibleName}
+              className={styles.badge}
+              data-config-anchor="plan"
+              data-composer-menu-trigger
+              disabled={disabled}
+              onClick={handleConfigClick}
+              onKeyDown={handleConfigKeyDown}
+              ref={planBadgeRef}
+              type="button"
+            >
+              <ListTodo aria-hidden="true" size={13} />
+              <span>{t.chat.planMode}</span>
+            </button>
+          </Tooltip>
         ) : null}
         {fullAccess ? (
-          <button
-            aria-controls={configPopoverId}
-            aria-expanded={active("config")}
-            aria-haspopup="dialog"
-            aria-label={t.chat.fullAccessBadgeAccessibleName}
-            className={[styles.badge, styles.alertBadge].join(" ")}
-            data-config-anchor="full"
-            data-composer-menu-trigger
-            disabled={disabled}
-            onClick={handleConfigClick}
-            onKeyDown={handleConfigKeyDown}
-            ref={fullAccessBadgeRef}
-            title={t.chat.configLabel}
-            type="button"
-          >
-            <TriangleAlert aria-hidden="true" size={13} />
-            <span>{t.chat.modes.full}</span>
-          </button>
+          <Tooltip label={t.chat.configTooltip} open={active("config")}>
+            <button
+              aria-controls={configPopoverId}
+              aria-expanded={active("config")}
+              aria-haspopup="dialog"
+              aria-label={t.chat.fullAccessBadgeAccessibleName}
+              className={[styles.badge, styles.alertBadge].join(" ")}
+              data-config-anchor="full"
+              data-composer-menu-trigger
+              disabled={disabled}
+              onClick={handleConfigClick}
+              onKeyDown={handleConfigKeyDown}
+              ref={fullAccessBadgeRef}
+              type="button"
+            >
+              <TriangleAlert aria-hidden="true" size={13} />
+              <span>{t.chat.modes.full}</span>
+            </button>
+          </Tooltip>
         ) : null}
         <ComposerPopover
           anchorRef={configAnchorRef}
@@ -437,26 +479,20 @@ function EffortButton({
 
   return (
     <span className={styles.effortControl} data-popover-open={activePopover}>
-      <button
-        aria-description={t.chat.effortChangeDescription}
-        aria-label={effortLabel}
-        className={styles.effortTrigger}
-        data-composer-menu-trigger
-        disabled={disabled}
-        onClick={advance}
-        onKeyDown={handleKeyDown}
-        type="button"
-      >
-        <EffortGauge angle={angle} />
-      </button>
-      <span
-        aria-hidden="true"
-        className={styles.effortTooltip}
-        data-visible={timedTooltip}
-        role="tooltip"
-      >
-        {tooltipLabel}
-      </span>
+      <Tooltip label={tooltipLabel} open={activePopover !== null} visible={timedTooltip}>
+        <button
+          aria-description={t.chat.effortChangeDescription}
+          aria-label={effortLabel}
+          className={styles.effortTrigger}
+          data-composer-menu-trigger
+          disabled={disabled}
+          onClick={advance}
+          onKeyDown={handleKeyDown}
+          type="button"
+        >
+          <EffortGauge angle={angle} />
+        </button>
+      </Tooltip>
       <span aria-atomic="true" aria-live="polite" className={styles.srOnly}>
         {announcement}
       </span>
