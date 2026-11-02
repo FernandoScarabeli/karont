@@ -56,6 +56,7 @@ import {
   MESSAGE_WINDOW_INCREMENT,
   messageWindowSizeForTarget,
   nextMessageWindowSize,
+  olderMessageCursor,
 } from "./messageWindow.ts";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
@@ -172,6 +173,7 @@ export function ConversationView({
   const messageRegionRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const olderMessagesSentinelRef = useRef<HTMLDivElement>(null);
+  const olderMessagesObserverRef = useRef<IntersectionObserver | null>(null);
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const composerSectionRef = useRef<HTMLElement>(null);
   const titleHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -180,6 +182,7 @@ export function ConversationView({
   const followScrollerRef = useRef<FollowScroller | null>(null);
   const followRef = useRef<FollowState>("following");
   const previousScrollHeight = useRef(0);
+  const olderScrollAnchor = useRef<{ messageId: string; top: number } | null>(null);
   const olderMessageLoadInFlight = useRef(false);
   const restoreAfterOlder = useRef(false);
   const previousScrollVersion = useRef("");
@@ -297,6 +300,26 @@ export function ConversationView({
     });
   }, [fetchAllOlderMessages, hasOlderMessages, historyOpen]);
 
+  const captureOlderScrollAnchor = useCallback(() => {
+    const list = messageListRef.current;
+    if (!list) return;
+    const listRect = list.getBoundingClientRect();
+    const firstVisibleMessage = Array.from(
+      list.querySelectorAll<HTMLElement>(":scope > article[data-message-id]"),
+    ).find((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.bottom > listRect.top && rect.top < listRect.bottom;
+    });
+    olderScrollAnchor.current = firstVisibleMessage
+      ? {
+          messageId: firstVisibleMessage.dataset.messageId ?? "",
+          top: firstVisibleMessage.getBoundingClientRect().top,
+        }
+      : null;
+    previousScrollHeight.current = list.scrollHeight;
+    restoreAfterOlder.current = true;
+  }, []);
+
   const navigateToHistoryMessage = useCallback((messageId: string) => {
     const currentMessages = orderedMessagesRef.current;
     const messageIndex = currentMessages.findIndex((message) => message.id === messageId);
@@ -357,21 +380,20 @@ export function ConversationView({
     const list = messageListRef.current;
     if (!list || olderMessageLoadInFlight.current) return;
     olderMessageLoadInFlight.current = true;
-    previousScrollHeight.current = list.scrollHeight;
-    restoreAfterOlder.current = true;
     if (visibleMessageCountRef.current < orderedMessagesRef.current.length) {
+      captureOlderScrollAnchor();
       setVisibleMessageCount((count) =>
         nextMessageWindowSize(count, orderedMessagesRef.current.length, MESSAGE_WINDOW_INCREMENT),
       );
       return;
     }
-    const before = orderedMessagesRef.current[0]?.id;
-    if (!before || !hasOlderMessagesRef.current) {
+    const before = olderMessageCursor(orderedMessagesRef.current, hasOlderMessagesRef.current);
+    if (!before) {
       olderMessageLoadInFlight.current = false;
       restoreAfterOlder.current = false;
       return;
     }
-    const loadedCount = await fetchOlderMessages(before);
+    const loadedCount = await fetchOlderMessages(before, captureOlderScrollAnchor);
     if (loadedCount === null) {
       olderMessageLoadInFlight.current = false;
       restoreAfterOlder.current = false;
@@ -384,7 +406,7 @@ export function ConversationView({
     }
     olderMessageLoadInFlight.current = false;
     restoreAfterOlder.current = false;
-  }, [fetchOlderMessages]);
+  }, [captureOlderScrollAnchor, fetchOlderMessages]);
 
   useEffect(() => {
     const list = messageListRef.current;
@@ -405,8 +427,14 @@ export function ConversationView({
       },
       { root: list, rootMargin: "320px 0px 0px 0px" },
     );
+    olderMessagesObserverRef.current = observer;
     observer.observe(sentinel);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (olderMessagesObserverRef.current === observer) {
+        olderMessagesObserverRef.current = null;
+      }
+    };
   }, [canLoadOlderMessages, loadOlderMessages]);
   const isWorking = conversation?.state === "working";
   const isWaiting = conversation?.state === "waiting";
@@ -462,6 +490,7 @@ export function ConversationView({
     setVisibleMessageCount(INITIAL_MESSAGE_WINDOW_SIZE);
     olderMessageLoadInFlight.current = false;
     restoreAfterOlder.current = false;
+    olderScrollAnchor.current = null;
     if (historyHighlightTimerRef.current !== null) {
       window.clearTimeout(historyHighlightTimerRef.current);
       historyHighlightTimerRef.current = null;
@@ -598,10 +627,26 @@ export function ConversationView({
     const contentChanged = previousScrollVersion.current !== scrollVersion;
     previousScrollVersion.current = scrollVersion;
     if (restoreAfterOlder.current) {
-      const heightDifference = list.scrollHeight - previousScrollHeight.current;
-      list.scrollTop += heightDifference;
+      const anchor = olderScrollAnchor.current;
+      const target = anchor?.messageId
+        ? Array.from(list.querySelectorAll<HTMLElement>(":scope > article[data-message-id]")).find(
+            (element) => element.dataset.messageId === anchor.messageId,
+          )
+        : undefined;
+      if (anchor && target) {
+        list.scrollTop += target.getBoundingClientRect().top - anchor.top;
+      } else {
+        list.scrollTop += list.scrollHeight - previousScrollHeight.current;
+      }
+      olderScrollAnchor.current = null;
       restoreAfterOlder.current = false;
       olderMessageLoadInFlight.current = false;
+      const sentinel = olderMessagesSentinelRef.current;
+      const observer = olderMessagesObserverRef.current;
+      if (sentinel && observer) {
+        observer.unobserve(sentinel);
+        observer.observe(sentinel);
+      }
     } else if (followRef.current === "following" && contentChanged) {
       followScrollerRef.current?.kick();
     }
