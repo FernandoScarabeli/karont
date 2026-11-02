@@ -13,6 +13,7 @@ import {
   createConversation as createConversationRecord,
   getAgentSession,
   getMessage,
+  isBranchForkPending,
   openDatabase,
   setAgentSession,
   setSetting,
@@ -280,6 +281,62 @@ test("ramifica a última resposta Claude com --resume e --fork-session", async (
     assert.ok(args.includes("--fork-session"));
     assert.equal(getAgentSession(harness.db, source.id), "claude-source-session");
     assert.equal(harness.manager.get(source.id)?.messages.length, originalBefore?.messages.length);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("mantém o fork Claude pendente se o primeiro turno não informa um novo system/init", async () => {
+  const harness = await createHarness("branch-fork-no-init", {}, { exitAfterResult: true });
+  try {
+    const source = harness.manager.create({
+      agent: "claude",
+      title: "Conversa original",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    setAgentSession(harness.db, source.id, "claude-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "source-user-1", author: "user", text: "Pergunta original" },
+      { id: "source-agent-1", author: "agent", text: "Resposta original" },
+    ]);
+
+    const branch = await harness.manager.branch(source.id, "source-agent-1");
+    await harness.manager.send(branch.id, "Primeiro turno do ramo.");
+    await waitForState(harness, branch.id, "idle");
+
+    assert.equal(isBranchForkPending(harness.db, branch.id), true);
+
+    await harness.manager.send(branch.id, "Retome o ramo.");
+    await waitForState(harness, branch.id, "idle");
+    const args = harness.spawnArgs.at(-1) ?? [];
+    assert.ok(args.includes("--fork-session"));
+  } finally {
+    await harness.close();
+  }
+});
+
+test("conclui o fork Claude quando system/init informa uma sessão nova", async () => {
+  const harness = await createHarness("branch-fork");
+  try {
+    const source = harness.manager.create({
+      agent: "claude",
+      title: "Conversa original",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    setAgentSession(harness.db, source.id, "claude-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "source-user-1", author: "user", text: "Pergunta original" },
+      { id: "source-agent-1", author: "agent", text: "Resposta original" },
+    ]);
+
+    const branch = await harness.manager.branch(source.id, "source-agent-1");
+    await harness.manager.send(branch.id, "Primeiro turno do ramo.");
+    await waitForState(harness, branch.id, "idle");
+
+    assert.equal(getAgentSession(harness.db, branch.id), "claude-forked-session");
+    assert.equal(isBranchForkPending(harness.db, branch.id), false);
   } finally {
     await harness.close();
   }

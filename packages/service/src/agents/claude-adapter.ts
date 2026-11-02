@@ -84,6 +84,7 @@ export class ClaudeAdapter implements AgentAdapter {
   #sessionId = "";
   #resumeSession = false;
   #forkSessionPending = false;
+  #forkSessionSourceId: string | undefined;
   #permissionMode = "";
   #nextControlRequestId = 0;
   #initResolve: (() => void) | undefined;
@@ -131,6 +132,7 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#sessionId = sessionId;
     this.#resumeSession = resume;
     this.#forkSessionPending = resume && options.forkSession === true;
+    this.#forkSessionSourceId = this.#forkSessionPending ? sessionId : undefined;
     this.#stderrErrorType = undefined;
     this.#stderrErrorText = "";
     const command =
@@ -230,7 +232,7 @@ export class ClaudeAdapter implements AgentAdapter {
       this.#initReject = undefined;
     }
     this.#resumeSession = true;
-    this.#emit({ kind: "session", sessionId: this.#sessionId });
+    if (!this.#forkSessionPending) this.#emit({ kind: "session", sessionId: this.#sessionId });
   }
 
   async send(
@@ -447,10 +449,12 @@ export class ClaudeAdapter implements AgentAdapter {
     }
     if (type === "system") {
       if (value.subtype === "init" && typeof value.session_id === "string") {
-        this.#sessionId = value.session_id;
-        this.#resumeSession = true;
-        this.#forkSessionPending = false;
-        this.#emit({ kind: "session", sessionId: value.session_id });
+        if (!this.#forkSessionSourceId || value.session_id !== this.#forkSessionSourceId) {
+          this.#sessionId = value.session_id;
+          this.#resumeSession = true;
+          this.#forkSessionPending = false;
+          this.#emit({ kind: "session", sessionId: value.session_id });
+        }
       }
       if (value.subtype === "api_error" || value.subtype === "error") {
         const detail =
@@ -509,7 +513,11 @@ export class ClaudeAdapter implements AgentAdapter {
       return;
     }
     if (type === "result") {
-      if (typeof value.session_id === "string") {
+      if (
+        typeof value.session_id === "string" &&
+        !this.#forkSessionPending &&
+        value.session_id !== this.#forkSessionSourceId
+      ) {
         this.#sessionId = value.session_id;
         this.#resumeSession = true;
         this.#emit({ kind: "session", sessionId: value.session_id });
