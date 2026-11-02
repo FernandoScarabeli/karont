@@ -7,7 +7,13 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import type { AnyEvent, Conversation, ConversationMessage, MessagePart } from "@karont/contract";
+import type {
+  AnyEvent,
+  Conversation,
+  ConversationAttachment,
+  ConversationMessage,
+  MessagePart,
+} from "@karont/contract";
 import {
   addMessage,
   createConversation as createConversationRecord,
@@ -1278,6 +1284,106 @@ test("Claude recebe anexos em blocos e a mensagem salva apenas metadados", async
       .get(sent.userMessage.id) as { attachments_json: string };
     assert.equal(raw.attachments_json.includes(imageData), false);
     assert.equal(raw.attachments_json.includes("Use `code`."), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("retry reenvia os bytes dos anexos da mensagem original", async () => {
+  const receivedAttachments: ConversationAttachment[][] = [];
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async (_text, _plan, attachments = []) => {
+      receivedAttachments.push(structuredClone(attachments));
+      emit({ kind: "turn-end", status: "done" });
+    },
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness("texto", {}, { adapterFactory });
+  try {
+    const conversation = createConversation(harness.manager);
+    const imageData = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    const attachments: ConversationAttachment[] = [
+      { name: "notas.txt", mimeType: "text/plain", kind: "text", data: "Trecho de referência." },
+      { name: "pixel.png", mimeType: "image/png", kind: "image", data: imageData },
+    ];
+
+    await harness.manager.send(conversation.id, "Leia a imagem.", false, attachments);
+    await waitForState(harness, conversation.id, "idle");
+    const agentMessage = harness.manager
+      .get(conversation.id)
+      ?.messages.find((message) => message.author === "agent");
+    assert.ok(agentMessage);
+    await harness.manager.retry(conversation.id, agentMessage.id);
+    await waitForState(harness, conversation.id, "idle");
+
+    assert.deepEqual(receivedAttachments, [attachments, attachments]);
+    const raw = harness.db
+      .prepare(
+        "SELECT attachments_json FROM messages WHERE conversation_id = ? AND author = 'user'",
+      )
+      .get(conversation.id) as { attachments_json: string };
+    assert.equal(raw.attachments_json.includes(imageData), false);
+    assert.equal(raw.attachments_json.includes("Trecho de referência."), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("retry falha claramente se os bytes dos anexos não estão mais em memória", async () => {
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: (_conversation, emit) => ({
+        start: async () => undefined,
+        send: async () => emit({ kind: "turn-end", status: "done" }),
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      }),
+    },
+  );
+  let retrySendCount = 0;
+  try {
+    const conversation = createConversation(harness.manager);
+    const imageData = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    await harness.manager.send(conversation.id, "Leia a imagem.", false, [
+      { name: "pixel.png", mimeType: "image/png", kind: "image", data: imageData },
+    ]);
+    await waitForState(harness, conversation.id, "idle");
+    const agentMessage = harness.manager
+      .get(conversation.id)
+      ?.messages.find((message) => message.author === "agent");
+    assert.ok(agentMessage);
+    await harness.manager.close();
+
+    const restartedManager = new ConversationManager({
+      db: harness.db,
+      broadcast: async (event) => {
+        harness.events.push(event);
+      },
+      adapterFactory: () => ({
+        start: async () => undefined,
+        send: async () => {
+          retrySendCount += 1;
+        },
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      }),
+    });
+    try {
+      await assert.rejects(
+        restartedManager.retry(conversation.id, agentMessage.id),
+        /bytes dos anexos não estão mais disponíveis/u,
+      );
+      assert.equal(retrySendCount, 0);
+    } finally {
+      await restartedManager.close();
+    }
   } finally {
     await harness.close();
   }

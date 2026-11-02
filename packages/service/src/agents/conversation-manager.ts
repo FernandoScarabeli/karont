@@ -93,6 +93,10 @@ export class ConversationManager {
   readonly #now: () => string;
   readonly #titleGenerator: NonNullable<ConversationManagerOptions["titleGenerator"]>;
   readonly #active = new Map<string, ActiveConversation>();
+  readonly #latestUserAttachments = new Map<
+    string,
+    { messageId: string; attachments: ConversationAttachment[] }
+  >();
   readonly #pendingParts = new Map<string, { conversationId: string; messageId: string }>();
   readonly #titleRequests = new Map<string, { userMessage: string; attempted: boolean }>();
   #codexModelList: AdapterModelList = {
@@ -319,6 +323,14 @@ export class ConversationManager {
       updatedAt: now,
     };
     addMessage(this.#db, userMessage);
+    if (validatedAttachments.data.length) {
+      this.#latestUserAttachments.set(id, {
+        messageId: userMessage.id,
+        attachments: validatedAttachments.data.map((attachment) => ({ ...attachment })),
+      });
+    } else {
+      this.#latestUserAttachments.delete(id);
+    }
     conversation.state = "working";
     conversation.updatedAt = this.#now();
     updateConversation(this.#db, conversation);
@@ -379,12 +391,25 @@ export class ConversationManager {
       .find((message) => message.author === "user");
     const textPart = user?.parts.find((part) => part.type === "text");
     const text = textPart?.type === "text" ? textPart.markdown : "";
-    if (!text) throw new Error("A mensagem original não está disponível para nova tentativa.");
+    if (!user || !text)
+      throw new Error("A mensagem original não está disponível para nova tentativa.");
+    let attachments: ConversationAttachment[] = [];
+    if (user.attachments?.length) {
+      const cachedAttachments = this.#latestUserAttachments.get(id);
+      if (cachedAttachments?.messageId !== user.id) {
+        throw new Error(
+          "Os bytes dos anexos não estão mais disponíveis. Anexe os arquivos novamente e envie uma nova mensagem.",
+        );
+      }
+      attachments = cachedAttachments.attachments;
+    }
     const agentMessage = this.#newAgentMessage(id);
     await this.#startTurn(
       conversation,
       agentMessage,
       withBranchContext(text, getBranchContextPending(this.#db, id)),
+      undefined,
+      attachments,
     );
     return agentMessage;
   }
@@ -500,6 +525,7 @@ export class ConversationManager {
       await active.adapter.dispose();
       this.#active.delete(id);
     }
+    this.#latestUserAttachments.delete(id);
     return deleteConversation(this.#db, id);
   }
 
@@ -536,6 +562,7 @@ export class ConversationManager {
       const deletedIds = new Set(conversations.map(({ id }) => id));
       for (const id of deletedIds) {
         this.#titleRequests.delete(id);
+        this.#latestUserAttachments.delete(id);
       }
       for (const [partId, pending] of this.#pendingParts) {
         if (deletedIds.has(pending.conversationId)) this.#pendingParts.delete(partId);
@@ -655,6 +682,7 @@ export class ConversationManager {
       }),
     );
     this.#active.clear();
+    this.#latestUserAttachments.clear();
   }
 
   async #startTurn(
