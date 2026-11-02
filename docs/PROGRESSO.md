@@ -114,14 +114,17 @@ Branch `m2-chat` (sem PR; o dono testa no preview antes de juntar na `main`). De
 - B12/B13: subagente do Codex pelo protocolo **real**: `subAgentActivity` (`started`/`completed`, `agentThreadId`, `agentPath`) + itens da thread filha (`params.threadId`) aninhados por `parentId`; `wait` sem receptores não vira linha. Fixture real sanitizado `fixtures/codex/subagente-real.jsonl`. Testado com Codex real.
 - F39: raio (modo rápido) no composer; Codex manda `serviceTier` (tier anunciado pelo `model/list`, ex. `priority`) por turno.
 
-## Estado ao fim da sessão (2026-11-02) — LEIA ISTO PRIMEIRO
-- Branch `m2-chat`, tudo commitado e testado (unidade + E2E 4/4). PR #3 aberto. Preview: `npm run preview:web` (o serviço muda → reiniciar o preview).
-- **F41 concluída e na `m2-chat`:** raio (modo rápido) **só no Codex** — no Claude o ícone não aparece (o modo rápido do Claude depende de "uso extra" na conta; na do dono vem `extra_usage_disabled`); **nenhum aviso** de "indisponível" (o dono não quer); se o Codex confirmar que não aplicou, o raio só apaga. Nada rodando ao fechar a sessão.
-- B14 (reabrir o Claude ao ligar o raio) foi **cancelada** (perdeu sentido com a F41); a worktree `m2-b14-fast-reinicia` pode ser descartada.
-- **PR aberto (2026-11-02):** https://github.com/FernandoScarabeli/karont/pull/3 (`m2-chat` → `main`), CI verde; local: check + build + E2E 4/4. **Falta:** o dono aprovar o merge.
-- Pendências pequenas: bundle inicial > 500 kB; aviso do PostCSS no build (`from`); 1 falha intermitente no E2E numa rodada (passou na seguinte) — observar; no Claude, ao terminar, o "Trabalhou por X" já vem ao vivo (F37).
-- Executor: Codex `gpt-6-luna` xhigh fast (o limite estourou e voltou em 2026-11-01; quando estourar, usar subagente Haiku com as mesmas regras).
-- Testes reais: projeto de teste em `/tmp/karont-teste-grande` (loja-mini com git). Scripts Playwright temporários `.x.mjs` na raiz (apagar depois). A ponte `window.karont` não existe no preview; para inspecionar dados, ler o banco em modo leitura: `~/.local/share/karont/karont.db`.
+## Estado ao fim da sessão (2026-11-02, madrugada) — LEIA ISTO PRIMEIRO
+- Branch `m2-chat`, PR #3 (`m2-chat` → `main`) aberto: https://github.com/FernandoScarabeli/karont/pull/3. Tudo commitado, testado (check + build + E2E 4/4) e com push. **Falta:** o dono aprovar o merge.
+- Rodada da noite (dono dormindo, autorizou fazer tudo):
+  - **1ª revisão de código** do PR (10 achados) → **B15.01–B15.10**, um por commit, cada um reproduzido com teste antes de corrigir: acesso do Codex ao continuar (resume leva `sandbox`/`approvalPolicy`), abrir conversa no meio da resposta (`get()` usa a mensagem em memória + `startOffset` nos deltas), `truncateUtf8` O(n), fork do Claude só conclui com id novo, Parar durante a abertura/plano pendente, retry com anexos (bytes em memória, limite 3 conversas/25 MB), erro na abertura não desfaz renomear/fixar, pasta apagada tem erro próprio, conversa apagada não volta (`conversation.removed`), linha do Claude até 32 MiB (imagem vira "imagem, N kB").
+  - **F42:** tooltips no modelo do esforço em anexar, agente, modelo, raio, opções e enviar/parar (componente `components/Tooltip`).
+  - **B15.11:** lista real de modelos do Claude via `initialize` (`response.models`): Opus 5.5 (marcado "Padrão"), Sonnet 5.5, Fable 5.1, Haiku 5.5, Haiku 4.5, Sonnet 5, Opus 5, Fable 5, Opus 4.8/4.7/4.6, Sonnet 4.6… Esforço por modelo. Raio continua desligado no Claude. Reserva fixa se a CLI falhar.
+  - **2ª revisão** (sobre a B15) → **B16**: processo órfão ao parar durante a abertura, nada é salvo sozinho na troca de modelo, modelo desconhecido é preservado, `opus` não vira `default`, **sem `sandboxPolicy` no `turn/start`** (respeita a config do Codex do usuário; a troca de acesso vai pelo `thread/resume`), fork via `result`, `setOptions` sem mudança não mata a sessão, `#emit` sem SQLite por evento, esforços do contrato.
+  - Testado com CLIs reais no preview: lista de modelos do Claude, mensagem no Claude (Haiku) e no Codex, e Codex em "Só ler" depois de trocar o modo recusando criar arquivo.
+- Pendências pequenas: bundle inicial > 500 kB; aviso do PostCSS (`from`); a lista do Claude leva alguns segundos na 1ª vez (até lá aparece o id cru, ex. "haiku"); fechar painéis de outra janela quando chega `conversation.removed` (precisa mexer em `NavigationContext`).
+- Executor: Codex `gpt-6-luna` xhigh fast (fila sequencial com `fila.sh` em `~/karont-worktrees/m2-b15-revisao-ref/` funcionou bem). Se estourar, subagente Haiku.
+- Testes reais: projeto de teste em `/tmp/karont-teste-grande`. Scripts Playwright temporários `.x.mjs` na raiz (apagar depois).
 
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
