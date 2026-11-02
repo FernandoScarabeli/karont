@@ -1,0 +1,2530 @@
+import assert from "node:assert/strict";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { PassThrough } from "node:stream";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+import type {
+  AnyEvent,
+  ComposerSkill,
+  Conversation,
+  ConversationAttachment,
+  ConversationMessage,
+  MessagePart,
+} from "@karont/contract";
+import {
+  addMessage,
+  createConversation as createConversationRecord,
+  getAgentSession,
+  getMessage,
+  isBranchForkPending,
+  openDatabase,
+  setAgentSession,
+  setSetting,
+} from "../db.ts";
+import type { AdapterFactory, AdapterModelList, AgentAdapterRegistration } from "./adapter.ts";
+import {
+  AgentCliError,
+  ClaudeAdapter,
+  createClaudeModelLoader,
+  createClaudeSkillLoader,
+} from "./claude-adapter.ts";
+import { ConversationManager } from "./conversation-manager.ts";
+import { createFakeClaudeSpawn, type FakeClaudeSpawn } from "./testing/fake-claude-process.ts";
+import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
+
+const fixtureDir = new URL("./fixtures/claude/", import.meta.url);
+const modelFixture = JSON.parse(
+  readFileSync(fileURLToPath(new URL("modelos.json", fixtureDir)), "utf8"),
+) as Record<string, unknown>[];
+const claudeCommands = JSON.parse(
+  readFileSync(fileURLToPath(new URL("comandos.json", fixtureDir)), "utf8"),
+) as Record<string, unknown>[];
+
+type Harness = {
+  manager: ConversationManager;
+  db: ReturnType<typeof openDatabase>;
+  events: AnyEvent[];
+  subscribe(listener: (event: AnyEvent) => void): () => void;
+  spawnArgs: string[][];
+  claudeFake: FakeClaudeSpawn;
+  close(): Promise<void>;
+};
+
+function createFakeTitleCli(output: string) {
+  let invocation: { command: string; args: string[]; cwd: string } | undefined;
+  const spawn = ((command: string | URL, args: readonly string[] = [], options?: SpawnOptions) => {
+    const emitter = new EventEmitter();
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const child = Object.assign(emitter, {
+      stdout,
+      stderr,
+      stdin: null,
+      kill: () => {
+        queueMicrotask(() => emitter.emit("close", null, "SIGKILL"));
+        return true;
+      },
+    }) as unknown as ChildProcess;
+    invocation = {
+      command: String(command),
+      args: [...args],
+      cwd: String(options?.cwd ?? ""),
+    };
+    queueMicrotask(() => {
+      stdout.write(output);
+      stdout.end();
+      stderr.end();
+      emitter.emit("close", 0, null);
+    });
+    return child;
+  }) as NonNullable<TitleGeneratorOptions["spawn"]>;
+  return { spawn, getInvocation: () => invocation };
+}
+
+async function createHarness(
+  scenario: string,
+  extraEnv: NodeJS.ProcessEnv = {},
+  fakeOptions: {
+    exitAfterResult?: boolean;
+    planDecision?: "approve" | "adjust";
+    initializeGate?: { started: () => void; released: Promise<void> };
+    largeImageBytes?: number;
+    messageCreatedGate?: { started: () => void; released: Promise<void> };
+    titleGenerator?: (
+      agent: Conversation["agent"],
+      userMessage: string,
+      agentResponse: string,
+      options?: Pick<TitleGeneratorOptions, "codexModel" | "codexEffort">,
+    ) => Promise<string | null>;
+    codexModelCache?: AdapterModelList;
+    claudeModelLoader?: (cwd: string) => Promise<AdapterModelList>;
+    adapterFactory?: AdapterFactory;
+    agentRegistrations?: Readonly<Record<string, AgentAdapterRegistration>>;
+  } = {},
+): Promise<Harness> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-conversations-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  if (fakeOptions.codexModelCache) {
+    setSetting(db, "agent.codex.models", {
+      agent: "codex",
+      ...fakeOptions.codexModelCache,
+      fetchedAt: new Date().toISOString(),
+    });
+  }
+  const events: AnyEvent[] = [];
+  const listeners = new Set<(event: AnyEvent) => void>();
+  const spawnArgs: string[][] = [];
+  const fixturePath = fileURLToPath(new URL(`${scenario}.jsonl`, fixtureDir));
+  const env = {
+    ...process.env,
+    ...extraEnv,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CLAUDE_CLI: "claude",
+  };
+  const fakeSpawn = createFakeClaudeSpawn(fixturePath, {
+    ...fakeOptions,
+    initializeModels: modelFixture,
+  });
+  const spawn = (command: string, args: string[], options: SpawnOptions) => {
+    spawnArgs.push(args);
+    return fakeSpawn(command, args, options);
+  };
+  const manager = new ConversationManager({
+    db,
+    env,
+    broadcast: async (event) => {
+      events.push(event);
+      for (const listener of listeners) listener(event);
+      if (event.event === "conversation.messageCreated" && fakeOptions.messageCreatedGate) {
+        fakeOptions.messageCreatedGate.started();
+        await fakeOptions.messageCreatedGate.released;
+      }
+    },
+    adapterFactory:
+      fakeOptions.adapterFactory ??
+      ((_conversation, emit) =>
+        new ClaudeAdapter(emit, {
+          env,
+          spawn,
+        })),
+    claudeModelLoader: fakeOptions.claudeModelLoader ?? createClaudeModelLoader({ env, spawn }),
+    ...(fakeOptions.agentRegistrations
+      ? { agentRegistrations: fakeOptions.agentRegistrations }
+      : {}),
+    ...(fakeOptions.titleGenerator ? { titleGenerator: fakeOptions.titleGenerator } : {}),
+  });
+  return {
+    manager,
+    db,
+    events,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    spawnArgs,
+    claudeFake: fakeSpawn,
+    close: async () => {
+      await manager.close();
+      db.close();
+    },
+  };
+}
+
+test("capacidades e skills vazias usam o registro do agente", async () => {
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      agentRegistrations: {
+        teste: {
+          factory: () => {
+            throw new Error("A fábrica de teste não deve iniciar uma conversa.");
+          },
+          capabilities: {
+            skills: false,
+            compact: false,
+            contextUsage: false,
+            fileMentions: true,
+            fastMode: false,
+            plan: false,
+            fork: false,
+          },
+        },
+      },
+    },
+  );
+  try {
+    assert.deepEqual(await harness.manager.capabilities("teste"), {
+      capabilities: {
+        skills: false,
+        compact: false,
+        contextUsage: false,
+        fileMentions: true,
+        fastMode: false,
+        plan: false,
+        fork: false,
+      },
+    });
+    assert.deepEqual(await harness.manager.skills({ agent: "teste", cwd: os.tmpdir() }), {
+      skills: [],
+    });
+    await assert.rejects(harness.manager.capabilities("nao-registrado"), /não está registrado/);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("pedidos simultâneos de skills compartilham a carga do agente", async () => {
+  let releaseLoad!: () => void;
+  const loadGate = new Promise<void>((resolve) => {
+    releaseLoad = resolve;
+  });
+  let signalStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    signalStarted = resolve;
+  });
+  let processCount = 0;
+  let firstProcessStarted = false;
+  const fakeSpawn = createFakeClaudeSpawn(fileURLToPath(new URL("texto.jsonl", fixtureDir)), {
+    initializeCommands: claudeCommands,
+    initializeGate: {
+      started: () => {
+        processCount += 1;
+        if (!firstProcessStarted) {
+          firstProcessStarted = true;
+          signalStarted();
+        }
+      },
+      released: loadGate,
+    },
+  });
+  const loadSkills = createClaudeSkillLoader({
+    env: { ...process.env, KARONT_CLAUDE_CLI: "claude" },
+    spawn: fakeSpawn,
+  });
+  const expectedSkills: ComposerSkill[] = [
+    {
+      name: "project-helper",
+      description: "Executa uma tarefa de exemplo no Projeto.",
+      argumentHint: "[arquivo]",
+      source: "claude",
+    },
+  ];
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      agentRegistrations: {
+        teste: {
+          factory: () => {
+            throw new Error("A fábrica de teste não deve iniciar uma conversa.");
+          },
+          capabilities: {
+            skills: true,
+            compact: false,
+            contextUsage: false,
+            fileMentions: false,
+            fastMode: false,
+            plan: false,
+            fork: false,
+          },
+          loadSkills,
+        },
+      },
+    },
+  );
+  const originalNow = Date.now;
+  let currentTime = originalNow();
+  Date.now = () => currentTime;
+  try {
+    const first = harness.manager.skills({ agent: "teste", cwd: os.tmpdir() });
+    const second = harness.manager.skills({ agent: "teste", cwd: os.tmpdir() });
+    await started;
+    releaseLoad();
+
+    const results = await Promise.all([first, second]);
+    assert.equal(processCount, 1);
+    assert.deepEqual(results, [{ skills: expectedSkills }, { skills: expectedSkills }]);
+
+    currentTime += 11_000;
+    assert.deepEqual(await harness.manager.skills({ agent: "teste", cwd: os.tmpdir() }), {
+      skills: expectedSkills,
+    });
+    assert.equal(processCount, 1);
+  } finally {
+    Date.now = originalNow;
+    await harness.close();
+  }
+});
+
+function createConversation(
+  manager: ConversationManager,
+  mode: Conversation["mode"] = "edit",
+): Conversation {
+  return manager.create({ agent: "claude", title: "Conversa de teste", cwd: os.tmpdir(), mode });
+}
+
+async function waitForState(
+  harness: Harness,
+  id: string,
+  state: Conversation["state"],
+): Promise<void> {
+  const current = harness.manager.get(id)?.conversation.state;
+  if (current === state) return;
+  await new Promise<void>((resolve, reject) => {
+    const remove = harness.subscribe((event) => {
+      if (
+        event.event === "conversation.stateChanged" &&
+        event.payload.conversation.id === id &&
+        event.payload.conversation.state === state
+      ) {
+        clearTimeout(timer);
+        remove();
+        resolve();
+      }
+    });
+    const timer = setTimeout(() => {
+      const snapshot = harness.manager.get(id);
+      remove();
+      reject(
+        new Error(
+          `Timeout esperando estado ${state}; estado atual=${snapshot?.conversation.state}; mensagens=${JSON.stringify(snapshot?.messages)}; eventos=${harness.events.map((event) => event.event).join(",")}`,
+        ),
+      );
+    }, 5_000);
+  });
+}
+
+async function waitForPart(
+  harness: Harness,
+  id: string,
+  predicate: (part: MessagePart) => boolean,
+): Promise<MessagePart> {
+  const existing = harness.manager
+    .get(id)
+    ?.messages.flatMap((message) => message.parts)
+    .find(predicate);
+  if (existing) return existing;
+  return new Promise((resolve, reject) => {
+    const remove = harness.subscribe((event) => {
+      if (
+        event.event !== "conversation.partUpdated" ||
+        event.payload.conversationId !== id ||
+        event.payload.kind !== "upsert" ||
+        !predicate(event.payload.part)
+      )
+        return;
+      clearTimeout(timeout);
+      remove();
+      resolve(event.payload.part);
+    });
+    const timeout = setTimeout(() => {
+      remove();
+      reject(new Error("Timeout esperando parte da mensagem."));
+    }, 5_000);
+  });
+}
+
+function latestAgent(harness: Harness, id: string) {
+  return [...(harness.manager.get(id)?.messages ?? [])]
+    .reverse()
+    .find((message) => message.author === "agent");
+}
+
+function addTranscriptMessages(
+  db: ReturnType<typeof openDatabase>,
+  conversationId: string,
+  entries: Array<{
+    id: string;
+    author: "user" | "agent";
+    text: string;
+    agentTurnId?: string;
+  }>,
+): void {
+  for (const [index, entry] of entries.entries()) {
+    const timestamp = new Date(Date.UTC(2026, 10, 1, 10, index)).toISOString();
+    const message: ConversationMessage = {
+      id: entry.id,
+      conversationId,
+      author: entry.author,
+      status: "done",
+      parts: [{ id: `part-${entry.id}`, type: "text", markdown: entry.text }],
+      ...(entry.agentTurnId ? { agentTurnId: entry.agentTurnId } : {}),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    addMessage(db, message);
+  }
+}
+
+test("remover durante a abertura ignora a falha tardia e avisa a interface", async () => {
+  let announceStart!: () => void;
+  let rejectOpening!: (error: Error) => void;
+  let announceDisposal!: () => void;
+  let releaseDisposal!: () => void;
+  let disposeCalls = 0;
+  const started = new Promise<void>((resolve) => {
+    announceStart = resolve;
+  });
+  const disposalStarted = new Promise<void>((resolve) => {
+    announceDisposal = resolve;
+  });
+  const disposalGate = new Promise<void>((resolve) => {
+    releaseDisposal = resolve;
+  });
+  const opening = new Promise<void>((_resolve, reject) => {
+    rejectOpening = reject;
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: (_conversation, _emit) => {
+        return {
+          start: async () => {
+            announceStart();
+            await opening;
+          },
+          send: async () => undefined,
+          respond: async () => undefined,
+          interrupt: async () => undefined,
+          dispose: async () => {
+            disposeCalls += 1;
+            if (disposeCalls === 1) {
+              announceDisposal();
+              await disposalGate;
+            }
+          },
+        };
+      },
+    },
+  );
+  const conversation = createConversation(harness.manager);
+  const sending = harness.manager.send(conversation.id, "Falhe durante a abertura.");
+
+  try {
+    await started;
+    const removing = harness.manager.remove(conversation.id);
+    await disposalStarted;
+    rejectOpening(new Error("A abertura falhou depois da remoção."));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          "messageStatus" in event.payload &&
+          event.payload.conversation.id === conversation.id &&
+          event.payload.messageStatus === "error",
+      ),
+      false,
+      "a falha de abertura não pode publicar estado de uma conversa em remoção",
+    );
+
+    releaseDisposal();
+    const [deleted] = await Promise.all([removing, sending]);
+    assert.equal(deleted, true);
+    assert.ok(
+      harness.events.some(
+        (event) => event.event === "conversation.removed" && event.payload.id === conversation.id,
+      ),
+    );
+  } finally {
+    releaseDisposal();
+    await harness.close();
+  }
+});
+
+test("apagar todas invalida falhas tardias durante a abertura", async () => {
+  let announceStart!: () => void;
+  let rejectOpening!: (error: Error) => void;
+  let disposed = false;
+  const started = new Promise<void>((resolve) => {
+    announceStart = resolve;
+  });
+  const opening = new Promise<void>((_resolve, reject) => {
+    rejectOpening = reject;
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: () => ({
+        start: async () => {
+          announceStart();
+          await opening;
+        },
+        send: async () => undefined,
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => {
+          disposed = true;
+        },
+      }),
+    },
+  );
+  const conversation = createConversation(harness.manager);
+  const sending = harness.manager.send(conversation.id, "Falhe durante o apagamento.");
+
+  try {
+    await started;
+    const deleting = harness.manager.deleteAll();
+    rejectOpening(new Error("A abertura falhou durante o apagamento."));
+    const [deleted] = await Promise.all([deleting, sending]);
+
+    assert.equal(deleted, 1);
+    assert.equal(disposed, true);
+    assert.equal(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          "messageStatus" in event.payload &&
+          event.payload.conversation.id === conversation.id &&
+          event.payload.messageStatus === "error",
+      ),
+      false,
+    );
+    assert.ok(harness.events.some((event) => event.event === "conversation.deletedAll"));
+  } finally {
+    await harness.close();
+  }
+});
+
+test("remover limpa partes pendentes e o temporizador de deltas", async () => {
+  let announcePermission!: () => void;
+  const permissionPublished = new Promise<void>((resolve) => {
+    announcePermission = resolve;
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: (_conversation, emit) => ({
+        start: async () => undefined,
+        send: async () => {
+          emit({
+            kind: "part",
+            part: {
+              id: "permissao-pendente",
+              type: "permission",
+              tool: "Bash",
+              summary: "Executar comando",
+              options: ["allow", "always", "deny"],
+              state: "pending",
+            },
+          });
+          emit({
+            kind: "text-delta",
+            partType: "text",
+            partId: "texto-pendente",
+            delta: "rascunho",
+          });
+        },
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      }),
+    },
+  );
+  const conversation = createConversation(harness.manager);
+  harness.subscribe((event) => {
+    if (
+      event.event === "conversation.partUpdated" &&
+      event.payload.kind === "upsert" &&
+      event.payload.part.id === "permissao-pendente"
+    )
+      announcePermission();
+  });
+
+  try {
+    await harness.manager.send(conversation.id, "Gere uma resposta.");
+    await permissionPublished;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await harness.manager.remove(conversation.id);
+
+    await assert.rejects(
+      harness.manager.respond(conversation.id, "permissao-pendente", {
+        responseType: "permission",
+        decision: "allow",
+      }),
+      /A parte não está aguardando resposta/,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    assert.equal(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.partUpdated" &&
+          event.payload.conversationId === conversation.id &&
+          event.payload.kind === "delta",
+      ),
+      false,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("ramifica a última resposta Claude com --resume e --fork-session", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const source = harness.manager.create({
+      agent: "claude",
+      title: "Conversa original",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      model: "haiku",
+      effort: "low",
+      plan: true,
+    });
+    setAgentSession(harness.db, source.id, "claude-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "source-user-1", author: "user", text: "Pergunta original" },
+      { id: "source-agent-1", author: "agent", text: "Resposta original" },
+    ]);
+    const originalBefore = harness.manager.get(source.id);
+
+    const branch = await harness.manager.branch(source.id, "source-agent-1");
+    assert.equal(branch.title, "Conversa original · ramo");
+    assert.equal(branch.agent, source.agent);
+    assert.equal(branch.cwd, source.cwd);
+    assert.equal(branch.mode, source.mode);
+    assert.equal(branch.model, source.model);
+    assert.equal(branch.effort, source.effort);
+    assert.equal(branch.plan, source.plan);
+    assert.equal(branch.branchedFromId, source.id);
+    assert.equal(branch.branchedFromMessageId, "source-agent-1");
+    assert.equal(branch.branchContext, undefined);
+    assert.equal(getAgentSession(harness.db, branch.id), "claude-source-session");
+    assert.notEqual(harness.manager.get(branch.id)?.messages[0]?.id, "source-user-1");
+
+    await harness.manager.send(branch.id, "Continue a partir daqui.");
+    await waitForState(harness, branch.id, "idle");
+    const args = harness.spawnArgs.at(-1) ?? [];
+    const resumeIndex = args.indexOf("--resume");
+    assert.ok(resumeIndex >= 0);
+    assert.equal(args[resumeIndex + 1], "claude-source-session");
+    assert.ok(args.includes("--fork-session"));
+    assert.equal(getAgentSession(harness.db, source.id), "claude-source-session");
+    assert.equal(harness.manager.get(source.id)?.messages.length, originalBefore?.messages.length);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("mantém o fork Claude pendente se o primeiro turno não informa um novo system/init", async () => {
+  const harness = await createHarness("branch-fork-no-init", {}, { exitAfterResult: true });
+  try {
+    const source = harness.manager.create({
+      agent: "claude",
+      title: "Conversa original",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    setAgentSession(harness.db, source.id, "claude-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "source-user-1", author: "user", text: "Pergunta original" },
+      { id: "source-agent-1", author: "agent", text: "Resposta original" },
+    ]);
+
+    const branch = await harness.manager.branch(source.id, "source-agent-1");
+    await harness.manager.send(branch.id, "Primeiro turno do ramo.");
+    await waitForState(harness, branch.id, "idle");
+
+    assert.equal(isBranchForkPending(harness.db, branch.id), true);
+
+    await harness.manager.send(branch.id, "Retome o ramo.");
+    await waitForState(harness, branch.id, "idle");
+    const args = harness.spawnArgs.at(-1) ?? [];
+    assert.ok(args.includes("--fork-session"));
+  } finally {
+    await harness.close();
+  }
+});
+
+test("conclui o fork Claude quando result informa um id novo sem system/init", async () => {
+  const harness = await createHarness("branch-fork-result-new-id", {}, { exitAfterResult: true });
+  try {
+    const source = harness.manager.create({
+      agent: "claude",
+      title: "Conversa original",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    setAgentSession(harness.db, source.id, "claude-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "source-user-1", author: "user", text: "Pergunta original" },
+      { id: "source-agent-1", author: "agent", text: "Resposta original" },
+    ]);
+
+    const branch = await harness.manager.branch(source.id, "source-agent-1");
+    await harness.manager.send(branch.id, "Primeiro turno do ramo.");
+    await waitForState(harness, branch.id, "idle");
+
+    assert.equal(getAgentSession(harness.db, branch.id), "claude-forked-session");
+    assert.equal(isBranchForkPending(harness.db, branch.id), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("conclui o fork Claude quando system/init informa uma sessão nova", async () => {
+  const harness = await createHarness("branch-fork");
+  try {
+    const source = harness.manager.create({
+      agent: "claude",
+      title: "Conversa original",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    setAgentSession(harness.db, source.id, "claude-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "source-user-1", author: "user", text: "Pergunta original" },
+      { id: "source-agent-1", author: "agent", text: "Resposta original" },
+    ]);
+
+    const branch = await harness.manager.branch(source.id, "source-agent-1");
+    await harness.manager.send(branch.id, "Primeiro turno do ramo.");
+    await waitForState(harness, branch.id, "idle");
+
+    assert.equal(getAgentSession(harness.db, branch.id), "claude-forked-session");
+    assert.equal(isBranchForkPending(harness.db, branch.id), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("ramifica resposta antiga copiando só até ela e envia o histórico como contexto", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const source = createConversation(harness.manager);
+    setAgentSession(harness.db, source.id, "claude-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "source-user-1", author: "user", text: "Primeira pergunta" },
+      { id: "source-agent-1", author: "agent", text: "Resposta antiga" },
+      { id: "source-user-2", author: "user", text: "Pergunta mais nova" },
+      { id: "source-agent-2", author: "agent", text: "Resposta mais nova" },
+    ]);
+    const originalBefore = harness.manager.get(source.id);
+
+    const branch = await harness.manager.branch(source.id, "source-agent-1");
+    const copied = harness.manager.get(branch.id)?.messages ?? [];
+    assert.equal(branch.branchContext, true);
+    assert.equal(branch.branchedFromMessageId, "source-agent-1");
+    assert.equal(getAgentSession(harness.db, branch.id), null);
+    assert.deepEqual(
+      copied.map((message) => message.parts.find((part) => part.type === "text")),
+      ["Primeira pergunta", "Resposta antiga"].map((markdown, index) => ({
+        id: copied[index]?.parts[0]?.id,
+        type: "text",
+        markdown,
+      })),
+    );
+    assert.notEqual(copied[0]?.id, "source-user-1");
+    assert.equal(harness.manager.get(source.id)?.messages.length, 4);
+
+    await harness.manager.send(branch.id, "Nova pergunta no ramo.");
+    await waitForState(harness, branch.id, "idle");
+    const prompt = JSON.stringify(
+      harness.claudeFake.messages.find((message) => message.type === "user"),
+    );
+    assert.match(prompt, /Resposta antiga/u);
+    assert.doesNotMatch(prompt, /Resposta mais nova/u);
+    assert.match(prompt, /Nova pergunta no ramo\./u);
+    assert.equal(harness.manager.get(source.id)?.messages.length, originalBefore?.messages.length);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("ramifica turno Codex usando o fork do adaptador e mantém o id da resposta", async () => {
+  const forkCalls: Array<{ sourceSessionId: string; branchPoint: unknown }> = [];
+  const adapterFactory: AdapterFactory = () => ({
+    start: async () => undefined,
+    send: async () => undefined,
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+    forkThread: async (_conversation, sourceSessionId, branchPoint) => {
+      forkCalls.push({ sourceSessionId, branchPoint });
+      return "codex-forked-session";
+    },
+  });
+  const harness = await createHarness("texto", {}, { adapterFactory });
+  try {
+    const source = harness.manager.create({
+      agent: "codex",
+      title: "Conversa Codex",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      model: "gpt-test",
+      effort: "high",
+    });
+    setAgentSession(harness.db, source.id, "codex-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "codex-user-1", author: "user", text: "Pergunta Codex" },
+      {
+        id: "codex-agent-1",
+        author: "agent",
+        text: "Resposta Codex",
+        agentTurnId: "codex-turn-1",
+      },
+    ]);
+
+    const branch = await harness.manager.branch(source.id, "codex-agent-1");
+    assert.deepEqual(forkCalls, [
+      { sourceSessionId: "codex-source-session", branchPoint: { lastTurnId: "codex-turn-1" } },
+    ]);
+    assert.equal(getAgentSession(harness.db, branch.id), "codex-forked-session");
+    assert.equal(branch.branchContext, undefined);
+    assert.equal(branch.model, source.model);
+    assert.equal(branch.effort, source.effort);
+    assert.equal(harness.manager.get(branch.id)?.messages.length, 2);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude transmite texto em deltas e converte leitura em ação", async () => {
+  const harness = await createHarness("leitura");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Leia o README.");
+    await waitForState(harness, conversation.id, "idle");
+    const deltas = harness.events.filter(
+      (event) => event.event === "conversation.partUpdated" && event.payload.kind === "delta",
+    );
+    assert.ok(
+      deltas.some(
+        (event) =>
+          event.event === "conversation.partUpdated" &&
+          event.payload.kind === "delta" &&
+          event.payload.delta.length > 0,
+      ),
+    );
+    const message = latestAgent(harness, conversation.id);
+    assert.equal(message?.status, "done");
+    assert.equal(typeof message?.startedAt, "number");
+    assert.equal(typeof message?.endedAt, "number");
+    assert.ok((message?.endedAt ?? 0) >= (message?.startedAt ?? 0));
+    for (const part of message?.parts ?? []) {
+      assert.equal(typeof part.startedAt, "number", `parte ${part.id} sem início registrado`);
+      assert.equal(typeof part.endedAt, "number", `parte ${part.id} sem fim registrado`);
+      assert.ok((part.endedAt ?? 0) >= (part.startedAt ?? 0));
+    }
+    assert.ok(
+      message?.parts.some(
+        (part) =>
+          part.type === "action" &&
+          part.actionType === "read" &&
+          part.title.includes("README.md") &&
+          part.state === "ok",
+      ),
+    );
+    assert.ok(
+      message?.parts.some((part) => part.type === "text" && part.markdown.includes("README")),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude publica e persiste o uso da última mensagem assistant", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Resuma o contexto.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const usage = { usedTokens: 90_000, windowTokens: 200_000 };
+    assert.ok(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.contextUsage" &&
+          event.payload.conversationId === conversation.id &&
+          event.payload.usedTokens === usage.usedTokens &&
+          event.payload.windowTokens === usage.windowTokens,
+      ),
+    );
+    assert.deepEqual(harness.manager.get(conversation.id)?.contextUsage, usage);
+
+    await harness.manager.close();
+    harness.manager = new ConversationManager({
+      db: harness.db,
+      env: { ...process.env, KARONT_DISABLE_AGENT_DETECTION: "1" },
+      broadcast: async () => undefined,
+    });
+    assert.deepEqual(harness.manager.get(conversation.id)?.contextUsage, usage);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude atualiza o uso de contexto depois de compactar", async () => {
+  const harness = await createHarness("compactar");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Resuma o contexto.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const beforeCompact = { usedTokens: 90_000, windowTokens: 200_000 };
+    assert.deepEqual(harness.manager.get(conversation.id)?.contextUsage, beforeCompact);
+
+    await harness.manager.compact(conversation.id);
+    await waitForState(harness, conversation.id, "idle");
+
+    const afterCompact = { usedTokens: 6_642, windowTokens: 1_000_000 };
+    assert.deepEqual(harness.manager.get(conversation.id)?.contextUsage, afterCompact);
+    assert.ok(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.contextUsage" &&
+          event.payload.conversationId === conversation.id &&
+          event.payload.usedTokens === afterCompact.usedTokens &&
+          event.payload.windowTokens === afterCompact.windowTokens,
+      ),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude limpa o uso de contexto se a compactação não informar tokens pós-compactação", async () => {
+  const harness = await createHarness("compactar-sem-uso");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Resuma o contexto.");
+    await waitForState(harness, conversation.id, "idle");
+    assert.deepEqual(harness.manager.get(conversation.id)?.contextUsage, {
+      usedTokens: 90_000,
+      windowTokens: 200_000,
+    });
+
+    await harness.manager.compact(conversation.id);
+    await waitForState(harness, conversation.id, "idle");
+    assert.equal(harness.manager.get(conversation.id)?.contextUsage, undefined);
+
+    await harness.manager.close();
+    harness.manager = new ConversationManager({
+      db: harness.db,
+      env: { ...process.env, KARONT_DISABLE_AGENT_DETECTION: "1" },
+      broadcast: async () => undefined,
+    });
+    assert.equal(harness.manager.get(conversation.id)?.contextUsage, undefined);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("o manager não publica uso quando o adaptador não declara a capacidade", async () => {
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      agentRegistrations: {
+        claude: {
+          factory: () => {
+            throw new Error("O adaptador do teste usa a fábrica injetada.");
+          },
+          capabilities: {
+            skills: false,
+            compact: false,
+            contextUsage: false,
+            fileMentions: false,
+            fastMode: false,
+            plan: false,
+            fork: false,
+          },
+        },
+      },
+      adapterFactory: (_conversation, emit) => ({
+        start: async () => undefined,
+        send: async () => {
+          emit({ kind: "context-usage", usedTokens: 90_000, windowTokens: 200_000 });
+          emit({ kind: "turn-end", status: "done" });
+        },
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      }),
+    },
+  );
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Responda.");
+    await waitForState(harness, conversation.id, "idle");
+    assert.equal(
+      harness.events.some((event) => event.event === "conversation.contextUsage"),
+      false,
+    );
+    assert.equal(harness.manager.get(conversation.id)?.contextUsage, undefined);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude conclui leitura com imagem grande sem guardar o base64", async () => {
+  const harness = await createHarness(
+    "leitura",
+    {},
+    { largeImageBytes: 3_500_001, titleGenerator: async () => null },
+  );
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Leia a imagem.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const message = latestAgent(harness, conversation.id);
+    const action = message?.parts.find(
+      (part): part is Extract<MessagePart, { type: "action" }> =>
+        part.type === "action" && part.actionType === "read",
+    );
+    assert.equal(message?.status, "done");
+    assert.equal(action?.state, "ok");
+    assert.equal(action?.output, "imagem, 3418 kB");
+    assert.equal(action?.output.includes("AAAA"), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude registra diff, subagente com ações filhas e resultado MCP", async () => {
+  const harness = await createHarness("acoes-especiais");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Registre ações especiais");
+    await waitForState(harness, conversation.id, "idle");
+
+    const actions =
+      latestAgent(harness, conversation.id)?.parts.filter(
+        (part): part is Extract<MessagePart, { type: "action" }> => part.type === "action",
+      ) ?? [];
+    const subagent = actions.find((action) => String(action.actionType) === "subagent");
+    const childRead = actions.find((action) => action.title === "Read · src/modulo.ts");
+    assert.ok(subagent);
+    assert.equal(subagent.title, "Revisar o módulo");
+    assert.equal(subagent.input, "Leia o módulo e registre os achados.");
+    assert.ok(childRead);
+    assert.equal(childRead.parentId, subagent.id);
+
+    const edit = actions.find((action) => action.title.startsWith("Edit ·"));
+    const multiEdit = actions.find((action) => action.title.startsWith("MultiEdit ·"));
+    const write = actions.find((action) => action.title.startsWith("Write ·"));
+    assert.equal(edit?.actionType, "edit");
+    assert.equal(multiEdit?.actionType, "edit");
+    assert.equal(write?.actionType, "write");
+    assert.ok(edit);
+    assert.ok(multiEdit);
+    assert.ok(write);
+    const editRecord = JSON.parse(edit.output) as Array<{
+      path: string;
+      kind: unknown;
+      diff: string;
+    }>;
+    const multiEditRecord = JSON.parse(multiEdit.output) as Array<{
+      path: string;
+      kind: unknown;
+      diff: string;
+    }>;
+    const writeRecord = JSON.parse(write.output) as Array<{
+      path: string;
+      kind: unknown;
+      diff: string;
+    }>;
+    assert.deepEqual(
+      editRecord.map(({ path, kind }) => ({ path, kind })),
+      [{ path: "src/modulo.ts", kind: { type: "update" } }],
+    );
+    assert.match(editRecord[0]?.diff ?? "", /-const antigo = 1;/);
+    assert.match(editRecord[0]?.diff ?? "", /\+const novo = 2;/);
+    assert.doesNotMatch(multiEditRecord[0]?.diff ?? "", /^@@ /m);
+    assert.match(multiEditRecord[0]?.diff ?? "", /\+1º/);
+    assert.deepEqual(
+      writeRecord.map(({ path, kind }) => ({ path, kind })),
+      [{ path: "docs/novo.md", kind: { type: "add" } }],
+    );
+    assert.match(writeRecord[0]?.diff ?? "", /\+linha um\n\+linha dois/);
+
+    const mcp = actions.find((action) => String(action.actionType) === "mcp");
+    assert.ok(mcp);
+    assert.equal(mcp.server, "docs");
+    assert.equal(mcp.tool, "lookup");
+    assert.deepEqual(JSON.parse(mcp.input), { query: "guia de instalação", limit: 2 });
+    assert.equal(mcp.output, "Dois resultados");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude 2.1.x chama o subagente de Agent: ações filhas ficam aninhadas e eventos task_* não viram ações", async () => {
+  const harness = await createHarness("subagente-agent");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Liste os arquivos do projeto.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const actions =
+      latestAgent(harness, conversation.id)?.parts.filter(
+        (part): part is Extract<MessagePart, { type: "action" }> => part.type === "action",
+      ) ?? [];
+    assert.equal(actions.length, 2);
+    const subagent = actions.find((action) => String(action.actionType) === "subagent");
+    assert.ok(subagent);
+    assert.equal(subagent.title, "Listar arquivos do projeto");
+    assert.match(subagent.input, /^Explore · Liste todos os arquivos deste projeto/);
+    assert.equal(
+      subagent.output,
+      "package.json,src/carrinho.js,src/desconto.js,test/carrinho.test.js,test/desconto.test.js",
+    );
+    assert.equal(subagent.state, "ok");
+
+    const childBash = actions.find((action) => action.actionType === "command");
+    assert.ok(childBash);
+    assert.equal(childBash.parentId, subagent.id);
+    assert.equal(
+      actions.some((action) => action.actionType === "other"),
+      false,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("fluxo da UI create + send gera e transmite título após resposta concluída", async () => {
+  let captured: { agent: string; userMessage: string; agentResponse: string } | undefined;
+  const titleCli = createFakeTitleCli('### **Título:** `"Karont: app desktop de chat"`\n');
+  const titleLogs: string[] = [];
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      titleGenerator: async (agent, userMessage, agentResponse) => {
+        captured = { agent, userMessage, agentResponse };
+        assert.equal(agent, "claude");
+        return generateConversationTitle("claude", userMessage, agentResponse, {
+          env: { ...process.env, KARONT_CLAUDE_CLI: "fake-title-cli" },
+          spawn: titleCli.spawn,
+          logger: { error: (message) => titleLogs.push(message) },
+        });
+      },
+    },
+  );
+  try {
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Nova conversa",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    assert.equal(conversation.title, "Nova conversa");
+    await harness.manager.send(conversation.id, "P".repeat(1_100));
+    await waitForState(harness, conversation.id, "idle");
+    for (
+      let attempt = 0;
+      attempt < 100 && harness.manager.get(conversation.id)?.conversation.title === "Nova conversa";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    const updated = harness.manager.get(conversation.id)?.conversation;
+    assert.equal(captured?.agent, "claude");
+    assert.equal(captured?.userMessage.length, 1_000);
+    assert.ok(captured?.agentResponse.startsWith("Oi!"));
+    assert.equal(updated?.title, "Karont: app desktop de chat");
+    assert.ok(titleCli.getInvocation()?.args.at(-1)?.includes("P".repeat(1_000)));
+    assert.deepEqual(titleLogs, []);
+    assert.ok(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          event.payload.conversation.id === conversation.id &&
+          "messageStatus" in event.payload &&
+          event.payload.messageStatus === "done",
+      ),
+    );
+    assert.ok(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          event.payload.conversation.id === conversation.id &&
+          event.payload.conversation.title === "Karont: app desktop de chat",
+      ),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("não substitui o título quando a pessoa renomeia durante a geração", async () => {
+  let resolveTitle: ((title: string | null) => void) | undefined;
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      titleGenerator: () =>
+        new Promise((resolve) => {
+          resolveTitle = resolve;
+        }),
+    },
+  );
+  try {
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Nova conversa",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    await harness.manager.send(conversation.id, "Me ajuda com esse código.");
+    await waitForState(harness, conversation.id, "idle");
+    for (let attempt = 0; attempt < 100 && !resolveTitle; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(typeof resolveTitle, "function");
+    await harness.manager.rename(conversation.id, "Título escolhido por mim");
+    resolveTitle?.("Título automático curto");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(
+      harness.manager.get(conversation.id)?.conversation.title,
+      "Título escolhido por mim",
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Codex escolhe um modelo econômico disponível com esforço mínimo para o título", async () => {
+  let capturedOptions: Pick<TitleGeneratorOptions, "codexModel" | "codexEffort"> | undefined;
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      codexModelCache: {
+        models: [
+          {
+            id: "codex-standard",
+            name: "Codex Standard",
+            efforts: ["low", "medium"],
+            defaultEffort: "medium",
+            supportsFast: false,
+          },
+          {
+            id: "codex-small",
+            name: "Codex Small",
+            efforts: ["low"],
+            defaultEffort: "low",
+            supportsFast: false,
+          },
+          {
+            id: "codex-mini-available",
+            name: "Codex Mini",
+            efforts: ["low", "high"],
+            defaultEffort: "low",
+            supportsFast: false,
+          },
+          {
+            id: "codex-nano-available",
+            name: "Codex Nano",
+            efforts: ["low"],
+            defaultEffort: "low",
+            supportsFast: false,
+          },
+        ],
+        efforts: ["low", "medium", "high"],
+      },
+      titleGenerator: async (_agent, _userMessage, _agentResponse, options) => {
+        capturedOptions = options;
+        return "Título do Codex";
+      },
+    },
+  );
+  try {
+    const conversation = harness.manager.create({
+      agent: "codex",
+      title: "Nova conversa",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    await harness.manager.send(conversation.id, "Ajude com o projeto.");
+    await waitForState(harness, conversation.id, "idle");
+    for (
+      let attempt = 0;
+      attempt < 100 && harness.manager.get(conversation.id)?.conversation.title === "Nova conversa";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    assert.equal(capturedOptions?.codexModel, "codex-nano-available");
+    assert.equal(capturedOptions?.codexEffort, "low");
+    assert.equal(harness.manager.get(conversation.id)?.conversation.title, "Título do Codex");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("permissões permitem uma vez, sempre com sugestão real e negam", async (t) => {
+  for (const scenario of [
+    "comando-permitido",
+    "comando-permitir-sempre",
+    "comando-negado",
+  ] as const) {
+    await t.test(scenario, async () => {
+      const harness = await createHarness(scenario);
+      try {
+        const conversation = createConversation(harness.manager);
+        await harness.manager.send(conversation.id, "Execute o pedido.");
+        const permission = await waitForPart(
+          harness,
+          conversation.id,
+          (part) => part.type === "permission" && part.state === "pending",
+        );
+        if (scenario === "comando-permitido") {
+          assert.ok(
+            permission.type === "permission" &&
+              permission.summary === "touch .karont-approval-probe && ls" &&
+              permission.description === "Create probe file in project folder and list contents",
+          );
+          const waitingAction = latestAgent(harness, conversation.id)?.parts.find(
+            (part) => part.type === "action" && part.actionType === "command",
+          );
+          assert.equal(
+            waitingAction?.type === "action" ? waitingAction.state : undefined,
+            "waiting",
+          );
+        }
+        const decision =
+          scenario === "comando-permitir-sempre"
+            ? "always"
+            : scenario === "comando-negado"
+              ? "deny"
+              : "allow";
+        await harness.manager.respond(conversation.id, permission.id, {
+          responseType: "permission",
+          decision,
+        });
+        await waitForState(harness, conversation.id, "idle");
+        const finalPart = latestAgent(harness, conversation.id)?.parts.find(
+          (part) => part.id === permission.id,
+        );
+        assert.equal(
+          finalPart?.type === "permission" ? finalPart.state : undefined,
+          decision === "deny" ? "denied" : "allowed",
+        );
+        assert.equal(typeof finalPart?.startedAt, "number");
+        assert.equal(typeof finalPart?.endedAt, "number");
+        assert.ok((finalPart?.endedAt ?? 0) >= (finalPart?.startedAt ?? 0));
+        if (scenario === "comando-permitido") {
+          const action = latestAgent(harness, conversation.id)?.parts.find(
+            (part) => part.type === "action" && part.actionType === "command",
+          );
+          assert.equal(action?.type === "action" ? action.state : undefined, "ok");
+        }
+      } finally {
+        await harness.close();
+      }
+    });
+  }
+});
+
+test("modo Só leitura limita ferramentas e nega automaticamente comandos", async () => {
+  const harness = await createHarness("comando-negado");
+  try {
+    const conversation = createConversation(harness.manager, "read-only");
+    await harness.manager.send(conversation.id, "Tente rodar um comando.");
+    await waitForState(harness, conversation.id, "idle");
+    const args = harness.spawnArgs[0] ?? [];
+    const toolList = args[args.indexOf("--tools") + 1] ?? "";
+    assert.ok(args.includes("dontAsk"));
+    assert.equal(toolList.includes("Bash"), false);
+    assert.equal(
+      latestAgent(harness, conversation.id)?.parts.some((part) => part.type === "permission"),
+      false,
+    );
+    assert.ok(
+      latestAgent(harness, conversation.id)?.parts.some(
+        (part) => part.type === "action" && part.actionType === "command" && part.state === "error",
+      ),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("pergunta e plano aguardam decisão do usuário", async (t) => {
+  await t.test("pergunta", async () => {
+    const harness = await createHarness("pergunta");
+    try {
+      const conversation = createConversation(harness.manager, "read-only");
+      await harness.manager.send(conversation.id, "Faça uma pergunta.");
+      const question = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "question" && part.state === "pending",
+      );
+      if (question.type !== "question") throw new Error("Fixture esperava uma parte de pergunta.");
+      assert.ok(
+        harness.spawnArgs[0]?.some((argument) => argument.includes("AskUserQuestion,ExitPlanMode")),
+      );
+      assert.equal(question.questions[0]?.options.length, 2);
+      await harness.manager.respond(conversation.id, question.id, {
+        responseType: "question",
+        answers: { "0": ["A"] },
+      });
+      await waitForState(harness, conversation.id, "idle");
+      const questionResponse = harness.claudeFake.controlResponses.find((entry) => {
+        const response = entry.response as { updatedInput?: { answers?: unknown } } | undefined;
+        return response?.updatedInput?.answers !== undefined;
+      });
+      assert.deepEqual(
+        (
+          questionResponse?.response as
+            | { updatedInput?: { answers?: Record<string, string> } }
+            | undefined
+        )?.updatedInput?.answers,
+        { "Você prefere A ou B?": "A" },
+      );
+      const answered = latestAgent(harness, conversation.id)?.parts.find(
+        (part) => part.id === question.id,
+      );
+      assert.equal(answered?.type === "question" ? answered.state : undefined, "answered");
+      assert.equal(typeof answered?.startedAt, "number");
+      assert.equal(typeof answered?.endedAt, "number");
+      assert.ok((answered?.endedAt ?? 0) >= (answered?.startedAt ?? 0));
+    } finally {
+      await harness.close();
+    }
+  });
+  await t.test("plano", async () => {
+    const harness = await createHarness("plano");
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, "Planeje.", true);
+      const plan = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "plan" && part.state === "pending",
+      );
+      await waitForState(harness, conversation.id, "waiting");
+      await harness.manager.respond(conversation.id, plan.id, {
+        responseType: "plan",
+        decision: "approve",
+      });
+      await waitForState(harness, conversation.id, "idle");
+      assert.ok(
+        latestAgent(harness, conversation.id)?.parts.some(
+          (part) => part.type === "plan" && part.state === "approved",
+        ),
+      );
+      const permissionModeIndex = harness.spawnArgs[0]?.indexOf("--permission-mode") ?? -1;
+      assert.equal(harness.spawnArgs[0]?.[permissionModeIndex + 1], "plan");
+      assert.deepEqual(harness.claudeFake.controlRequests, [
+        { subtype: "set_permission_mode", mode: "acceptEdits" },
+      ]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("ajustar mantém o modo plano e envia o comentário ao Claude", async () => {
+    const harness = await createHarness("plano", {}, { planDecision: "adjust" });
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, "Planeje.", true);
+      const plan = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "plan" && part.state === "pending",
+      );
+      await waitForState(harness, conversation.id, "waiting");
+      const comment = "Inclua a validação do resultado como segundo passo.";
+      await harness.manager.respond(conversation.id, plan.id, {
+        responseType: "plan",
+        decision: "reject",
+        comment,
+      });
+      const revisedPlan = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "plan" && part.state === "pending" && part.id !== plan.id,
+      );
+      assert.equal(revisedPlan.type, "plan");
+      await waitForState(harness, conversation.id, "waiting");
+      const rejectedPlan = latestAgent(harness, conversation.id)?.parts.find(
+        (part) => part.id === plan.id,
+      );
+      assert.equal(rejectedPlan?.type === "plan" ? rejectedPlan.state : undefined, "rejected");
+      const response = harness.claudeFake.controlResponses.at(-1)?.response as
+        | { behavior?: string; message?: string }
+        | undefined;
+      assert.equal(response?.behavior, "deny");
+      assert.equal(response?.message, comment);
+      assert.deepEqual(harness.claudeFake.controlRequests, []);
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+test("TaskCreate/TaskUpdate mantêm uma parte de tarefas atualizada", async () => {
+  const harness = await createHarness("tarefas");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Crie tarefas.");
+    await waitForState(harness, conversation.id, "idle");
+    const todos = latestAgent(harness, conversation.id)?.parts.filter(
+      (part) => part.type === "todos",
+    );
+    assert.equal(todos?.length, 1);
+    assert.equal(todos?.[0]?.type === "todos" ? todos[0].items.length : 0, 2);
+    assert.ok(
+      todos?.[0]?.type === "todos" && todos[0].items.every((item) => item.state === "done"),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("retomada usa --resume; interrupção usa o protocolo e mantém mensagem interrompida", async (t) => {
+  await t.test("resume", async () => {
+    const harness = await createHarness("continuar");
+    try {
+      const conversation = createConversation(harness.manager);
+      setAgentSession(harness.db, conversation.id, "00000000-0000-4000-8000-000000000003");
+      await harness.manager.send(conversation.id, "Continue.");
+      await waitForState(harness, conversation.id, "idle");
+      assert.ok(harness.spawnArgs[0]?.includes("--resume"));
+      assert.equal(latestAgent(harness, conversation.id)?.status, "done");
+    } finally {
+      await harness.close();
+    }
+  });
+  await t.test("parar", async () => {
+    const harness = await createHarness("parar");
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, "Resposta longa.");
+      await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "text" && part.markdown.length > 0,
+      );
+      assert.equal(await harness.manager.stop(conversation.id), true);
+      await waitForState(harness, conversation.id, "idle");
+      assert.equal(latestAgent(harness, conversation.id)?.status, "interrupted");
+      assert.ok(
+        latestAgent(harness, conversation.id)?.parts.some(
+          (part) => part.type === "error" && part.errorType === "interrupted",
+        ),
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+  await t.test("parar durante a abertura não envia a mensagem à CLI", async () => {
+    let announceOpening!: () => void;
+    let releaseOpening!: () => void;
+    const opening = new Promise<void>((resolve) => {
+      releaseOpening = resolve;
+    });
+    const openingStarted = new Promise<void>((resolve) => {
+      announceOpening = resolve;
+    });
+    const harness = await createHarness(
+      "texto",
+      {},
+      {
+        initializeGate: { started: announceOpening, released: opening },
+      },
+    );
+    try {
+      const conversation = createConversation(harness.manager);
+      const sending = harness.manager.send(conversation.id, "Não envie depois de parar.");
+      await openingStarted;
+      assert.equal(await harness.manager.stop(conversation.id), true);
+      assert.equal(harness.manager.get(conversation.id)?.conversation.state, "idle");
+      assert.equal(latestAgent(harness, conversation.id)?.status, "interrupted");
+
+      releaseOpening();
+      await sending;
+      assert.equal(
+        harness.claudeFake.messages.some((message) => message.type === "user"),
+        false,
+      );
+    } finally {
+      releaseOpening();
+      await harness.close();
+    }
+  });
+});
+
+test("falha ao abrir preserva renomeação, fixação e arquivamento concorrentes", async (t) => {
+  const runOpeningFailure = async (
+    mutate: (manager: ConversationManager, id: string) => Promise<void>,
+  ) => {
+    let announceOpening!: () => void;
+    let rejectOpening!: (error: Error) => void;
+    const openingStarted = new Promise<void>((resolve) => {
+      announceOpening = resolve;
+    });
+    const opening = new Promise<void>((_resolve, reject) => {
+      rejectOpening = reject;
+    });
+    const adapterFactory: AdapterFactory = () => ({
+      start: async () => {
+        announceOpening();
+        await opening;
+      },
+      send: async () => undefined,
+      respond: async () => undefined,
+      interrupt: async () => undefined,
+      dispose: async () => undefined,
+    });
+    const harness = await createHarness("texto", {}, { adapterFactory });
+    try {
+      const conversation = createConversation(harness.manager);
+      const sending = harness.manager.send(conversation.id, "Abra a conversa.");
+      await openingStarted;
+      await mutate(harness.manager, conversation.id);
+      rejectOpening(new Error("Falha de abertura simulada."));
+      await sending;
+
+      const current = harness.manager.get(conversation.id)?.conversation;
+      const stateEvents = harness.events.filter(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          event.payload.conversation.id === conversation.id,
+      );
+      const lastStateEvent = stateEvents.at(-1);
+      assert.equal(current?.state, "error");
+      assert.equal(lastStateEvent?.event, "conversation.stateChanged");
+      return { current, lastStateEvent };
+    } finally {
+      rejectOpening(new Error("Abertura encerrada pelo teste."));
+      await harness.close();
+    }
+  };
+
+  await t.test("mantém o novo título e a fixação", async () => {
+    const result = await runOpeningFailure(async (manager, id) => {
+      await manager.rename(id, "Título atualizado");
+      await manager.setPinned(id, true);
+    });
+    assert.equal(result.current?.title, "Título atualizado");
+    assert.ok(result.current?.pinnedAt);
+    if (result.lastStateEvent.event === "conversation.stateChanged") {
+      assert.equal(result.lastStateEvent.payload.conversation.title, "Título atualizado");
+      assert.ok(result.lastStateEvent.payload.conversation.pinnedAt);
+    }
+  });
+
+  await t.test("mantém o arquivamento", async () => {
+    const result = await runOpeningFailure(async (manager, id) => {
+      await manager.setArchived(id, true);
+    });
+    assert.ok(result.current?.archivedAt);
+    if (result.lastStateEvent.event === "conversation.stateChanged") {
+      assert.ok(result.lastStateEvent.payload.conversation.archivedAt);
+    }
+  });
+});
+
+test("início do turno preserva metadados alterados durante a emissão da mensagem", async () => {
+  let announceMessage!: () => void;
+  let releaseMessage!: () => void;
+  const messageCreated = new Promise<void>((resolve) => {
+    announceMessage = resolve;
+  });
+  const messageEmission = new Promise<void>((resolve) => {
+    releaseMessage = resolve;
+  });
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async () => emit({ kind: "turn-end", status: "done" }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    { adapterFactory, messageCreatedGate: { started: announceMessage, released: messageEmission } },
+  );
+  try {
+    const conversation = createConversation(harness.manager);
+    const sending = harness.manager.send(conversation.id, "Envie a mensagem.");
+    await messageCreated;
+    await harness.manager.rename(conversation.id, "Título durante envio");
+    await harness.manager.setPinned(conversation.id, true);
+    releaseMessage();
+    await sending;
+    await waitForState(harness, conversation.id, "idle");
+
+    const current = harness.manager.get(conversation.id)?.conversation;
+    assert.equal(current?.title, "Título durante envio");
+    assert.ok(current?.pinnedAt);
+  } finally {
+    releaseMessage();
+    await harness.close();
+  }
+});
+
+test("setOptions preserva metadados alterados durante descarte do agente", async () => {
+  let announceDisposal!: () => void;
+  let releaseDisposal!: () => void;
+  const disposalStarted = new Promise<void>((resolve) => {
+    announceDisposal = resolve;
+  });
+  const disposal = new Promise<void>((resolve) => {
+    releaseDisposal = resolve;
+  });
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async () => emit({ kind: "turn-end", status: "done" }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => {
+      announceDisposal();
+      await disposal;
+    },
+  });
+  const harness = await createHarness(
+    "texto",
+    { KARONT_AGENT_IDLE_MS: "60000" },
+    { adapterFactory },
+  );
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Conclua a primeira resposta.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const updatingOptions = harness.manager.setOptions(conversation.id, { mode: "read-only" });
+    await disposalStarted;
+    await harness.manager.rename(conversation.id, "Título durante opções");
+    await harness.manager.setPinned(conversation.id, true);
+    releaseDisposal();
+    await updatingOptions;
+
+    const current = harness.manager.get(conversation.id)?.conversation;
+    assert.equal(current?.mode, "read-only");
+    assert.equal(current?.title, "Título durante opções");
+    assert.ok(current?.pinnedAt);
+  } finally {
+    releaseDisposal();
+    await harness.close();
+  }
+});
+
+test("setOptions sem alteração efetiva mantém o adaptador aquecido", async () => {
+  let starts = 0;
+  let disposals = 0;
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => {
+      starts += 1;
+    },
+    send: async () => emit({ kind: "turn-end", status: "done" }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => {
+      disposals += 1;
+    },
+  });
+  const harness = await createHarness(
+    "texto",
+    { KARONT_AGENT_IDLE_MS: "60000" },
+    {
+      adapterFactory,
+      codexModelCache: {
+        models: [{ id: "gpt-basic", name: "GPT básico", efforts: ["low"], supportsFast: false }],
+        efforts: ["low"],
+      },
+    },
+  );
+  try {
+    const conversation = harness.manager.create({
+      agent: "codex",
+      title: "Conversa Codex",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      model: "gpt-basic",
+    });
+    await harness.manager.send(conversation.id, "Primeira mensagem.");
+    await waitForState(harness, conversation.id, "idle");
+
+    await harness.manager.setOptions(conversation.id, { fast: true });
+    await harness.manager.send(conversation.id, "Segunda mensagem.");
+    await waitForState(harness, conversation.id, "idle");
+
+    assert.equal(starts, 1);
+    assert.equal(disposals, 0);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("CLI ausente gera erro retryable e o reinício marca streaming como interrupted", async (t) => {
+  await t.test("erro", async () => {
+    const harness = await createHarness("erro");
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, "Olá.");
+      await waitForState(harness, conversation.id, "error");
+      const failedMessage = latestAgent(harness, conversation.id);
+      assert.equal(typeof failedMessage?.startedAt, "number");
+      assert.equal(typeof failedMessage?.endedAt, "number");
+      const error = failedMessage?.parts.find((part) => part.type === "error");
+      assert.ok(error?.type === "error");
+      assert.equal(error.startedAt, error.endedAt);
+      assert.ok(error.type === "error" && error.errorType === "cli-not-found" && error.retryable);
+    } finally {
+      await harness.close();
+    }
+  });
+  await t.test("serviço reiniciado", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "karont-restart-"));
+    const dbPath = path.join(root, "karont.db");
+    let db = openDatabase(dbPath);
+    const conversation = createConversationRecord(db, {
+      agent: "claude",
+      title: "Interrompida",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    const message = {
+      id: "message-streaming",
+      conversationId: conversation.id,
+      author: "agent" as const,
+      status: "streaming" as const,
+      parts: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    addMessage(db, message);
+    db.close();
+    db = openDatabase(dbPath);
+    const recovered = getMessage(db, message.id);
+    assert.equal(recovered?.status, "interrupted");
+    assert.ok(recovered?.parts.some((part) => part.type === "error" && part.retryable));
+    db.close();
+  });
+});
+
+test("Claude não abre processo se for descartado enquanto valida a pasta", async () => {
+  const fixturePath = fileURLToPath(new URL("texto.jsonl", fixtureDir));
+  const fake = createFakeClaudeSpawn(fixturePath, { initializeModels: modelFixture });
+  const env = {
+    ...process.env,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CLAUDE_CLI: "claude",
+  };
+  let spawnCount = 0;
+  const adapter = new ClaudeAdapter(() => undefined, {
+    env,
+    spawn: (command, args, options) => {
+      spawnCount += 1;
+      return fake(command, args, options);
+    },
+  });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "dispose-before-spawn-claude",
+    agent: "claude",
+    title: "Abertura cancelada",
+    cwd: os.tmpdir(),
+    mode: "edit",
+    fast: false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const starting = adapter.start(conversation, "session-id", false);
+  try {
+    await adapter.dispose();
+    await assert.rejects(starting, /foi encerrada/);
+    assert.equal(spawnCount, 0);
+  } finally {
+    await adapter.dispose();
+  }
+});
+
+test("Claude mata o processo se dispose acontecer dentro do spawn", async () => {
+  const env = {
+    ...process.env,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CLAUDE_CLI: "claude",
+  };
+  let adapter!: ClaudeAdapter;
+  let disposal: Promise<void> | undefined;
+  const signals: NodeJS.Signals[] = [];
+  const child = Object.assign(new EventEmitter(), {
+    exitCode: null as number | null,
+    signalCode: null as NodeJS.Signals | null,
+    kill(signal: NodeJS.Signals) {
+      signals.push(signal);
+      child.signalCode = signal;
+      queueMicrotask(() => child.emit("exit", null, signal));
+      return true;
+    },
+  });
+  adapter = new ClaudeAdapter(() => undefined, {
+    env,
+    spawn: () => {
+      disposal = adapter.dispose();
+      return child as unknown as ChildProcess;
+    },
+  });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "dispose-during-spawn-claude",
+    agent: "claude",
+    title: "Abertura cancelada",
+    cwd: os.tmpdir(),
+    mode: "edit",
+    fast: false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  await assert.rejects(adapter.start(conversation, "session-id", false), /foi encerrada/);
+  await disposal;
+  assert.deepEqual(signals, ["SIGTERM"]);
+});
+
+test("processo da CLI fecha por ociosidade e próxima mensagem retoma a sessão", async () => {
+  const harness = await createHarness("texto", { KARONT_AGENT_IDLE_MS: "20" });
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Primeira.");
+    await waitForState(harness, conversation.id, "idle");
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await harness.manager.send(conversation.id, "Segunda.");
+    await waitForState(harness, conversation.id, "idle");
+    assert.equal(harness.spawnArgs.length, 2);
+    assert.ok(harness.spawnArgs[1]?.includes("--resume"));
+  } finally {
+    await harness.close();
+  }
+});
+
+test("se a CLI fechar após um turno, o adaptador abre outra com --resume", async () => {
+  const harness = await createHarness("texto", {}, { exitAfterResult: true });
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Primeira.");
+    await waitForState(harness, conversation.id, "idle");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await harness.manager.send(conversation.id, "Segunda.");
+    await waitForState(harness, conversation.id, "idle");
+    assert.equal(harness.spawnArgs.length, 2);
+    assert.ok(harness.spawnArgs[1]?.includes("--resume"));
+  } finally {
+    await harness.close();
+  }
+});
+
+test("setOptions reabre a sessão com novas flags de acesso, modelo e esforço", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Primeira.");
+    await waitForState(harness, conversation.id, "idle");
+    await harness.manager.setOptions(conversation.id, {
+      mode: "read-only",
+      model: "haiku",
+      effort: "low",
+    });
+    await harness.manager.send(conversation.id, "Segunda.");
+    await waitForState(harness, conversation.id, "idle");
+    assert.equal(harness.spawnArgs.length, 2);
+    assert.ok(harness.spawnArgs[1]?.includes("dontAsk"));
+    assert.ok(harness.spawnArgs[1]?.includes("--tools"));
+    assert.ok(harness.spawnArgs[1]?.includes("--model"));
+    assert.ok(harness.spawnArgs[1]?.includes("haiku"));
+    assert.ok(harness.spawnArgs[1]?.includes("--effort"));
+    assert.ok(harness.spawnArgs[1]?.includes("low"));
+    assert.ok(harness.spawnArgs[1]?.includes("--resume"));
+  } finally {
+    await harness.close();
+  }
+});
+
+test("send usa Planejar salvo por setOptions quando não recebe substituição", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Planejar persistido",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    await harness.manager.setOptions(conversation.id, { plan: true });
+    await harness.manager.send(conversation.id, "Planeje e aguarde.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const permissionModeIndex = harness.spawnArgs[0]?.indexOf("--permission-mode") ?? -1;
+    assert.equal(harness.spawnArgs[0]?.[permissionModeIndex + 1], "plan");
+    assert.equal(harness.manager.get(conversation.id)?.conversation.plan, true);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("send aceita uma substituição explícita de Planejar sem mudar a preferência salva", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Substituição do composer",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      plan: true,
+    });
+    await harness.manager.send(conversation.id, "Responda diretamente.", false);
+    await waitForState(harness, conversation.id, "idle");
+
+    const permissionModeIndex = harness.spawnArgs[0]?.indexOf("--permission-mode") ?? -1;
+    assert.equal(harness.spawnArgs[0]?.[permissionModeIndex + 1], "acceptEdits");
+    assert.equal(harness.manager.get(conversation.id)?.conversation.plan, true);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("ClaudeAdapter preserva nome do executável no erro de binário ausente", () => {
+  const error = new AgentCliError("cli-not-found", "Claude Code não encontrado.");
+  assert.equal(error.errorType, "cli-not-found");
+});
+
+test("o serviço ignora modo rápido nas conversas Claude, inclusive as antigas", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Conversa antiga",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      model: "opus",
+      fast: true,
+    });
+    assert.equal(conversation.fast, false);
+    harness.db.prepare("UPDATE conversations SET fast = 1 WHERE id = ?").run(conversation.id);
+
+    const models = await harness.manager.models("claude");
+    assert.ok(models.models.every((model) => model.supportsFast === false));
+    assert.equal(harness.manager.get(conversation.id)?.conversation.fast, false);
+    assert.equal(harness.manager.list({ limit: 10 })[0]?.fast, false);
+    assert.equal((await harness.manager.rename(conversation.id, "Renomeada")).fast, false);
+    assert.equal((await harness.manager.markSeen(conversation.id)).fast, false);
+
+    await harness.manager.send(conversation.id, "Responda ao pedido.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const current = harness.manager.get(conversation.id)?.conversation;
+    assert.equal(current?.fast, false);
+    assert.equal(harness.spawnArgs[0]?.includes("--settings"), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("agent.models lê o initialize uma vez, elimina o alias do padrão e respeita capacidades", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const first = await harness.manager.models("claude");
+    const second = await harness.manager.models("claude");
+    const defaultModel = first.models.find((model) => model.isDefault);
+    const legacyHaiku = first.models.find((model) => model.id === "claude-haiku-4-5-20251001");
+
+    assert.equal(first.models.length, 12);
+    assert.equal(defaultModel?.id, "opus");
+    assert.equal(defaultModel?.name, "Opus 5.5");
+    assert.deepEqual(defaultModel?.aliases, ["default"]);
+    assert.equal(
+      first.models.some((model) => model.id === "default"),
+      false,
+    );
+    assert.deepEqual(defaultModel?.efforts, ["low", "medium", "high", "xhigh", "max"]);
+    assert.deepEqual(legacyHaiku?.efforts, []);
+    assert.equal(
+      first.models.every((model) => model.supportsFast === false),
+      true,
+    );
+    assert.deepEqual(second, first);
+    assert.equal(
+      harness.claudeFake.messages.filter(
+        (message) =>
+          message.type === "control_request" &&
+          (message.request as { subtype?: string } | undefined)?.subtype === "initialize",
+      ).length,
+      1,
+    );
+    assert.equal(
+      harness.claudeFake.messages.some((message) => message.type === "user"),
+      false,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("agent.models reaproveita o initialize do adaptador Claude ativo", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Leia a mensagem.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const models = await harness.manager.models("claude");
+    assert.equal(models.models.find((model) => model.isDefault)?.id, "opus");
+    assert.equal(harness.spawnArgs.length, 1);
+    assert.equal(
+      harness.claudeFake.messages.filter(
+        (message) =>
+          message.type === "control_request" &&
+          (message.request as { subtype?: string } | undefined)?.subtype === "initialize",
+      ).length,
+      1,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude não envia o marcador default como modelo explícito", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Preferência antiga",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      model: "default",
+    });
+    await harness.manager.send(conversation.id, "Continue com o modelo padrão.");
+    await waitForState(harness, conversation.id, "idle");
+
+    assert.equal(harness.spawnArgs[0]?.includes("--model"), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("agent.models usa a lista fixa quando a consulta independente falha e não repete a tentativa", async () => {
+  let attempts = 0;
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      claudeModelLoader: async () => {
+        attempts += 1;
+        throw new Error("Claude Code indisponível.");
+      },
+    },
+  );
+  try {
+    const first = await harness.manager.models("claude");
+    const second = await harness.manager.models("claude");
+    assert.deepEqual(
+      first.models.map(({ id }) => id),
+      ["opus", "sonnet", "haiku"],
+    );
+    assert.equal(first.models.find((model) => model.id === "opus")?.isDefault, true);
+    assert.deepEqual(second, first);
+    assert.equal(attempts, 1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude recebe anexos em blocos e a mensagem salva apenas metadados", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    const imageData = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    const attachments = [
+      { name: "notas.md", mimeType: "text/markdown", kind: "text" as const, data: "Use `code`." },
+      { name: "pixel.png", mimeType: "image/png", kind: "image" as const, data: imageData },
+    ];
+    const sent = await harness.manager.send(
+      conversation.id,
+      "Leia os arquivos.",
+      false,
+      attachments,
+    );
+    await waitForState(harness, conversation.id, "idle");
+
+    const userLine = harness.claudeFake.messages.find((message) => message.type === "user");
+    assert.ok(userLine);
+    const content = (userLine.message as { content: unknown[] }).content;
+    assert.deepEqual(content, [
+      { type: "text", text: "Leia os arquivos." },
+      {
+        type: "text",
+        text: "Arquivo anexado: notas.md\n\n```\nUse `code`.\n```",
+      },
+      {
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data: imageData },
+      },
+    ]);
+
+    assert.deepEqual(harness.manager.get(conversation.id)?.messages[0]?.attachments, [
+      { name: "notas.md", mimeType: "text/markdown", kind: "text", sizeBytes: 11 },
+      { name: "pixel.png", mimeType: "image/png", kind: "image", sizeBytes: 8 },
+    ]);
+    const persisted = getMessage(harness.db, sent.userMessage.id);
+    assert.deepEqual(
+      persisted?.attachments,
+      harness.manager.get(conversation.id)?.messages[0]?.attachments,
+    );
+    const raw = harness.db
+      .prepare("SELECT attachments_json FROM messages WHERE id=?")
+      .get(sent.userMessage.id) as { attachments_json: string };
+    assert.equal(raw.attachments_json.includes(imageData), false);
+    assert.equal(raw.attachments_json.includes("Use `code`."), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("retry reenvia os bytes dos anexos da mensagem original", async () => {
+  const receivedAttachments: ConversationAttachment[][] = [];
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async (_text, _plan, attachments = []) => {
+      receivedAttachments.push(structuredClone(attachments));
+      emit({ kind: "turn-end", status: "done" });
+    },
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness("texto", {}, { adapterFactory });
+  try {
+    const conversation = createConversation(harness.manager);
+    const imageData = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    const attachments: ConversationAttachment[] = [
+      { name: "notas.txt", mimeType: "text/plain", kind: "text", data: "Trecho de referência." },
+      { name: "pixel.png", mimeType: "image/png", kind: "image", data: imageData },
+    ];
+
+    await harness.manager.send(conversation.id, "Leia a imagem.", false, attachments);
+    await waitForState(harness, conversation.id, "idle");
+    const agentMessage = harness.manager
+      .get(conversation.id)
+      ?.messages.find((message) => message.author === "agent");
+    assert.ok(agentMessage);
+    await harness.manager.retry(conversation.id, agentMessage.id);
+    await waitForState(harness, conversation.id, "idle");
+
+    assert.deepEqual(receivedAttachments, [attachments, attachments]);
+    const raw = harness.db
+      .prepare(
+        "SELECT attachments_json FROM messages WHERE conversation_id = ? AND author = 'user'",
+      )
+      .get(conversation.id) as { attachments_json: string };
+    assert.equal(raw.attachments_json.includes(imageData), false);
+    assert.equal(raw.attachments_json.includes("Trecho de referência."), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("retry reenvia as skills da mensagem original", async () => {
+  const receivedSkills: Array<Array<{ name: string; path?: string }>> = [];
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async (_text, _plan, _attachments, skills = []) => {
+      receivedSkills.push(structuredClone(skills));
+      emit({ kind: "turn-end", status: "done" });
+    },
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness("texto", {}, { adapterFactory });
+  let restartedManager: ConversationManager | undefined;
+  try {
+    const conversation = createConversation(harness.manager);
+    const skills: Array<Pick<ComposerSkill, "name" | "path">> = [
+      { name: "project-helper", path: "/projeto/.agents/skills/project-helper/SKILL.md" },
+    ];
+
+    await harness.manager.send(conversation.id, "Use a skill do projeto.", false, [], skills);
+    await waitForState(harness, conversation.id, "idle");
+    const userMessage = harness.manager
+      .get(conversation.id)
+      ?.messages.find((message) => message.author === "user");
+    assert.deepEqual(userMessage?.parts[0], {
+      id: userMessage?.parts[0]?.id,
+      type: "text",
+      markdown: "Use a skill do projeto.",
+      skills,
+    });
+    const agentMessage = harness.manager
+      .get(conversation.id)
+      ?.messages.find((message) => message.author === "agent");
+    assert.ok(agentMessage);
+
+    await harness.manager.close();
+    restartedManager = new ConversationManager({
+      db: harness.db,
+      broadcast: async (event) => {
+        harness.events.push(event);
+      },
+      adapterFactory,
+    });
+    await restartedManager.retry(conversation.id, agentMessage.id);
+    await waitForState(harness, conversation.id, "idle");
+
+    assert.deepEqual(receivedSkills, [skills, skills]);
+  } finally {
+    await restartedManager?.close();
+    await harness.close();
+  }
+});
+
+test("retry repete uma compactação pela operação do adaptador", async () => {
+  let compactCalls = 0;
+  let sendCalls = 0;
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => emit({ kind: "session", sessionId: "sessao-teste" }),
+    send: async () => {
+      sendCalls += 1;
+      emit({ kind: "turn-end", status: "done" });
+    },
+    compact: async () => {
+      compactCalls += 1;
+      emit({
+        kind: "turn-end",
+        status: compactCalls === 1 ? "error" : "done",
+        ...(compactCalls === 1
+          ? { error: { type: "failed" as const, text: "Falha simulada." } }
+          : {}),
+      });
+    },
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness("texto", {}, { adapterFactory });
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Mensagem original.");
+    await waitForState(harness, conversation.id, "idle");
+
+    await harness.manager.compact(conversation.id);
+    await waitForState(harness, conversation.id, "error");
+    const compactMarker = harness.manager
+      .get(conversation.id)
+      ?.messages.filter((message) => message.author === "user")
+      .at(-1)
+      ?.parts.find((part) => part.type === "text");
+    assert.equal(compactMarker?.type === "text" ? compactMarker.operation : undefined, "compact");
+    const failed = harness.manager
+      .get(conversation.id)
+      ?.messages.filter((message) => message.author === "agent")
+      .at(-1);
+    assert.ok(failed);
+
+    await harness.manager.retry(conversation.id, failed.id);
+    await waitForState(harness, conversation.id, "idle");
+
+    assert.equal(compactCalls, 2);
+    assert.equal(sendCalls, 1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("retry descarta os bytes de anexos das conversas mais antigas", async () => {
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async () =>
+      emit({
+        kind: "turn-end",
+        status: "error",
+        error: { type: "failed", text: "Falha simulada." },
+      }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness("texto", {}, { adapterFactory });
+  try {
+    const conversations = Array.from({ length: 4 }, () => createConversation(harness.manager));
+    for (const [index, conversation] of conversations.entries()) {
+      await harness.manager.send(conversation.id, `Mensagem ${index}.`, false, [
+        {
+          name: `nota-${index}.txt`,
+          mimeType: "text/plain",
+          kind: "text",
+          data: `anexo-${index}`,
+        },
+      ]);
+      await waitForState(harness, conversation.id, "error");
+    }
+
+    const oldest = conversations[0];
+    const latest = conversations.at(-1);
+    assert.ok(oldest && latest);
+    const oldestAgent = latestAgent(harness, oldest.id);
+    assert.ok(oldestAgent);
+    await assert.rejects(
+      harness.manager.retry(oldest.id, oldestAgent.id),
+      /bytes dos anexos não estão mais disponíveis/,
+    );
+    const latestAgentMessage = latestAgent(harness, latest.id);
+    assert.ok(latestAgentMessage);
+    await harness.manager.retry(latest.id, latestAgentMessage.id);
+    await waitForState(harness, latest.id, "error");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("retry falha claramente se os bytes dos anexos não estão mais em memória", async () => {
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: (_conversation, emit) => ({
+        start: async () => undefined,
+        send: async () => emit({ kind: "turn-end", status: "done" }),
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      }),
+    },
+  );
+  let retrySendCount = 0;
+  try {
+    const conversation = createConversation(harness.manager);
+    const imageData = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    await harness.manager.send(conversation.id, "Leia a imagem.", false, [
+      { name: "pixel.png", mimeType: "image/png", kind: "image", data: imageData },
+    ]);
+    await waitForState(harness, conversation.id, "idle");
+    const agentMessage = harness.manager
+      .get(conversation.id)
+      ?.messages.find((message) => message.author === "agent");
+    assert.ok(agentMessage);
+    await harness.manager.close();
+
+    const restartedManager = new ConversationManager({
+      db: harness.db,
+      broadcast: async (event) => {
+        harness.events.push(event);
+      },
+      adapterFactory: () => ({
+        start: async () => undefined,
+        send: async () => {
+          retrySendCount += 1;
+        },
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      }),
+    });
+    try {
+      await assert.rejects(
+        restartedManager.retry(conversation.id, agentMessage.id),
+        /bytes dos anexos não estão mais disponíveis/u,
+      );
+      assert.equal(retrySendCount, 0);
+    } finally {
+      await restartedManager.close();
+    }
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude distingue pasta do projeto apagada de CLI ausente", async (context) => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "karont-pasta-apagada-"));
+  context.after(() => rm(cwd, { recursive: true, force: true }));
+  await rm(cwd, { recursive: true, force: true });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "missing-folder-claude",
+    agent: "claude",
+    title: "Pasta apagada",
+    cwd,
+    mode: "edit",
+    fast: false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  let spawnCount = 0;
+  const adapter = new ClaudeAdapter(() => undefined, {
+    env: { ...process.env, KARONT_DISABLE_AGENT_DETECTION: "1", KARONT_CLAUDE_CLI: "claude" },
+    spawn: () => {
+      spawnCount += 1;
+      throw Object.assign(new Error("spawn claude ENOENT"), { code: "ENOENT" });
+    },
+  });
+
+  await assert.rejects(
+    adapter.start(conversation, "session-id", false),
+    (error: unknown) =>
+      error instanceof AgentCliError &&
+      error.errorType === "failed" &&
+      error.message === `A pasta do projeto não existe mais: ${cwd}`,
+  );
+  assert.equal(spawnCount, 0);
+});

@@ -1,0 +1,84 @@
+.root {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.bubble {
+  position: absolute;
+  z-index: var(--k-layer-popover);
+  bottom: calc(100% + var(--k-space-1));
+  left: 50%;
+  width: max-content;
+  max-width: calc(100vw - var(--k-space-8));
+  padding: var(--k-space-1) var(--k-space-2);
+  border: var(--k-border-width) solid var(--k-color-border-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-color-bg-raised);
+  box-shadow: var(--k-shadow-dialog);
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-11);
+  line-height: var(--k-leading-tight);
+  opacity: 0;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  text-align: center;
+  transform: translate(-50%, var(--k-space-1));
+  transition:
+    opacity var(--k-motion-fast-exit) var(--k-ease),
+    transform var(--k-motion-fast-exit) var(--k-ease),
+    visibility 0s linear var(--k-motion-fast-exit);
+  visibility: hidden;
+  white-space: normal;
+}
+
+.root[data-align="start"] .bubble {
+  left: 0;
+  transform: translate(0, var(--k-space-1));
+}
+
+.root[data-align="end"] .bubble {
+  right: 0;
+  left: auto;
+  transform: translate(0, var(--k-space-1));
+}
+
+.root:hover .bubble,
+.root:has(:focus-visible) .bubble,
+.root[data-visible="true"] .bubble {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  transition-delay: 0s;
+  transition-duration: var(--k-motion-fast);
+  visibility: visible;
+}
+
+.root:where([data-align="start"]):hover .bubble,
+.root:where([data-align="start"]):has(:focus-visible) .bubble,
+.root:where([data-align="start"])[data-visible="true"] .bubble,
+.root:where([data-align="end"]):hover .bubble,
+.root:where([data-align="end"]):has(:focus-visible) .bubble,
+.root:where([data-align="end"])[data-visible="true"] .bubble {
+  transform: translate(0, 0);
+}
+
+.root[data-open="true"] .bubble {
+  opacity: 0;
+  transform: translate(-50%, var(--k-space-1));
+  transition: none;
+  visibility: hidden;
+}
+
+.root[data-open="true"][data-align="start"] .bubble,
+.root[data-open="true"][data-align="end"] .bubble {
+  transform: translate(0, var(--k-space-1));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble {
+    transition: none;
+  }
+}

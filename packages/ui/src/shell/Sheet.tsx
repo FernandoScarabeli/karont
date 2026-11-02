@@ -16,7 +16,14 @@ export function Sheet() {
       (previousView.current.name === "settings" &&
         view.name === "settings" &&
         previousView.current.section !== view.section);
-    if (changed) titleRef.current?.focus();
+    if (changed) {
+      const focusTarget =
+        titleRef.current ??
+        (view.name === "workspace"
+          ? document.querySelector<HTMLElement>('[data-active="true"]')
+          : null);
+      focusTarget?.focus({ preventScroll: true });
+    }
     previousView.current = view;
   }, [view]);
 

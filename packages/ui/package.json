@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "node --test src/conversation/*.test.mjs src/components/FluidHover/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
@@ -18,7 +19,10 @@
     "lucide-react": "1.66.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "react-resizable-panels": "4.16.0"
+    "react-markdown": "10.1.0",
+    "react-resizable-panels": "4.16.0",
+    "rehype-highlight": "7.0.2",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@types/react": "19.3.0",

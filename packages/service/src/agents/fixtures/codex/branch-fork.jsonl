@@ -1,0 +1,5 @@
+{"direction":"out","stream":"stdin","line":"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"karont\",\"version\":\"0.0.0\",\"title\":\"Karont\"},\"capabilities\":{\"experimentalApi\":true}}}"}
+{"direction":"in","stream":"stdout","line":"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"}
+{"direction":"out","stream":"stdin","line":"{\"jsonrpc\":\"2.0\",\"method\":\"initialized\",\"params\":{}}"}
+{"direction":"out","stream":"stdin","line":"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"thread/fork\",\"params\":{\"threadId\":\"codex-source-thread\",\"lastTurnId\":\"codex-turn-selected\",\"cwd\":\"/tmp/karont-branch\",\"model\":\"gpt-test\",\"sandbox\":\"read-only\",\"approvalPolicy\":\"never\"}}"}
+{"direction":"in","stream":"stdout","line":"{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"thread\":{\"id\":\"codex-forked-thread\"}}}"}

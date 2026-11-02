@@ -1,26 +1,64 @@
-import type { Agent } from "@karont/contract";
+import type {
+  Agent,
+  AgentCapabilities,
+  ComposerSkill,
+  Conversation,
+  ConversationAttachment,
+  ResultOf,
+} from "@karont/contract";
 import { BridgeError } from "@karont/contract";
-import { ChevronDown, Folder, TriangleAlert } from "lucide-react";
+import { Folder, TriangleAlert } from "lucide-react";
 import {
   type DragEventHandler,
-  type KeyboardEvent,
   type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
-import { Composer } from "../components/Composer/Composer.tsx";
+import { Composer, type ComposerAutocompleteOption } from "../components/Composer/Composer.tsx";
+import { ComposerMenu, type ComposerMenuOption } from "../components/ComposerMenu/ComposerMenu.tsx";
 import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { TextField } from "../components/TextField/TextField.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
+import {
+  AttachmentChips,
+  AttachmentPicker,
+  useComposerAttachments,
+} from "./ComposerAttachments.tsx";
+import {
+  type AgentEffort,
+  type AgentModels,
+  type ComposerPopoverName,
+  ComposerPreferences,
+  effortSettingKey,
+  fastSettingKey,
+  initialEffortForModel,
+  modelSettingKey,
+} from "./ComposerPreferences.tsx";
+import {
+  type ComposerShortcutTrigger,
+  consumePendingComposerCaret,
+  detectComposerShortcut,
+  findMentionedSkills,
+  fuzzyFilter,
+  insertComposerShortcut,
+  removeComposerCommand,
+} from "./composerShortcuts.ts";
+import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
+import { resolveModelId } from "./modelCatalog.ts";
 import styles from "./NewConversationView.module.css";
+import { upsertConversation } from "./useConversationIndex.ts";
+
+type ComposerFile = ResultOf<"composer.files">["files"][number];
 
 const LAST_AGENT_SETTING = "newConversation.lastAgent";
 const LAST_FOLDER_SETTING = "newConversation.lastFolder";
@@ -28,14 +66,6 @@ const TERMINAL_CHOICE = "terminal";
 const PERSONAL_FOLDER = "~";
 
 type AgentChoice = typeof TERMINAL_CHOICE | string;
-type ActiveMenu = "choice" | null;
-type MenuOption = {
-  id: string;
-  content: ReactNode;
-  selected: boolean;
-  onSelect: () => void;
-};
-
 export function NewConversationView({
   titleRef,
   headerActions,
@@ -57,22 +87,40 @@ export function NewConversationView({
   const [folderPath, setFolderPath] = useState(PERSONAL_FOLDER);
   const [homePath, setHomePath] = useState<string>();
   const [command, setCommand] = useState("");
-  const [activeMenu, setActiveMenu] = useState<ActiveMenu>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [caretRequest, setCaretRequest] = useState(0);
+  const [activePopover, setActivePopover] = useState<ComposerPopoverName>(null);
   const [isOpening, setIsOpening] = useState(false);
   const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false);
   const [folderDialogPath, setFolderDialogPath] = useState("");
   const [folderDialogError, setFolderDialogError] = useState("");
   const [error, setError] = useState("");
   const [agentsError, setAgentsError] = useState(false);
-  const choiceTriggerRef = useRef<HTMLButtonElement>(null);
-  const menuRootRef = useRef<HTMLDivElement>(null);
-  const optionRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const [models, setModels] = useState<AgentModels | null>(null);
+  const [capabilities, setCapabilities] = useState<AgentCapabilities | null>(null);
+  const [capabilitiesLoading, setCapabilitiesLoading] = useState(false);
+  const [shortcutTrigger, setShortcutTrigger] = useState<ComposerShortcutTrigger | null>(null);
+  const [activeShortcutIndex, setActiveShortcutIndex] = useState(0);
+  const [fileSuggestions, setFileSuggestions] = useState<ComposerFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [skillCatalog, setSkillCatalog] = useState<ComposerSkill[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [mode, setMode] = useState<Conversation["mode"]>("edit");
+  const [model, setModel] = useState("");
+  const [effort, setEffort] = useState<AgentEffort | "">("");
+  const [preferredEffort, setPreferredEffort] = useState<AgentEffort | "">("");
+  const [fastMode, setFastMode] = useState(false);
+  const [planMode, setPlanMode] = useState(false);
+  const [greetingName, setGreetingName] = useState<string | null>(null);
+  const [openingGreeting] = useState(() => ({
+    hour: new Date().getHours(),
+    sample: Math.random(),
+  }));
   const choiceTouchedRef = useRef(false);
   const folderTouchedRef = useRef(false);
   const titleId = useId();
-  const choiceListboxId = useId();
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const composerSectionRef = useRef<HTMLElement>(null);
+  const pendingComposerCaretRef = useRef<number | null>(null);
   const folderDialogFormId = useId();
 
   const updateFolderPath = useCallback((path: string) => {
@@ -80,7 +128,7 @@ export function NewConversationView({
   }, []);
 
   const saveSetting = useCallback(
-    (key: string, value: string, failureMessage: string) => {
+    (key: string, value: string | boolean, failureMessage: string) => {
       if (!bridge) return;
       void bridge.request("settings.set", { key, value }).catch(() => {
         setError(failureMessage);
@@ -98,73 +146,98 @@ export function NewConversationView({
       bridge.request("settings.get", { key: LAST_AGENT_SETTING }),
       bridge.request("settings.get", { key: LAST_FOLDER_SETTING }),
       bridge.request("system.info", {}),
-    ]).then(async ([agentsResult, agentSettingResult, folderSettingResult, systemInfoResult]) => {
-      if (!mounted) return;
-
-      if (agentsResult.status === "fulfilled") {
-        const foundAgents = agentsResult.value.agents.filter((agent) => agent.found);
-        setAgents(foundAgents);
-        if (
-          !choiceTouchedRef.current &&
-          agentSettingResult.status === "fulfilled" &&
-          typeof agentSettingResult.value.value === "string" &&
-          (agentSettingResult.value.value === TERMINAL_CHOICE ||
-            foundAgents.some((agent) => agent.id === agentSettingResult.value.value))
-        ) {
-          setChoice(agentSettingResult.value.value);
-        }
-      } else {
-        setAgentsError(true);
-      }
-
-      if (systemInfoResult.status === "fulfilled") {
-        setHomePath(systemInfoResult.value.homeDir);
-      }
-
-      if (folderSettingResult.status !== "fulfilled") return;
-      if (folderTouchedRef.current) return;
-      const storedFolder = folderSettingResult.value.value;
-      if (typeof storedFolder !== "string" || storedFolder === PERSONAL_FOLDER) return;
-
-      try {
-        const validation = await bridge.request("folders.validate", { path: storedFolder });
+      bridge.request("system.userName", {}),
+      bridge.request("settings.get", { key: "profile.userNameOverride" }),
+    ]).then(
+      async ([
+        agentsResult,
+        agentSettingResult,
+        folderSettingResult,
+        systemInfoResult,
+        userNameResult,
+        userNameSettingResult,
+      ]) => {
         if (!mounted) return;
+
+        if (agentsResult.status === "fulfilled") {
+          const foundAgents = agentsResult.value.agents.filter(
+            (agent) => agent.found && (agent.id === "claude" || agent.id === "codex"),
+          );
+          setAgents(foundAgents);
+          if (
+            !choiceTouchedRef.current &&
+            agentSettingResult.status === "fulfilled" &&
+            typeof agentSettingResult.value.value === "string" &&
+            (agentSettingResult.value.value === TERMINAL_CHOICE ||
+              foundAgents.some((agent) => agent.id === agentSettingResult.value.value))
+          ) {
+            setChoice(agentSettingResult.value.value);
+          }
+        } else {
+          setAgentsError(true);
+        }
+
+        if (systemInfoResult.status === "fulfilled") {
+          setHomePath(systemInfoResult.value.homeDir);
+        }
+
+        const storedName =
+          userNameSettingResult.status === "fulfilled" &&
+          typeof userNameSettingResult.value.value === "string"
+            ? userNameSettingResult.value.value.trim()
+            : "";
+        const systemName = userNameResult.status === "fulfilled" ? userNameResult.value.name : null;
+        setGreetingName(storedName || systemName);
+
+        if (folderSettingResult.status !== "fulfilled") return;
         if (folderTouchedRef.current) return;
-        if (validation.exists && validation.isDirectory) {
-          updateFolderPath(validation.path);
+        const storedFolder = folderSettingResult.value.value;
+        if (typeof storedFolder !== "string" || storedFolder === PERSONAL_FOLDER) return;
+
+        try {
+          const validation = await bridge.request("folders.validate", { path: storedFolder });
+          if (!mounted) return;
+          if (folderTouchedRef.current) return;
+          if (validation.exists && validation.isDirectory) {
+            updateFolderPath(validation.path);
+            return;
+          }
+        } catch {
           return;
         }
-      } catch {
-        return;
-      }
 
-      if (mounted) {
-        updateFolderPath(PERSONAL_FOLDER);
-        saveSetting(LAST_FOLDER_SETTING, PERSONAL_FOLDER, t.conversation.settingsFolderSaveFailed);
-      }
-    });
+        if (mounted) {
+          updateFolderPath(PERSONAL_FOLDER);
+          saveSetting(
+            LAST_FOLDER_SETTING,
+            PERSONAL_FOLDER,
+            t.conversation.settingsFolderSaveFailed,
+          );
+        }
+      },
+    );
 
     return () => {
       mounted = false;
     };
   }, [bridge, saveSetting, updateFolderPath]);
 
-  useEffect(() => {
-    if (activeMenu === null) return;
-    optionRefs.current[activeIndex]?.focus();
-  }, [activeIndex, activeMenu]);
-
-  useEffect(() => {
-    if (activeMenu === null) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!menuRootRef.current?.contains(event.target as Node)) setActiveMenu(null);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [activeMenu]);
-
   const selectedAgent = agents.find((agent) => agent.id === choice);
+  const selectedAgentForShortcuts = selectedAgent?.id;
   const selectedTitle = selectedAgent?.name ?? t.conversation.terminal;
+  const canAttachFiles = Boolean(
+    bridge &&
+      selectedAgent &&
+      (selectedAgent.id === "claude" || selectedAgent.id === "codex") &&
+      !isOpening,
+  );
+  const composerAttachments = useComposerAttachments(
+    canAttachFiles,
+    choice === TERMINAL_CHOICE ? "terminal" : "agent",
+  );
+  const gitPath = folderPath === PERSONAL_FOLDER ? homePath : folderPath;
+  const suggestionCwd = folderPath === PERSONAL_FOLDER ? homePath : folderPath;
+  const { info: gitInfo } = useGitInfo(gitPath, "new-conversation");
   const isPersonalFolderSelected = folderPath === PERSONAL_FOLDER || folderPath === homePath;
   const folderName = isPersonalFolderSelected ? PERSONAL_FOLDER : getFolderName(folderPath);
   const accessibleFolderPath = isPersonalFolderSelected
@@ -172,17 +245,263 @@ export function NewConversationView({
     : folderPath;
   const folderButtonLabel = `${t.conversation.folderAccessibleName(accessibleFolderPath)}`;
 
-  function closeMenu(returnFocus = true) {
-    setActiveMenu(null);
-    if (returnFocus) choiceTriggerRef.current?.focus();
-  }
+  const selectedAgentId =
+    selectedAgent?.id === "claude" || selectedAgent?.id === "codex" ? selectedAgent.id : null;
+  const currentModels = models?.agent === selectedAgentId ? models : null;
+  const modelListAvailable = Boolean(currentModels?.models.length);
+  const currentModel = currentModels?.models.some((option) => option.id === model) ? model : "";
+  const currentEffort = currentModel ? effort : "";
+
+  useEffect(() => {
+    if (!bridge || !selectedAgent) {
+      setCapabilities(null);
+      setCapabilitiesLoading(false);
+      return;
+    }
+    let mounted = true;
+    setCapabilities(null);
+    setCapabilitiesLoading(true);
+    void bridge
+      .request("agent.capabilities", { agent: selectedAgent.id })
+      .then((result) => {
+        if (mounted) {
+          setCapabilities(result.capabilities);
+          setCapabilitiesLoading(false);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setCapabilities(null);
+          setCapabilitiesLoading(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [bridge, selectedAgent]);
+
+  const fileQuery = shortcutTrigger?.type === "file" ? shortcutTrigger.query : null;
+  const shortcutLabels = t.chat.shortcutSuggestions;
+  const shortcutCommands = useMemo(
+    () =>
+      (
+        [
+          ["plan", shortcutLabels.commandsByName.plan],
+          ["model", shortcutLabels.commandsByName.model],
+          ["effort", shortcutLabels.commandsByName.effort],
+          ["access", shortcutLabels.commandsByName.access],
+          ["new", shortcutLabels.commandsByName.new],
+        ] as const
+      ).map(([command, value]) => ({
+        command,
+        id: `command:${command}`,
+        type: "command" as const,
+        primary: value,
+        secondary: shortcutLabels.commandDescriptions[command],
+      })),
+    [shortcutLabels],
+  );
+  const shortcutOptions = useMemo<ComposerAutocompleteOption[]>(() => {
+    if (!shortcutTrigger) return [];
+    if (shortcutTrigger.type === "file") {
+      return fileSuggestions.map((file) => ({
+        id: `file:${file.path}`,
+        type: "file",
+        primary: file.name,
+        secondary: file.path.slice(0, Math.max(0, file.path.length - file.name.length)),
+        detail: file.path,
+      }));
+    }
+    if (shortcutTrigger.type === "skill") {
+      return fuzzyFilter(
+        skillCatalog,
+        shortcutTrigger.query,
+        (skill) => `${skill.name} ${skill.description}`,
+      ).map((skill) => ({
+        id: `skill:${skill.name}`,
+        type: "skill",
+        primary: `$${skill.name}`,
+        secondary: skill.description,
+      }));
+    }
+    return fuzzyFilter(
+      shortcutCommands,
+      shortcutTrigger.query,
+      (command) => `${command.primary} ${command.secondary}`,
+    );
+  }, [fileSuggestions, shortcutCommands, shortcutTrigger, skillCatalog]);
+  const shortcutLoading =
+    shortcutTrigger?.type === "file"
+      ? filesLoading
+      : shortcutTrigger?.type === "skill"
+        ? skillsLoading || (capabilitiesLoading && capabilities === null)
+        : false;
+
+  useEffect(() => {
+    if (fileQuery === null || !bridge || !suggestionCwd) {
+      setFileSuggestions([]);
+      setFilesLoading(false);
+      return;
+    }
+    let active = true;
+    setFilesLoading(true);
+    const timer = window.setTimeout(() => {
+      void bridge
+        .request("composer.files", { cwd: suggestionCwd, query: fileQuery })
+        .then((result) => {
+          if (active) setFileSuggestions(result.files.slice(0, 50));
+        })
+        .catch(() => {
+          if (active) setFileSuggestions([]);
+        })
+        .finally(() => {
+          if (active) setFilesLoading(false);
+        });
+    }, 80);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [bridge, fileQuery, suggestionCwd]);
+
+  useEffect(() => {
+    setSkillCatalog([]);
+    if (!bridge || !selectedAgentForShortcuts || !suggestionCwd || capabilities?.skills !== true) {
+      setSkillsLoading(false);
+      return;
+    }
+    let active = true;
+    setSkillsLoading(true);
+    void bridge
+      .request("composer.skills", { agent: selectedAgentForShortcuts, cwd: suggestionCwd })
+      .then((result) => {
+        if (active) setSkillCatalog(result.skills);
+      })
+      .catch(() => {
+        if (active) setSkillCatalog([]);
+      })
+      .finally(() => {
+        if (active) setSkillsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [bridge, capabilities?.skills, selectedAgentForShortcuts, suggestionCwd]);
+
+  useLayoutEffect(() => {
+    if (caretRequest === 0) return;
+    const textarea = composerSectionRef.current?.querySelector("textarea");
+    if (!textarea) return;
+    const caret = consumePendingComposerCaret(pendingComposerCaretRef);
+    if (caret === null) return;
+    textarea.focus();
+    textarea.setSelectionRange(caret, caret);
+  }, [caretRequest]);
+
+  useEffect(() => {
+    if (
+      !capabilitiesLoading &&
+      capabilities?.skills !== true &&
+      shortcutTrigger?.type === "skill"
+    ) {
+      setShortcutTrigger(null);
+    }
+  }, [capabilities?.skills, capabilitiesLoading, shortcutTrigger?.type]);
+
+  useEffect(() => {
+    if (!bridge || !selectedAgentId) {
+      setModels(null);
+      setModel("");
+      setEffort("");
+      setPreferredEffort("");
+      setFastMode(false);
+      return;
+    }
+    const agentId = selectedAgentId;
+    let mounted = true;
+    setModels(null);
+    setModel("");
+    setEffort("");
+    setFastMode(false);
+    void Promise.allSettled([
+      bridge.request("agent.models", { agent: agentId }),
+      bridge.request("settings.get", { key: modelSettingKey(agentId) }),
+      bridge.request("settings.get", { key: effortSettingKey(agentId) }),
+      bridge.request("settings.get", { key: fastSettingKey(agentId) }),
+    ]).then(([modelsResult, storedModelResult, storedEffortResult, storedFastResult]) => {
+      if (!mounted) return;
+      const result: AgentModels =
+        modelsResult.status === "fulfilled"
+          ? modelsResult.value
+          : { agent: agentId, models: [], efforts: [] };
+      setModels(result);
+      const storedModel =
+        storedModelResult.status === "fulfilled" &&
+        typeof storedModelResult.value.value === "string"
+          ? storedModelResult.value.value
+          : "";
+      const initialModel = resolveModelId(result, storedModel);
+      setModel(initialModel);
+      const knownEffort =
+        storedEffortResult.status === "fulfilled" &&
+        typeof storedEffortResult.value.value === "string" &&
+        (result.efforts?.includes(storedEffortResult.value.value as AgentEffort) ||
+          result.models.some((option) =>
+            (option.efforts ?? result.efforts ?? []).includes(
+              storedEffortResult.value.value as AgentEffort,
+            ),
+          ))
+          ? (storedEffortResult.value.value as AgentEffort)
+          : "";
+      setPreferredEffort(knownEffort);
+      setEffort(initialEffortForModel(result, initialModel, knownEffort));
+      const storedFast =
+        storedFastResult.status === "fulfilled" && storedFastResult.value.value === true;
+      const initialFast =
+        storedFast &&
+        result.models.find((option) => option.id === initialModel)?.supportsFast === true;
+      setFastMode(initialFast);
+      if (storedFast && !initialFast)
+        saveSetting(fastSettingKey(agentId), false, t.conversation.settingsSaveFailed);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [bridge, saveSetting, selectedAgentId]);
 
   function chooseAgent(option: AgentChoice) {
     choiceTouchedRef.current = true;
+    if (option === TERMINAL_CHOICE) composerAttachments.clear();
     setChoice(option);
+    setShortcutTrigger(null);
+    setActivePopover(null);
     setError("");
-    closeMenu();
     saveSetting(LAST_AGENT_SETTING, option, t.conversation.settingsSaveFailed);
+  }
+
+  function chooseModel(value: string) {
+    if (!selectedAgentId) return;
+    setModel(value);
+    setEffort(initialEffortForModel(currentModels, value, preferredEffort));
+    saveSetting(modelSettingKey(selectedAgentId), value, t.conversation.settingsSaveFailed);
+    if (currentModels?.models.find((option) => option.id === value)?.supportsFast !== true) {
+      setFastMode(false);
+      saveSetting(fastSettingKey(selectedAgentId), false, t.conversation.settingsSaveFailed);
+    }
+  }
+
+  function chooseFastMode(value: boolean) {
+    if (!selectedAgentId) return;
+    setFastMode(value);
+    saveSetting(fastSettingKey(selectedAgentId), value, t.conversation.settingsSaveFailed);
+  }
+
+  function chooseEffort(value: AgentEffort | "") {
+    if (!selectedAgentId) return;
+    setEffort(value);
+    if (!value) return;
+    setPreferredEffort(value);
+    saveSetting(effortSettingKey(selectedAgentId), value, t.conversation.settingsSaveFailed);
   }
 
   function chooseFolder(path: string) {
@@ -193,16 +512,15 @@ export function NewConversationView({
     saveSetting(LAST_FOLDER_SETTING, selectedPath, t.conversation.settingsFolderSaveFailed);
   }
 
-  function buildChoiceOptions(): MenuOption[] {
+  function buildChoiceOptions(): ComposerMenuOption[] {
     return [
       ...agents.map((agent) => ({
         id: agent.id,
         selected: agent.id === choice,
         content: (
           <>
-            <AgentIcon agentId={agent.id} className={styles.soonAgent} />
-            <span className={styles.soonAgent}>{agent.name}</span>
-            <span className={styles.soonMarker}>{t.conversation.soon}</span>
+            <AgentIcon agentId={agent.id} />
+            <span className={styles.agentName}>{agent.name}</span>
           </>
         ),
         onSelect: () => chooseAgent(agent.id),
@@ -213,7 +531,7 @@ export function NewConversationView({
         content: (
           <>
             <AgentIcon agentId={TERMINAL_CHOICE} />
-            <span>{t.conversation.terminal}</span>
+            <span className={styles.agentName}>{t.conversation.terminal}</span>
           </>
         ),
         onSelect: () => chooseAgent(TERMINAL_CHOICE),
@@ -222,49 +540,17 @@ export function NewConversationView({
         id: "manage-agents",
         selected: false,
         content: <span>{t.conversation.manageAgents}</span>,
+        action: true,
         onSelect: () => {
-          setActiveMenu(null);
+          setActivePopover(null);
           navigate({ name: "settings", section: "agents" });
         },
       },
     ];
   }
 
-  function openMenu() {
-    const options = buildChoiceOptions();
-    const currentIndex = options.findIndex((option) => option.selected);
-    setActiveIndex(Math.max(currentIndex, 0));
-    setActiveMenu("choice");
-  }
-
-  function handleOptionKeyDown(
-    event: KeyboardEvent<HTMLDivElement>,
-    index: number,
-    options: MenuOption[],
-  ) {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setActiveIndex((index + 1) % options.length);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setActiveIndex((index - 1 + options.length) % options.length);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      setActiveIndex(0);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      setActiveIndex(options.length - 1);
-    } else if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      options[index]?.onSelect();
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      closeMenu();
-    }
-  }
-
   async function openFolderChooser() {
-    setActiveMenu(null);
+    setActivePopover(null);
     if (!bridge?.pickFolder) {
       setFolderDialogPath(folderPath === PERSONAL_FOLDER ? "" : folderPath);
       setFolderDialogError("");
@@ -347,115 +633,282 @@ export function NewConversationView({
     }
   }
 
-  const choiceOptions = buildChoiceOptions();
-
-  function renderListbox() {
-    const options = choiceOptions;
-    const listboxId = choiceListboxId;
-    const listboxLabel = t.conversation.agentLabel;
-    return (
-      <div aria-label={listboxLabel} className={styles.listbox} id={listboxId} role="listbox">
-        {options.map((option, index) => (
-          <div
-            aria-selected={option.selected}
-            className={[styles.option, option.id === "manage-agents" ? styles.actionOption : ""]
-              .filter(Boolean)
-              .join(" ")}
-            id={`${listboxId}-${index}`}
-            key={option.id}
-            onBlur={(event) => {
-              if (!menuRootRef.current?.contains(event.relatedTarget as Node | null)) {
-                setActiveMenu(null);
-              }
-            }}
-            onClick={option.onSelect}
-            onKeyDown={(event) => handleOptionKeyDown(event, index, options)}
-            onMouseMove={() => setActiveIndex(index)}
-            ref={(element) => {
-              optionRefs.current[index] = element;
-            }}
-            role="option"
-            tabIndex={activeIndex === index ? 0 : -1}
-          >
-            {option.content}
-          </div>
-        ))}
-      </div>
+  async function openAgentConversation(value: string) {
+    if (!bridge || isOpening || !selectedAgent || (modelListAvailable && !currentModel)) return;
+    if (selectedAgent.id !== "claude" && selectedAgent.id !== "codex") {
+      setError(t.chat.agentUnavailable);
+      return;
+    }
+    const text = value.trim();
+    const selectedSkills = findMentionedSkills(
+      text,
+      skillCatalog,
+      capabilities?.maxSkillsPerMessage ?? 8,
     );
+    const files: ConversationAttachment[] = composerAttachments.getRequestAttachments();
+    if (!text && files.length === 0) return;
+    setError("");
+    setIsOpening(true);
+    let created: Conversation | null = null;
+    try {
+      const cwd =
+        folderPath === PERSONAL_FOLDER
+          ? (homePath ?? (await bridge.request("system.info", {})).homeDir)
+          : folderPath;
+      const result = await bridge.request("conversation.create", {
+        agent: selectedAgent.id,
+        cwd,
+        mode,
+        title: t.conversation.title,
+        ...(modelListAvailable && currentModel ? { model: currentModel } : {}),
+        ...(effort ? { effort } : {}),
+        plan: planMode,
+        fast: Boolean(
+          fastMode &&
+            currentModels?.models.find((option) => option.id === currentModel)?.supportsFast,
+        ),
+      });
+      created = result.conversation;
+      upsertConversation(created);
+      await bridge.request("conversation.send", {
+        id: created.id,
+        text: text || " ",
+        ...(files.length ? { attachments: files } : {}),
+        ...(selectedSkills.length ? { skills: selectedSkills } : {}),
+      });
+      composerAttachments.clear();
+      navigate({ name: "conversation", id: created.id });
+    } catch (openError) {
+      setError(
+        openError instanceof BridgeError && openError.message
+          ? openError.message
+          : t.chat.createFailed,
+      );
+    } finally {
+      setIsOpening(false);
+    }
   }
+
+  function submitComposer() {
+    if (choice === TERMINAL_CHOICE) void openTerminal(command);
+    else void openAgentConversation(command);
+  }
+
+  function updateShortcutAtCaret(value: string, caret: number) {
+    const supportsSkills = capabilitiesLoading || capabilities?.skills === true;
+    const next =
+      choice === TERMINAL_CHOICE ? null : detectComposerShortcut(value, caret, supportsSkills);
+    const isSame =
+      shortcutTrigger?.type === next?.type &&
+      shortcutTrigger?.start === next?.start &&
+      shortcutTrigger?.caret === next?.caret &&
+      shortcutTrigger?.tokenEnd === next?.tokenEnd &&
+      shortcutTrigger?.query === next?.query;
+    if (!isSame) {
+      setActiveShortcutIndex(0);
+      setShortcutTrigger(next);
+    }
+  }
+
+  function applyShortcutText(value: string, caret: number) {
+    pendingComposerCaretRef.current = caret;
+    setCaretRequest((current) => current + 1);
+    setCommand(value);
+    setShortcutTrigger(null);
+  }
+
+  function selectComposerSuggestion(option: ComposerAutocompleteOption) {
+    if (!shortcutTrigger) return;
+    if (shortcutTrigger.type === "file" && option.type === "file" && option.detail) {
+      const result = insertComposerShortcut(command, shortcutTrigger, `@${option.detail} `);
+      applyShortcutText(result.value, result.caret);
+      return;
+    }
+    if (shortcutTrigger.type === "skill" && option.type === "skill") {
+      const skill = skillCatalog.find((entry) => option.id === `skill:${entry.name}`);
+      if (!skill) return;
+      const result = insertComposerShortcut(command, shortcutTrigger, `$${skill.name} `);
+      applyShortcutText(result.value, result.caret);
+      return;
+    }
+    if (shortcutTrigger.type !== "command" || option.type !== "command") return;
+    const shortcutCommand = shortcutCommands.find((entry) => entry.id === option.id)?.command;
+    if (!shortcutCommand) return;
+    const result = removeComposerCommand(command, shortcutTrigger);
+    applyShortcutText(result.value, result.caret);
+
+    if (shortcutCommand === "plan") setPlanMode((current) => !current);
+    else if (shortcutCommand === "model") setActivePopover("model");
+    else if (shortcutCommand === "effort") setActivePopover("effort");
+    else if (shortcutCommand === "access") setActivePopover("config");
+    else if (shortcutCommand === "new") {
+      composerAttachments.clear();
+      navigate({ name: "new-conversation" });
+    }
+  }
+
+  const composerAutocomplete = shortcutTrigger
+    ? {
+        open: true,
+        label:
+          shortcutTrigger.type === "file"
+            ? shortcutLabels.files
+            : shortcutTrigger.type === "skill"
+              ? shortcutLabels.skills
+              : shortcutLabels.commands,
+        options: shortcutOptions,
+        activeIndex: activeShortcutIndex,
+        loading: shortcutLoading,
+        loadingLabel:
+          shortcutTrigger.type === "file"
+            ? shortcutLabels.loadingFiles
+            : shortcutTrigger.type === "skill"
+              ? shortcutLabels.loadingSkills
+              : shortcutLabels.loadingCommands,
+        emptyLabel: shortcutLabels.nothingFound,
+        onActiveIndexChange: setActiveShortcutIndex,
+        onSelect: selectComposerSuggestion,
+        onClose: () => setShortcutTrigger(null),
+      }
+    : undefined;
+  const choiceOptions = buildChoiceOptions();
 
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title} id={titleId} ref={titleRef} tabIndex={-1} {...dragHandleProps}>
+        <h1
+          className={styles.title}
+          data-pane-title=""
+          id={titleId}
+          ref={titleRef}
+          tabIndex={-1}
+          {...dragHandleProps}
+        >
           {t.conversation.title}
         </h1>
         {headerActions}
       </header>
 
-      <section aria-labelledby={titleId} className={styles.composerSection}>
+      <section
+        aria-labelledby={titleId}
+        className={styles.composerSection}
+        ref={composerSectionRef}
+      >
         <p className={styles.welcome} data-k-new-conversation-title>
-          {t.conversation.welcomeTitle}
+          {t.conversation.welcomeTitle(greetingName, openingGreeting.hour, openingGreeting.sample)}
         </p>
+        {composerAttachments.isPreparing ? (
+          <p className={styles.preparing} role="status">
+            {t.chat.preparingAttachments}
+          </p>
+        ) : null}
+        {composerAttachments.error ? (
+          <p className={styles.error} role="alert">
+            <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.8} />
+            <span>{composerAttachments.error}</span>
+          </p>
+        ) : null}
         <Composer
-          disabled={choice !== TERMINAL_CHOICE}
+          disabled={choice !== TERMINAL_CHOICE && !selectedAgent}
           ariaDescription={t.conversation.composerKeyboardDescription}
           leading={
-            <div className={styles.controls} ref={menuRootRef}>
-              <div className={styles.choiceWrap}>
-                <button
-                  aria-controls={choiceListboxId}
-                  aria-expanded={activeMenu === "choice"}
-                  aria-haspopup="listbox"
-                  aria-label={`${t.conversation.agentLabel}: ${selectedTitle}`}
-                  className={styles.selectorButton}
-                  onClick={() => (activeMenu === "choice" ? closeMenu(false) : openMenu())}
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                      event.preventDefault();
-                      openMenu();
-                    }
-                  }}
-                  ref={choiceTriggerRef}
-                  type="button"
-                >
-                  <AgentIcon
-                    agentId={choice}
-                    className={selectedAgent ? styles.soonAgent : undefined}
-                  />
-                  <span className={selectedAgent ? styles.soonAgent : undefined}>
-                    {selectedTitle}
-                  </span>
-                  <ChevronDown aria-hidden="true" size={15} strokeWidth={1.8} />
-                </button>
-                {activeMenu === "choice" ? renderListbox() : null}
-              </div>
-
-              <div className={styles.folderWrap}>
-                <button
-                  aria-label={folderButtonLabel}
-                  className={styles.folderButton}
-                  onClick={() => void openFolderChooser()}
-                  title={folderButtonLabel}
-                  type="button"
-                >
-                  <Folder aria-hidden="true" size={16} strokeWidth={1.8} />
-                  <span>{folderName}</span>
-                </button>
-              </div>
+            <div className={styles.controls}>
+              {selectedAgent && (selectedAgent.id === "claude" || selectedAgent.id === "codex") ? (
+                <AttachmentPicker
+                  disabled={!canAttachFiles}
+                  onFiles={composerAttachments.addFiles}
+                />
+              ) : null}
+              <ComposerMenu
+                label={t.conversation.agentLabel}
+                onOpenChange={(open) => setActivePopover(open ? "agent" : null)}
+                open={activePopover === "agent"}
+                options={choiceOptions}
+                triggerClassName={styles.selectorButton}
+                tooltipAlign="start"
+                tooltipLabel={t.chat.agentTooltip(selectedTitle)}
+                triggerContent={
+                  <>
+                    <AgentIcon agentId={choice} />
+                    <span className={styles.agentName}>{selectedTitle}</span>
+                  </>
+                }
+                triggerLabel={`${t.conversation.agentLabel}: ${selectedTitle}`}
+              />
+              {selectedAgent && (selectedAgent.id === "claude" || selectedAgent.id === "codex") ? (
+                <ComposerPreferences
+                  activePopover={activePopover}
+                  effort={currentEffort}
+                  fastMode={fastMode}
+                  mode={mode}
+                  model={currentModel}
+                  models={currentModels}
+                  planMode={planMode}
+                  disabled={isOpening}
+                  onActivePopoverChange={setActivePopover}
+                  onEffortChange={chooseEffort}
+                  onFastModeChange={chooseFastMode}
+                  onModeChange={setMode}
+                  onModelChange={chooseModel}
+                  onPlanModeChange={setPlanMode}
+                />
+              ) : null}
             </div>
+          }
+          below={
+            <div className={styles.folderStrip}>
+              <button
+                aria-label={folderButtonLabel}
+                className={styles.folderButton}
+                onClick={() => void openFolderChooser()}
+                title={folderButtonLabel}
+                type="button"
+              >
+                <Folder aria-hidden="true" size={16} strokeWidth={1.8} />
+                <span>{folderName}</span>
+              </button>
+              <span className={styles.branchSlot}>
+                <GitBranchLabel info={gitInfo} />
+              </span>
+            </div>
+          }
+          attachments={
+            <AttachmentChips
+              attachments={composerAttachments.attachments}
+              onRemove={composerAttachments.remove}
+            />
           }
           mono={choice === TERMINAL_CHOICE}
           onChange={setCommand}
-          onSubmit={() => void openTerminal(command)}
+          onCaretChange={updateShortcutAtCaret}
+          onDragEnter={composerAttachments.onDragEnter}
+          onDragLeave={composerAttachments.onDragLeave}
+          onDragOver={composerAttachments.onDragOver}
+          onDrop={composerAttachments.onDrop}
+          onPaste={composerAttachments.onPaste}
+          onSubmit={submitComposer}
           placeholder={
             choice === TERMINAL_CHOICE
               ? t.conversation.terminalCommandPlaceholder
-              : t.conversation.promptPlaceholder
+              : t.conversation.promptPlaceholder(capabilities?.skills === true)
           }
-          submitDisabled={!bridge || isOpening || choice !== TERMINAL_CHOICE}
+          autocomplete={composerAutocomplete}
+          submitDisabled={
+            !bridge ||
+            isOpening ||
+            composerAttachments.isPreparing ||
+            (choice !== TERMINAL_CHOICE &&
+              (!selectedAgent ||
+                (modelListAvailable && !currentModel) ||
+                (!command.trim() && composerAttachments.attachments.length === 0)))
+          }
+          dragActive={composerAttachments.isDragging}
+          dropMessage={t.chat.dropAttachments}
           submitLabel={
             choice === TERMINAL_CHOICE ? t.conversation.openTerminal : t.conversation.sendMessage
+          }
+          submitTooltipLabel={
+            choice === TERMINAL_CHOICE ? t.conversation.openTerminal : t.chat.sendTooltip
           }
           value={command}
         />

@@ -5,7 +5,7 @@ import { createServer as createHttpServer, type Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { type AnyEvent, BridgeError, type MethodName } from "@karont/contract";
+import { type AnyEvent, BridgeError, MAX_FRAME_BYTES, type MethodName } from "@karont/contract";
 import {
   connectService,
   type ServiceClient,
@@ -216,7 +216,11 @@ test("limita o corpo, rejeita JSON inválido e valida o método pelo contrato", 
   const bridge = createBridge(fake.client);
   try {
     const largeRequest = new FakeRequest();
-    const large = await post(bridge.handler as never, largeRequest, Buffer.alloc(1_048_577, 0x78));
+    const large = await post(
+      bridge.handler as never,
+      largeRequest,
+      Buffer.alloc(MAX_FRAME_BYTES + 1, 0x78),
+    );
     assert.equal(large.statusCode, 413);
     assert.equal(JSON.parse(large.chunks.join("")).error.code, "too_large");
     assert.equal(largeRequest.paused, true);

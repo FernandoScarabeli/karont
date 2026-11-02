@@ -1,22 +1,78 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { lstat, mkdtemp } from "node:fs/promises";
+import { type ChildProcess, spawn } from "node:child_process";
+import { lstat, mkdtemp, rm } from "node:fs/promises";
 import net, { type Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { BridgeError, MAX_FRAME_BYTES } from "@karont/contract";
 import { computeMac, readSecret } from "./auth.ts";
-import { connectService } from "./client.ts";
+import { connectService, type ServiceClient } from "./client.ts";
 import type { ServicePaths } from "./paths.ts";
 import { ServiceAlreadyRunningError, startService } from "./server.ts";
 import type { TerminalPty } from "./terminals/manager.ts";
 import { encodeFrame, FrameDecoder } from "./wire.ts";
 
 const skip = process.env.KARONT_SKIP_SOCKET_TESTS === "1";
+const socketTestTimeoutMs = 30_000;
+const openSockets = new Set<Socket>();
+const openClients = new Set<ServiceClient>();
+const openServices = new Set<{ close(): Promise<void> }>();
+const openChildren = new Set<ChildProcess>();
+const tempRoots = new Set<string>();
+
+after(async () => {
+  for (const socket of openSockets) socket.destroy();
+  for (const client of openClients) client.close();
+  for (const child of openChildren) child.kill("SIGKILL");
+  await Promise.allSettled(
+    [...openServices].map((service) => withTimeout(service.close(), "serviço", 5_000)),
+  );
+  await Promise.all([...tempRoots].map((root) => rm(root, { recursive: true, force: true })));
+  openSockets.clear();
+  openClients.clear();
+  openServices.clear();
+  openChildren.clear();
+  tempRoots.clear();
+});
+
+async function startTrackedService(options: Parameters<typeof startService>[0]) {
+  const service = await startService(options);
+  openServices.add(service);
+  return service;
+}
+
+async function connectTrackedService(options: Parameters<typeof connectService>[0]) {
+  const client = await connectService(options);
+  openClients.add(client);
+  return client;
+}
+
+function trackSocket(socket: Socket): Socket {
+  openSockets.add(socket);
+  socket.once("close", () => openSockets.delete(socket));
+  return socket;
+}
+
+function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = 5_000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Timeout esperando ${label}.`)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 async function testPaths(): Promise<ServicePaths> {
   const root = await mkdtemp(path.join(os.tmpdir(), "k-"));
+  tempRoots.add(root);
   const runtimeDir = path.join(root, "r");
   const dataDir = path.join(root, "d");
   return {
@@ -36,7 +92,7 @@ type RawClient = {
 type RawResponse = { type: "response"; id: string; ok: boolean; result?: unknown };
 
 async function rawClient(paths: ServicePaths): Promise<RawClient> {
-  const socket = net.createConnection(paths.socketPath);
+  const socket = trackSocket(net.createConnection(paths.socketPath));
   const decoder = new FrameDecoder();
   const frames: unknown[] = [];
   const waiters: Array<{ resolve: (frame: unknown) => void; reject: (error: Error) => void }> = [];
@@ -61,7 +117,10 @@ async function rawClient(paths: ServicePaths): Promise<RawClient> {
       const frame = frames.shift();
       if (frame !== undefined) return Promise.resolve(frame);
       if (closed) return Promise.reject(new Error("Socket fechado."));
-      return new Promise((resolve, reject) => waiters.push({ resolve, reject }));
+      return withTimeout(
+        new Promise((resolve, reject) => waiters.push({ resolve, reject })),
+        "quadro do serviço",
+      );
     },
   };
 
@@ -76,7 +135,38 @@ async function rawClient(paths: ServicePaths): Promise<RawClient> {
 
 async function waitForClose(socket: Socket): Promise<void> {
   if (socket.destroyed) return;
-  await new Promise<void>((resolve) => socket.once("close", () => resolve()));
+  await withTimeout(
+    new Promise<void>((resolve) => socket.once("close", () => resolve())),
+    "fechamento do socket",
+  );
+}
+
+function waitForChildReady(child: ChildProcess): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const finish = (error?: Error): void => {
+      clearTimeout(timer);
+      child.stdout?.off("data", onData);
+      child.off("error", onError);
+      child.off("exit", onExit);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onData = (chunk: Buffer): void => {
+      if (chunk.toString().includes("ready")) finish();
+    };
+    const onError = (error: Error): void => finish(error);
+    const onExit = (code: number | null, signal: NodeJS.Signals | null): void =>
+      finish(
+        new Error(`Socket fixture saiu antes de iniciar (${code ?? signal ?? "desconhecido"}).`),
+      );
+    const timer = setTimeout(
+      () => finish(new Error("Timeout esperando o socket fixture iniciar.")),
+      2_000,
+    );
+    child.stdout?.on("data", onData);
+    child.once("error", onError);
+    child.once("exit", onExit);
+  });
 }
 
 function responseFrame(value: unknown): value is { type: "response"; id: string; ok: boolean } {
@@ -85,11 +175,14 @@ function responseFrame(value: unknown): value is { type: "response"; id: string;
   );
 }
 
-test("handshake autenticado, ping e settings via client", { skip }, async () => {
+test("handshake autenticado, ping e settings via client", {
+  skip,
+  timeout: socketTestTimeoutMs,
+}, async () => {
   const paths = await testPaths();
-  const service = await startService({ paths, dev: false });
+  const service = await startTrackedService({ paths, dev: false });
   try {
-    const client = await connectService({ paths, timeoutMs: 3_000 });
+    const client = await connectTrackedService({ paths, timeoutMs: 3_000 });
     const ping = await client.request("system.ping", {});
     assert.equal(ping.pong, true);
     assert.equal(Number.isNaN(Date.parse(ping.at)), false);
@@ -107,25 +200,31 @@ test("handshake autenticado, ping e settings via client", { skip }, async () => 
   }
 });
 
-test("MAC errado e ausência de auth fecham a conexão", { skip }, async () => {
+test("MAC errado e ausência de auth fecham a conexão", {
+  skip,
+  timeout: socketTestTimeoutMs,
+}, async () => {
   const paths = await testPaths();
-  const service = await startService({ paths, dev: false, authTimeoutMs: 75 });
+  const service = await startTrackedService({ paths, dev: false, authTimeoutMs: 75 });
   try {
-    const wrong = net.createConnection(paths.socketPath);
+    const wrong = trackSocket(net.createConnection(paths.socketPath));
     wrong.on("error", () => undefined);
     const decoder = new FrameDecoder();
-    const hello = await new Promise<{ nonce: string }>((resolve, reject) => {
-      wrong.on("data", (chunk) => {
-        const frame = decoder.push(chunk).find((item) => item.kind === "frame");
-        if (frame?.kind === "frame") resolve(frame.value as { nonce: string });
-      });
-      wrong.once("error", reject);
-    });
+    const hello = await withTimeout(
+      new Promise<{ nonce: string }>((resolve, reject) => {
+        wrong.on("data", (chunk) => {
+          const frame = decoder.push(chunk).find((item) => item.kind === "frame");
+          if (frame?.kind === "frame") resolve(frame.value as { nonce: string });
+        });
+        wrong.once("error", reject);
+      }),
+      "hello autenticado",
+    );
     wrong.write(encodeFrame({ type: "auth", mac: "0".repeat(64) }));
     await waitForClose(wrong);
     assert.equal(typeof hello.nonce, "string");
 
-    const silent = net.createConnection(paths.socketPath);
+    const silent = trackSocket(net.createConnection(paths.socketPath));
     silent.on("error", () => undefined);
     const silentDecoder = new FrameDecoder();
     await new Promise<void>((resolve, reject) => {
@@ -145,9 +244,10 @@ test("MAC errado e ausência de auth fecham a conexão", { skip }, async () => {
 
 test("streaming de 10 MB sobrevive à pausa de leitura e preserva todo o texto", {
   skip,
+  timeout: socketTestTimeoutMs,
 }, async () => {
   const paths = await testPaths();
-  const service = await startService({ paths, dev: true });
+  const service = await startTrackedService({ paths, dev: true });
   let client: RawClient | undefined;
   try {
     client = await rawClient(paths);
@@ -207,9 +307,12 @@ test("streaming de 10 MB sobrevive à pausa de leitura e preserva todo o texto",
   }
 });
 
-test("requisição acima de 1 MiB não impede a próxima no mesmo socket", { skip }, async () => {
+test("requisição acima do limite do quadro não impede a próxima no mesmo socket", {
+  skip,
+  timeout: socketTestTimeoutMs,
+}, async () => {
   const paths = await testPaths();
-  const service = await startService({ paths, dev: false });
+  const service = await startTrackedService({ paths, dev: false });
   let client: RawClient | undefined;
   try {
     client = await rawClient(paths);
@@ -229,9 +332,12 @@ test("requisição acima de 1 MiB não impede a próxima no mesmo socket", { ski
   }
 });
 
-test("recusa segundo serviço e substitui socket sem dono", { skip }, async () => {
+test("recusa segundo serviço e substitui socket sem dono", {
+  skip,
+  timeout: socketTestTimeoutMs,
+}, async () => {
   const paths = await testPaths();
-  const service = await startService({ paths, dev: false });
+  const service = await startTrackedService({ paths, dev: false });
   await assert.rejects(startService({ paths, dev: false }), ServiceAlreadyRunningError);
   await service.close();
 
@@ -240,23 +346,19 @@ test("recusa segundo serviço e substitui socket sem dono", { skip }, async () =
   const child = spawn(process.execPath, ["-e", script, paths.socketPath], {
     stdio: ["ignore", "pipe", "ignore"],
   });
-  await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("socket fixture não iniciou")), 2_000);
-    child.stdout?.on("data", (chunk: Buffer) => {
-      if (chunk.toString().includes("ready")) {
-        clearTimeout(timeout);
-        resolve();
-      }
-    });
-    child.once("error", reject);
-  });
+  openChildren.add(child);
+  child.once("close", () => openChildren.delete(child));
+  await waitForChildReady(child);
   child.kill("SIGKILL");
-  await new Promise<void>((resolve) => child.once("close", () => resolve()));
+  await withTimeout(
+    new Promise<void>((resolve) => child.once("close", () => resolve())),
+    "fim do socket fixture",
+  );
   assert.equal((await lstat(paths.socketPath)).isSocket(), true);
 
-  const replacement = await startService({ paths, dev: false });
+  const replacement = await startTrackedService({ paths, dev: false });
   try {
-    const client = await connectService({ paths, timeoutMs: 3_000 });
+    const client = await connectTrackedService({ paths, timeoutMs: 3_000 });
     assert.equal((await client.request("system.ping", {})).pong, true);
     client.close();
   } finally {
@@ -264,11 +366,11 @@ test("recusa segundo serviço e substitui socket sem dono", { skip }, async () =
   }
 });
 
-test("erro remoto vira BridgeError", { skip }, async () => {
+test("erro remoto vira BridgeError", { skip, timeout: socketTestTimeoutMs }, async () => {
   const paths = await testPaths();
-  const service = await startService({ paths, dev: false });
+  const service = await startTrackedService({ paths, dev: false });
   try {
-    const client = await connectService({ paths, timeoutMs: 3_000 });
+    const client = await connectTrackedService({ paths, timeoutMs: 3_000 });
     await assert.rejects(
       client.request("dev.streamTest", { chunks: 1, chunkSize: 1 }),
       (error: unknown) => error instanceof BridgeError && error.code === "unavailable",
@@ -281,10 +383,11 @@ test("erro remoto vira BridgeError", { skip }, async () => {
 
 test("cliente lento recebe resync e recupera a saída pelo replay", {
   skip,
+  timeout: socketTestTimeoutMs,
 }, async () => {
   const paths = await testPaths();
   const root = path.dirname(paths.runtimeDir);
-  const service = await startService({
+  const service = await startTrackedService({
     paths,
     dev: false,
     homeDir: root,
@@ -355,17 +458,20 @@ test("cliente lento recebe resync e recupera a saída pelo replay", {
   }
 });
 
-test("terminals.open executa o comando inicial no shell real", { skip }, async () => {
+test("terminals.open executa o comando inicial no shell real", {
+  skip,
+  timeout: socketTestTimeoutMs,
+}, async () => {
   const paths = await testPaths();
   const root = path.dirname(paths.runtimeDir);
-  const service = await startService({
+  const service = await startTrackedService({
     paths,
     dev: false,
     homeDir: root,
     env: { ...process.env, SHELL: "/bin/sh" },
   });
   try {
-    const client = await connectService({ paths, timeoutMs: 3_000 });
+    const client = await connectTrackedService({ paths, timeoutMs: 3_000 });
     const output: string[] = [];
     const removeListener = client.onEvent((event) => {
       if (event.event === "terminals.output") output.push(event.payload.data);
@@ -389,12 +495,13 @@ test("terminals.open executa o comando inicial no shell real", { skip }, async (
 
 test("service.shutdown responde, fecha os terminais e injeta a saída do processo", {
   skip,
+  timeout: socketTestTimeoutMs,
 }, async () => {
   const paths = await testPaths();
   const root = path.dirname(paths.runtimeDir);
   const terminal = new ShutdownFakePty();
   const exitCodes: number[] = [];
-  const service = await startService({
+  const service = await startTrackedService({
     paths,
     dev: false,
     homeDir: root,

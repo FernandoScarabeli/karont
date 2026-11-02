@@ -73,6 +73,8 @@ export async function resolveAgentCommand(
   command: string,
   options: AgentDetectionOptions,
 ): Promise<string | undefined> {
+  if (options.env.KARONT_DISABLE_AGENT_DETECTION === "1") return undefined;
+
   const fs = options.fs ?? defaultFs;
   const pathApi = getPathApi(options.platform);
   if (command.startsWith("/")) {

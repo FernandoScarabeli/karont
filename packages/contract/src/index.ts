@@ -5,6 +5,8 @@ import type { MethodName, ParamsOf, ResultOf } from "./methods.ts";
 
 export const CONTRACT_VERSION = 1;
 
+export type { AgentErrorAgent, AgentErrorDescription } from "./agentErrors.ts";
+export { describeAgentError } from "./agentErrors.ts";
 export type {
   NativeBridge,
   NativeResult,
@@ -12,6 +14,34 @@ export type {
   PickFolderResult,
 } from "./bridge.ts";
 export { pickFolderOptionsSchema } from "./bridge.ts";
+export type {
+  AgentCapabilities,
+  ComposerSkill,
+  ComposerSkillReference,
+  Conversation,
+  ConversationAttachment,
+  ConversationAttachmentMetadata,
+  ConversationContextUsage,
+  ConversationMessage,
+  MessagePart,
+} from "./conversations.ts";
+export {
+  agentCapabilitiesSchema,
+  agentIdSchema,
+  agentModelsSchema,
+  composerFileSchema,
+  composerSkillReferenceSchema,
+  composerSkillSchema,
+  conversationAttachmentMetadataSchema,
+  conversationAttachmentSchema,
+  conversationContextUsageSchema,
+  conversationOptionsSchema,
+  conversationSchema,
+  conversationSendParamsSchema,
+  messagePartSchema,
+  messageSchema,
+  reasoningEffortSchema,
+} from "./conversations.ts";
 export type {
   AuthFrame,
   ClientFrame,
@@ -57,6 +87,13 @@ export {
   settingKeySchema,
   terminalInfoSchema,
 } from "./methods.ts";
+export type { MessageSource } from "./sources.ts";
+export {
+  MAX_MESSAGE_SOURCES,
+  messageSourceSchema,
+  normalizeSourceUrl,
+  safeSourceUrl,
+} from "./sources.ts";
 export type {
   ParsedRequest,
   ParseEventResult,

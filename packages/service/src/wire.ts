@@ -22,7 +22,7 @@ export function encodeFrame(value: unknown): Buffer {
 }
 
 export class FrameDecoder {
-  readonly #line = Buffer.alloc(MAX_FRAME_BYTES);
+  #line = Buffer.alloc(64 * 1024);
   #lineLength = 0;
   #droppingOversizedLine = false;
 
@@ -47,6 +47,7 @@ export class FrameDecoder {
 
       if (totalLength > MAX_FRAME_BYTES) {
         this.#lineLength = 0;
+        this.#shrinkBuffer();
         decoded.push({ kind: "too_large" });
         if (newline === -1) {
           this.#droppingOversizedLine = true;
@@ -57,6 +58,7 @@ export class FrameDecoder {
       }
 
       if (segmentLength > 0) {
+        this.#ensureCapacity(totalLength);
         chunk.copy(this.#line, this.#lineLength, offset, end);
         this.#lineLength += segmentLength;
       }
@@ -76,8 +78,22 @@ export class FrameDecoder {
       } catch {
         decoded.push({ kind: "invalid_json" });
       }
+      this.#shrinkBuffer();
     }
 
     return decoded;
+  }
+
+  #ensureCapacity(required: number): void {
+    if (required <= this.#line.byteLength) return;
+    let capacity = this.#line.byteLength;
+    while (capacity < required) capacity = Math.min(MAX_FRAME_BYTES, capacity * 2);
+    const expanded = Buffer.allocUnsafe(capacity);
+    this.#line.copy(expanded, 0, 0, this.#lineLength);
+    this.#line = expanded;
+  }
+
+  #shrinkBuffer(): void {
+    if (this.#line.byteLength > 1024 * 1024) this.#line = Buffer.alloc(64 * 1024);
   }
 }

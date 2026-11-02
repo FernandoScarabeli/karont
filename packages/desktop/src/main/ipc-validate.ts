@@ -18,7 +18,7 @@ export function validateIpcPayload(payload: unknown): IpcValidationResult {
   }
   if (serialized === undefined) return invalidRequest();
   if (new TextEncoder().encode(serialized).byteLength > MAX_FRAME_BYTES) {
-    return { ok: false, error: { code: "too_large", message: "A requisição excede 1 MiB." } };
+    return { ok: false, error: { code: "too_large", message: "A requisição excede 64 MiB." } };
   }
 
   if (

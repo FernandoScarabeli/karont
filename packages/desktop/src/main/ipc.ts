@@ -1,6 +1,7 @@
 import { BridgeError } from "@karont/contract";
 import type { ServiceClient } from "@karont/service";
-import { type BrowserWindow, dialog, type IpcMainInvokeEvent, ipcMain } from "electron";
+import { type BrowserWindow, dialog, type IpcMainInvokeEvent, ipcMain, shell } from "electron";
+import { validateExternalUrl } from "./external-url.ts";
 import { validateIpcPayload } from "./ipc-validate.ts";
 import { validatePickFolderOptions } from "./pick-folder.ts";
 import { isAllowedSender } from "./sender.ts";
@@ -28,6 +29,18 @@ export function registerIpcHandlers(options: IpcHandlerOptions): void {
       return result.canceled || !selectedPath ? null : { path: selectedPath };
     } catch {
       return null;
+    }
+  });
+
+  ipcMain.handle("karont:openExternal", async (event, payload: unknown) => {
+    if (validateSender(event, options.getWindow())) return false;
+    const url = validateExternalUrl(payload);
+    if (!url) return false;
+    try {
+      await shell.openExternal(url);
+      return true;
+    } catch {
+      return false;
     }
   });
 

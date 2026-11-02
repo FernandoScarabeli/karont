@@ -8,9 +8,9 @@
   font-family: var(--k-font-sans);
   cursor: pointer;
   transition:
-    background-color var(--k-duration-fast) var(--k-ease),
-    border-color var(--k-duration-fast) var(--k-ease),
-    color var(--k-duration-fast) var(--k-ease);
+    background-color var(--k-motion-fast) var(--k-ease),
+    border-color var(--k-motion-fast) var(--k-ease),
+    color var(--k-motion-fast) var(--k-ease);
 }
 
 .button:focus-visible {

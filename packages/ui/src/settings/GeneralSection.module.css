@@ -12,6 +12,23 @@
   border: 0;
 }
 
+.nameGroup {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: var(--k-space-3);
+}
+
+.nameActions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+}
+
 .legend {
   display: flex;
   width: 100%;
@@ -27,6 +44,7 @@
 }
 
 .choices {
+  position: relative;
   overflow: hidden;
   border: var(--k-border-width) solid var(--k-color-border);
   border-radius: var(--k-radius-lg);
@@ -34,6 +52,8 @@
 }
 
 .choice {
+  position: relative;
+  z-index: 1;
   display: flex;
   min-height: var(--k-control-height-lg);
   align-items: center;
@@ -44,10 +64,6 @@
 
 .choice + .choice {
   border-block-start: var(--k-border-width) solid var(--k-color-border);
-}
-
-.choice:has(.radio:checked) {
-  background: var(--k-color-bg-control);
 }
 
 .choice:has(.radio:disabled) {
@@ -125,4 +141,51 @@
   color: var(--k-color-text-muted);
   font-size: var(--k-text-12);
   line-height: var(--k-leading-normal);
+}
+
+.dataSection {
+  display: grid;
+  min-width: 0;
+  gap: var(--k-space-3);
+  margin-block-start: var(--k-space-2);
+  padding-block-start: var(--k-space-4);
+  border-block-start: var(--k-border-width) solid var(--k-color-border);
+}
+
+.dataHeading {
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-16);
+  font-weight: var(--k-weight-semibold);
+  line-height: var(--k-leading-tight);
+}
+
+.dataHeading:focus {
+  outline: none;
+}
+
+.dataHeading:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+  border-radius: var(--k-radius-xs);
+}
+
+.dataRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+}
+
+.dataLabel {
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-14);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-normal);
+}
+
+.dataFeedback {
+  min-width: 0;
 }

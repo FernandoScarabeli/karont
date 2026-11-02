@@ -7,13 +7,16 @@ import {
   type JsonValue,
   type ParsedRequest,
 } from "@karont/contract";
+import type { AdapterFactory, AgentAdapterRegistration } from "./agents/adapter.ts";
+import { ConversationManager } from "./agents/conversation-manager.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
 import { AgentRegistry } from "./agents/registry.ts";
 import { DeltaCoalescer } from "./coalescer.ts";
 import { getSetting, recordRecentFolder, setSetting } from "./db.ts";
 import { ServiceError } from "./errors.ts";
-import { listRecentFolders, validateFolder } from "./folders.ts";
+import { gitInfo, listRecentFolders, validateFolder } from "./folders.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
+import { getSystemUserName } from "./user-name.ts";
 
 export { ServiceError } from "./errors.ts";
 
@@ -37,6 +40,8 @@ export type HandlerOptions = {
   broadcast?: (event: AnyEvent) => Promise<void>;
   ptyFactory?: TerminalPtyFactory;
   shutdown?: () => Promise<void>;
+  adapterFactory?: AdapterFactory;
+  agentRegistrations?: Readonly<Record<string, AgentAdapterRegistration>>;
 };
 
 export function createHandlers({
@@ -51,6 +56,8 @@ export function createHandlers({
   broadcast = async () => undefined,
   ptyFactory,
   shutdown,
+  adapterFactory,
+  agentRegistrations,
 }: HandlerOptions) {
   const agentRegistry = new AgentRegistry(db, {
     env,
@@ -63,6 +70,13 @@ export function createHandlers({
     env,
     homeDir,
     ...(ptyFactory ? { ptyFactory } : {}),
+  });
+  const conversationManager = new ConversationManager({
+    db,
+    broadcast,
+    env,
+    ...(adapterFactory ? { adapterFactory } : {}),
+    ...(agentRegistrations ? { agentRegistrations } : {}),
   });
   const handle = async (request: ParsedRequest, conn: HandlerConnection): Promise<unknown> => {
     switch (request.method) {
@@ -78,6 +92,8 @@ export function createHandlers({
           platform: process.platform,
           homeDir,
         };
+      case "system.userName":
+        return { name: await getSystemUserName({ platform }) };
       case "settings.get":
         return { key: request.params.key, value: getSetting(db, request.params.key) };
       case "settings.set":
@@ -91,10 +107,149 @@ export function createHandlers({
         return agentRegistry.add(request.params);
       case "agents.remove":
         return agentRegistry.remove(request.params.id);
+      case "conversation.create": {
+        const folder = await validateFolder(request.params.cwd);
+        if (!folder.exists) {
+          throw new ServiceError(
+            "invalid_request",
+            `A pasta do projeto não existe: ${folder.path}`,
+          );
+        }
+        if (!folder.isDirectory) {
+          throw new ServiceError(
+            "invalid_request",
+            `O caminho do projeto não é uma pasta: ${folder.path}`,
+          );
+        }
+        return {
+          conversation: conversationManager.create({
+            ...request.params,
+            cwd: folder.path,
+            title: request.params.title ?? "Nova conversa",
+          }),
+        };
+      }
+      case "conversation.list":
+        return { conversations: conversationManager.list(request.params) };
+      case "conversation.count":
+        return { count: conversationManager.count() };
+      case "conversation.get": {
+        const result = conversationManager.get(request.params.id, {
+          limit: request.params.limit ?? 40,
+          before: request.params.before,
+        });
+        if (!result) throw new ServiceError("unavailable", "Conversa não encontrada.");
+        return result;
+      }
+      case "conversation.markSeen":
+        return conversationManager
+          .markSeen(request.params.id)
+          .then((conversation) => ({ conversation }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.send":
+        return conversationManager
+          .send(
+            request.params.id,
+            request.params.text,
+            request.params.plan,
+            request.params.attachments,
+            request.params.skills,
+          )
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.compact":
+        return conversationManager.compact(request.params.id).catch((error: unknown) => {
+          throw conversationError(error);
+        });
+      case "conversation.stop":
+        return conversationManager
+          .stop(request.params.id)
+          .then((stopped) => ({ stopped }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.respond": {
+        const { id, partId, ...response } = request.params;
+        return conversationManager
+          .respond(id, partId, response)
+          .then(() => ({ ok: true as const }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      }
+      case "conversation.retry":
+        return conversationManager
+          .retry(request.params.id, request.params.messageId)
+          .then((agentMessage) => ({ agentMessage }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.branch":
+        return conversationManager
+          .branch(request.params.id, request.params.messageId)
+          .then((conversation) => ({ conversation }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.delete":
+        return conversationManager
+          .remove(request.params.id)
+          .then((deleted) => ({ deleted }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.deleteAll":
+        return conversationManager
+          .deleteAll()
+          .then((deleted) => ({ deleted }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.rename":
+        return conversationManager
+          .rename(request.params.id, request.params.title)
+          .then((conversation) => ({ conversation }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.setPinned":
+        return conversationManager
+          .setPinned(request.params.id, request.params.pinned)
+          .then((conversation) => ({ conversation }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.setArchived":
+        return conversationManager
+          .setArchived(request.params.id, request.params.archived)
+          .then((conversation) => ({ conversation }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.setOptions":
+        return conversationManager
+          .setOptions(request.params.id, request.params.options)
+          .then((conversation) => ({ conversation }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "agent.models":
+        return conversationManager.models(request.params.agent);
+      case "agent.capabilities":
+        return conversationManager.capabilities(request.params.agent);
+      case "composer.files":
+        return conversationManager.files(request.params);
+      case "composer.skills":
+        return conversationManager.skills(request.params);
       case "folders.recent":
         return listRecentFolders(db, homeDir);
       case "folders.validate":
         return validateFolder(request.params.path);
+      case "folders.gitInfo":
+        return gitInfo(request.params.path);
       case "terminals.list":
         return terminalManager.list();
       case "terminals.open": {
@@ -142,7 +297,20 @@ export function createHandlers({
     }
   };
 
-  return { handle, closeTerminals: () => terminalManager.closeAll() };
+  return {
+    handle,
+    closeTerminals: () => terminalManager.closeAll(),
+    closeAgents: () => conversationManager.close(),
+  };
+}
+
+function conversationError(error: unknown): ServiceError {
+  return error instanceof ServiceError
+    ? error
+    : new ServiceError(
+        "unavailable",
+        error instanceof Error ? error.message : "A operação da conversa falhou.",
+      );
 }
 
 async function produceStream(

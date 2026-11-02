@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { conversationSendParamsSchema, messageSchema } from "./conversations.ts";
 import {
   jsonValueSchema,
   MAX_SETTING_BYTES,
@@ -12,6 +13,8 @@ import { isMethodName } from "./validate.ts";
 test("todos os métodos aceitam parâmetros válidos", () => {
   assert.equal(methods["system.ping"].params.safeParse({}).success, true);
   assert.equal(methods["system.info"].params.safeParse({}).success, true);
+  assert.equal(methods["system.userName"].params.safeParse({}).success, true);
+  assert.equal(methods["system.userName"].result.safeParse({ name: null }).success, true);
   assert.equal(methods["settings.get"].params.safeParse({ key: "theme.dark" }).success, true);
   assert.equal(
     methods["settings.set"].params.safeParse({ key: "theme.dark", value: { enabled: true } })
@@ -20,6 +23,154 @@ test("todos os métodos aceitam parâmetros válidos", () => {
   );
   assert.equal(
     methods["dev.streamTest"].params.safeParse({ chunks: 1, chunkSize: 1 }).success,
+    true,
+  );
+  assert.equal(methods["folders.gitInfo"].params.safeParse({ path: "/tmp" }).success, true);
+  assert.equal(
+    methods["conversation.rename"].params.safeParse({ id: "c1", title: "  Novo título  " }).success,
+    true,
+  );
+  assert.equal(
+    methods["conversation.branch"].params.safeParse({ id: "c1", messageId: "m1" }).success,
+    true,
+  );
+  assert.equal(
+    methods["conversation.branch"].params.safeParse({ id: "c1", messageId: "m1", extra: true })
+      .success,
+    false,
+  );
+  assert.equal(
+    methods["folders.gitInfo"].result.safeParse({ branch: "feature/anexos", detached: false })
+      .success,
+    true,
+  );
+});
+
+test("conversation.send aceita até 8 anexos e a mensagem expõe só metadados", () => {
+  const attachment = {
+    name: "notas.md",
+    mimeType: "text/markdown",
+    kind: "text",
+    data: "conteúdo",
+  } as const;
+  const schema = methods["conversation.send"].params;
+  assert.equal(schema, conversationSendParamsSchema);
+  assert.equal(
+    schema.safeParse({ id: "c1", text: "Leia", attachments: [attachment] }).success,
+    true,
+  );
+  assert.equal(
+    schema.safeParse({ id: "c1", text: "Leia", skills: [{ name: "project-helper" }] }).success,
+    true,
+  );
+  assert.equal(
+    schema.safeParse({
+      id: "c1",
+      text: "Leia",
+      attachments: Array.from({ length: 8 }, () => attachment),
+    }).success,
+    true,
+  );
+  assert.equal(
+    schema.safeParse({
+      id: "c1",
+      text: "Leia",
+      attachments: Array.from({ length: 9 }, () => attachment),
+    }).success,
+    false,
+  );
+  const savedMessage = {
+    id: "m1",
+    conversationId: "c1",
+    author: "user",
+    status: "done",
+    parts: [],
+    attachments: [{ name: "notas.md", mimeType: "text/markdown", kind: "text", sizeBytes: 8 }],
+    createdAt: "2026-10-31T10:00:00Z",
+    updatedAt: "2026-10-31T10:00:00Z",
+  };
+  assert.equal(messageSchema.safeParse(savedMessage).success, true);
+  assert.equal(
+    messageSchema.safeParse({
+      ...savedMessage,
+      attachments: [{ ...savedMessage.attachments[0], data: "conteúdo" }],
+    }).success,
+    false,
+  );
+});
+
+test("contratos do composer e compactação validam os formatos por agente", () => {
+  assert.equal(
+    methods["composer.files"].params.safeParse({ conversationId: "c1", query: "readme" }).success,
+    true,
+  );
+  assert.equal(
+    methods["composer.files"].params.safeParse({ cwd: "/tmp/projeto", query: "src/a" }).success,
+    true,
+  );
+  assert.equal(
+    methods["composer.files"].params.safeParse({ cwd: "/tmp/projeto", query: "x", extra: true })
+      .success,
+    false,
+  );
+  assert.equal(
+    methods["composer.files"].result.safeParse({
+      files: [{ path: "src/index.ts", name: "index.ts" }],
+    }).success,
+    true,
+  );
+  assert.equal(methods["composer.skills"].params.safeParse({ conversationId: "c1" }).success, true);
+  assert.equal(
+    methods["composer.skills"].params.safeParse({ agent: "codex", cwd: "/tmp/projeto" }).success,
+    true,
+  );
+  assert.equal(
+    methods["composer.skills"].params.safeParse({ agent: "teste", cwd: "/tmp/projeto" }).success,
+    true,
+  );
+  assert.equal(
+    methods["composer.skills"].result.safeParse({
+      skills: [
+        {
+          name: "project-helper",
+          description: "Executa uma tarefa de exemplo.",
+          source: "agente-de-teste",
+          path: "/tmp/projeto/.agents/skills/project-helper/SKILL.md",
+        },
+      ],
+    }).success,
+    true,
+  );
+  assert.equal(methods["conversation.compact"].params.safeParse({ id: "c1" }).success, true);
+  assert.equal(methods["conversation.compact"].result.safeParse({ ok: true }).success, true);
+  assert.equal(
+    methods["agent.models"].params.safeParse({ agent: "agente-de-teste" }).success,
+    true,
+  );
+  assert.equal(
+    methods["agent.models"].result.safeParse({
+      agent: "agente-de-teste",
+      models: [],
+      efforts: [],
+    }).success,
+    true,
+  );
+  assert.equal(
+    methods["agent.capabilities"].params.safeParse({ agent: "agente-de-teste" }).success,
+    true,
+  );
+  assert.equal(
+    methods["agent.capabilities"].result.safeParse({
+      capabilities: {
+        skills: false,
+        compact: false,
+        contextUsage: false,
+        fileMentions: true,
+        fastMode: false,
+        plan: false,
+        fork: false,
+      },
+    }).success,
     true,
   );
 });
@@ -152,9 +303,11 @@ test("métodos de terminal validam caminhos, dimensões e bytes UTF-8", () => {
 test("folders.* valida caminhos e pickFolder não é método de requisição", () => {
   assert.equal(isMethodName("folders.recent"), true);
   assert.equal(isMethodName("folders.validate"), true);
+  assert.equal(isMethodName("folders.gitInfo"), true);
   assert.equal(isMethodName("pickFolder"), false);
   assert.equal(methods["folders.recent"].params.safeParse({}).success, true);
   assert.equal(methods["folders.validate"].params.safeParse({ path: "./projeto" }).success, true);
+  assert.equal(methods["folders.gitInfo"].params.safeParse({ path: "./projeto" }).success, true);
   assert.equal(methods["folders.validate"].params.safeParse({ path: "" }).success, false);
   assert.equal(
     methods["folders.validate"].params.safeParse({ path: "x".repeat(4_097) }).success,

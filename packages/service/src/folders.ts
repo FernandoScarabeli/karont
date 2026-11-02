@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { lstat, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import type { RecentFolder } from "@karont/contract";
@@ -19,6 +19,47 @@ export async function validateFolder(folderPath: string): Promise<{
     return { path: normalizedPath, exists: true, isDirectory: details.isDirectory() };
   } catch {
     return { path: normalizedPath, exists: false, isDirectory: false };
+  }
+}
+
+export async function gitInfo(folderPath: string): Promise<{
+  branch: string | null;
+  detached: boolean;
+}> {
+  let current = path.resolve(folderPath);
+  while (true) {
+    const dotGitPath = path.join(current, ".git");
+    try {
+      const dotGitStat = await lstat(dotGitPath);
+      let gitDirectory: string;
+      if (dotGitStat.isDirectory()) {
+        gitDirectory = dotGitPath;
+      } else if (dotGitStat.isFile()) {
+        const marker = (await readFile(dotGitPath, "utf8")).trim();
+        const match = /^gitdir:\s*(.+)$/u.exec(marker);
+        if (!match?.[1]) return { branch: null, detached: false };
+        gitDirectory = path.resolve(current, match[1]);
+      } else {
+        return { branch: null, detached: false };
+      }
+
+      const head = (await readFile(path.join(gitDirectory, "HEAD"), "utf8")).trim();
+      if (head.startsWith("ref: ")) {
+        const ref = head.slice("ref: ".length);
+        return ref.startsWith("refs/heads/")
+          ? { branch: ref.slice("refs/heads/".length), detached: false }
+          : { branch: null, detached: false };
+      }
+      return /^[a-f\d]{40}(?:[a-f\d]{24})?$/iu.test(head)
+        ? { branch: null, detached: true }
+        : { branch: null, detached: false };
+    } catch {
+      // Continue to the parent when this directory has no usable Git metadata.
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) return { branch: null, detached: false };
+    current = parent;
   }
 }
 

@@ -366,7 +366,7 @@ function hasValidToken(request: PreviewRequest, token: string): boolean {
 function sendTooLarge(response: PreviewResponse): void {
   sendJson(response, 413, {
     ok: false,
-    error: { code: "too_large", message: "O corpo excede 1 MiB." },
+    error: { code: "too_large", message: "O corpo excede 64 MiB." },
   });
 }
 

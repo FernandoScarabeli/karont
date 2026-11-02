@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-preview/
 out/
 release/
 *.log
@@ -10,3 +11,5 @@ coverage/
 .vite/
 test-results/
 playwright-report/
+scripts/record-fixtures/out/
+.claude/settings.local.json

@@ -9,3 +9,9 @@
 7. **`cspStyles.ts` intercepta `appendChild`/`insertBefore`/`append` do app inteiro enquanto há terminal montado** (revisão de código do M1). Funciona, mas toda inserção de DOM do React paga uma busca de ancestrais × terminais ativos, e depende de detalhes internos do xterm 6. Alternativas: renderizador canvas/WebGL do xterm (não injeta `<style>`) ou nonce de CSP. Atualizar o xterm exige repetir a checagem de CSP no Electron. (M1-F2)
 8. **Teclas digitadas no instante em que o terminal abre se perdem** (antes do `attach`/foco do xterm). Raro para uma pessoa, mas apareceu no E2E. Guardar a entrada até o terminal ficar pronto. (M1-F5)
 9. **Placeholder com frases engraçadas que trocam sozinhas** no campo de mensagem ("faz meu café", "domine o mundo"…). Pedido do dono para depois do M1.
+
+## Do M2
+- Testes de `server.test.ts` usam socket Unix e não rodam no sandbox do Codex (pulados com `KARONT_SKIP_SOCKET_TESTS=1`); rodam fora dele no `npm run check`.
+- Limite de quadro subiu para 64 MiB para caber até 8 anexos; anexos grandes passam inteiros pela memória do serviço. Se pesar, trocar por envio em pedaços.
+- Medição (preview, resposta de ~14 mil caracteres): serviço ~1–2% de CPU e 52 MB; aba da interface 12–20% de CPU durante o streaming (antes 60–110%), 0% parada. Repetir no Electron empacotado.
+- A skill `unslop` não está instalada no Codex; as revisões de UI usaram taste lint + Impeccable.

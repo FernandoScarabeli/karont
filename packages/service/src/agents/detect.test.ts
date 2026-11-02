@@ -15,7 +15,12 @@ import path from "node:path";
 import { test } from "node:test";
 import { createFakeCliDir } from "../testing/fake-clis.ts";
 import { agentCatalog } from "./catalog.ts";
-import { type AgentDetectionFs, detectAgents } from "./detect.ts";
+import {
+  type AgentDetectionFs,
+  type AgentDetectionOptions,
+  detectAgents,
+  resolveAgentCommand,
+} from "./detect.ts";
 
 test("detecção respeita a ordem do PATH e exige arquivo executável", async (context) => {
   const firstDirectory = await createFakeCliDir(["claude"]);
@@ -133,7 +138,7 @@ test("symlink para arquivo executável conta como CLI instalada", async (context
   assert.equal(agents.find((agent) => agent.id === "claude")?.path, path.join(directory, "claude"));
 });
 
-test("desligar detecção não consulta o filesystem", async () => {
+test("desligar detecção e resolução não consulta o filesystem", async () => {
   let calls = 0;
   const failingFs: AgentDetectionFs = {
     access: async () => {
@@ -149,12 +154,15 @@ test("desligar detecção não consulta o filesystem", async () => {
       throw new Error("Não deveria consultar readdir");
     },
   };
-  const agents = await detectAgents({
+  const options: AgentDetectionOptions = {
     env: { KARONT_DISABLE_AGENT_DETECTION: "1" },
     homeDir: "/home/test-user",
     platform: "linux",
     fs: failingFs,
-  });
+  };
+  const agents = await detectAgents(options);
+  assert.equal(await resolveAgentCommand("claude", options), undefined);
+  assert.equal(await resolveAgentCommand("/usr/local/bin/claude", options), undefined);
   assert.equal(calls, 0);
   assert.deepEqual(
     agents.map(({ id, found }) => ({ id, found })),

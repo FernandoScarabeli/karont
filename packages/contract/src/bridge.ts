@@ -26,4 +26,5 @@ export interface NativeBridge {
   request(method: string, params: unknown): Promise<NativeResult>;
   onEvent(listener: (event: unknown) => void): () => void;
   pickFolder(options?: PickFolderOptions): Promise<PickFolderResult>;
+  openExternal(url: string): Promise<boolean>;
 }

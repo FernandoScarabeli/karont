@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import type { Writable } from "node:stream";
 import { test } from "node:test";
+import { MAX_FRAME_BYTES } from "@karont/contract";
 import {
   ConnectionClosedError,
   FrameTooLargeError,
@@ -65,7 +66,7 @@ test("quadro grande rejeita sem fechar a conexão", async () => {
   const writable = new ControlledWritable();
   writable.falseEveryWrite = false;
   const writer = new FrameWriter(writable as unknown as Writable);
-  await assert.rejects(writer.send("x".repeat(1_048_576)), FrameTooLargeError);
+  await assert.rejects(writer.send("x".repeat(MAX_FRAME_BYTES)), FrameTooLargeError);
   await writer.send({ stillOpen: true });
   assert.equal(writable.frames.length, 1);
 });

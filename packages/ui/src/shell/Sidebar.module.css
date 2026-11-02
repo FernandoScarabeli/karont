@@ -8,15 +8,20 @@
 }
 
 .navigation {
+  position: relative;
   display: flex;
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
   gap: var(--k-sidebar-section-gap);
+  margin-inline-end: calc(-1 * var(--k-sidebar-padding));
   overflow-y: auto;
+  padding-inline-end: var(--k-sidebar-scrollbar-content-inset);
 }
 
 .primaryActions {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: var(--k-space-1);
@@ -41,7 +46,19 @@
   color: var(--k-color-text-primary);
 }
 
+.navigation .navigationAction:not([aria-current="page"]):hover:not(:disabled),
+.navigation .navigationAction:not([aria-current="page"]):focus-visible:not(:disabled) {
+  background: transparent;
+  color: var(--k-color-text-primary);
+}
+
+.navigation .navigationAction[aria-current="page"]:hover {
+  background: var(--k-color-bg-control);
+}
+
 .section {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: var(--k-space-2);
@@ -54,6 +71,28 @@
   justify-content: space-between;
   gap: var(--k-space-1);
   padding-inline-start: var(--k-space-2);
+}
+
+.sectionHeadingStart,
+.sectionActions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.sectionActionsMenu {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--k-motion-fast) var(--k-ease);
+}
+
+.sectionHeader:hover .sectionActionsMenu,
+.sectionHeader:focus-within .sectionActionsMenu,
+.sectionActionsMenu:focus-visible,
+.sectionActionsMenu[aria-expanded="true"] {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .sectionTitle {
@@ -99,6 +138,25 @@
   min-width: 0;
 }
 
+.conversationActions {
+  position: absolute;
+  z-index: var(--k-layer-menu);
+  top: 50%;
+  inset-inline-end: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity var(--k-motion-fast) var(--k-ease);
+}
+
+.conversationItem:focus-within .conversationActions,
+.conversationItem:hover .conversationActions,
+.conversationActions:focus-visible,
+.conversationActions[aria-expanded="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .endTerminalButton {
   position: absolute;
   z-index: var(--k-layer-menu);
@@ -106,7 +164,7 @@
   inset-inline-end: 0;
   opacity: 0;
   transform: translateY(-50%);
-  transition: opacity var(--k-duration-fast) var(--k-ease);
+  transition: opacity var(--k-motion-fast) var(--k-ease);
 }
 
 .conversationItem:focus-within .endTerminalButton,
@@ -143,9 +201,13 @@
 }
 
 .conversationButton:hover,
+.conversationButton:focus-visible,
+.conversationButton[aria-current="page"] {
+  color: var(--k-color-text-primary);
+}
+
 .conversationButton[aria-current="page"] {
   background: var(--k-color-bg-control);
-  color: var(--k-color-text-primary);
 }
 
 .conversationButton:focus-visible {
@@ -161,9 +223,44 @@
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  font-family: var(--k-font-mono);
+  font-family: var(--k-font-sans);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.conversationTitleInput {
+  border-color: var(--k-color-border-strong);
+  background: var(--k-color-bg-raised);
+  color: var(--k-color-text-primary);
+  cursor: text;
+}
+
+.conversationTitleInput:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.pinnedMarker {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+}
+
+.conversationSubheading {
+  margin: var(--k-space-2) 0 0;
+  padding-inline: var(--k-space-2);
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-11);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-normal);
+}
+
+.actionError {
+  margin: 0;
+  padding-inline: var(--k-space-2);
+  color: var(--k-color-danger);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+  overflow-wrap: anywhere;
 }
 
 .runningMarker {
@@ -173,6 +270,37 @@
   margin-inline-end: var(--k-space-1);
   border-radius: var(--k-radius-full);
   background: var(--k-color-text-secondary);
+}
+
+.conversationStatusDot {
+  width: var(--k-status-dot-size-small);
+  height: var(--k-status-dot-size-small);
+  flex: 0 0 auto;
+  border-radius: var(--k-radius-full);
+  border: var(--k-border-width) solid transparent;
+}
+
+.conversationStatusUnread {
+  background: var(--k-color-status-unread);
+}
+
+.conversationStatusWorking {
+  background: var(--k-color-status-working);
+  animation: conversationStatusPulse var(--k-duration-status-pulse-slow) ease-in-out infinite;
+}
+
+.conversationStatusNeedsYou {
+  background: var(--k-color-status-needs-you);
+}
+
+.conversationStatusError {
+  border-color: var(--k-color-status-needs-you);
+  background: transparent;
+}
+
+.conversationItem:hover .runningMarker,
+.conversationItem:focus-within .runningMarker {
+  visibility: hidden;
 }
 
 .exitedMarker {
@@ -186,9 +314,50 @@
   padding-inline-end: calc(var(--k-control-height-sm) + var(--k-space-1));
 }
 
-.conversationItem:hover .runningMarker,
-.conversationItem:focus-within .runningMarker {
-  visibility: hidden;
+.conversationItem.conversationMenuOpen .conversationButton {
+  padding-inline-end: calc(var(--k-control-height-sm) + var(--k-space-1));
+}
+
+@keyframes conversationStatusPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversationStatusWorking {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+@media (hover: none) {
+  .sectionActionsMenu {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .conversationActions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .terminalConversationItem .endTerminalButton {
+    opacity: 1;
+  }
+
+  .terminalConversationItem .conversationButton {
+    padding-inline-end: calc(var(--k-control-height-sm) + var(--k-space-1));
+  }
+
+  .conversationItem:not(.terminalConversationItem) .conversationButton {
+    padding-inline-end: calc(var(--k-control-height-sm) + var(--k-space-1));
+  }
 }
 
 .footer {

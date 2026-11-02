@@ -319,6 +319,7 @@ export function TerminalView({
           />
           <h1
             className={styles.title}
+            data-pane-title=""
             id={titleId}
             ref={titleRef}
             tabIndex={-1}

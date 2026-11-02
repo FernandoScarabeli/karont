@@ -1,0 +1,722 @@
+import type { Conversation, ResultOf } from "@karont/contract";
+import { ListTodo, SlidersHorizontal, TriangleAlert, Zap } from "lucide-react";
+import {
+  type ComponentPropsWithoutRef,
+  type KeyboardEvent,
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
+import { Button } from "../components/Button/Button.tsx";
+import { ComposerMenu, type ComposerMenuOption } from "../components/ComposerMenu/ComposerMenu.tsx";
+import {
+  ComposerPopover,
+  ComposerPopoverHeading,
+} from "../components/ComposerPopover/ComposerPopover.tsx";
+import { Dialog } from "../components/Dialog/Dialog.tsx";
+import { useRegisterFluidHoverItem } from "../components/FluidHover/FluidHover.tsx";
+import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
+import { t } from "../i18n/pt-BR.ts";
+import styles from "./ComposerPreferences.module.css";
+import { findModelByIdOrAlias, resolveModelId } from "./modelCatalog.ts";
+
+type AgentModelsResult = ResultOf<"agent.models">;
+export type AgentEffort = AgentModelsResult["efforts"][number];
+export type AgentModels = {
+  agent: AgentModelsResult["agent"];
+  models: Array<AgentModelsResult["models"][number] & { efforts?: AgentEffort[] }>;
+  efforts?: AgentEffort[];
+};
+export type ComposerPopoverName = "agent" | "model" | "effort" | "config" | "history" | null;
+type ConversationMode = NonNullable<Conversation["mode"]>;
+
+export function modelSettingKey(agent: AgentModels["agent"]): string {
+  return `composer.${agent}.model`;
+}
+
+export function effortSettingKey(agent: AgentModels["agent"]): string {
+  return `composer.${agent}.effort`;
+}
+
+export function fastSettingKey(agent: AgentModels["agent"]): string {
+  return `composer.${agent}.fast`;
+}
+
+export function effortsForModel(models: AgentModels | null, modelId: string): AgentEffort[] {
+  if (!modelId) return [];
+  const modelEfforts = findModelByIdOrAlias(models, modelId)?.efforts;
+  return modelEfforts ?? models?.efforts ?? [];
+}
+
+export function initialEffortForModel(
+  models: AgentModels | null,
+  modelId: string,
+  preferredEffort: string | null,
+): AgentEffort | "" {
+  const supported = effortsForModel(models, modelId);
+  if (!supported.length) return "";
+  if (preferredEffort && supported.includes(preferredEffort as AgentEffort)) {
+    return preferredEffort as AgentEffort;
+  }
+  const listedModel = findModelByIdOrAlias(models, modelId);
+  const listedDefault = listedModel?.defaultEffort;
+  if (listedDefault && supported.includes(listedDefault)) return listedDefault;
+  if (supported.includes("medium")) return "medium";
+  return supported[0] ?? "";
+}
+
+export function modelDisplayName(models: AgentModels | null, modelId: string | null): string {
+  if (!modelId) return t.chat.model;
+  return findModelByIdOrAlias(models, modelId)?.name ?? modelId;
+}
+
+const modes: ConversationMode[] = ["read-only", "edit", "full"];
+
+export function ComposerPreferences({
+  models,
+  model,
+  effort,
+  mode,
+  planMode,
+  fastMode,
+  activePopover,
+  onActivePopoverChange,
+  disabled = false,
+  onModelChange,
+  onEffortChange,
+  onModeChange,
+  onPlanModeChange,
+  onFastModeChange,
+}: {
+  models: AgentModels | null;
+  model: string | null;
+  effort: AgentEffort | "";
+  mode: ConversationMode;
+  planMode: boolean;
+  fastMode: boolean;
+  activePopover: ComposerPopoverName;
+  onActivePopoverChange: (popover: ComposerPopoverName) => void;
+  disabled?: boolean;
+  onModelChange: (value: string) => void;
+  onEffortChange: (value: AgentEffort | "") => void;
+  onModeChange: (value: ConversationMode) => void;
+  onPlanModeChange: (value: boolean) => void;
+  onFastModeChange: (value: boolean) => void;
+}) {
+  const [confirmFull, setConfirmFull] = useState(false);
+  const [timedFastTooltip, setTimedFastTooltip] = useState(false);
+  const [fastTooltipLabel, setFastTooltipLabel] = useState("");
+  const fastTooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [configAnchorName, setConfigAnchorName] = useState<"config" | "plan" | "full">("config");
+  const configTriggerRef = useRef<HTMLButtonElement>(null);
+  const planBadgeRef = useRef<HTMLButtonElement>(null);
+  const fullAccessBadgeRef = useRef<HTMLButtonElement>(null);
+  const modeRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const configFocusIntentRef = useRef<"radio" | "popover">("popover");
+  const configPopoverId = useId();
+  const configContentId = useId();
+  const planDescriptionId = useId();
+  const selectedModelId = model ? resolveModelId(models, model) || model : null;
+  const selectedModel = selectedModelId ? findModelByIdOrAlias(models, selectedModelId) : undefined;
+  const modelName = modelDisplayName(models, selectedModelId);
+  const modelTooltipLabel = selectedModelId ? t.chat.modelTooltip(modelName) : t.chat.model;
+  const modelOptions: ComposerMenuOption[] = (models?.models ?? []).map((option) => ({
+    id: option.id,
+    content: (
+      <span className={styles.modelOption}>
+        <span className={styles.modelOptionName}>{option.name}</span>
+        {option.isDefault ? (
+          <span className={styles.modelDefault}>{t.chat.modelDefault}</span>
+        ) : null}
+      </span>
+    ),
+    selected: option.id === selectedModelId,
+    onSelect: () => onModelChange(option.id),
+  }));
+  if (model && !modelOptions.some((option) => option.id === selectedModelId)) {
+    modelOptions.unshift({
+      id: selectedModelId ?? model,
+      content: <span className={styles.modelOption}>{selectedModelId ?? model}</span>,
+      selected: true,
+      onSelect: () => onModelChange(selectedModelId ?? model),
+    });
+  }
+
+  const efforts = effortsForModel(models, selectedModelId ?? "");
+  const selectedEffort = effort && efforts.includes(effort) ? effort : "";
+  const supportsFast = selectedModel?.supportsFast === true;
+  const fullAccess = mode === "full";
+  const configAnchorRef =
+    configAnchorName === "plan" && planMode
+      ? planBadgeRef
+      : configAnchorName === "full" && fullAccess
+        ? fullAccessBadgeRef
+        : configTriggerRef;
+  const active = (name: Exclude<ComposerPopoverName, null>) => activePopover === name;
+
+  useEffect(
+    () => () => {
+      if (fastTooltipTimerRef.current) clearTimeout(fastTooltipTimerRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!activePopover) return;
+    setTimedFastTooltip(false);
+    if (fastTooltipTimerRef.current) clearTimeout(fastTooltipTimerRef.current);
+  }, [activePopover]);
+
+  function toggleFastMode() {
+    const nextValue = !fastMode;
+    setFastTooltipLabel(nextValue ? t.chat.fastModeOnTooltip : t.chat.fastModeOffTooltip);
+    setTimedFastTooltip(true);
+    if (fastTooltipTimerRef.current) clearTimeout(fastTooltipTimerRef.current);
+    fastTooltipTimerRef.current = setTimeout(() => setTimedFastTooltip(false), 1200);
+    onFastModeChange(nextValue);
+  }
+
+  function openConfig(target: HTMLButtonElement, fromKeyboard: boolean) {
+    const anchorName = (target.dataset.configAnchor ?? "config") as "config" | "plan" | "full";
+    const shouldClose = active("config") && configAnchorName === anchorName;
+    if (!shouldClose) {
+      setConfigAnchorName(anchorName);
+      configFocusIntentRef.current = fromKeyboard ? "radio" : "popover";
+    }
+    onActivePopoverChange(shouldClose ? null : "config");
+  }
+
+  function handleConfigKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (active("config") || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
+    event.preventDefault();
+    openConfig(event.currentTarget, true);
+  }
+
+  function handleConfigClick(event: MouseEvent<HTMLButtonElement>) {
+    openConfig(event.currentTarget, event.detail === 0);
+  }
+
+  function closeConfig() {
+    onActivePopoverChange(null);
+  }
+
+  function chooseMode(value: ConversationMode) {
+    if (value === "full" && mode !== "full") {
+      setConfirmFull(true);
+      closeConfig();
+      return;
+    }
+    onModeChange(value);
+  }
+
+  return (
+    <div className={styles.options}>
+      <ComposerMenu
+        disabled={disabled || !models || modelOptions.length === 0}
+        label={t.chat.model}
+        onOpenChange={(open) => onActivePopoverChange(open ? "model" : null)}
+        open={active("model")}
+        options={modelOptions}
+        triggerClassName={styles.modelTrigger}
+        triggerContent={<span className={styles.modelName}>{modelName}</span>}
+        triggerLabel={model ? `${t.chat.model}: ${modelName}` : t.chat.model}
+        tooltipLabel={modelTooltipLabel}
+      />
+      {efforts.length > 0 ? (
+        <EffortButton
+          activePopover={activePopover !== null}
+          disabled={disabled}
+          effort={selectedEffort}
+          levels={efforts}
+          onChange={onEffortChange}
+          onOpenChange={(open) => onActivePopoverChange(open ? "effort" : null)}
+          open={active("effort")}
+        />
+      ) : null}
+      {supportsFast ? (
+        <Tooltip
+          label={
+            timedFastTooltip
+              ? fastTooltipLabel
+              : fastMode
+                ? t.chat.fastModeOnTooltip
+                : t.chat.fastModeOffTooltip
+          }
+          open={activePopover !== null}
+          visible={timedFastTooltip}
+        >
+          <button
+            aria-label={fastMode ? t.chat.fastModeEnabled : t.chat.fastMode}
+            aria-pressed={fastMode}
+            className={[styles.iconTrigger, styles.fastTrigger].join(" ")}
+            data-active={fastMode}
+            data-composer-menu-trigger
+            disabled={disabled}
+            onClick={toggleFastMode}
+            type="button"
+          >
+            <Zap aria-hidden="true" size={16} strokeWidth={1.8} />
+          </button>
+        </Tooltip>
+      ) : null}
+      <div className={styles.configGroup}>
+        <Tooltip label={t.chat.configTooltip} open={active("config")}>
+          <button
+            aria-controls={configPopoverId}
+            aria-expanded={active("config")}
+            aria-haspopup="dialog"
+            aria-label={t.chat.configLabel}
+            className={styles.iconTrigger}
+            data-config-anchor="config"
+            data-composer-menu-trigger
+            disabled={disabled}
+            onClick={handleConfigClick}
+            onKeyDown={handleConfigKeyDown}
+            ref={configTriggerRef}
+            type="button"
+          >
+            <SlidersHorizontal aria-hidden="true" size={16} strokeWidth={1.8} />
+          </button>
+        </Tooltip>
+        {planMode ? (
+          <Tooltip label={t.chat.configTooltip} open={active("config")}>
+            <button
+              aria-controls={configPopoverId}
+              aria-expanded={active("config")}
+              aria-haspopup="dialog"
+              aria-label={t.chat.planBadgeAccessibleName}
+              className={styles.badge}
+              data-config-anchor="plan"
+              data-composer-menu-trigger
+              disabled={disabled}
+              onClick={handleConfigClick}
+              onKeyDown={handleConfigKeyDown}
+              ref={planBadgeRef}
+              type="button"
+            >
+              <ListTodo aria-hidden="true" size={13} />
+              <span>{t.chat.planMode}</span>
+            </button>
+          </Tooltip>
+        ) : null}
+        {fullAccess ? (
+          <Tooltip label={t.chat.configTooltip} open={active("config")}>
+            <button
+              aria-controls={configPopoverId}
+              aria-expanded={active("config")}
+              aria-haspopup="dialog"
+              aria-label={t.chat.fullAccessBadgeAccessibleName}
+              className={[styles.badge, styles.alertBadge].join(" ")}
+              data-config-anchor="full"
+              data-composer-menu-trigger
+              disabled={disabled}
+              onClick={handleConfigClick}
+              onKeyDown={handleConfigKeyDown}
+              ref={fullAccessBadgeRef}
+              type="button"
+            >
+              <TriangleAlert aria-hidden="true" size={13} />
+              <span>{t.chat.modes.full}</span>
+            </button>
+          </Tooltip>
+        ) : null}
+        <ComposerPopover
+          anchorRef={configAnchorRef}
+          className={styles.configPopover}
+          id={configPopoverId}
+          initialFocus={() =>
+            configFocusIntentRef.current === "radio"
+              ? (modeRefs.current[modes.indexOf(mode)] ?? null)
+              : null
+          }
+          label={t.chat.configLabel}
+          onClose={closeConfig}
+          open={active("config")}
+          role="dialog"
+        >
+          <ComposerPopoverHeading>{t.chat.access}</ComposerPopoverHeading>
+          <fieldset className={styles.configContent} id={configContentId}>
+            <legend className={styles.srOnly}>{t.chat.configLabel}</legend>
+            <section className={styles.configSection}>
+              <fieldset className={styles.accessOptions}>
+                <legend className={styles.srOnly}>{t.chat.access}</legend>
+                {modes.map((value, index) => (
+                  <RegisteredAccessOption
+                    checked={mode === value}
+                    description={t.chat.modeDescriptions[value]}
+                    fluidKey={`access-${value}`}
+                    inputId={`${configPopoverId}-${value}-name`}
+                    key={value}
+                    inputRef={(element) => {
+                      modeRefs.current[index] = element;
+                    }}
+                    inputName={`${configPopoverId}-access`}
+                    label={t.chat.modes[value]}
+                    onChange={() => chooseMode(value)}
+                    optionId={`${configPopoverId}-${value}`}
+                    value={value}
+                    disabled={disabled}
+                  />
+                ))}
+              </fieldset>
+            </section>
+            <hr className={styles.sectionSeparator} data-ui="" />
+            <section className={styles.configSection}>
+              <RegisteredFluidHoverButton
+                aria-checked={planMode}
+                aria-describedby={planDescriptionId}
+                aria-label={t.chat.planMode}
+                className={styles.planOption}
+                disabled={disabled}
+                onClick={() => onPlanModeChange(!planMode)}
+                role="switch"
+                type="button"
+                fluidKey="plan-mode"
+              >
+                <span className={styles.planCopy}>
+                  <span className={styles.accessName}>{t.chat.planMode}</span>
+                  <span className={styles.accessDescription} id={planDescriptionId}>
+                    {t.chat.planDescription}
+                  </span>
+                </span>
+                <span aria-hidden="true" className={styles.switchTrack} data-checked={planMode}>
+                  <span className={styles.switchThumb} />
+                </span>
+              </RegisteredFluidHoverButton>
+            </section>
+          </fieldset>
+        </ComposerPopover>
+      </div>
+      <Dialog
+        description={t.chat.fullAccessDescription}
+        footer={
+          <>
+            <Button onClick={() => setConfirmFull(false)} variant="secondary">
+              {t.conversation.cancel}
+            </Button>
+            <Button
+              onClick={() => {
+                setConfirmFull(false);
+                onModeChange("full");
+              }}
+              variant="danger"
+            >
+              {t.chat.fullAccessConfirm}
+            </Button>
+          </>
+        }
+        onClose={() => setConfirmFull(false)}
+        open={confirmFull}
+        returnFocusRef={configAnchorRef}
+        title={t.chat.fullAccessTitle}
+      >
+        <p className={styles.warning}>{t.chat.fullAccessWarning}</p>
+      </Dialog>
+    </div>
+  );
+}
+
+function EffortButton({
+  effort,
+  levels,
+  disabled,
+  activePopover,
+  open,
+  onChange,
+  onOpenChange,
+}: {
+  effort: AgentEffort | "";
+  levels: AgentEffort[];
+  disabled: boolean;
+  activePopover: boolean;
+  open: boolean;
+  onChange: (value: AgentEffort | "") => void;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const currentIndex = levels.indexOf(effort as AgentEffort);
+  const effortLabel =
+    currentIndex >= 0
+      ? t.chat.effortAccessibleName(t.chat.efforts[levels[currentIndex] ?? "medium"])
+      : t.chat.effort;
+  const [timedTooltip, setTimedTooltip] = useState(false);
+  const [tooltipLabel, setTooltipLabel] = useState(effortLabel);
+  const [announcement, setAnnouncement] = useState("");
+  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const listboxId = useId();
+  const selectedIndex = Math.max(0, currentIndex);
+  const [activeIndex, setActiveIndex] = useState(selectedIndex);
+  const setOptionElement = useCallback((index: number, element: HTMLDivElement | null) => {
+    optionRefs.current[index] = element;
+  }, []);
+  const angle =
+    currentIndex < 0 || levels.length < 2 ? 0 : -110 + (220 * currentIndex) / (levels.length - 1);
+
+  useEffect(
+    () => () => {
+      if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!activePopover) return;
+    setTimedTooltip(false);
+    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+  }, [activePopover]);
+
+  function chooseIndex(index: number) {
+    const level = levels[index];
+    if (!level) return;
+    const label = t.chat.effortAccessibleName(t.chat.efforts[level]);
+    setTooltipLabel(label);
+    setAnnouncement(label);
+    setTimedTooltip(true);
+    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+    tooltipTimerRef.current = setTimeout(() => setTimedTooltip(false), 1200);
+    onChange(level);
+  }
+
+  function advance() {
+    if (!levels.length) return;
+    chooseIndex(currentIndex < 0 ? 0 : (currentIndex + 1) % levels.length);
+  }
+
+  function adjust(direction: -1 | 1) {
+    if (!levels.length) return;
+    const nextIndex =
+      currentIndex < 0 ? 0 : Math.max(0, Math.min(levels.length - 1, currentIndex + direction));
+    if (nextIndex !== currentIndex) chooseIndex(nextIndex);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "ArrowUp" || event.key === "ArrowRight") {
+      event.preventDefault();
+      adjust(1);
+    } else if (event.key === "ArrowDown" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      adjust(-1);
+    }
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    setActiveIndex(selectedIndex);
+    requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus());
+  }, [open, selectedIndex]);
+
+  function selectEffort(index: number) {
+    const level = levels[index];
+    if (!level) return;
+    chooseIndex(index);
+    onOpenChange(false);
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  }
+
+  function handleOptionKeyDown(event: KeyboardEvent<HTMLDivElement>, index: number) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      const nextIndex = (index + direction + levels.length) % levels.length;
+      setActiveIndex(nextIndex);
+      optionRefs.current[nextIndex]?.focus();
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      const nextIndex = event.key === "Home" ? 0 : levels.length - 1;
+      setActiveIndex(nextIndex);
+      optionRefs.current[nextIndex]?.focus();
+    } else if (event.key === "Enter" || event.key === " " || event.key === "Tab") {
+      event.preventDefault();
+      selectEffort(index);
+    }
+  }
+
+  return (
+    <span className={styles.effortControl} data-popover-open={activePopover}>
+      <Tooltip label={tooltipLabel} open={activePopover} visible={timedTooltip}>
+        <button
+          aria-controls={listboxId}
+          aria-description={t.chat.effortChangeDescription}
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-label={effortLabel}
+          className={styles.effortTrigger}
+          data-composer-menu-trigger
+          disabled={disabled}
+          onClick={advance}
+          onKeyDown={handleKeyDown}
+          ref={triggerRef}
+          type="button"
+        >
+          <EffortGauge angle={angle} />
+        </button>
+      </Tooltip>
+      <ComposerPopover
+        anchorRef={triggerRef}
+        className={styles.effortPopover}
+        id={listboxId}
+        initialFocus={() => optionRefs.current[selectedIndex] ?? null}
+        label={t.chat.effort}
+        onClose={() => onOpenChange(false)}
+        open={open}
+        role="listbox"
+      >
+        {levels.map((level, index) => (
+          <EffortMenuOption
+            active={activeIndex === index}
+            id={`${listboxId}-${index}`}
+            key={level}
+            label={t.chat.efforts[level]}
+            onFocus={() => setActiveIndex(index)}
+            onKeyDown={(event) => handleOptionKeyDown(event, index)}
+            onSelect={() => selectEffort(index)}
+            index={index}
+            selected={index === selectedIndex}
+            setOptionElement={setOptionElement}
+            value={level}
+          />
+        ))}
+      </ComposerPopover>
+      <span aria-atomic="true" aria-live="polite" className={styles.srOnly}>
+        {announcement}
+      </span>
+    </span>
+  );
+}
+
+function EffortMenuOption({
+  id,
+  value,
+  label,
+  selected,
+  active,
+  index,
+  setOptionElement,
+  onFocus,
+  onKeyDown,
+  onSelect,
+}: {
+  id: string;
+  value: AgentEffort;
+  label: string;
+  selected: boolean;
+  active: boolean;
+  index: number;
+  setOptionElement: (index: number, element: HTMLDivElement | null) => void;
+  onFocus: () => void;
+  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+  onSelect: () => void;
+}) {
+  const registerHoverItem = useRegisterFluidHoverItem(`effort-${value}`);
+  const optionRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      setOptionElement(index, element);
+      registerHoverItem(element);
+    },
+    [index, registerHoverItem, setOptionElement],
+  );
+  return (
+    <div
+      aria-selected={selected}
+      className={styles.effortMenuOption}
+      id={id}
+      onClick={onSelect}
+      onFocus={onFocus}
+      onKeyDown={onKeyDown}
+      ref={optionRef}
+      role="option"
+      tabIndex={active ? 0 : -1}
+    >
+      <span className={styles.accessName}>{label}</span>
+    </div>
+  );
+}
+
+function EffortGauge({ angle }: { angle: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={styles.gauge}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <path d="M3.34 19a10 10 0 1 1 17.32 0" />
+      <g className={styles.gaugeNeedle} style={{ transform: `rotate(${angle}deg)` }}>
+        <path d="M12 14 L12 8.34" />
+      </g>
+    </svg>
+  );
+}
+
+export function agentDisplayName(agent: string): string {
+  return agent === "claude" ? t.chat.agents.claude : t.chat.agents.codex;
+}
+
+function RegisteredAccessOption({
+  fluidKey,
+  checked,
+  disabled,
+  description,
+  inputId,
+  inputName,
+  label,
+  onChange,
+  inputRef,
+  optionId,
+  value,
+}: {
+  fluidKey: string;
+  checked: boolean;
+  disabled: boolean;
+  description: string;
+  inputId: string;
+  inputName: string;
+  label: string;
+  onChange: () => void;
+  inputRef: (element: HTMLInputElement | null) => void;
+  optionId: string;
+  value: ConversationMode;
+}) {
+  const registerHoverItem = useRegisterFluidHoverItem(fluidKey);
+  return (
+    <label className={styles.accessOption} data-checked={checked} ref={registerHoverItem}>
+      <input
+        aria-describedby={`${optionId}-description`}
+        aria-labelledby={inputId}
+        checked={checked}
+        className={styles.radioInput}
+        disabled={disabled}
+        name={inputName}
+        onChange={onChange}
+        ref={inputRef}
+        type="radio"
+        value={value}
+      />
+      <span aria-hidden="true" className={styles.radioMark} />
+      <span className={styles.accessCopy}>
+        <span className={styles.accessName} id={inputId}>
+          {label}
+        </span>
+        <span className={styles.accessDescription} id={`${optionId}-description`}>
+          {description}
+        </span>
+      </span>
+    </label>
+  );
+}
+
+function RegisteredFluidHoverButton({
+  fluidKey,
+  ...props
+}: ComponentPropsWithoutRef<"button"> & { fluidKey: string }) {
+  const registerHoverItem = useRegisterFluidHoverItem(fluidKey);
+  return <button {...props} ref={registerHoverItem} />;
+}

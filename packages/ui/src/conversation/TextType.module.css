@@ -1,0 +1,23 @@
+.textType {
+  display: inline;
+  color: inherit;
+}
+
+.cursor {
+  display: inline-block;
+  margin-inline-start: var(--k-space-1);
+  color: var(--k-color-text-secondary);
+  animation: blink var(--k-duration-cursor-blink) steps(2, start) infinite;
+}
+
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor {
+    animation: none;
+  }
+}

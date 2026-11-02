@@ -1,0 +1,101 @@
+.trigger {
+  color: var(--k-color-text-secondary);
+}
+
+.ring {
+  display: block;
+  width: var(--k-context-ring-size);
+  height: var(--k-context-ring-size);
+  overflow: visible;
+  transform: rotate(-90deg);
+}
+
+.ring[data-large="true"] {
+  width: var(--k-context-ring-large-size);
+  height: var(--k-context-ring-large-size);
+}
+
+.track,
+.progress {
+  fill: none;
+  stroke-width: var(--k-context-ring-stroke);
+}
+
+.track {
+  stroke: var(--k-color-border-strong);
+}
+
+.progress {
+  stroke: var(--k-color-text-secondary);
+  stroke-dashoffset: 0;
+  stroke-linecap: round;
+  transition: stroke-dashoffset var(--k-motion-fast) var(--k-ease);
+}
+
+.progress[data-attention="true"] {
+  stroke: var(--k-color-attention);
+}
+
+.detail {
+  display: grid;
+  justify-items: center;
+  gap: var(--k-space-3);
+  min-width: var(--k-context-popover-width);
+  padding: var(--k-space-2);
+}
+
+.largeRing {
+  position: relative;
+  display: grid;
+  width: var(--k-context-ring-large-size);
+  height: var(--k-context-ring-large-size);
+  place-items: center;
+}
+
+.largePercent {
+  position: absolute;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-context-percent-size);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--k-weight-medium);
+  line-height: 1;
+}
+
+.detailText {
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+  text-align: center;
+}
+
+.compactButton {
+  width: 100%;
+  min-height: var(--k-control-height-md);
+  padding-inline: var(--k-space-3);
+  border: var(--k-border-width) solid var(--k-color-border);
+  border-radius: var(--k-radius-md);
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+  font: inherit;
+  font-size: var(--k-text-13);
+  cursor: pointer;
+  transition:
+    background-color var(--k-motion-fast) var(--k-ease),
+    border-color var(--k-motion-fast) var(--k-ease);
+}
+
+.compactButton:not(:disabled):hover {
+  border-color: var(--k-color-border-strong);
+  background: var(--k-color-bg-hover);
+}
+
+.compactButton:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.compactButton:disabled {
+  opacity: var(--k-opacity-disabled);
+  cursor: not-allowed;
+}

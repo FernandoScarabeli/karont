@@ -39,6 +39,8 @@
 }
 
 .sectionList {
+  position: relative;
+  z-index: 1;
   display: grid;
   gap: var(--k-space-1);
   margin: 0;
@@ -72,4 +74,9 @@
 .sectionLink:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-color-focus);
   outline-offset: var(--k-focus-ring-offset);
+}
+
+.sectionLink:hover,
+.sectionLink:focus-visible {
+  color: var(--k-color-text-primary);
 }

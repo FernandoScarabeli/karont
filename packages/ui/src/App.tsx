@@ -3,20 +3,22 @@ import { Showcase } from "./dev/Showcase.tsx";
 import { AppShell } from "./shell/AppShell.tsx";
 
 export function App() {
-  const [showcaseVisible, setShowcaseVisible] = useState(
-    () => import.meta.env.DEV && window.location.hash === "#vitrine",
+  const [devRoute, setDevRoute] = useState(() =>
+    import.meta.env.DEV && window.location.hash === "#vitrine" ? window.location.hash : "",
   );
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
 
-    const syncShowcaseVisibility = () => {
-      setShowcaseVisible(window.location.hash === "#vitrine");
+    const syncDevRoute = () => {
+      const hash = window.location.hash;
+      setDevRoute(import.meta.env.DEV && hash === "#vitrine" ? hash : "");
     };
 
-    window.addEventListener("hashchange", syncShowcaseVisibility);
-    return () => window.removeEventListener("hashchange", syncShowcaseVisibility);
+    window.addEventListener("hashchange", syncDevRoute);
+    return () => window.removeEventListener("hashchange", syncDevRoute);
   }, []);
 
-  return showcaseVisible ? <Showcase /> : <AppShell />;
+  if (devRoute === "#vitrine") return <Showcase />;
+  return <AppShell />;
 }

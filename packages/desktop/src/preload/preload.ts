@@ -8,6 +8,9 @@ const bridge: NativeBridge = {
   pickFolder(options): Promise<PickFolderResult> {
     return ipcRenderer.invoke("karont:pickFolder", options) as Promise<PickFolderResult>;
   },
+  openExternal(url): Promise<boolean> {
+    return ipcRenderer.invoke("karont:openExternal", url) as Promise<boolean>;
+  },
   onEvent(listener): () => void {
     const handler = (_event: Electron.IpcRendererEvent, event: unknown): void => listener(event);
     ipcRenderer.on("karont:event", handler);
