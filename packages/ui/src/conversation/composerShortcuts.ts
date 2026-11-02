@@ -100,7 +100,7 @@ export function findMentionedSkills(
   const names = new Map(catalog.map((skill) => [skill.name, skill]));
   const selected = new Map<string, ComposerSkillReference>();
   for (const match of value.matchAll(/(?:^|\s)\$([^\s$]+)/gu)) {
-    const name = match[1];
+    const name = match[1]?.replace(/(?:[.,;:!?)]|["'‘’“”])+$/u, "");
     if (!name) continue;
     const skill = names.get(name);
     if (skill)

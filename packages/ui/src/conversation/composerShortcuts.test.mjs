@@ -100,3 +100,14 @@ test("skills só seguem no envio enquanto o nome continua no texto", () => {
   assert.deepEqual(findMentionedSkills("$project-helper confira", catalog), [catalog[0]]);
   assert.deepEqual(findMentionedSkills("$unknown", catalog), []);
 });
+
+test("pontuação final não faz a skill mencionada desaparecer do envio", () => {
+  const catalog = [{ name: "review" }, { name: "deploy" }, { name: "plugin:review-helper_v2" }];
+  assert.deepEqual(findMentionedSkills("use $review, depois commit; rode $deploy.", catalog), [
+    catalog[0],
+    catalog[1],
+  ]);
+  assert.deepEqual(findMentionedSkills("$plugin:review-helper_v2!", catalog), [catalog[2]]);
+  for (const punctuation of [",", ".", ";", ":", "!", "?", ")", "'", '"', "’", "”"])
+    assert.deepEqual(findMentionedSkills(`$review${punctuation}`, catalog), [catalog[0]]);
+});
