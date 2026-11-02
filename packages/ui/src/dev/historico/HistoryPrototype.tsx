@@ -25,7 +25,7 @@ import styles from "./HistoryPrototype.module.css";
 
 type HistoryVariant = "A" | "B";
 
-const HIGHLIGHT_DURATION_MS = 960;
+const HIGHLIGHT_DURATION_MS = 1200;
 const SAMPLE_CONVERSATION_ID = "historico-prototipo";
 const firstSampleTime = Date.parse("2026-11-02T17:14:00-03:00");
 const noOperation = () => {};
@@ -180,12 +180,28 @@ export function HistoryPrototype() {
     }, HIGHLIGHT_DURATION_MS);
 
     window.requestAnimationFrame(() => {
+      const messageList = messageListRef.current;
       const target = Array.from(
-        messageListRef.current?.querySelectorAll<HTMLElement>("[data-message-id]") ?? [],
+        messageList?.querySelectorAll<HTMLElement>("article[data-message-id]") ?? [],
       ).find((element) => element.dataset.messageId === message.id);
-      if (!target) return;
+      if (!messageList || !target) return;
+
+      const listRect = messageList.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const paddingTop = Number.parseFloat(window.getComputedStyle(messageList).paddingTop) || 0;
+      const previousNavigationSpace =
+        Number.parseFloat(messageList.style.getPropertyValue("--history-navigation-space")) || 0;
+      const targetScrollTop = messageList.scrollTop + targetRect.top - listRect.top - paddingTop;
+      const contentEnd =
+        messageList.scrollHeight - messageList.clientHeight - previousNavigationSpace;
+      const navigationSpace = Math.max(0, targetScrollTop - contentEnd);
+      messageList.style.setProperty("--history-navigation-space", `${navigationSpace}px`);
+
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+      messageList.scrollTo({
+        behavior: reducedMotion ? "auto" : "smooth",
+        top: targetScrollTop,
+      });
     });
   }, []);
 
