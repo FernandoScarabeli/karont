@@ -232,13 +232,10 @@
   --k-chat-history-item-max-width: 60ch;
   --k-chat-history-fade-size: 24px;
   --k-chat-message-action-gap: 6px;
-  --k-chat-code-max-height: 360px;
-  --k-chat-part-max-height: 240px;
-  --k-chat-diff-max-height: 360px;
+  --k-chat-block-max-lines: 50;
   --k-chat-diff-line-number-width: 3.5rem;
   --k-chat-diff-marker-width: 1.5rem;
   --k-chat-diff-edge-width: 2px;
-  --k-chat-command-output-max-height: 320px;
   --k-chat-terminal-cursor-width: 7px;
   --k-chat-terminal-cursor-height: 1em;
   --k-chat-terminal-cursor-gap: var(--k-border-width);
