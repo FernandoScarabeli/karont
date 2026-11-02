@@ -58,6 +58,7 @@ import {
   nextMessageWindowSize,
   olderMessageCursor,
 } from "./messageWindow.ts";
+import { adjustScrollTopForAnchor } from "./scrollAnchor.ts";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
 import { getFinalRunningActions } from "./workingLabel.ts";
@@ -69,6 +70,8 @@ type ConversationOptionsPatch = {
   fast?: Conversation["fast"];
   plan?: Conversation["plan"];
 };
+
+const OLDER_MESSAGE_ANCHOR_OFFSET_PX = 200;
 
 export function ConversationView({
   id,
@@ -113,6 +116,7 @@ export function ConversationView({
   const [pendingHistoryMessageId, setPendingHistoryMessageId] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_MESSAGE_WINDOW_SIZE);
+  const [olderPageVersion, setOlderPageVersion] = useState(0);
   const visibleMessageCountRef = useRef(visibleMessageCount);
   visibleMessageCountRef.current = visibleMessageCount;
   const [isResponding, setIsResponding] = useState(false);
@@ -184,8 +188,10 @@ export function ConversationView({
   const previousScrollHeight = useRef(0);
   const olderScrollAnchor = useRef<{ messageId: string; top: number } | null>(null);
   const olderMessageLoadInFlight = useRef(false);
+  const olderLoadNeedsUserScroll = useRef(false);
   const restoreAfterOlder = useRef(false);
   const previousScrollVersion = useRef("");
+  const previousOlderPageVersion = useRef(olderPageVersion);
   const optimisticOptionsRef = useRef<ConversationOptionsPatch>({});
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const saveRevisionRef = useRef(0);
@@ -304,16 +310,25 @@ export function ConversationView({
     const list = messageListRef.current;
     if (!list) return;
     const listRect = list.getBoundingClientRect();
-    const firstVisibleMessage = Array.from(
+    const visibleMessages = Array.from(
       list.querySelectorAll<HTMLElement>(":scope > article[data-message-id]"),
-    ).find((element) => {
-      const rect = element.getBoundingClientRect();
-      return rect.bottom > listRect.top && rect.top < listRect.bottom;
-    });
-    olderScrollAnchor.current = firstVisibleMessage
+    )
+      .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+      .filter(({ rect }) => rect.bottom > listRect.top && rect.top < listRect.bottom);
+    const anchorMessage =
+      visibleMessages.find(
+        ({ rect }) =>
+          rect.top >= listRect.top + OLDER_MESSAGE_ANCHOR_OFFSET_PX &&
+          rect.bottom <= listRect.bottom,
+      ) ??
+      visibleMessages.find(
+        ({ rect }) => rect.top >= listRect.top && rect.bottom <= listRect.bottom,
+      ) ??
+      visibleMessages[0];
+    olderScrollAnchor.current = anchorMessage
       ? {
-          messageId: firstVisibleMessage.dataset.messageId ?? "",
-          top: firstVisibleMessage.getBoundingClientRect().top,
+          messageId: anchorMessage.element.dataset.messageId ?? "",
+          top: anchorMessage.rect.top,
         }
       : null;
     previousScrollHeight.current = list.scrollHeight;
@@ -385,27 +400,32 @@ export function ConversationView({
       setVisibleMessageCount((count) =>
         nextMessageWindowSize(count, orderedMessagesRef.current.length, MESSAGE_WINDOW_INCREMENT),
       );
+      setOlderPageVersion((version) => version + 1);
       return;
     }
     const before = olderMessageCursor(orderedMessagesRef.current, hasOlderMessagesRef.current);
     if (!before) {
       olderMessageLoadInFlight.current = false;
       restoreAfterOlder.current = false;
+      olderScrollAnchor.current = null;
       return;
     }
     const loadedCount = await fetchOlderMessages(before, captureOlderScrollAnchor);
     if (loadedCount === null) {
       olderMessageLoadInFlight.current = false;
       restoreAfterOlder.current = false;
+      olderScrollAnchor.current = null;
       setInteractionError(t.chat.loadFailed);
       return;
     }
     if (loadedCount > 0) {
       setVisibleMessageCount((count) => count + loadedCount);
+      setOlderPageVersion((version) => version + 1);
       return;
     }
     olderMessageLoadInFlight.current = false;
     restoreAfterOlder.current = false;
+    olderScrollAnchor.current = null;
   }, [captureOlderScrollAnchor, fetchOlderMessages]);
 
   useEffect(() => {
@@ -421,7 +441,11 @@ export function ConversationView({
     }
     const observer = new IntersectionObserver(
       (entries) => {
-        if (followRef.current === "free" && entries.some((entry) => entry.isIntersecting)) {
+        if (
+          followRef.current === "free" &&
+          !olderLoadNeedsUserScroll.current &&
+          entries.some((entry) => entry.isIntersecting)
+        ) {
           loadOlderMessages();
         }
       },
@@ -489,6 +513,7 @@ export function ConversationView({
     setHighlightedMessageId(null);
     setVisibleMessageCount(INITIAL_MESSAGE_WINDOW_SIZE);
     olderMessageLoadInFlight.current = false;
+    olderLoadNeedsUserScroll.current = false;
     restoreAfterOlder.current = false;
     olderScrollAnchor.current = null;
     if (historyHighlightTimerRef.current !== null) {
@@ -534,6 +559,15 @@ export function ConversationView({
     let grabbingScrollbar = false;
     let scrollFrame: number | null = null;
     let scrollbarDragScrollPending = false;
+    const rearmOlderMessageObserver = () => {
+      if (!olderLoadNeedsUserScroll.current) return;
+      olderLoadNeedsUserScroll.current = false;
+      const sentinel = olderMessagesSentinelRef.current;
+      const observer = olderMessagesObserverRef.current;
+      if (!sentinel || !observer) return;
+      observer.unobserve(sentinel);
+      observer.observe(sentinel);
+    };
 
     const processScroll = () => {
       scrollFrame = null;
@@ -541,6 +575,7 @@ export function ConversationView({
       // Arrastar a barra de rolagem para cima é intenção do usuário.
       if (scrollbarDragScrollPending && scrollTop < lastScrollTop) {
         follow({ type: "userScrollUp" });
+        rearmOlderMessageObserver();
       }
       scrollbarDragScrollPending = false;
       lastScrollTop = scrollTop;
@@ -558,7 +593,10 @@ export function ConversationView({
       scrollFrame = window.requestAnimationFrame(processScroll);
     };
     const onWheel = (event: WheelEvent) => {
-      if (event.deltaY < 0) follow({ type: "userScrollUp" });
+      if (event.deltaY < 0) {
+        follow({ type: "userScrollUp" });
+        rearmOlderMessageObserver();
+      }
     };
     const onTouchStart = (event: TouchEvent) => {
       lastTouchY = event.touches[0]?.clientY ?? null;
@@ -567,12 +605,16 @@ export function ConversationView({
       const y = event.touches[0]?.clientY;
       if (y === undefined) return;
       // Dedo descendo = conteúdo subindo.
-      if (lastTouchY !== null && y > lastTouchY) follow({ type: "userScrollUp" });
+      if (lastTouchY !== null && y > lastTouchY) {
+        follow({ type: "userScrollUp" });
+        rearmOlderMessageObserver();
+      }
       lastTouchY = y;
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "PageUp" || event.key === "ArrowUp" || event.key === "Home") {
         follow({ type: "userScrollUp" });
+        rearmOlderMessageObserver();
       }
     };
     const onPointerDown = (event: PointerEvent) => {
@@ -626,7 +668,9 @@ export function ConversationView({
     if (!list) return;
     const contentChanged = previousScrollVersion.current !== scrollVersion;
     previousScrollVersion.current = scrollVersion;
-    if (restoreAfterOlder.current) {
+    const olderPageCommitted = previousOlderPageVersion.current !== olderPageVersion;
+    previousOlderPageVersion.current = olderPageVersion;
+    if (olderPageCommitted && restoreAfterOlder.current) {
       const anchor = olderScrollAnchor.current;
       const target = anchor?.messageId
         ? Array.from(list.querySelectorAll<HTMLElement>(":scope > article[data-message-id]")).find(
@@ -634,23 +678,24 @@ export function ConversationView({
           )
         : undefined;
       if (anchor && target) {
-        list.scrollTop += target.getBoundingClientRect().top - anchor.top;
+        list.scrollTop = adjustScrollTopForAnchor(
+          list.scrollTop,
+          anchor.top,
+          target.getBoundingClientRect().top,
+        );
       } else {
         list.scrollTop += list.scrollHeight - previousScrollHeight.current;
       }
       olderScrollAnchor.current = null;
       restoreAfterOlder.current = false;
       olderMessageLoadInFlight.current = false;
-      const sentinel = olderMessagesSentinelRef.current;
-      const observer = olderMessagesObserverRef.current;
-      if (sentinel && observer) {
-        observer.unobserve(sentinel);
-        observer.observe(sentinel);
-      }
+      // Uma nova página só pode carregar depois de outra rolagem real para cima.
+      // Assim o sentinela não encadeia páginas se continuar dentro da margem.
+      olderLoadNeedsUserScroll.current = true;
     } else if (followRef.current === "following" && contentChanged) {
       followScrollerRef.current?.kick();
     }
-  }, [scrollVersion]);
+  }, [olderPageVersion, scrollVersion]);
 
   const announce = useCallback((text: string) => setAnnouncement(text), []);
 

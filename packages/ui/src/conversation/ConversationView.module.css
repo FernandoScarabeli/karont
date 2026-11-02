@@ -116,6 +116,7 @@
   padding: var(--k-space-4) var(--k-space-6);
   padding-block-end: calc(var(--k-space-4) + var(--history-navigation-space, 0px));
   scroll-behavior: auto;
+  /* A compensação manual mantém histórico e acompanhamento do fim sob o mesmo controle. */
   overflow-anchor: none;
 }
 
