@@ -3,11 +3,7 @@ import type { Conversation, ConversationAttachment, MessagePart } from "@karont/
 export type AdapterEvent =
   | { kind: "part"; part: MessagePart }
   | { kind: "turn-id"; turnId: string }
-  | {
-      kind: "fast-effective";
-      fastEffective: "on" | "off";
-      fastUnavailableReason?: string;
-    }
+  | { kind: "fast-tier-not-applied" }
   | { kind: "text-delta"; partType: "text" | "thinking"; partId: string; delta: string }
   | { kind: "state"; state: "working" | "waiting" }
   | {

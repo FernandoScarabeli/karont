@@ -462,12 +462,7 @@ export class CodexAdapter implements AgentAdapter {
   #reportFastTierConfirmation(value: unknown): void {
     if (!this.#fast || !this.#fastServiceTier || !isRecord(value) || !("serviceTier" in value))
       return;
-    const effective = value.serviceTier === this.#fastServiceTier ? "on" : "off";
-    this.#emit({
-      kind: "fast-effective",
-      fastEffective: effective,
-      ...(effective === "off" ? { fastUnavailableReason: "service_tier_not_applied" } : {}),
-    });
+    if (value.serviceTier !== this.#fastServiceTier) this.#emit({ kind: "fast-tier-not-applied" });
   }
 
   async #request(method: string, params: JsonRecord): Promise<unknown> {

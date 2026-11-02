@@ -23,6 +23,8 @@ Repita com `codex` para validar o outro transporte. `--sanitize-existing` reapli
 
 ## Claude Code 2.1.316
 
+Claude 2.1.x tem `fastMode` via `--settings`, mas depende de uso extra na conta; o Karont não oferece por enquanto.
+
 ### Inicialização, conversa e interrupção
 
 O comando usado é:

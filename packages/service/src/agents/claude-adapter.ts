@@ -101,8 +101,6 @@ export class ClaudeAdapter implements AgentAdapter {
     note?: string;
   }> = [];
   #lastPlan = "";
-  #fastUnavailableReason: string | undefined;
-  #restartWithoutFastAfterTurn = false;
   #turnOpen = false;
   #stopRequested = false;
   #disposed = false;
@@ -135,7 +133,6 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#forkSessionPending = resume && options.forkSession === true;
     this.#stderrErrorType = undefined;
     this.#stderrErrorText = "";
-    this.#fastUnavailableReason = undefined;
     const command =
       this.#env.KARONT_CLAUDE_CLI ||
       (await resolveAgentCommand("claude", {
@@ -165,8 +162,6 @@ export class ClaudeAdapter implements AgentAdapter {
       args.push(plan ? "--allow-dangerously-skip-permissions" : "--dangerously-skip-permissions");
     if (conversation.model) args.push("--model", conversation.model);
     if (conversation.effort) args.push("--effort", conversation.effort);
-    if (conversation.fast && claudeModelSupportsFast(conversation.model))
-      args.push("--settings", JSON.stringify({ fastMode: true }));
     args.push(resume ? "--resume" : "--session-id", sessionId);
     if (this.#forkSessionPending) args.push("--fork-session");
     try {
@@ -392,13 +387,6 @@ export class ClaudeAdapter implements AgentAdapter {
     await response;
   }
 
-  setFastEnabled(enabled: boolean): void {
-    if (!this.#conversation) return;
-    const wasEnabled = this.#conversation.fast;
-    this.#conversation.fast = enabled;
-    if (wasEnabled && !enabled) this.#restartWithoutFastAfterTurn = true;
-  }
-
   async dispose(): Promise<void> {
     this.#disposed = true;
     this.#rejectControlRequests(new AgentCliError("failed", "A CLI Claude foi encerrada."));
@@ -463,7 +451,6 @@ export class ClaudeAdapter implements AgentAdapter {
         this.#resumeSession = true;
         this.#forkSessionPending = false;
         this.#emit({ kind: "session", sessionId: value.session_id });
-        this.#reportFastModeState(value);
       }
       if (value.subtype === "api_error" || value.subtype === "error") {
         const detail =
@@ -499,7 +486,6 @@ export class ClaudeAdapter implements AgentAdapter {
     }
     if (type === "assistant") {
       const message = value.message as Record<string, unknown> | undefined;
-      if (isRecord(message?.usage)) this.#reportFastUsage(message.usage);
       const content = Array.isArray(message?.content) ? message.content : [];
       for (const item of content) {
         if (!isRecord(item) || item.type !== "tool_use" || typeof item.name !== "string") continue;
@@ -523,8 +509,6 @@ export class ClaudeAdapter implements AgentAdapter {
       return;
     }
     if (type === "result") {
-      this.#reportFastModeState(value);
-      if (isRecord(value.usage)) this.#reportFastUsage(value.usage);
       if (typeof value.session_id === "string") {
         this.#sessionId = value.session_id;
         this.#resumeSession = true;
@@ -776,33 +760,6 @@ export class ClaudeAdapter implements AgentAdapter {
     else this.#activeThinkingPartId = id;
   }
 
-  #reportFastModeState(value: Record<string, unknown>): void {
-    const state = value.fast_mode_state;
-    if (state !== "on" && state !== "off") return;
-    const reason =
-      typeof value.fast_mode_disabled_reason === "string" && value.fast_mode_disabled_reason
-        ? value.fast_mode_disabled_reason
-        : undefined;
-    this.#reportFastEffective(state, reason);
-  }
-
-  #reportFastUsage(usage: Record<string, unknown>): void {
-    if (usage.speed === "fast") this.#reportFastEffective("on");
-    else if (usage.speed === "standard") this.#reportFastEffective("off");
-  }
-
-  #reportFastEffective(state: "on" | "off", reason?: string): void {
-    if (reason) this.#fastUnavailableReason = reason;
-    if (state === "on") this.#fastUnavailableReason = undefined;
-    this.#emit({
-      kind: "fast-effective",
-      fastEffective: state,
-      ...(state === "off" && this.#fastUnavailableReason
-        ? { fastUnavailableReason: this.#fastUnavailableReason }
-        : {}),
-    });
-  }
-
   #pendingPart(partId: string): MessagePart | undefined {
     return this.#parts.get(partId);
   }
@@ -883,10 +840,6 @@ export class ClaudeAdapter implements AgentAdapter {
     if (this.#interruptTimer) clearTimeout(this.#interruptTimer);
     this.#interruptTimer = undefined;
     this.#emit({ kind: "turn-end", status, ...(error ? { error } : {}) });
-    if (this.#restartWithoutFastAfterTurn) {
-      this.#restartWithoutFastAfterTurn = false;
-      queueMicrotask(() => void this.dispose());
-    }
     this.#interruptResolve?.();
     this.#interruptResolve = undefined;
     this.#parts.clear();
@@ -946,10 +899,6 @@ export class ClaudeAdapter implements AgentAdapter {
       this.#controlRequests.delete(requestId);
     }
   }
-}
-
-export function claudeModelSupportsFast(modelId: string | null | undefined): boolean {
-  return modelId === "opus";
 }
 
 export const createClaudeAdapterFactory =
