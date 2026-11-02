@@ -53,9 +53,11 @@ import { type FollowEvent, type FollowState, nextFollowState } from "./followSta
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import {
   INITIAL_MESSAGE_WINDOW_SIZE,
+  isWithinOlderMessageLoadMargin,
   MESSAGE_WINDOW_INCREMENT,
   messageWindowSizeForTarget,
   nextMessageWindowSize,
+  OLDER_MESSAGE_LOAD_ROOT_MARGIN_PX,
   olderMessageCursor,
 } from "./messageWindow.ts";
 import { useConversation } from "./useConversation.ts";
@@ -264,6 +266,8 @@ export function ConversationView({
   );
   const hasLoadedOlderMessages = visibleMessages.length < orderedMessages.length;
   const canLoadOlderMessages = hasLoadedOlderMessages || hasOlderMessages;
+  const canLoadOlderMessagesRef = useRef(canLoadOlderMessages);
+  canLoadOlderMessagesRef.current = canLoadOlderMessages;
   const hasOlderMessagesRef = useRef(hasOlderMessages);
   hasOlderMessagesRef.current = hasOlderMessages;
   const historyOpen = activePopover === "history";
@@ -412,7 +416,7 @@ export function ConversationView({
           loadOlderMessages();
         }
       },
-      { root: list, rootMargin: "320px 0px 0px 0px" },
+      { root: list, rootMargin: `${OLDER_MESSAGE_LOAD_ROOT_MARGIN_PX}px 0px 0px 0px` },
     );
     olderMessagesObserverRef.current = observer;
     observer.observe(sentinel);
@@ -429,10 +433,29 @@ export function ConversationView({
     reobservedOlderPageVersion.current = olderPageVersion;
     const observer = olderMessagesObserverRef.current;
     const sentinel = olderMessagesSentinelRef.current;
-    if (!observer || !sentinel) return;
-    observer.unobserve(sentinel);
-    observer.observe(sentinel);
-  }, [olderPageVersion]);
+    if (observer && sentinel) {
+      observer.unobserve(sentinel);
+      observer.observe(sentinel);
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const list = messageListRef.current;
+      const currentSentinel = olderMessagesSentinelRef.current;
+      if (
+        !list ||
+        !currentSentinel ||
+        !canLoadOlderMessages ||
+        followRef.current !== "free" ||
+        !isWithinOlderMessageLoadMargin(
+          currentSentinel.getBoundingClientRect(),
+          list.getBoundingClientRect(),
+        )
+      ) {
+        return;
+      }
+      loadOlderMessages();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [canLoadOlderMessages, loadOlderMessages, olderPageVersion]);
   const isWorking = conversation?.state === "working";
   const isWaiting = conversation?.state === "waiting";
   const workingActive = isWorking || isStopping;
@@ -554,6 +577,9 @@ export function ConversationView({
     const onWheel = (event: WheelEvent) => {
       if (event.deltaY < 0) {
         follow({ type: "userScrollUp" });
+        if (list.scrollTop <= 0 && canLoadOlderMessagesRef.current) {
+          loadOlderMessages();
+        }
       }
     };
     const onTouchStart = (event: TouchEvent) => {
@@ -603,7 +629,7 @@ export function ConversationView({
       scroller.dispose();
       followScrollerRef.current = null;
     };
-  }, [updateFollowState]);
+  }, [loadOlderMessages, updateFollowState]);
 
   // Rede de segurança para outros crescimentos (imagens, realce, blocos fechados).
   useEffect(() => {

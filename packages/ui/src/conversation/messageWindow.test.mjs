@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   INITIAL_MESSAGE_WINDOW_SIZE,
+  isWithinOlderMessageLoadMargin,
   MESSAGE_WINDOW_INCREMENT,
   messageWindowSizeForTarget,
   nextMessageWindowSize,
+  OLDER_MESSAGE_LOAD_ROOT_MARGIN_PX,
   OLDER_MESSAGE_PAGE_SIZE,
   olderMessageCursor,
   prependOlderMessagePage,
@@ -13,6 +15,16 @@ import {
 function messages(count) {
   return Array.from({ length: count }, (_, index) => ({ id: `message-${index + 1}` }));
 }
+
+test("mantém o carregamento de páginas enquanto o sentinela está na margem superior", () => {
+  const root = { top: 100, bottom: 700 };
+
+  assert.equal(OLDER_MESSAGE_LOAD_ROOT_MARGIN_PX, 320);
+  assert.equal(isWithinOlderMessageLoadMargin({ top: -220, bottom: -220 }, root), true);
+  assert.equal(isWithinOlderMessageLoadMargin({ top: -221, bottom: -221 }, root), false);
+  assert.equal(isWithinOlderMessageLoadMargin({ top: 700, bottom: 700 }, root), true);
+  assert.equal(isWithinOlderMessageLoadMargin({ top: 701, bottom: 701 }, root), false);
+});
 
 test("abre com a janela recente e carrega blocos anteriores até o limite", () => {
   const allMessages = messages(300);

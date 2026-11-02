@@ -3,6 +3,16 @@ import type { ConversationMessage } from "@karont/contract";
 export const INITIAL_MESSAGE_WINDOW_SIZE = 20;
 export const OLDER_MESSAGE_PAGE_SIZE = 10;
 export const MESSAGE_WINDOW_INCREMENT = 10;
+export const OLDER_MESSAGE_LOAD_ROOT_MARGIN_PX = 320;
+
+export function isWithinOlderMessageLoadMargin(
+  sentinel: Pick<DOMRect, "top" | "bottom">,
+  root: Pick<DOMRect, "top" | "bottom">,
+): boolean {
+  return (
+    sentinel.bottom >= root.top - OLDER_MESSAGE_LOAD_ROOT_MARGIN_PX && sentinel.top <= root.bottom
+  );
+}
 
 export function olderMessageCursor(
   messages: readonly ConversationMessage[],
