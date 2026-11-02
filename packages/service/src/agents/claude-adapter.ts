@@ -18,6 +18,7 @@ import type {
   AdapterResponse,
   AdapterStartOptions,
   AgentAdapter,
+  AgentAdapterRegistration,
 } from "./adapter.ts";
 import { resolveAgentCommand } from "./detect.ts";
 import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
@@ -1037,6 +1038,25 @@ export const createClaudeAdapterFactory =
   (options: ClaudeAdapterOptions = {}): AdapterFactory =>
   (_conversation, emit) =>
     new ClaudeAdapter(emit, options);
+
+export function createClaudeAdapterRegistration(
+  options: ClaudeAdapterOptions = {},
+): AgentAdapterRegistration {
+  return {
+    factory: createClaudeAdapterFactory(options),
+    capabilities: {
+      skills: true,
+      compact: true,
+      fileMentions: true,
+      fastMode: false,
+      plan: true,
+      fork: true,
+      maxSkillsPerMessage: 1,
+    },
+    loadSkills: createClaudeSkillLoader(options),
+    loadModels: createClaudeModelLoader(options),
+  };
+}
 
 export function createClaudeModelLoader(
   options: ClaudeAdapterOptions = {},

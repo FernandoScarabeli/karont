@@ -20,6 +20,7 @@ import type {
   AdapterModelList,
   AdapterResponse,
   AgentAdapter,
+  AgentAdapterRegistration,
   CodexBranchPoint,
 } from "./adapter.ts";
 import { AgentCliError } from "./claude-adapter.ts";
@@ -1273,6 +1274,24 @@ export const createCodexAdapterFactory =
   (options: CodexAdapterOptions = {}): AdapterFactory =>
   (_conversation, emit) =>
     new CodexAdapter(emit, options);
+
+export function createCodexAdapterRegistration(
+  options: CodexAdapterOptions = {},
+): AgentAdapterRegistration {
+  return {
+    factory: createCodexAdapterFactory(options),
+    capabilities: {
+      skills: true,
+      compact: true,
+      fileMentions: true,
+      fastMode: true,
+      plan: true,
+      fork: true,
+    },
+    loadSkills: createCodexSkillLoader(options),
+    loadModels: createCodexModelLoader(options),
+  };
+}
 
 function terminateSpawnedChild(child: ChildProcess): void {
   if (child.exitCode !== null || child.signalCode !== null) return;

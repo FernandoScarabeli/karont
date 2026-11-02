@@ -1,4 +1,5 @@
 import type {
+  AgentCapabilities,
   ComposerSkill,
   Conversation,
   ConversationAttachment,
@@ -77,3 +78,10 @@ export type AdapterFactory = (
   conversation: Conversation,
   emit: (event: AdapterEvent) => void,
 ) => AgentAdapter;
+
+export type AgentAdapterRegistration = {
+  factory: AdapterFactory;
+  capabilities: AgentCapabilities;
+  loadSkills?: (cwd: string) => Promise<ComposerSkill[]>;
+  loadModels?: (cwd: string) => Promise<AdapterModelList>;
+};

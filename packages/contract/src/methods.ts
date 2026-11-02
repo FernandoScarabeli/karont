@@ -1,9 +1,10 @@
 import { z } from "zod";
 import {
+  agentCapabilitiesSchema,
+  agentIdSchema,
   agentModelsSchema,
   composerFileSchema,
   composerSkillSchema,
-  conversationAgentSchema,
   conversationOptionsSchema,
   conversationSchema,
   conversationSendParamsSchema,
@@ -265,8 +266,12 @@ export const methods = {
     result: z.strictObject({ conversation: conversationSchema }),
   },
   "agent.models": {
-    params: z.strictObject({ agent: z.enum(["claude", "codex"]) }),
+    params: z.strictObject({ agent: agentIdSchema }),
     result: agentModelsSchema,
+  },
+  "agent.capabilities": {
+    params: z.strictObject({ agent: agentIdSchema }),
+    result: z.strictObject({ capabilities: agentCapabilitiesSchema }),
   },
   "composer.files": {
     params: z.union([
@@ -278,7 +283,7 @@ export const methods = {
   "composer.skills": {
     params: z.union([
       z.strictObject({ conversationId: z.string().min(1) }),
-      z.strictObject({ agent: conversationAgentSchema, cwd: folderPathSchema }),
+      z.strictObject({ agent: agentIdSchema, cwd: folderPathSchema }),
     ]),
     result: z.strictObject({ skills: z.array(composerSkillSchema) }),
   },

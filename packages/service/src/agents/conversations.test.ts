@@ -25,7 +25,7 @@ import {
   setAgentSession,
   setSetting,
 } from "../db.ts";
-import type { AdapterFactory, AdapterModelList } from "./adapter.ts";
+import type { AdapterFactory, AdapterModelList, AgentAdapterRegistration } from "./adapter.ts";
 import { AgentCliError, ClaudeAdapter, createClaudeModelLoader } from "./claude-adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
 import { createFakeClaudeSpawn, type FakeClaudeSpawn } from "./testing/fake-claude-process.ts";
@@ -95,6 +95,7 @@ async function createHarness(
     codexModelCache?: AdapterModelList;
     claudeModelLoader?: (cwd: string) => Promise<AdapterModelList>;
     adapterFactory?: AdapterFactory;
+    agentRegistrations?: Readonly<Record<string, AgentAdapterRegistration>>;
   } = {},
 ): Promise<Harness> {
   const root = await mkdtemp(path.join(os.tmpdir(), "karont-conversations-"));
@@ -143,6 +144,9 @@ async function createHarness(
           spawn,
         })),
     claudeModelLoader: fakeOptions.claudeModelLoader ?? createClaudeModelLoader({ env, spawn }),
+    ...(fakeOptions.agentRegistrations
+      ? { agentRegistrations: fakeOptions.agentRegistrations }
+      : {}),
     ...(fakeOptions.titleGenerator ? { titleGenerator: fakeOptions.titleGenerator } : {}),
   });
   return {
@@ -161,6 +165,48 @@ async function createHarness(
     },
   };
 }
+
+test("capacidades e skills vazias usam o registro do agente", async () => {
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      agentRegistrations: {
+        teste: {
+          factory: () => {
+            throw new Error("A fábrica de teste não deve iniciar uma conversa.");
+          },
+          capabilities: {
+            skills: false,
+            compact: false,
+            fileMentions: true,
+            fastMode: false,
+            plan: false,
+            fork: false,
+          },
+        },
+      },
+    },
+  );
+  try {
+    assert.deepEqual(await harness.manager.capabilities("teste"), {
+      capabilities: {
+        skills: false,
+        compact: false,
+        fileMentions: true,
+        fastMode: false,
+        plan: false,
+        fork: false,
+      },
+    });
+    assert.deepEqual(await harness.manager.skills({ agent: "teste", cwd: os.tmpdir() }), {
+      skills: [],
+    });
+    await assert.rejects(harness.manager.capabilities("nao-registrado"), /não está registrado/);
+  } finally {
+    await harness.close();
+  }
+});
 
 function createConversation(
   manager: ConversationManager,

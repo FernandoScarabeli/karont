@@ -7,7 +7,7 @@ import {
   type JsonValue,
   type ParsedRequest,
 } from "@karont/contract";
-import type { AdapterFactory } from "./agents/adapter.ts";
+import type { AdapterFactory, AgentAdapterRegistration } from "./agents/adapter.ts";
 import { ConversationManager } from "./agents/conversation-manager.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
 import { AgentRegistry } from "./agents/registry.ts";
@@ -41,6 +41,7 @@ export type HandlerOptions = {
   ptyFactory?: TerminalPtyFactory;
   shutdown?: () => Promise<void>;
   adapterFactory?: AdapterFactory;
+  agentRegistrations?: Readonly<Record<string, AgentAdapterRegistration>>;
 };
 
 export function createHandlers({
@@ -56,6 +57,7 @@ export function createHandlers({
   ptyFactory,
   shutdown,
   adapterFactory,
+  agentRegistrations,
 }: HandlerOptions) {
   const agentRegistry = new AgentRegistry(db, {
     env,
@@ -74,6 +76,7 @@ export function createHandlers({
     broadcast,
     env,
     ...(adapterFactory ? { adapterFactory } : {}),
+    ...(agentRegistrations ? { agentRegistrations } : {}),
   });
   const handle = async (request: ParsedRequest, conn: HandlerConnection): Promise<unknown> => {
     switch (request.method) {
@@ -232,6 +235,8 @@ export function createHandlers({
           });
       case "agent.models":
         return conversationManager.models(request.params.agent);
+      case "agent.capabilities":
+        return conversationManager.capabilities(request.params.agent);
       case "composer.files":
         return conversationManager.files(request.params);
       case "composer.skills":

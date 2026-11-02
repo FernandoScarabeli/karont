@@ -1,6 +1,21 @@
 import { z } from "zod";
 
 export const conversationAgentSchema = z.enum(["claude", "codex"]);
+export const agentIdSchema = z
+  .string()
+  .min(1)
+  .max(80)
+  .refine((id) => id.trim() === id && !/\p{Cc}/u.test(id));
+export const agentCapabilitiesSchema = z.strictObject({
+  skills: z.boolean(),
+  compact: z.boolean(),
+  fileMentions: z.boolean(),
+  fastMode: z.boolean(),
+  plan: z.boolean(),
+  fork: z.boolean(),
+  maxSkillsPerMessage: z.number().int().min(1).max(8).optional(),
+});
+export type AgentCapabilities = z.infer<typeof agentCapabilitiesSchema>;
 export const conversationModeSchema = z.enum(["read-only", "edit", "full"]);
 export const reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh", "max"]);
 export const conversationStateSchema = z.enum(["idle", "working", "waiting", "error"]);
@@ -183,7 +198,7 @@ export const composerSkillSchema = z.strictObject({
   name: z.string().min(1).max(240),
   description: z.string(),
   argumentHint: z.string().optional(),
-  source: z.enum(["claude", "codex"]),
+  source: agentIdSchema,
   path: z.string().min(1).max(4_096).optional(),
 });
 export type ComposerSkill = z.infer<typeof composerSkillSchema>;
@@ -193,7 +208,7 @@ export const composerFileSchema = z.strictObject({
   name: z.string().min(1).max(4_096),
 });
 export const agentModelsSchema = z.strictObject({
-  agent: conversationAgentSchema,
+  agent: agentIdSchema,
   models: z.array(
     z.strictObject({
       id: z.string(),

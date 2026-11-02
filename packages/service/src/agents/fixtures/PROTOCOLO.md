@@ -11,6 +11,14 @@ Decisão provisória do orquestrador, revisável pelo dono:
 
 As fixtures sanitizadas ficam em `claude/` e `codex/`. O gravador salva primeiro a troca crua em `scripts/record-fixtures/out/`, ignorada pelo Git, e só depois sanitiza. O JSONL cru pode conter dados pessoais; não deve ser publicado.
 
+## Como um agente novo entra nos atalhos
+
+Registre o agente por ID com uma fábrica de adaptador, um objeto `capabilities` e o carregador estático de skills quando `skills` for `true`. O objeto declara `skills`, `compact`, `fileMentions`, `fastMode`, `plan` e `fork`; `fileMentions` fica `true` porque a busca `@` pertence ao Karont. Agentes sem skills ou compactação declaram esses campos como `false`. `maxSkillsPerMessage` é opcional quando houver um limite próprio, como o limite de uma skill do Claude.
+
+O adaptador implementa `getSkills?()` para consultar uma conversa ativa e `compact?()` quando oferecer compactação. A fábrica registra também o carregador estático de skills para consultas sem processo aberto. `agent.capabilities` e `composer.skills` só aceitam IDs presentes no registro; agentes sem catálogo de skills devolvem `skills: []`. `agent.models` usa o mesmo ID aberto e a fábrica pode registrar um carregador de modelos. `composerSkill.source` guarda o ID do agente, sem enum fechado.
+
+Inclua teste do registro para as capacidades e para a consulta do catálogo sem conversa ativa. Use uma CLI falsa ou loader falso; os testes não dependem de CLIs instaladas.
+
 ## Gravador
 
 ```sh

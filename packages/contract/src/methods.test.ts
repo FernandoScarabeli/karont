@@ -125,12 +125,16 @@ test("contratos do composer e compactação validam os formatos por agente", () 
     true,
   );
   assert.equal(
+    methods["composer.skills"].params.safeParse({ agent: "teste", cwd: "/tmp/projeto" }).success,
+    true,
+  );
+  assert.equal(
     methods["composer.skills"].result.safeParse({
       skills: [
         {
           name: "project-helper",
           description: "Executa uma tarefa de exemplo.",
-          source: "codex",
+          source: "agente-de-teste",
           path: "/tmp/projeto/.agents/skills/project-helper/SKILL.md",
         },
       ],
@@ -139,6 +143,35 @@ test("contratos do composer e compactação validam os formatos por agente", () 
   );
   assert.equal(methods["conversation.compact"].params.safeParse({ id: "c1" }).success, true);
   assert.equal(methods["conversation.compact"].result.safeParse({ ok: true }).success, true);
+  assert.equal(
+    methods["agent.models"].params.safeParse({ agent: "agente-de-teste" }).success,
+    true,
+  );
+  assert.equal(
+    methods["agent.models"].result.safeParse({
+      agent: "agente-de-teste",
+      models: [],
+      efforts: [],
+    }).success,
+    true,
+  );
+  assert.equal(
+    methods["agent.capabilities"].params.safeParse({ agent: "agente-de-teste" }).success,
+    true,
+  );
+  assert.equal(
+    methods["agent.capabilities"].result.safeParse({
+      capabilities: {
+        skills: false,
+        compact: false,
+        fileMentions: true,
+        fastMode: false,
+        plan: false,
+        fork: false,
+      },
+    }).success,
+    true,
+  );
 });
 
 test("parâmetros rejeitam chaves extras e tipos errados", () => {
