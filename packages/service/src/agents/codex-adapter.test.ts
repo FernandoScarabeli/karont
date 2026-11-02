@@ -230,12 +230,67 @@ test("mapeia fileChange, MCP, subagente e imagem dos fixtures Codex", () => {
   assert.deepEqual(JSON.parse(mcp?.input ?? ""), { query: "guia de instalação", limit: 2 });
   assert.match(mcp?.output ?? "", /Dois resultados/);
   assert.equal(subagent?.actionType, "subagent");
-  assert.equal(subagent?.title, "Iniciou um subagente");
-  assert.equal(subagent?.input, "Revise o módulo src/modulo.ts e resuma os achados.");
+  assert.equal(subagent?.title, "Revise o módulo src/modulo.ts e resuma os achados.");
+  assert.equal(subagent?.input, "Tarefa: Revise o módulo src/modulo.ts e resuma os achados.");
   assert.equal(image?.actionType, "image");
   assert.equal(image?.title, "Gerou uma imagem");
   assert.equal(image?.input, "Ilustração técnica de uma aplicação desktop");
   assert.equal(image?.output, "/tmp/karont/generated.png");
+});
+
+test("agrupa spawn e wait do Codex em uma ação de subagente e aninha ações da thread filha", async () => {
+  const harness = await createHarness("subagente");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, fixturePrompt("subagente"));
+    await waitForState(harness, conversation.id, "idle");
+
+    const parts = latestAgent(harness, conversation.id)?.parts ?? [];
+    const actions = parts.filter(
+      (part): part is Extract<MessagePart, { type: "action" }> => part.type === "action",
+    );
+    const subagents = actions.filter((action) => action.actionType === "subagent");
+    assert.equal(subagents.length, 1);
+    const subagent = subagents[0];
+    assert.ok(subagent);
+    assert.equal(subagent.state, "ok");
+    assert.equal(subagent.title, "Listar os arquivos do projeto e resumir a estrutura.");
+    assert.equal(
+      subagent.input,
+      "Tarefa: Listar os arquivos do projeto e resumir a estrutura.\nModelo: gpt-6.1-sol",
+    );
+    assert.match(subagent.output, /Encontrei README\.md e a pasta src/);
+    assert.ok(actions.some((action) => action.parentId === subagent.id));
+    assert.equal(
+      actions.some((action) => action.state === "running"),
+      false,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("não deixa subagente em andamento quando o turno termina", async () => {
+  const harness = await createHarness("subagente-em-progresso");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, fixturePrompt("subagente-em-progresso"));
+    await waitForState(harness, conversation.id, "idle");
+
+    const action = latestAgent(harness, conversation.id)?.parts.find(
+      (part) => part.type === "action" && part.actionType === "subagent",
+    );
+    assert.equal(action?.type === "action" ? action.state : undefined, "error");
+    assert.match(action?.type === "action" ? action.output : "", /interrompido/i);
+    assert.equal(
+      latestAgent(harness, conversation.id)?.parts.some(
+        (part) => part.type === "action" && part.state === "running",
+      ),
+      false,
+    );
+  } finally {
+    await harness.close();
+  }
 });
 
 test("Codex respeita limites em bytes e mantém o JSON do diff válido ao truncar", () => {

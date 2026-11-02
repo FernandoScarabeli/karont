@@ -145,9 +145,20 @@ As fixtures reais disponíveis não contêm chamadas Claude `Edit`, `MultiEdit`,
 - Claude `Edit` usa `input.file_path`, `old_string` e `new_string`; `MultiEdit` usa `input.file_path` e `input.edits[]`; `Write` usa `input.file_path` e `content`. O serviço converte esses dados em `output` JSON no formato `[{ path, kind, diff }]`, com diff unificado. `Write` representa criação com `kind: "add"` e todas as linhas prefixadas com `+`.
 - Claude `Task` usa `description` como título e `prompt` como entrada. Chamadas com `parent_tool_use_id` igual ao ID da ferramenta `Task` recebem o `parentId` da parte do subagente. Ferramentas MCP seguem `mcp__<servidor>__<ferramenta>`; o serviço separa servidor/ferramenta, conserva os valores de entrada e registra o resultado da ferramenta.
 - Codex `fileChange.changes[]` contém `FileUpdateChange { path, kind, diff }`, com `kind` como variante marcada (`{ type: "add" | "update" | "delete" }`); o serviço conserva essa forma no JSON. Também aceita o formato legado indexado por caminho.
-- Codex `mcpToolCall` fornece `server`, `tool`, `arguments` e `result`; `collabAgentToolCall` fornece `tool` e `prompt`; `imageGeneration` fornece `savedPath` e `revisedPrompt`. A imagem guarda apenas o caminho e o prompt revisado; leitura e validação do arquivo ficam para outra tarefa.
+- Codex `mcpToolCall` fornece `server`, `tool`, `arguments` e `result`; `imageGeneration` fornece `savedPath` e `revisedPrompt`. A imagem guarda apenas o caminho e o prompt revisado; leitura e validação do arquivo ficam para outra tarefa.
 - Entradas e saídas são limitadas a 8 KiB e 64 KiB, respectivamente. Quando há truncamento, `truncated` fica `true`; a lista JSON de diffs continua válida.
 - O schema preserva `actionType: "subagent" | "mcp" | "image"` e os campos opcionais `parentId`, `server` e `tool`; a F24 consome esses dados para agrupar ações de subagentes e detalhar MCP/imagem.
+
+## Subagentes do Codex (app-server 0.166.0)
+
+O schema foi gerado fora do repositório com `codex app-server generate-json-schema --experimental --out /tmp/karont-m2-b12-codex-schema`.
+
+- `collabAgentToolCall` tem `id`, `senderThreadId`, `receiverThreadIds`, `status`, `tool` e `agentsStates` como campos obrigatórios. `prompt`, `model` e `reasoningEffort` são opcionais e podem ser `null`.
+- `tool` aceita `spawnAgent`, `sendInput`, `resumeAgent`, `wait`, `closeAgent`, `sendMessage`, `followupTask`, `interruptAgent` e `listAgents`. O status da chamada é `inProgress`, `completed`, `failed` ou `interrupted`.
+- `agentsStates` é um mapa por thread receptora. Cada estado tem `status` (`pendingInit`, `running`, `interrupted`, `completed`, `errored`, `shutdown` ou `notFound`) e pode ter uma `message`.
+- `item/started` inclui `threadId`, `turnId`, `startedAtMs` e `item`; `item/completed` inclui os mesmos identificadores, `completedAtMs` e `item`. O schema gerado não contém a notificação `item/updated`.
+- `thread/started` informa a thread iniciada. As notificações de item carregam `threadId`, então o adaptador aninha ações quando recebe itens com o ID de uma thread filha conhecida em `receiverThreadIds`/`agentsStates`. O schema, por si só, não garante que itens de threads filhas sejam transmitidos nesta conexão. A captura real que motivou a tarefa não contém ações filhas persistidas; sem notificações filhas, a interface mostra o resumo do subagente e a mensagem final disponível em `agentsStates`.
+- `codex/subagente.jsonl` é um fixture sem dados pessoais, montado com os campos do schema para cobrir `spawnAgent` → `wait` → conclusão e uma ação de exemplo na thread filha. `codex/subagente-em-progresso.jsonl` cobre um turno que termina antes da conclusão do subagente; ambos são fixtures sintéticos, não gravações da CLI.
 
 ## Subagentes (Claude Code 2.1.x)
 
