@@ -21,6 +21,7 @@ import { getBridge } from "../bridge/index.ts";
 import { ActionMenu, type ActionMenuItem } from "../components/ActionMenu/ActionMenu.tsx";
 import { Button } from "../components/Button/Button.tsx";
 import { Dialog } from "../components/Dialog/Dialog.tsx";
+import { FluidHoverHighlight, useFluidHover } from "../components/FluidHover/FluidHover.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
 import {
@@ -57,6 +58,12 @@ export function Sidebar() {
   } = useNavigation();
   const bridge = getBridge();
   const activePane = findPane(layout, activePaneId);
+  const navigationRef = useRef<HTMLElement>(null);
+  const fluidHover = useFluidHover(navigationRef, {
+    axis: "y",
+    isItemDisabled: (element) => element.matches(":disabled"),
+    gapClick: false,
+  });
   const { terminals, error } = useTerminals();
   const [showArchived, setShowArchived] = useState(false);
   const conversationIndex = useConversationIndex(showArchived);
@@ -457,8 +464,13 @@ export function Sidebar() {
             className={styles.conversationButton}
             onClick={() => navigate({ name: "conversation", id: conversation.id })}
             ref={(element) => {
-              if (element) conversationButtonRefs.current.set(conversation.id, element);
-              else conversationButtonRefs.current.delete(conversation.id);
+              if (element) {
+                conversationButtonRefs.current.set(conversation.id, element);
+                fluidHover.registerItem(`conversation:${conversation.id}`, element);
+              } else {
+                conversationButtonRefs.current.delete(conversation.id);
+                fluidHover.registerItem(`conversation:${conversation.id}`, null);
+              }
             }}
             title={`${conversation.title}, ${stateDetails}`}
             type="button"
@@ -508,7 +520,9 @@ export function Sidebar() {
       <nav
         aria-label={t.shell.primaryNavigation}
         className={`${styles.navigation} ${scrollAreaStyles.scrollArea}`}
+        ref={fluidHover.containerRef}
       >
+        <FluidHoverHighlight controller={fluidHover} />
         <div className={styles.primaryActions}>
           <Button
             aria-current={
@@ -519,6 +533,7 @@ export function Sidebar() {
             className={styles.navigationAction}
             iconStart={<SquarePen aria-hidden="true" size={16} strokeWidth={1.75} />}
             onClick={() => navigate({ name: "new-conversation" })}
+            ref={(element) => fluidHover.registerItem("new-conversation", element)}
             variant="ghost"
           >
             {t.shell.newConversation}
@@ -528,6 +543,7 @@ export function Sidebar() {
             className={styles.navigationAction}
             disabled
             iconStart={<ListTodo aria-hidden="true" size={16} strokeWidth={1.75} />}
+            ref={(element) => fluidHover.registerItem("tasks", element)}
             variant="ghost"
           >
             {t.shell.tasks}
@@ -677,8 +693,13 @@ export function Sidebar() {
                       className={styles.conversationButton}
                       onClick={() => navigate({ name: "terminal", id: terminal.id })}
                       ref={(element) => {
-                        if (element) terminalButtonRefs.current.set(terminal.id, element);
-                        else terminalButtonRefs.current.delete(terminal.id);
+                        if (element) {
+                          terminalButtonRefs.current.set(terminal.id, element);
+                          fluidHover.registerItem(`terminal:${terminal.id}`, element);
+                        } else {
+                          terminalButtonRefs.current.delete(terminal.id);
+                          fluidHover.registerItem(`terminal:${terminal.id}`, null);
+                        }
                       }}
                       title={accessibleName}
                       type="button"

@@ -251,11 +251,6 @@
   cursor: pointer;
 }
 
-.accessOption:hover,
-.planOption:hover:not(:disabled) {
-  background: var(--k-color-bg-hover);
-}
-
 .accessOption[data-checked="true"] {
   background: var(--k-color-bg-hover);
 }

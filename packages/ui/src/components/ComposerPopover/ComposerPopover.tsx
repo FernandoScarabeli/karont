@@ -9,6 +9,13 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  type FluidHoverAxis,
+  type FluidHoverGapClick,
+  FluidHoverHighlight,
+  FluidHoverProvider,
+  useFluidHover,
+} from "../FluidHover/FluidHover.tsx";
 import styles from "./ComposerPopover.module.css";
 
 type Placement = { left: number; top: number; maxHeight: number };
@@ -24,6 +31,9 @@ export function ComposerPopover({
   id,
   role = "group",
   label,
+  fluidHoverAxis = "y",
+  fluidHoverGapClick = false,
+  fluidHoverNearest,
 }: {
   open: boolean;
   anchorRef: RefObject<HTMLElement | null>;
@@ -35,8 +45,18 @@ export function ComposerPopover({
   id?: string;
   role?: "group" | "dialog" | "menu";
   label?: string;
+  fluidHoverAxis?: FluidHoverAxis;
+  fluidHoverGapClick?: FluidHoverGapClick;
+  fluidHoverNearest?: boolean;
 }) {
   const popoverRef = useRef<HTMLElement>(null);
+  const fluidHover = useFluidHover(popoverRef, {
+    axis: fluidHoverAxis,
+    gapClick: fluidHoverGapClick,
+    nearest: fluidHoverNearest,
+    isItemDisabled: (element) =>
+      element.matches(":disabled, [aria-disabled='true'], [data-fluid-hover-disabled='true']"),
+  });
   const initialFocusRef = useRef(initialFocus);
   const [placement, setPlacement] = useState<Placement>();
 
@@ -93,6 +113,10 @@ export function ComposerPopover({
   }, [anchorPoint, anchorRef, open]);
 
   useLayoutEffect(() => {
+    if (open && placement) fluidHover.remeasure();
+  }, [fluidHover, open, placement]);
+
+  useLayoutEffect(() => {
     if (!open) return;
     (initialFocusRef.current?.() ?? popoverRef.current)?.focus();
   }, [open]);
@@ -140,41 +164,44 @@ export function ComposerPopover({
         aria-label={label}
         className={classNames}
         id={id}
-        ref={(element) => {
-          popoverRef.current = element;
-        }}
+        ref={fluidHover.containerRef}
         role="dialog"
         style={style}
         tabIndex={-1}
       >
-        {children}
+        <FluidHoverProvider controller={fluidHover}>
+          <FluidHoverHighlight controller={fluidHover} />
+          {children}
+        </FluidHoverProvider>
       </div>
     ) : role === "menu" ? (
       <div
         aria-label={label}
         className={classNames}
         id={id}
-        ref={(element) => {
-          popoverRef.current = element;
-        }}
+        ref={fluidHover.containerRef}
         role="menu"
         style={style}
         tabIndex={-1}
       >
-        {children}
+        <FluidHoverProvider controller={fluidHover}>
+          <FluidHoverHighlight controller={fluidHover} />
+          {children}
+        </FluidHoverProvider>
       </div>
     ) : (
       <fieldset
         aria-label={label}
         className={classNames}
-        ref={(element) => {
-          popoverRef.current = element;
-        }}
+        ref={fluidHover.containerRef}
         style={style}
         tabIndex={-1}
       >
         {label ? <legend className={styles.srOnly}>{label}</legend> : null}
-        {children}
+        <FluidHoverProvider controller={fluidHover}>
+          <FluidHoverHighlight controller={fluidHover} />
+          {children}
+        </FluidHoverProvider>
       </fieldset>
     );
 

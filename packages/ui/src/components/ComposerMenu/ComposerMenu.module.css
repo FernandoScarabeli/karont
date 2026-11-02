@@ -62,12 +62,6 @@
   cursor: pointer;
 }
 
-.option:hover,
-.option:focus-visible,
-.selected {
-  background: var(--k-color-bg-hover);
-}
-
 .option:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-color-focus);
   outline-offset: calc(-1 * var(--k-focus-ring-width));

@@ -8,6 +8,7 @@
 }
 
 .navigation {
+  position: relative;
   display: flex;
   min-height: 0;
   flex: 1 1 auto;
@@ -19,6 +20,8 @@
 }
 
 .primaryActions {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: var(--k-space-1);
@@ -43,7 +46,19 @@
   color: var(--k-color-text-primary);
 }
 
+.navigation .navigationAction:not([aria-current="page"]):hover:not(:disabled),
+.navigation .navigationAction:not([aria-current="page"]):focus-visible:not(:disabled) {
+  background: transparent;
+  color: var(--k-color-text-primary);
+}
+
+.navigation .navigationAction[aria-current="page"]:hover {
+  background: var(--k-color-bg-control);
+}
+
 .section {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: var(--k-space-2);
@@ -186,9 +201,13 @@
 }
 
 .conversationButton:hover,
+.conversationButton:focus-visible,
+.conversationButton[aria-current="page"] {
+  color: var(--k-color-text-primary);
+}
+
 .conversationButton[aria-current="page"] {
   background: var(--k-color-bg-control);
-  color: var(--k-color-text-primary);
 }
 
 .conversationButton:focus-visible {
