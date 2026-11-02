@@ -29,13 +29,10 @@ import {
   XCircle,
 } from "lucide-react";
 import {
-  Children,
   type FormEvent,
   Fragment,
-  isValidElement,
   type KeyboardEvent,
   memo,
-  type ReactElement,
   type ReactNode,
   type UIEvent,
   useCallback,
@@ -72,6 +69,7 @@ import {
 import { type AnsiOutputSegment, parseAnsiOutput } from "./ansiOutput.ts";
 import { formatAttachmentSize } from "./attachmentUtils.ts";
 import styles from "./ConversationParts.module.css";
+import { createCitationMarkdownComponents } from "./citationMarkdown.ts";
 import { formatWorkDuration, splitFinalAnswer } from "./conversationDisplay.ts";
 import { cleanMarkdownPreview, formatConversationText } from "./displayText.ts";
 import { getAllowedExternalUrl } from "./externalLinks.ts";
@@ -79,13 +77,6 @@ import { FollowBottomContext } from "./followBottom.ts";
 import { splitMarkdownBlocks } from "./markdownBlocks.ts";
 import { rehypeCaret } from "./rehypeCaret.ts";
 import { SourceCitationBadge } from "./SourceCitationBadge.tsx";
-import {
-  type CitationView,
-  findCitationForLink,
-  isCitationSeparator,
-  normalizeCitationUrl,
-  unwrapTrailingCitationGroup,
-} from "./sourceCitations.ts";
 import type { ConversationMessage, MessagePart } from "./useConversation.ts";
 import { useTypewriterText } from "./useTypewriterText.ts";
 import { WorkingIndicator } from "./WorkingIndicator.tsx";
@@ -1095,32 +1086,16 @@ const MarkdownBlock = memo(
     sources: readonly MessageSource[];
     useHighlight: boolean;
   }) {
-    const components = useMemo(
-      () => ({
-        a: ({
-          children,
-          href,
-          node,
-        }: {
-          children?: ReactNode;
-          href?: string;
-          node?: { position?: { end?: { offset?: number } } };
-        }) => {
-          const citation = findCitationForLink(
-            href,
-            markdownNodeText(children),
-            block,
-            node?.position?.end?.offset,
-            sources,
-          );
+    const components = useMemo(() => {
+      const citationComponents = createCitationMarkdownComponents({
+        markdown: block,
+        sources,
+        onOpen: (url) => void openExternalUrl(url, onAnnounce),
+        renderBadge: ({ citations, onOpen }) => (
+          <SourceCitationBadge citations={citations} onOpen={onOpen} />
+        ),
+        renderLink: ({ children, href }) => {
           const externalUrl = getAllowedExternalUrl(href);
-          if (citation)
-            return (
-              <CitationMarker
-                citation={citation}
-                onOpen={(url) => void openExternalUrl(url, onAnnounce)}
-              />
-            );
           return externalUrl ? (
             <button
               className={styles.markdownLink}
@@ -1135,18 +1110,16 @@ const MarkdownBlock = memo(
             </span>
           );
         },
+      });
+      return {
+        ...citationComponents,
         pre: ({ children }: { children?: ReactNode }) => (
           <CodeBlock onAnnounce={onAnnounce} onCopyCode={onCopyCode}>
             {children}
           </CodeBlock>
         ),
-        p: ({ children }: { children?: ReactNode }) => <p>{groupCitationChildren(children)}</p>,
-        li: ({ children }: { children?: ReactNode }) => <li>{groupCitationChildren(children)}</li>,
-        td: ({ children }: { children?: ReactNode }) => <td>{groupCitationChildren(children)}</td>,
-        th: ({ children }: { children?: ReactNode }) => <th>{groupCitationChildren(children)}</th>,
-      }),
-      [block, onAnnounce, onCopyCode, sources],
-    );
+      };
+    }, [block, onAnnounce, onCopyCode, sources]);
 
     return (
       <Markdown
@@ -1170,77 +1143,6 @@ const MarkdownBlock = memo(
     previous.useHighlight === next.useHighlight &&
     (!next.useHighlight || previous.highlightPlugin === next.highlightPlugin),
 );
-
-type CitationMarkerProps = {
-  citation: CitationView;
-  onOpen: (url: string) => void;
-};
-
-function CitationMarker({ citation, onOpen }: CitationMarkerProps) {
-  return <SourceCitationBadge citations={[citation]} onOpen={onOpen} />;
-}
-
-function isCitationMarker(value: ReactNode): value is ReactElement<CitationMarkerProps> {
-  return isValidElement<CitationMarkerProps>(value) && value.type === CitationMarker;
-}
-
-function groupCitationChildren(children: ReactNode): ReactNode[] {
-  const nodes = Children.toArray(children);
-  const grouped: ReactNode[] = [];
-  for (let index = 0; index < nodes.length; index += 1) {
-    const marker = nodes[index];
-    if (!isCitationMarker(marker)) {
-      grouped.push(marker);
-      continue;
-    }
-
-    const citations = [marker.props.citation];
-    let cursor = index + 1;
-    while (
-      cursor + 1 < nodes.length &&
-      typeof nodes[cursor] === "string" &&
-      isCitationSeparator(nodes[cursor] as string) &&
-      isCitationMarker(nodes[cursor + 1])
-    ) {
-      citations.push((nodes[cursor + 1] as ReactElement<CitationMarkerProps>).props.citation);
-      cursor += 2;
-    }
-
-    const prefix = grouped.at(-1);
-    const suffix = nodes[cursor];
-    if (citations.length > 1 && typeof prefix === "string" && typeof suffix === "string") {
-      const unwrapped = unwrapTrailingCitationGroup(prefix, suffix);
-      if (unwrapped) {
-        if (unwrapped.prefix) grouped[grouped.length - 1] = unwrapped.prefix;
-        else grouped.pop();
-        nodes[cursor] = unwrapped.suffix;
-      }
-    }
-
-    const uniqueCitations = new Map<string, CitationView>();
-    for (const citation of citations) {
-      const key = normalizeCitationUrl(citation.source.url);
-      if (key && !uniqueCitations.has(key)) uniqueCitations.set(key, citation);
-    }
-    grouped.push(
-      <SourceCitationBadge
-        citations={[...uniqueCitations.values()]}
-        key={marker.key ?? `source-${index}`}
-        onOpen={marker.props.onOpen}
-      />,
-    );
-    index = cursor - 1;
-  }
-  return grouped;
-}
-
-function markdownNodeText(value: ReactNode): string {
-  if (typeof value === "string" || typeof value === "number") return String(value);
-  if (Array.isArray(value)) return value.map(markdownNodeText).join("");
-  if (isValidElement<{ children?: ReactNode }>(value))
-    return markdownNodeText(value.props.children);
-  return "";
-}
 
 async function openExternalUrl(url: string, onAnnounce: (text: string) => void): Promise<void> {
   try {
