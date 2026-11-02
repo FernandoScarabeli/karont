@@ -502,13 +502,18 @@ export function mapCodexSpecialAction(item: Record<string, unknown>): MappedActi
   if (type === "collabAgentToolCall") {
     const tool = stringValue(item.tool);
     const prompt = stringValue(item.prompt);
-    const boundedInput = truncateUtf8(prompt || jsonText(item), 8 * 1024);
+    const model = stringValue(item.model);
+    const input = [prompt ? `Tarefa: ${prompt}` : "", model ? `Modelo: ${model}` : ""]
+      .filter(Boolean)
+      .join("\n");
+    const boundedInput = truncateUtf8(input, 8 * 1024);
+    const output = truncateUtf8(collabAgentOutput(item), 64 * 1024);
     return {
       actionType: "subagent" as Action["actionType"],
-      title: collabToolTitle(tool),
+      title: summarizeSubagentPrompt(prompt) || collabToolTitle(tool),
       input: boundedInput.text,
-      output: "",
-      truncated: boundedInput.truncated,
+      output: output.text,
+      truncated: boundedInput.truncated || output.truncated,
     };
   }
   if (type === "imageGeneration") {
@@ -573,6 +578,28 @@ function collabToolTitle(tool: string): string {
     listAgents: "Consultou os subagentes",
   };
   return titles[tool] ?? "Usou um subagente";
+}
+
+function summarizeSubagentPrompt(prompt: string): string {
+  const firstLine = prompt.replaceAll("\r\n", "\n").split("\n")[0]?.trim() ?? "";
+  const firstSentence = firstLine.match(/^.{1,160}?(?:[.!?](?:\s|$)|$)/u)?.[0]?.trim() ?? firstLine;
+  return firstSentence.length > 160 ? `${firstSentence.slice(0, 157).trimEnd()}…` : firstSentence;
+}
+
+function collabAgentOutput(item: Record<string, unknown>): string {
+  const states = isRecord(item.agentsStates) ? item.agentsStates : {};
+  const receiverIds = Array.isArray(item.receiverThreadIds)
+    ? item.receiverThreadIds.filter((id): id is string => typeof id === "string")
+    : [];
+  const orderedStates = [
+    ...receiverIds.map((id) => states[id]).filter(isRecord),
+    ...Object.entries(states)
+      .filter(([id]) => !receiverIds.includes(id))
+      .map(([, state]) => state)
+      .filter(isRecord),
+  ];
+  const message = orderedStates.map((state) => stringValue(state.message)).find(Boolean);
+  return message || stringValue(item.result) || stringValue(item.message);
 }
 
 function changeKindName(value: unknown): string {

@@ -145,9 +145,22 @@ As fixtures reais disponíveis não contêm chamadas Claude `Edit`, `MultiEdit`,
 - Claude `Edit` usa `input.file_path`, `old_string` e `new_string`; `MultiEdit` usa `input.file_path` e `input.edits[]`; `Write` usa `input.file_path` e `content`. O serviço converte esses dados em `output` JSON no formato `[{ path, kind, diff }]`, com diff unificado. `Write` representa criação com `kind: "add"` e todas as linhas prefixadas com `+`.
 - Claude `Task` usa `description` como título e `prompt` como entrada. Chamadas com `parent_tool_use_id` igual ao ID da ferramenta `Task` recebem o `parentId` da parte do subagente. Ferramentas MCP seguem `mcp__<servidor>__<ferramenta>`; o serviço separa servidor/ferramenta, conserva os valores de entrada e registra o resultado da ferramenta.
 - Codex `fileChange.changes[]` contém `FileUpdateChange { path, kind, diff }`, com `kind` como variante marcada (`{ type: "add" | "update" | "delete" }`); o serviço conserva essa forma no JSON. Também aceita o formato legado indexado por caminho.
-- Codex `mcpToolCall` fornece `server`, `tool`, `arguments` e `result`; `collabAgentToolCall` fornece `tool` e `prompt`; `imageGeneration` fornece `savedPath` e `revisedPrompt`. A imagem guarda apenas o caminho e o prompt revisado; leitura e validação do arquivo ficam para outra tarefa.
+- Codex `mcpToolCall` fornece `server`, `tool`, `arguments` e `result`; `imageGeneration` fornece `savedPath` e `revisedPrompt`. A imagem guarda apenas o caminho e o prompt revisado; leitura e validação do arquivo ficam para outra tarefa.
 - Entradas e saídas são limitadas a 8 KiB e 64 KiB, respectivamente. Quando há truncamento, `truncated` fica `true`; a lista JSON de diffs continua válida.
 - O schema preserva `actionType: "subagent" | "mcp" | "image"` e os campos opcionais `parentId`, `server` e `tool`; a F24 consome esses dados para agrupar ações de subagentes e detalhar MCP/imagem.
+
+## Subagentes do Codex (app-server 0.166.0)
+
+O schema foi gerado fora do repositório com `codex app-server generate-json-schema --experimental --out /tmp/karont-m2-b12-codex-schema`.
+
+- `collabAgentToolCall` tem `id`, `senderThreadId`, `receiverThreadIds`, `status`, `tool` e `agentsStates` como campos obrigatórios. `prompt`, `model` e `reasoningEffort` são opcionais e podem ser `null`.
+- `tool` aceita `spawnAgent`, `sendInput`, `resumeAgent`, `wait`, `closeAgent`, `sendMessage`, `followupTask`, `interruptAgent` e `listAgents`. O status da chamada é `inProgress`, `completed`, `failed` ou `interrupted`.
+- `agentsStates` é um mapa por thread receptora. Cada estado tem `status` (`pendingInit`, `running`, `interrupted`, `completed`, `errored`, `shutdown` ou `notFound`) e pode ter uma `message`.
+- `item/started` inclui `threadId`, `turnId`, `startedAtMs` e `item`; `item/completed` inclui os mesmos identificadores, `completedAtMs` e `item`. O schema gerado não contém a notificação `item/updated`.
+- Na captura real do Codex 0.166 (`gpt-5.6-terra`), o início do subagente chega em `item/started` com `item.type: "subAgentActivity"`, `kind: "started"`, `agentThreadId`, `agentPath`, `model`, `reasoningEffort` e `startedAtMs`. A mesma atividade também pode chegar em `item/completed` ainda com `kind: "started"`; isso não conclui a ação. O encerramento vem em outro item `subAgentActivity`, com ID próprio e `kind: "completed"`, associado pelo mesmo `agentThreadId`.
+- Os itens do filho são transmitidos na conexão principal com `params.threadId` igual a `agentThreadId`: `commandExecution`, `fileChange`, `mcpToolCall` e outros itens de ação recebem `parentId` da ação de subagente. `agentMessage` do filho não vira texto principal; seu texto final acumulado vai para a saída do subagente. O `reasoning` do filho pode ser ignorado, e `turn/completed` da thread filha não encerra o turno principal.
+- Um `collabAgentToolCall` `wait` com `receiverThreadIds: []` é só a espera do agente principal e não cria ação. `spawnAgent`/`sendInput` com threads receptoras continuam usando o vínculo da B12 entre thread e ação.
+- `codex/subagente.jsonl` e `codex/subagente-em-progresso.jsonl` continuam como fixtures sintéticos da B12: cobrem associação por `collabAgentToolCall`, exemplo de ação filha e encerramento antes da conclusão. `codex/subagente-real.jsonl` complementa esses casos com uma captura real sanitizada do fluxo `subAgentActivity` e da thread filha; IDs são fictícios e `/tmp/karont-teste-grande` foi substituído por `/tmp/projeto`.
 
 ## Subagentes (Claude Code 2.1.x)
 

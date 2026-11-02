@@ -71,6 +71,11 @@ export class CodexAdapter implements AgentAdapter {
   readonly #pendingResponses = new Map<string, PendingResponse>();
   readonly #parts = new Map<string, MessagePart>();
   readonly #actions = new Map<string, ActionRecord>();
+  readonly #collabActionIdByCall = new Map<string, string>();
+  readonly #subagentActionIdByThread = new Map<string, string>();
+  readonly #subagentParentByThread = new Map<string, string>();
+  readonly #subagentStateByActionId = new Map<string, "running" | "ok" | "error">();
+  readonly #subagentErrorByThread = new Map<string, string>();
   readonly #planText = new Map<string, string>();
   readonly #itemText = new Map<string, string>();
   #child: ChildProcess | undefined;
@@ -579,6 +584,7 @@ export class CodexAdapter implements AgentAdapter {
 
   #handleNotification(method: string, params: JsonRecord): void {
     if (method === "turn/started") {
+      if (this.#subagentParentByThread.has(stringValue(params.threadId))) return;
       if (isRecord(params.turn) && typeof params.turn.id === "string") {
         this.#turnId = params.turn.id;
         this.#emit({ kind: "turn-id", turnId: this.#turnId });
@@ -591,6 +597,7 @@ export class CodexAdapter implements AgentAdapter {
       const delta = stringValue(params.delta);
       if (!partId || !delta) return;
       this.#itemText.set(partId, (this.#itemText.get(partId) ?? "") + delta);
+      if (this.#subagentParentByThread.has(stringValue(params.threadId))) return;
       this.#emit({ kind: "text-delta", partType: "text", partId, delta });
       return;
     }
@@ -601,12 +608,27 @@ export class CodexAdapter implements AgentAdapter {
       return;
     }
     if (method === "item/started" || method === "item/completed") {
-      if (isRecord(params.item))
-        this.#handleItem(method === "item/started" ? "started" : "completed", params.item);
+      if (isRecord(params.item)) {
+        this.#handleItem(
+          method === "item/started" ? "started" : "completed",
+          params.item,
+          stringValue(params.threadId),
+          method === "item/started"
+            ? numberValue(params.startedAtMs)
+            : numberValue(params.completedAtMs),
+        );
+      }
       return;
     }
     if (method === "turn/completed") {
       const turn = isRecord(params.turn) ? params.turn : {};
+      const completedThreadId = stringValue(params.threadId);
+      if (this.#subagentParentByThread.has(completedThreadId)) {
+        const error = isRecord(turn.error) ? stringValue(turn.error.message) : "";
+        if (["failed", "interrupted"].includes(stringValue(turn.status)) || error)
+          this.#subagentErrorByThread.set(completedThreadId, error || stringValue(turn.status));
+        return;
+      }
       const status = stringValue(turn.status);
       if (status === "interrupted") {
         this.#completeTurn("interrupted", {
@@ -622,20 +644,43 @@ export class CodexAdapter implements AgentAdapter {
     }
   }
 
-  #handleItem(stage: "started" | "completed", item: JsonRecord): void {
+  #handleItem(
+    stage: "started" | "completed",
+    item: JsonRecord,
+    threadId: string,
+    notificationTime: number | null,
+  ): void {
     const type = stringValue(item.type);
     const id = stringValue(item.id);
     if (!type || !id) return;
+    if (type === "subAgentActivity") {
+      this.#handleSubagentActivity(stage, item, threadId, notificationTime);
+      return;
+    }
+    if (
+      type === "collabAgentToolCall" &&
+      stringValue(item.tool) === "wait" &&
+      collabReceiverIds(item).length === 0
+    ) {
+      this.#absorbSubagentWait(stage, item, notificationTime);
+      return;
+    }
+    const parentId = this.#subagentParentByThread.get(threadId);
     if (stage === "started") {
       if (type === "agentMessage") this.#itemText.set(id, stringValue(item.text));
       else if (type === "plan") this.#planText.set(id, stringValue(item.text));
-      else if (isActionItem(type)) this.#upsertAction(item, "running");
+      else if (isActionItem(type)) this.#upsertAction(item, "running", threadId, notificationTime);
       return;
     }
 
     if (type === "agentMessage") {
       const finalText = stringValue(item.text);
       const streamed = this.#itemText.get(id) ?? "";
+      if (parentId) {
+        this.#appendSubagentOutput(parentId, finalText || streamed);
+        this.#itemText.delete(id);
+        return;
+      }
       if (finalText && !streamed)
         this.#emit({ kind: "text-delta", partType: "text", partId: id, delta: finalText });
       else if (finalText.startsWith(streamed) && finalText.length > streamed.length)
@@ -649,6 +694,7 @@ export class CodexAdapter implements AgentAdapter {
       return;
     }
     if (type === "reasoning") {
+      if (parentId) return;
       const text = extractText(item.summary) || extractText(item.content);
       if (text) this.#emit({ kind: "text-delta", partType: "thinking", partId: id, delta: text });
       return;
@@ -670,48 +716,223 @@ export class CodexAdapter implements AgentAdapter {
       this.#planText.delete(id);
       return;
     }
-    if (isActionItem(type)) this.#upsertAction(item, "complete");
+    if (isActionItem(type)) this.#upsertAction(item, "complete", threadId, notificationTime);
   }
 
-  #upsertAction(item: JsonRecord, stage: "running" | "complete"): void {
+  #handleSubagentActivity(
+    stage: "started" | "completed",
+    item: JsonRecord,
+    parentThreadId: string,
+    notificationTime: number | null,
+  ): void {
+    const kind = stringValue(item.kind);
+    const agentThreadId = stringValue(item.agentThreadId);
+    if (!agentThreadId) return;
+
+    if (kind === "started") {
+      const itemId = stringValue(item.id);
+      const parentId = this.#subagentParentByThread.get(parentThreadId);
+      const runningAtLevel = [...this.#actions.entries()].filter(
+        ([, record]) =>
+          record.part.actionType === "subagent" &&
+          record.part.state === "running" &&
+          record.part.parentId === parentId,
+      );
+      const actionId =
+        this.#subagentActionIdByThread.get(agentThreadId) ??
+        this.#collabActionIdByCall.get(itemId) ??
+        (runningAtLevel.length === 1 ? runningAtLevel[0]?.[0] : undefined) ??
+        itemId;
+      const prior = this.#actions.get(actionId);
+      const startedAt =
+        prior?.startedAt ?? numberValue(item.startedAtMs) ?? notificationTime ?? null;
+      const observedStartedAt = prior?.observedStartedAt ?? performance.now();
+      const model = stringValue(item.model);
+      const effort = stringValue(item.reasoningEffort);
+      const details = [model ? `Modelo: ${model}` : "", effort ? `esforço: ${effort}` : ""].filter(
+        Boolean,
+      );
+      const part: Extract<MessagePart, { type: "action" }> = {
+        id: actionId,
+        type: "action",
+        actionType: "subagent",
+        title: truncateCharacters(subagentActivityTitle(stringValue(item.agentPath)), 240),
+        input: details.join(" · "),
+        output: prior?.part.output ?? "",
+        ...(parentId ? { parentId } : {}),
+        truncated: prior?.part.truncated ?? false,
+        state: "running",
+        durationMs: null,
+      };
+      this.#subagentActionIdByThread.set(agentThreadId, actionId);
+      this.#subagentParentByThread.set(agentThreadId, actionId);
+      this.#collabActionIdByCall.set(itemId, actionId);
+      this.#subagentStateByActionId.set(actionId, "running");
+      this.#actions.set(actionId, { part, startedAt, observedStartedAt });
+      this.#emitPart(part);
+      return;
+    }
+
+    if (stage !== "completed" || kind !== "completed") return;
+    const actionId = this.#subagentActionIdByThread.get(agentThreadId);
+    const record = actionId ? this.#actions.get(actionId) : undefined;
+    if (!actionId || !record || record.part.actionType !== "subagent") return;
+
+    const threadError = this.#subagentErrorByThread.get(agentThreadId) ?? "";
+    const failed = Boolean(threadError) || subagentActivityFailed(item);
+    const completedAt = numberValue(item.completedAtMs) ?? notificationTime;
+    const timestampDuration =
+      record.startedAt !== null && completedAt !== null ? completedAt - record.startedAt : null;
+    const observedDuration = Math.ceil(
+      performance.now() - (record.observedStartedAt ?? performance.now()),
+    );
+    const reportedDuration = numberValue(item.durationMs);
+    const durationMs =
+      (reportedDuration !== null && reportedDuration > 0
+        ? Math.max(1, Math.trunc(reportedDuration))
+        : null) ??
+      (timestampDuration !== null && timestampDuration > 0
+        ? Math.ceil(timestampDuration)
+        : Math.max(1, observedDuration));
+    const errorOutput = subagentActivityError(item) || threadError;
+    const output =
+      failed && errorOutput && !record.part.output.includes(errorOutput)
+        ? [record.part.output, errorOutput].filter(Boolean).join("\n\n")
+        : record.part.output;
+    const part = {
+      ...record.part,
+      output,
+      state: failed ? ("error" as const) : ("ok" as const),
+      durationMs,
+    };
+    this.#subagentStateByActionId.set(actionId, part.state);
+    this.#actions.set(actionId, { ...record, part });
+    this.#emitPart(part);
+  }
+
+  #absorbSubagentWait(
+    stage: "started" | "completed",
+    item: JsonRecord,
+    notificationTime: number | null,
+  ): void {
+    if (stage !== "completed" || !isRecord(item.agentsStates)) return;
+    for (const [threadId, value] of Object.entries(item.agentsStates)) {
+      if (!isRecord(value)) continue;
+      const actionId = this.#subagentActionIdByThread.get(threadId);
+      const record = actionId ? this.#actions.get(actionId) : undefined;
+      if (!actionId || !record || record.part.actionType !== "subagent") continue;
+      const childStatus = stringValue(value.status);
+      const error = ["errored", "interrupted", "shutdown", "notFound"].includes(childStatus);
+      const state: Extract<MessagePart, { type: "action" }>["state"] =
+        error || stringValue(item.status) === "failed"
+          ? "error"
+          : childStatus === "completed"
+            ? "ok"
+            : "running";
+      const output = stringValue(value.message);
+      if (output) this.#appendSubagentOutput(actionId, output);
+      if (state === "running") continue;
+
+      const latest = this.#actions.get(actionId) ?? record;
+      const completedAt = numberValue(item.completedAtMs) ?? notificationTime;
+      const timestampDuration =
+        latest.startedAt !== null && completedAt !== null ? completedAt - latest.startedAt : null;
+      const observedDuration =
+        latest.observedStartedAt === null
+          ? null
+          : Math.ceil(performance.now() - latest.observedStartedAt);
+      const part = {
+        ...latest.part,
+        state,
+        durationMs:
+          timestampDuration !== null && timestampDuration > 0
+            ? Math.ceil(timestampDuration)
+            : observedDuration !== null && observedDuration > 0
+              ? observedDuration
+              : latest.part.durationMs,
+      };
+      this.#subagentStateByActionId.set(actionId, state);
+      this.#actions.set(actionId, { ...latest, part });
+      this.#emitPart(part);
+    }
+  }
+
+  #upsertAction(
+    item: JsonRecord,
+    stage: "running" | "complete",
+    threadId: string,
+    notificationTime: number | null,
+  ): void {
     const type = stringValue(item.type);
     const id = stringValue(item.id);
     if (!type || !id) return;
-    const prior = this.#actions.get(id);
+    const mapped = mapCodexSpecialAction(item);
+    const actionType = mapped?.actionType ?? actionTypeFor(item);
+    const receiverThreadIds = collabReceiverThreadIds(item);
+    const isSubagent = actionType === "subagent";
+    const priorCallActionId = isSubagent ? this.#collabActionIdByCall.get(id) : undefined;
+    const actionId = isSubagent ? this.#resolveSubagentActionId(id, item, receiverThreadIds) : id;
+    if (isSubagent) {
+      this.#collabActionIdByCall.set(id, actionId);
+      for (const receiverThreadId of receiverThreadIds) {
+        this.#subagentActionIdByThread.set(receiverThreadId, actionId);
+        this.#subagentParentByThread.set(receiverThreadId, actionId);
+      }
+    }
+    const prior = this.#actions.get(actionId);
     const startedAt =
-      typeof item.startedAtMs === "number" ? item.startedAtMs : (prior?.startedAt ?? null);
+      stage === "running"
+        ? (notificationTime ?? numberValue(item.startedAtMs) ?? prior?.startedAt ?? null)
+        : (prior?.startedAt ?? numberValue(item.startedAtMs) ?? null);
+    const completedAt =
+      stage === "complete" ? (notificationTime ?? numberValue(item.completedAtMs)) : null;
     const observedStartedAt =
       stage === "running"
         ? (prior?.observedStartedAt ?? performance.now())
         : (prior?.observedStartedAt ?? null);
-    const mapped = mapCodexSpecialAction(item);
-    const actionType = mapped?.actionType ?? actionTypeFor(item);
     const action = Array.isArray(item.commandActions)
       ? item.commandActions.find(isRecord)
       : undefined;
     const command = unwrapCodexShellCommand(stringValue(item.command));
     const actionCommand = unwrapCodexShellCommand(stringValue(action?.command));
     const displayCommand = command || actionCommand;
+    const preserveSubagentTask = isSubagent && prior?.part.actionType === "subagent";
+    const usePriorSubagentTask =
+      preserveSubagentTask &&
+      (stringValue(item.tool) !== "spawnAgent" || !mapped?.input || !priorCallActionId);
+    const mappedInput =
+      mapped && usePriorSubagentTask ? (prior?.part.input ?? mapped.input) : mapped?.input;
     const boundedInput = mapped
-      ? { text: mapped.input, truncated: mapped.truncated }
+      ? { text: mappedInput ?? mapped.input, truncated: mapped.truncated }
       : truncateUtf8(actionInput(item, displayCommand), 8 * 1024);
-    const title = mapped?.title ?? actionTitle(item, actionType, displayCommand);
+    const title =
+      mapped && usePriorSubagentTask
+        ? (prior?.part.title ?? mapped.title)
+        : (mapped?.title ?? actionTitle(item, actionType, displayCommand));
     const boundedOutput = mapped
-      ? { text: mapped.output, truncated: mapped.truncated }
+      ? {
+          text: mapped.output || (preserveSubagentTask ? (prior?.part.output ?? "") : ""),
+          truncated: mapped.truncated || (preserveSubagentTask && (prior?.part.truncated ?? false)),
+        }
       : truncateUtf8(actionOutput(item), MAX_ACTION_OUTPUT_BYTES);
     const status = stringValue(item.status);
     const successful =
       status === "completed" &&
       (item.exitCode === undefined || item.exitCode === null || item.exitCode === 0);
-    const state = stage === "running" ? "running" : successful ? "ok" : "error";
+    const state = isSubagent
+      ? subagentActionState(item, stage, successful)
+      : stage === "running"
+        ? "running"
+        : successful
+          ? "ok"
+          : "error";
+    if (isSubagent) this.#subagentStateByActionId.set(actionId, state);
     const reportedDuration =
       typeof item.durationMs === "number" && item.durationMs > 0
         ? Math.max(1, Math.trunc(item.durationMs))
         : null;
     const timestampDuration =
-      startedAt !== null && typeof item.completedAtMs === "number"
-        ? item.completedAtMs - startedAt
-        : null;
+      startedAt !== null && completedAt !== null ? completedAt - startedAt : null;
     const observedDuration =
       stage === "complete" && observedStartedAt !== null
         ? Math.ceil(performance.now() - observedStartedAt)
@@ -724,7 +945,7 @@ export class CodexAdapter implements AgentAdapter {
           ? observedDuration
           : null);
     const part: Extract<MessagePart, { type: "action" }> = {
-      id,
+      id: actionId,
       type: "action",
       actionType,
       title: truncateCharacters(title, 240),
@@ -732,11 +953,46 @@ export class CodexAdapter implements AgentAdapter {
       output: boundedOutput.text,
       ...(mapped?.server ? { server: mapped.server } : {}),
       ...(mapped?.tool ? { tool: mapped.tool } : {}),
+      ...(this.#subagentParentByThread.get(threadId)
+        ? { parentId: this.#subagentParentByThread.get(threadId) }
+        : {}),
       truncated: boundedInput.truncated || boundedOutput.truncated,
       state,
       durationMs,
     };
-    this.#actions.set(id, { part, startedAt, observedStartedAt });
+    this.#actions.set(actionId, { part, startedAt, observedStartedAt });
+    this.#emitPart(part);
+  }
+
+  #resolveSubagentActionId(id: string, item: JsonRecord, receiverThreadIds: string[]): string {
+    const existingForThread = receiverThreadIds
+      .map((threadId) => this.#subagentActionIdByThread.get(threadId))
+      .find((actionId): actionId is string => Boolean(actionId));
+    if (existingForThread) return existingForThread;
+    const existingForCall = this.#collabActionIdByCall.get(id);
+    if (existingForCall) return existingForCall;
+    if (stringValue(item.tool) !== "spawnAgent") {
+      const activeSubagents = [...this.#actions.entries()].filter(
+        ([, record]) => record.part.actionType === "subagent" && record.part.state === "running",
+      );
+      if (activeSubagents.length === 1) return activeSubagents[0]?.[0] ?? id;
+    }
+    return id;
+  }
+
+  #appendSubagentOutput(actionId: string, output: string): void {
+    if (!output) return;
+    const record = this.#actions.get(actionId);
+    if (record?.part.actionType !== "subagent") return;
+    if (record.part.output === output || record.part.output.endsWith(`\n\n${output}`)) return;
+    const accumulated = record.part.output ? `${record.part.output}\n\n${output}` : output;
+    const bounded = truncateUtf8(accumulated, MAX_ACTION_OUTPUT_BYTES);
+    const part = {
+      ...record.part,
+      output: bounded.text,
+      truncated: record.part.truncated || bounded.truncated,
+    };
+    this.#actions.set(actionId, { ...record, part });
     this.#emitPart(part);
   }
 
@@ -750,6 +1006,7 @@ export class CodexAdapter implements AgentAdapter {
     error?: { type: "cli-not-found" | "not-logged-in" | "failed" | "interrupted"; text: string },
   ): void {
     if (!this.#turnOpen) return;
+    this.#finalizeRunningActions();
     this.#turnOpen = false;
     this.#turnCompleteResolve?.();
     this.#turnCompleteResolve = undefined;
@@ -758,6 +1015,34 @@ export class CodexAdapter implements AgentAdapter {
     void this.#attachmentCleanup.then(() => {
       this.#emit({ kind: "turn-end", status, ...(error ? { error } : {}) });
     });
+  }
+
+  #finalizeRunningActions(): void {
+    for (const [id, record] of this.#actions) {
+      if (record.part.state !== "running") continue;
+      const knownState = this.#subagentStateByActionId.get(id);
+      const state: Extract<MessagePart, { type: "action" }>["state"] =
+        knownState === "ok" ? "ok" : "error";
+      const message =
+        record.part.actionType === "subagent"
+          ? "Subagente interrompido antes de concluir."
+          : "Ação interrompida antes de concluir.";
+      const output = record.part.output ? `${record.part.output}\n\n${message}` : message;
+      const bounded = truncateUtf8(output, MAX_ACTION_OUTPUT_BYTES);
+      const part: Extract<MessagePart, { type: "action" }> = {
+        ...record.part,
+        output: bounded.text,
+        truncated: record.part.truncated || bounded.truncated,
+        state,
+        durationMs:
+          record.part.durationMs ??
+          (record.observedStartedAt === null
+            ? null
+            : Math.max(1, Math.ceil(performance.now() - record.observedStartedAt))),
+      };
+      this.#actions.set(id, { ...record, part });
+      this.#emitPart(part);
+    }
   }
 
   async #prepareInput(text: string, attachments: ConversationAttachment[]): Promise<JsonRecord[]> {
@@ -1079,6 +1364,73 @@ function isRunning(child: ChildProcess | undefined): child is ChildProcess {
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function numberValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function collabReceiverThreadIds(item: JsonRecord): string[] {
+  const receiverIds = collabReceiverIds(item);
+  const agentIds = isRecord(item.agentsStates) ? Object.keys(item.agentsStates) : [];
+  return [...new Set([...receiverIds, ...agentIds])];
+}
+
+function collabReceiverIds(item: JsonRecord): string[] {
+  return Array.isArray(item.receiverThreadIds)
+    ? item.receiverThreadIds.filter((threadId): threadId is string => typeof threadId === "string")
+    : [];
+}
+
+function subagentActivityTitle(agentPath: string): string {
+  const name = agentPath.split("/").filter(Boolean).at(-1)?.replace(/[_-]+/g, " ").trim();
+  if (!name) return "Subagente";
+  return name.charAt(0).toLocaleUpperCase("pt-BR") + name.slice(1);
+}
+
+function subagentActivityFailed(item: JsonRecord): boolean {
+  const status = stringValue(item.status).toLowerCase();
+  return (
+    ["failed", "error", "errored", "interrupted"].includes(status) ||
+    item.failed === true ||
+    (item.error !== undefined && item.error !== null && item.error !== false)
+  );
+}
+
+function subagentActivityError(item: JsonRecord): string {
+  if (typeof item.error === "string") return item.error;
+  if (isRecord(item.error)) return stringValue(item.error.message);
+  return stringValue(item.errorMessage);
+}
+
+function subagentActionState(
+  item: JsonRecord,
+  stage: "running" | "complete",
+  successful: boolean,
+): "running" | "ok" | "error" {
+  if (stage === "running") return "running";
+  const status = stringValue(item.status);
+  if (status === "failed" || status === "interrupted") return "error";
+  if (status === "inProgress") return "running";
+  if (status !== "completed") return successful ? "ok" : "error";
+
+  const states = isRecord(item.agentsStates)
+    ? Object.values(item.agentsStates).filter(isRecord)
+    : [];
+  const statuses = states.map((state) => stringValue(state.status));
+  if (
+    statuses.some((agentStatus) =>
+      ["errored", "interrupted", "shutdown", "notFound"].includes(agentStatus),
+    )
+  )
+    return "error";
+  if (statuses.length && statuses.every((agentStatus) => agentStatus === "completed")) return "ok";
+  if (statuses.some((agentStatus) => agentStatus === "running" || agentStatus === "pendingInit"))
+    return "running";
+
+  const tool = stringValue(item.tool);
+  if (["spawnAgent", "sendInput", "resumeAgent"].includes(tool)) return "running";
+  return successful ? "ok" : "error";
 }
 
 function formatTextAttachment(
