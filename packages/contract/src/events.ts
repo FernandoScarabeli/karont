@@ -61,6 +61,7 @@ export const events = {
       messageStatus: z.enum(["streaming", "done", "interrupted", "error"]),
     }),
   ]),
+  "conversation.deletedAll": z.strictObject({ deleted: z.number().int().nonnegative() }),
 } as const satisfies Record<string, z.ZodType>;
 
 export type EventName = keyof typeof events;

@@ -20,6 +20,17 @@ const conversation = {
 } as const;
 
 test("contratos da conversa validam criação, opções e resultados conhecidos do Claude", () => {
+  assert.equal(methods["conversation.count"].params.safeParse({}).success, true);
+  assert.equal(methods["conversation.count"].result.safeParse({ count: 2 }).success, true);
+  assert.equal(methods["conversation.count"].result.safeParse({ count: -1 }).success, false);
+  assert.equal(methods["conversation.deleteAll"].params.safeParse({}).success, true);
+  assert.equal(methods["conversation.deleteAll"].params.safeParse({ id: "c1" }).success, false);
+  assert.equal(methods["conversation.deleteAll"].result.safeParse({ deleted: 2 }).success, true);
+  assert.equal(methods["conversation.deleteAll"].result.safeParse({ deleted: -1 }).success, false);
+  assert.equal(
+    parseEvent({ type: "event", event: "conversation.deletedAll", payload: { deleted: 2 } }).ok,
+    true,
+  );
   const creation = methods["conversation.create"].params.safeParse({
     agent: "claude",
     cwd: "/tmp",

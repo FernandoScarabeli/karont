@@ -19,6 +19,7 @@ const deletedIds = new Set<string>();
 let connected = false;
 let activeRequested = false;
 let archivedRequested = false;
+const loadGeneration: Record<Bucket, number> = { active: 0, archived: 0 };
 
 function notify(bucket: Bucket) {
   for (const listener of listeners[bucket]) listener();
@@ -65,9 +66,11 @@ function loadBucket(bucket: Bucket) {
 
   snapshots[bucket] = { ...snapshots[bucket], loading: true, error: false };
   notify(bucket);
+  const generation = loadGeneration[bucket];
   void bridge
     .request("conversation.list", { archived: bucket === "archived", limit: 500 })
     .then((result) => {
+      if (loadGeneration[bucket] !== generation) return;
       const merged = new Map(
         result.conversations.map((conversation) => [conversation.id, conversation]),
       );
@@ -90,6 +93,7 @@ function loadBucket(bucket: Bucket) {
       notify(bucket);
     })
     .catch(() => {
+      if (loadGeneration[bucket] !== generation) return;
       snapshots[bucket] = { ...snapshots[bucket], loading: false, error: true };
       notify(bucket);
     });
@@ -106,6 +110,10 @@ function connect() {
   }
 
   bridge.onEvent((event) => {
+    if (event.event === "conversation.deletedAll") {
+      clearAllConversationsFromIndex();
+      return;
+    }
     if (event.event !== "conversation.stateChanged") return;
     const conversation = event.payload.conversation;
     latestConversations.set(conversation.id, conversation);
@@ -147,6 +155,18 @@ export function removeConversationFromIndex(id: string) {
     snapshots[bucket] = { ...current, conversations };
     notify(bucket);
   }
+}
+
+export function clearAllConversationsFromIndex() {
+  latestConversations.clear();
+  deletedIds.clear();
+  for (const bucket of ["active", "archived"] as const) {
+    loadGeneration[bucket] += 1;
+    snapshots[bucket] = { conversations: [], loading: false, error: false };
+    notify(bucket);
+  }
+  activeRequested = true;
+  archivedRequested = true;
 }
 
 export function conversationIndexErrorText() {

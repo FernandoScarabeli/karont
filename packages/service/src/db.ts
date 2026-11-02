@@ -147,6 +147,22 @@ export function listConversations(
   return rows.map(mapConversation);
 }
 
+export function countConversations(db: DatabaseSync): number {
+  const row = db.prepare("SELECT COUNT(*) AS count FROM conversations").get() as
+    | { count: number }
+    | undefined;
+  return row?.count ?? 0;
+}
+
+export function listConversationStates(
+  db: DatabaseSync,
+): { id: string; state: Conversation["state"] }[] {
+  return db.prepare("SELECT id, state FROM conversations").all() as {
+    id: string;
+    state: Conversation["state"];
+  }[];
+}
+
 export function updateConversation(db: DatabaseSync, conversation: Conversation): void {
   db.prepare(
     "UPDATE conversations SET title=?,mode=?,model=?,effort=?,plan=?,state=?,updated_at=?,pinned_at=?,archived_at=?,unread_at=? WHERE id=?",
@@ -242,6 +258,20 @@ export function listMessages(db: DatabaseSync, conversationId: string): Conversa
 
 export function deleteConversation(db: DatabaseSync, id: string): boolean {
   return db.prepare("DELETE FROM conversations WHERE id=?").run(id).changes > 0;
+}
+
+export function deleteAllConversations(db: DatabaseSync): number {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const changes = db.prepare("DELETE FROM conversations").run().changes;
+    const deleted = typeof changes === "bigint" ? Number(changes) : changes;
+    if (!Number.isSafeInteger(deleted)) throw new Error("A quantidade de conversas é inválida.");
+    db.exec("COMMIT");
+    return deleted;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function getAgentSession(db: DatabaseSync, conversationId: string): string | null {

@@ -50,6 +50,7 @@ type NavigationState = {
   splitActivePane: (direction: "row" | "column", paneId?: string) => string | null;
   openConversationBeside: (conversationId: string) => string | null;
   closeConversationWorkspacePanes: (conversationId: string) => void;
+  closeAllConversationPanes: () => void;
   closeWorkspacePane: (paneId: string) => void;
   closeTerminalWorkspacePane: (terminalId: string) => void;
   moveWorkspacePane: (paneId: string, targetPaneId: string, edge: PaneEdge) => void;
@@ -125,6 +126,15 @@ export function NavigationProvider({ children }: PropsWithChildren) {
       setStatusMessage(t.workspace.navigationSaveFailed);
     });
   }, [bridge, navigationLoaded, view.name]);
+
+  useEffect(() => {
+    if (!bridge) return;
+    return bridge.onEvent((event) => {
+      if (event.event === "conversation.deletedAll") {
+        setLayout((current) => resetConversationPanes(current));
+      }
+    });
+  }, [bridge]);
 
   useEffect(() => {
     if (!bridge || !layoutLoaded) return;
@@ -232,6 +242,10 @@ export function NavigationProvider({ children }: PropsWithChildren) {
     });
   }, []);
 
+  const closeAllConversationPanes = useCallback(() => {
+    setLayout((current) => resetConversationPanes(current));
+  }, []);
+
   const closeWorkspacePane = useCallback(
     (paneId: string) => {
       const nextLayout = closePaneInLayout(layout, paneId);
@@ -282,6 +296,7 @@ export function NavigationProvider({ children }: PropsWithChildren) {
         splitActivePane,
         openConversationBeside,
         closeConversationWorkspacePanes,
+        closeAllConversationPanes,
         closeWorkspacePane,
         closeTerminalWorkspacePane,
         moveWorkspacePane,
@@ -291,6 +306,16 @@ export function NavigationProvider({ children }: PropsWithChildren) {
       {children}
     </NavigationContext.Provider>
   );
+}
+
+function resetConversationPanes(layout: LayoutNode): LayoutNode {
+  let next = layout;
+  for (const pane of listPanes(layout)) {
+    if (pane.view.kind === "chat") {
+      next = setPaneView(next, pane.id, { kind: "new-conversation" });
+    }
+  }
+  return next;
 }
 
 export function useNavigation(): NavigationState {
