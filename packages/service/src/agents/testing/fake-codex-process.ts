@@ -10,6 +10,7 @@ type FakeProcessOptions = {
   withoutCommandTiming?: boolean;
   withoutCommandStart?: boolean;
   planDecision?: "approve" | "adjust";
+  serviceTierReported?: string | null;
 };
 
 export type FakeCodexSpawn = ((
@@ -51,6 +52,7 @@ class FakeCodexProcess extends EventEmitter {
   #cursor = 0;
   #pending = "";
   #turnStarts = 0;
+  #requestedServiceTier: string | undefined;
 
   constructor(fixturePath: string, options: FakeProcessOptions & { recorded: JsonRecord[] }) {
     super();
@@ -91,6 +93,12 @@ class FakeCodexProcess extends EventEmitter {
       return;
     }
     this.#options.recorded.push(value);
+    if (
+      value.method === "thread/start" &&
+      isRecord(value.params) &&
+      typeof value.params.serviceTier === "string"
+    )
+      this.#requestedServiceTier = value.params.serviceTier;
     const expectedRecord = this.#nextExpectedHostRecord(value);
     if (!expectedRecord) return;
     const expected = parseFixture(expectedRecord.line);
@@ -198,6 +206,26 @@ class FakeCodexProcess extends EventEmitter {
       if (record.direction === "stderr") this.stderr.write(`${record.line}\n`);
       else if (record.direction === "in" && record.stream === "stdout") {
         const message = parseFixture(record.line);
+        if (message.method === "thread/settings/updated" && isRecord(message.params)) {
+          const settings = isRecord(message.params.threadSettings)
+            ? message.params.threadSettings
+            : undefined;
+          if (settings && Object.hasOwn(this.#options, "serviceTierReported"))
+            settings.serviceTier = this.#options.serviceTierReported;
+          else if (settings && this.#requestedServiceTier)
+            settings.serviceTier = this.#requestedServiceTier;
+        }
+        if (
+          message.method === undefined &&
+          message.id === hostRequestId &&
+          isRecord(message.result) &&
+          Object.hasOwn(message.result, "serviceTier")
+        ) {
+          if (Object.hasOwn(this.#options, "serviceTierReported"))
+            message.result.serviceTier = this.#options.serviceTierReported;
+          else if (this.#requestedServiceTier)
+            message.result.serviceTier = this.#requestedServiceTier;
+        }
         if (
           this.#options.withoutCommandStart &&
           message.method === "item/started" &&

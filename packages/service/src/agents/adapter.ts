@@ -3,6 +3,11 @@ import type { Conversation, ConversationAttachment, MessagePart } from "@karont/
 export type AdapterEvent =
   | { kind: "part"; part: MessagePart }
   | { kind: "turn-id"; turnId: string }
+  | {
+      kind: "fast-effective";
+      fastEffective: "on" | "off";
+      fastUnavailableReason?: string;
+    }
   | { kind: "text-delta"; partType: "text" | "thinking"; partId: string; delta: string }
   | { kind: "state"; state: "working" | "waiting" }
   | {
@@ -51,6 +56,7 @@ export interface AgentAdapter {
     branchPoint: CodexBranchPoint,
   ): Promise<string>;
   send(text: string, plan?: boolean, attachments?: ConversationAttachment[]): Promise<void>;
+  setFastEnabled?(enabled: boolean): void;
   respond(partId: string, response: AdapterResponse): Promise<void>;
   interrupt(): Promise<void>;
   dispose(): Promise<void>;

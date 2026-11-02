@@ -14,6 +14,8 @@ export const conversationSchema = z.strictObject({
   effort: reasoningEffortSchema.optional(),
   plan: z.boolean().optional(),
   fast: z.boolean().default(false),
+  fastEffective: z.enum(["on", "off"]).optional(),
+  fastUnavailableReason: z.string().min(1).optional(),
   branchedFromId: z.string().min(1).optional(),
   branchedFromMessageId: z.string().min(1).optional(),
   branchContext: z.boolean().optional(),

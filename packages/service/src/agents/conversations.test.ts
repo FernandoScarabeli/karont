@@ -13,6 +13,7 @@ import {
   createConversation as createConversationRecord,
   getAgentSession,
   getMessage,
+  getSetting,
   openDatabase,
   setAgentSession,
   setSetting,
@@ -1155,6 +1156,44 @@ test("Claude anuncia e configura modo rápido só para Opus", async (t) => {
       await harness.close();
     }
   });
+});
+
+test("Claude desliga a preferência e informa quando Fast é recusado pela conta", async () => {
+  const harness = await createHarness("fast-indisponivel");
+  try {
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Fast indisponível",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      model: "opus",
+      fast: true,
+    });
+    setSetting(harness.db, "composer.claude.fast", true);
+    await harness.manager.send(conversation.id, "Responda ao pedido.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const current = harness.manager.get(conversation.id)?.conversation;
+    assert.equal(current?.fast, false);
+    assert.equal(current?.fastEffective, "off");
+    assert.equal(current?.fastUnavailableReason, "extra_usage_disabled");
+    assert.equal(getSetting(harness.db, "composer.claude.fast"), false);
+    assert.ok(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          event.payload.conversation.id === conversation.id &&
+          event.payload.conversation.fast === false &&
+          event.payload.conversation.fastUnavailableReason === "extra_usage_disabled",
+      ),
+    );
+    const settingsIndex = harness.spawnArgs[0]?.indexOf("--settings") ?? -1;
+    assert.deepEqual(JSON.parse(harness.spawnArgs[0]?.[settingsIndex + 1] ?? "{}"), {
+      fastMode: true,
+    });
+  } finally {
+    await harness.close();
+  }
 });
 
 test("Claude recebe anexos em blocos e a mensagem salva apenas metadados", async () => {

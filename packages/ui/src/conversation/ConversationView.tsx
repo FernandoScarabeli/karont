@@ -44,6 +44,7 @@ import { MessageRow, type ResponseInput, TodosPart } from "./ConversationParts.t
 import styles from "./ConversationView.module.css";
 import { cacheAgentModels, getCachedAgentModels } from "./conversationCache.ts";
 import { formatFolderPath } from "./displayText.ts";
+import { fastUnavailableMessage } from "./fastModeStatus.ts";
 import { FollowBottomContext } from "./followBottom.ts";
 import { FollowScroller } from "./followScroll.ts";
 import { type FollowEvent, type FollowState, nextFollowState } from "./followState.ts";
@@ -836,9 +837,15 @@ export function ConversationView({
     ),
     [composerAttachments.attachments, composerAttachments.remove, isSending],
   );
-  const composerBelow = useMemo(
-    () =>
-      conversation ? (
+  const composerBelow = useMemo(() => {
+    const fastUnavailable = fastUnavailableMessage(visibleConversation?.fastUnavailableReason);
+    return conversation ? (
+      <div className={styles.composerBelow}>
+        {fastUnavailable ? (
+          <p aria-live="polite" className={styles.fastUnavailable} role="status">
+            {fastUnavailable}
+          </p>
+        ) : null}
         <div className={styles.folderStrip}>
           <button
             aria-label={t.chat.folderCopy(conversation.cwd)}
@@ -865,11 +872,19 @@ export function ConversationView({
             ) : null}
           </span>
         </div>
-      ) : (
-        <ConversationLoadingStrip />
-      ),
-    [conversation, copyFolderPath, folderPath, gitInfo, gitInfoLoading, revealLoadedData],
-  );
+      </div>
+    ) : (
+      <ConversationLoadingStrip />
+    );
+  }, [
+    conversation,
+    copyFolderPath,
+    folderPath,
+    gitInfo,
+    gitInfoLoading,
+    revealLoadedData,
+    visibleConversation?.fastUnavailableReason,
+  ]);
   const composerStop = useCallback(() => void stopAgent(), [stopAgent]);
   const composerSubmit = useCallback(
     () =>

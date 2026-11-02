@@ -42,6 +42,7 @@ async function createHarness(
     withoutCommandTiming?: boolean;
     withoutCommandStart?: boolean;
     planDecision?: "approve" | "adjust";
+    serviceTierReported?: string | null;
     codexModelCache?: AdapterModelList;
   } = {},
 ): Promise<Harness> {
@@ -83,6 +84,9 @@ async function createHarness(
             withoutCommandTiming: options.withoutCommandTiming,
             withoutCommandStart: options.withoutCommandStart,
             planDecision: options.planDecision,
+            ...(Object.hasOwn(options, "serviceTierReported")
+              ? { serviceTierReported: options.serviceTierReported }
+              : {}),
           });
           fakes.push(fake);
           return fake(command, args, spawnOptions);
@@ -652,6 +656,42 @@ test("Codex só recebe a faixa rápida quando o modelo a anuncia", async (t) => 
       const turnStart = requests.find((request) => request.method === "turn/start");
       assert.equal(requestParams(turnStart).serviceTier, undefined);
       assert.equal(requestParams(turnStart).serviceTierForTurn, "default");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("app-server confirma tier padrão e o serviço desliga o modo rápido", async () => {
+    const harness = await createHarness("texto", {
+      codexModelCache: modelCache(true),
+      serviceTierReported: "default",
+    });
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.setOptions(conversation.id, { model: "gpt-6.1-sol" });
+      await harness.manager.setOptions(conversation.id, { fast: true });
+      setSetting(harness.db, "composer.codex.fast", true);
+      await harness.manager.send(conversation.id, fixturePrompt("texto"));
+      await waitForState(harness, conversation.id, "idle");
+
+      const current = harness.manager.get(conversation.id)?.conversation;
+      assert.equal(current?.fast, false);
+      assert.equal(current?.fastEffective, "off");
+      assert.equal(current?.fastUnavailableReason, "service_tier_not_applied");
+      assert.equal(getSetting(harness.db, "composer.codex.fast"), false);
+      const turnStart = harness.fakes[0]?.messages[0]?.find(
+        (request) => request.method === "turn/start",
+      );
+      assert.equal(requestParams(turnStart).serviceTier, undefined);
+      assert.equal(requestParams(turnStart).serviceTierForTurn, "default");
+      assert.ok(
+        harness.events.some(
+          (event) =>
+            event.event === "conversation.stateChanged" &&
+            event.payload.conversation.id === conversation.id &&
+            event.payload.conversation.fastEffective === "off",
+        ),
+      );
     } finally {
       await harness.close();
     }

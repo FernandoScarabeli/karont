@@ -182,6 +182,9 @@ export const t = {
     effort: "Esforço",
     fastMode: "Modo rápido",
     fastModeEnabled: "Modo rápido ligado",
+    fastUnavailableExtraUsage:
+      "Modo rápido indisponível: sua conta do Claude não tem uso extra ativado.",
+    fastUnavailableGeneric: "Modo rápido indisponível neste momento.",
     effortAccessibleName: (value: string) => `Esforço: ${value}`,
     effortChangeDescription: "Clique para mudar o nível",
     efforts: {

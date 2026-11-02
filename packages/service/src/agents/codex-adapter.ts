@@ -87,6 +87,7 @@ export class CodexAdapter implements AgentAdapter {
   #modelId = "";
   #fastServiceTier: string | undefined;
   #fast = false;
+  #threadStarting = false;
   #effort: Effort = "low";
   #turnOpen = false;
   #stopRequested = false;
@@ -127,13 +128,20 @@ export class CodexAdapter implements AgentAdapter {
       await this.#request("thread/resume", { threadId: sessionId, cwd: conversation.cwd });
     } else {
       const { sandbox, approvalPolicy } = permissionSettings(conversation.mode);
-      const result = await this.#request("thread/start", {
-        cwd: conversation.cwd,
-        model: this.#modelId,
-        sandbox,
-        approvalPolicy,
-        ...(this.#fast && this.#fastServiceTier ? { serviceTier: this.#fastServiceTier } : {}),
-      });
+      this.#threadStarting = true;
+      let result: unknown;
+      try {
+        result = await this.#request("thread/start", {
+          cwd: conversation.cwd,
+          model: this.#modelId,
+          sandbox,
+          approvalPolicy,
+          ...(this.#fast && this.#fastServiceTier ? { serviceTier: this.#fastServiceTier } : {}),
+        });
+      } finally {
+        this.#threadStarting = false;
+      }
+      this.#reportFastTierConfirmation(result);
       const thread = isRecord(result) && isRecord(result.thread) ? result.thread : undefined;
       if (!thread || typeof thread.id !== "string")
         throw new AgentCliError("failed", "O Codex não devolveu o identificador da conversa.");
@@ -244,6 +252,11 @@ export class CodexAdapter implements AgentAdapter {
     }
     this.#approvedPlanPartId = undefined;
     await this.#startTurn(text, (plan ?? usesPlanMode(text)) ? "plan" : undefined, attachments);
+  }
+
+  setFastEnabled(enabled: boolean): void {
+    if (this.#conversation) this.#conversation.fast = enabled;
+    if (!enabled) this.#fast = false;
   }
 
   async respond(partId: string, response: AdapterResponse): Promise<void> {
@@ -431,6 +444,7 @@ export class CodexAdapter implements AgentAdapter {
     let result: unknown;
     try {
       result = await this.#request("turn/start", params);
+      this.#reportFastTierConfirmation(result);
     } catch (error) {
       this.#turnOpen = false;
       this.#turnCompleteResolve?.();
@@ -443,6 +457,17 @@ export class CodexAdapter implements AgentAdapter {
       this.#turnId = result.turn.id;
       this.#emit({ kind: "turn-id", turnId: this.#turnId });
     }
+  }
+
+  #reportFastTierConfirmation(value: unknown): void {
+    if (!this.#fast || !this.#fastServiceTier || !isRecord(value) || !("serviceTier" in value))
+      return;
+    const effective = value.serviceTier === this.#fastServiceTier ? "on" : "off";
+    this.#emit({
+      kind: "fast-effective",
+      fastEffective: effective,
+      ...(effective === "off" ? { fastUnavailableReason: "service_tier_not_applied" } : {}),
+    });
   }
 
   async #request(method: string, params: JsonRecord): Promise<unknown> {
@@ -592,6 +617,13 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   #handleNotification(method: string, params: JsonRecord): void {
+    if (method === "thread/settings/updated") {
+      const threadId = stringValue(params.threadId);
+      const matchesThread = this.#threadStarting || !threadId || threadId === this.#threadId;
+      const settings = isRecord(params.threadSettings) ? params.threadSettings : undefined;
+      if (matchesThread && settings) this.#reportFastTierConfirmation(settings);
+      return;
+    }
     if (method === "turn/started") {
       if (this.#subagentParentByThread.has(stringValue(params.threadId))) return;
       if (isRecord(params.turn) && typeof params.turn.id === "string") {

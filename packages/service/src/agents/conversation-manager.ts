@@ -70,6 +70,8 @@ type ActiveConversation = {
   deltaTimes: Map<string, { startedAt: number; endedAt: number }>;
   eventQueue: Promise<void>;
 };
+
+type FastEffectiveState = Pick<Conversation, "fastEffective" | "fastUnavailableReason">;
 export type ConversationManagerOptions = {
   db: DatabaseSync;
   broadcast: (event: AnyEvent) => Promise<void>;
@@ -94,6 +96,7 @@ export class ConversationManager {
   readonly #now: () => string;
   readonly #titleGenerator: NonNullable<ConversationManagerOptions["titleGenerator"]>;
   readonly #active = new Map<string, ActiveConversation>();
+  readonly #fastEffectiveByConversation = new Map<string, FastEffectiveState>();
   readonly #pendingParts = new Map<string, { conversationId: string; messageId: string }>();
   readonly #titleRequests = new Map<string, { userMessage: string; attempted: boolean }>();
   #codexModelList: AdapterModelList = {
@@ -162,7 +165,9 @@ export class ConversationManager {
     archived?: boolean;
     limit: number;
   }): Conversation[] {
-    return listConversations(this.#db, filters);
+    return listConversations(this.#db, filters).map((conversation) =>
+      this.#withFastEffectiveState(conversation),
+    );
   }
 
   async setPinned(id: string, pinned: boolean): Promise<Conversation> {
@@ -189,7 +194,12 @@ export class ConversationManager {
 
   get(id: string): { conversation: Conversation; messages: ConversationMessage[] } | null {
     const conversation = getConversation(this.#db, id);
-    return conversation ? { conversation, messages: listMessages(this.#db, id) } : null;
+    return conversation
+      ? {
+          conversation: this.#withFastEffectiveState(conversation),
+          messages: listMessages(this.#db, id),
+        }
+      : null;
   }
 
   async branch(id: string, messageId: string): Promise<Conversation> {
@@ -453,6 +463,8 @@ export class ConversationManager {
       else if (options.effort !== undefined) conversation.effort = options.effort;
     }
     if (options.plan !== undefined) conversation.plan = options.plan;
+    if (options.fast !== undefined) this.#fastEffectiveByConversation.delete(id);
+    if (!conversation.fast && "model" in options) this.#fastEffectiveByConversation.delete(id);
     conversation.updatedAt = this.#now();
     updateConversation(this.#db, conversation);
     await this.#stateEvent(conversation);
@@ -467,6 +479,7 @@ export class ConversationManager {
       await active.adapter.dispose();
       this.#active.delete(id);
     }
+    this.#fastEffectiveByConversation.delete(id);
     return deleteConversation(this.#db, id);
   }
 
@@ -501,7 +514,10 @@ export class ConversationManager {
 
       const deleted = deleteAllConversations(this.#db);
       const deletedIds = new Set(conversations.map(({ id }) => id));
-      for (const id of deletedIds) this.#titleRequests.delete(id);
+      for (const id of deletedIds) {
+        this.#titleRequests.delete(id);
+        this.#fastEffectiveByConversation.delete(id);
+      }
       for (const [partId, pending] of this.#pendingParts) {
         if (deletedIds.has(pending.conversationId)) this.#pendingParts.delete(partId);
       }
@@ -718,6 +734,36 @@ export class ConversationManager {
     if (event.kind === "turn-id") {
       message.agentTurnId = event.turnId;
       setMessageAgentTurnId(this.#db, message.id, event.turnId);
+      return;
+    }
+    if (event.kind === "fast-effective") {
+      const conversation = this.#requireConversation(conversationId);
+      const previous = this.#fastEffectiveByConversation.get(conversationId);
+      const wasFast = conversation.fast;
+      const reason =
+        event.fastEffective === "off"
+          ? (previous?.fastUnavailableReason ??
+            (wasFast ? (event.fastUnavailableReason ?? "not_applied") : undefined))
+          : undefined;
+      if (event.fastEffective === "off" && wasFast && reason !== undefined) {
+        conversation.fast = false;
+        conversation.updatedAt = this.#now();
+        updateConversation(this.#db, conversation);
+        setSetting(this.#db, `composer.${conversation.agent}.fast`, false);
+        active.adapter.setFastEnabled?.(false);
+      }
+      const next: FastEffectiveState = {
+        fastEffective: event.fastEffective,
+        ...(reason ? { fastUnavailableReason: reason } : {}),
+      };
+      if (
+        previous?.fastEffective === next.fastEffective &&
+        previous?.fastUnavailableReason === next.fastUnavailableReason &&
+        !wasFast
+      )
+        return;
+      this.#fastEffectiveByConversation.set(conversationId, next);
+      await this.#stateEvent(conversation, message);
       return;
     }
     if (event.kind === "state") {
@@ -1014,7 +1060,12 @@ export class ConversationManager {
   #requireConversation(id: string): Conversation {
     const conversation = getConversation(this.#db, id);
     if (!conversation) throw new Error("Conversa não encontrada.");
-    return conversation;
+    return this.#withFastEffectiveState(conversation);
+  }
+
+  #withFastEffectiveState(conversation: Conversation): Conversation {
+    const fastState = this.#fastEffectiveByConversation.get(conversation.id);
+    return fastState ? { ...conversation, ...fastState } : conversation;
   }
 
   #assertNotDeletingAll(): void {
@@ -1037,17 +1088,18 @@ export class ConversationManager {
   }
 
   async #stateEvent(conversation: Conversation, message?: ConversationMessage): Promise<void> {
+    const current = this.#withFastEffectiveState(conversation);
     await this.#emit({
       event: "conversation.stateChanged",
       payload: message
         ? {
-            conversation,
+            conversation: current,
             messageId: message.id,
             messageStatus: message.status,
             ...(message.startedAt !== undefined ? { messageStartedAt: message.startedAt } : {}),
             ...(message.endedAt !== undefined ? { messageEndedAt: message.endedAt } : {}),
           }
-        : { conversation },
+        : { conversation: current },
     });
   }
 
