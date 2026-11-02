@@ -8,6 +8,13 @@ import {
   useMemo,
   useRef,
 } from "react";
+import {
+  type FluidHoverMeasureKind,
+  measureMotion,
+  mergeMeasureKind,
+  pointerMotion,
+  rectsEqual,
+} from "./fluidHoverState.ts";
 
 export type FluidHoverAxis = "x" | "y" | "xy";
 export type FluidHoverItemKey = string | number;
@@ -42,6 +49,9 @@ type ItemRect = {
 type RegisteredItem = {
   element: HTMLElement;
   rect?: ItemRect;
+  // Set when React detaches the ref; cleared if the same element is attached again
+  // in the same commit (inline ref callbacks are called with null, then the element).
+  detached?: boolean;
 };
 
 type FluidHoverState = {
@@ -55,6 +65,7 @@ type FluidHoverState = {
   latestPointer: { x: number; y: number; target: EventTarget | null } | null;
   pointerFrame: number | null;
   measureFrame: number | null;
+  measureKind: FluidHoverMeasureKind | null;
   snapFrame: number | null;
   focusFrame: number | null;
   resizeObserver: ResizeObserver | null;
@@ -90,6 +101,7 @@ export function useFluidHover<T extends HTMLElement>(
     latestPointer: null,
     pointerFrame: null,
     measureFrame: null,
+    measureKind: null,
     snapFrame: null,
     focusFrame: null,
     resizeObserver: null,
@@ -120,7 +132,6 @@ export function useFluidHover<T extends HTMLElement>(
         if (state.activeKey === key) hideHighlight();
         return;
       }
-      if (state.activeKey === key && mode === "spring") return;
       const rect = item.rect;
       state.activeKey = key;
       if (!rect || !state.highlight) return;
@@ -156,47 +167,69 @@ export function useFluidHover<T extends HTMLElement>(
     [hideHighlight],
   );
 
-  const runMeasurement = useCallback(() => {
-    const state = stateRef.current;
-    const container = state.container;
-    if (!container) return;
+  const runMeasurement = useCallback(
+    (kind: FluidHoverMeasureKind) => {
+      const state = stateRef.current;
+      const container = state.container;
+      if (!container) return;
 
-    const containerRect = container.getBoundingClientRect();
-    const scaleX = container.offsetWidth > 0 ? containerRect.width / container.offsetWidth : 1;
-    const scaleY = container.offsetHeight > 0 ? containerRect.height / container.offsetHeight : 1;
-    for (const item of state.items.values()) {
-      const rect = item.element.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) {
-        item.rect = undefined;
-        continue;
+      const containerRect = container.getBoundingClientRect();
+      const scaleX = container.offsetWidth > 0 ? containerRect.width / container.offsetWidth : 1;
+      const scaleY = container.offsetHeight > 0 ? containerRect.height / container.offsetHeight : 1;
+      const activeKey = state.activeKey;
+      let activeChanged = false;
+      for (const [key, item] of state.items) {
+        const previous = item.rect;
+        const rect = item.element.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) {
+          item.rect = undefined;
+        } else {
+          item.rect = {
+            left:
+              (rect.left - containerRect.left) / scaleX -
+              container.clientLeft +
+              container.scrollLeft,
+            top:
+              (rect.top - containerRect.top) / scaleY - container.clientTop + container.scrollTop,
+            width: rect.width / scaleX,
+            height: rect.height / scaleY,
+            screenLeft: rect.left,
+            screenTop: rect.top,
+            screenWidth: rect.width,
+            screenHeight: rect.height,
+            radius: getComputedStyle(item.element).borderRadius,
+          };
+        }
+        if (key === activeKey && !rectsEqual(previous, item.rect)) activeChanged = true;
       }
-      item.rect = {
-        left:
-          (rect.left - containerRect.left) / scaleX - container.clientLeft + container.scrollLeft,
-        top: (rect.top - containerRect.top) / scaleY - container.clientTop + container.scrollTop,
-        width: rect.width / scaleX,
-        height: rect.height / scaleY,
-        screenLeft: rect.left,
-        screenTop: rect.top,
-        screenWidth: rect.width,
-        screenHeight: rect.height,
-        radius: getComputedStyle(item.element).borderRadius,
-      };
-    }
 
-    if (state.activeKey !== null) showHighlight(state.activeKey, "snap");
-    const pointer = state.latestPointer;
-    if (state.pointerInside && pointer) schedulePointerUpdateRef.current();
-  }, [showHighlight]);
+      // Only a real geometry change of the active item moves the highlight. A reflow snaps;
+      // a size change caused by hover (item observed alone) glides, so it never cuts a glide.
+      if (activeKey !== null) {
+        const motion = measureMotion(kind, activeChanged);
+        if (motion !== "none") showHighlight(activeKey, motion);
+      }
+      const pointer = state.latestPointer;
+      if (state.pointerInside && pointer) schedulePointerUpdateRef.current();
+    },
+    [showHighlight],
+  );
 
-  const scheduleMeasurement = useCallback(() => {
-    const state = stateRef.current;
-    if (!state.container || state.measureFrame !== null) return;
-    state.measureFrame = requestAnimationFrame(() => {
-      state.measureFrame = null;
-      runMeasurement();
-    });
-  }, [runMeasurement]);
+  const scheduleMeasurement = useCallback(
+    (kind: FluidHoverMeasureKind = "reflow") => {
+      const state = stateRef.current;
+      if (!state.container) return;
+      state.measureKind = mergeMeasureKind(state.measureKind, kind);
+      if (state.measureFrame !== null) return;
+      state.measureFrame = requestAnimationFrame(() => {
+        const pendingKind = state.measureKind ?? "reflow";
+        state.measureFrame = null;
+        state.measureKind = null;
+        runMeasurement(pendingKind);
+      });
+    },
+    [runMeasurement],
+  );
 
   const getItemForTarget = useCallback((target: EventTarget | null) => {
     if (!(target instanceof Node)) return null;
@@ -248,37 +281,49 @@ export function useFluidHover<T extends HTMLElement>(
         state.sessionPending = true;
         return;
       }
-      const mode = state.sessionPending || state.activeKey === null ? "fresh" : "spring";
+      const mode = pointerMotion(state);
       state.sessionPending = false;
+      if (mode === "spring" && nextKey === state.activeKey) return;
       showHighlight(nextKey, mode);
     });
   }, [getItemForTarget, getNearestItem, showHighlight]);
   schedulePointerUpdateRef.current = schedulePointerUpdate;
 
   const remeasure = useCallback(() => {
-    scheduleMeasurement();
+    scheduleMeasurement("reflow");
   }, [scheduleMeasurement]);
 
   const registerItem = useCallback(
     (key: FluidHoverItemKey, element: HTMLElement | null) => {
       const state = stateRef.current;
-      const previous = state.items.get(key)?.element;
-      if (previous === element) return;
-      if (previous) {
-        state.resizeObserver?.unobserve(previous);
-      }
+      const entry = state.items.get(key);
       if (element) {
+        // Inline ref callbacks re-run on every render: same node means nothing changed.
+        if (entry?.element === element) {
+          entry.detached = false;
+          return;
+        }
+        if (entry) state.resizeObserver?.unobserve(entry.element);
         state.items.set(key, { element });
         state.resizeObserver?.observe(element);
-        if (state.activeKey === key) showHighlight(key, "snap");
-      } else {
-        state.items.delete(key);
-        if (state.activeKey === key) hideHighlight();
-        if (state.focusedKey === key) state.focusedKey = null;
+        scheduleMeasurement("reflow");
+        return;
       }
-      scheduleMeasurement();
+      if (!entry) return;
+      // Do not drop the item (and the active session) synchronously: React re-attaches the
+      // same element right after this null call in the same commit. Check after the commit.
+      entry.detached = true;
+      queueMicrotask(() => {
+        const current = stateRef.current;
+        if (current.items.get(key) !== entry || !entry.detached) return;
+        current.resizeObserver?.unobserve(entry.element);
+        current.items.delete(key);
+        if (current.activeKey === key) hideHighlight();
+        if (current.focusedKey === key) current.focusedKey = null;
+        scheduleMeasurement("reflow");
+      });
     },
-    [hideHighlight, scheduleMeasurement, showHighlight],
+    [hideHighlight, scheduleMeasurement],
   );
 
   const handleFocusIn = useCallback(
@@ -403,7 +448,12 @@ export function useFluidHover<T extends HTMLElement>(
         return;
       }
 
-      const onScroll = () => scheduleMeasurement();
+      const onScroll = () => scheduleMeasurement("reflow");
+      // One observer for the container (reflow) and the items (their own size change only).
+      const onResize = (entries: ResizeObserverEntry[]) => {
+        const containerResized = entries.some((entry) => entry.target === element);
+        scheduleMeasurement(containerResized ? "reflow" : "item");
+      };
       element.addEventListener("pointerenter", handlePointerEnter);
       element.addEventListener("pointermove", handlePointerMove);
       element.addEventListener("pointerleave", handlePointerLeave);
@@ -415,7 +465,7 @@ export function useFluidHover<T extends HTMLElement>(
       window.addEventListener("scroll", onScroll, true);
 
       if (typeof ResizeObserver !== "undefined") {
-        state.resizeObserver = new ResizeObserver(onScroll);
+        state.resizeObserver = new ResizeObserver(onResize);
         state.resizeObserver.observe(element);
         for (const item of state.items.values()) state.resizeObserver.observe(item.element);
       }

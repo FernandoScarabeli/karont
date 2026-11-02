@@ -12,6 +12,8 @@
   transform: translate3d(var(--fluid-hover-x, 0px), var(--fluid-hover-y, 0px), 0);
   transition:
     transform var(--k-duration-spring) var(--k-ease-spring),
+    width var(--k-duration-spring) var(--k-ease-spring),
+    height var(--k-duration-spring) var(--k-ease-spring),
     opacity var(--k-duration-fast) var(--k-ease);
 }
 
