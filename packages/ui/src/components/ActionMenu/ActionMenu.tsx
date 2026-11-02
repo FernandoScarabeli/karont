@@ -1,10 +1,12 @@
 import {
   type KeyboardEvent,
+  memo,
   type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -24,7 +26,7 @@ export type ActionMenuItem =
       disabled?: boolean;
     };
 
-export function ActionMenu({
+export const ActionMenu = memo(function ActionMenu({
   label,
   triggerLabel,
   triggerIcon,
@@ -42,25 +44,37 @@ export function ActionMenu({
   anchorPoint?: { x: number; y: number };
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  items: ActionMenuItem[];
+  items: ActionMenuItem[] | (() => ActionMenuItem[]);
   triggerRef?: RefObject<HTMLButtonElement | null>;
 }) {
   const localTriggerRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [itemsAtOpen, setItemsAtOpen] = useState<ActionMenuItem[] | null>(null);
   const menuId = useId();
   const buttonRef = triggerRef ?? localTriggerRef;
+  const menuItems = useMemo(() => {
+    if (!open) return [];
+    if (itemsAtOpen) return itemsAtOpen;
+    return typeof items === "function" ? items() : items;
+  }, [items, itemsAtOpen, open]);
   const setItemElement = useCallback((index: number, element: HTMLButtonElement | null) => {
     itemRefs.current[index] = element;
   }, []);
 
-  useEffect(() => {
-    if (open) itemRefs.current[activeIndex]?.focus();
-  }, [activeIndex, open]);
+  const enabledIndices = useCallback(
+    (source: ActionMenuItem[] = menuItems) =>
+      source.flatMap((item, index) => ("separator" in item || item.disabled ? [] : [index])),
+    [menuItems],
+  );
 
-  function enabledIndices() {
-    return items.flatMap((item, index) => ("separator" in item || item.disabled ? [] : [index]));
-  }
+  useEffect(() => {
+    if (!open) return;
+    const enabled = enabledIndices();
+    const focusIndex = enabled.includes(activeIndex) ? activeIndex : (enabled[0] ?? 0);
+    if (focusIndex !== activeIndex) setActiveIndex(focusIndex);
+    itemRefs.current[focusIndex]?.focus();
+  }, [activeIndex, enabledIndices, open]);
 
   function focusRelative(direction: 1 | -1) {
     const enabled = enabledIndices();
@@ -70,22 +84,32 @@ export function ActionMenu({
     setActiveIndex(enabled[next] ?? enabled[0] ?? 0);
   }
 
-  function openMenu() {
-    const first = enabledIndices()[0] ?? 0;
+  const openMenu = useCallback(() => {
+    const nextItems = typeof items === "function" ? items() : items;
+    setItemsAtOpen(nextItems);
+    const first = enabledIndices(nextItems)[0] ?? 0;
     setActiveIndex(first);
     onOpenChange(true);
-  }
+  }, [enabledIndices, items, onOpenChange]);
 
-  function closeMenu(restoreFocus: boolean) {
-    onOpenChange(false);
-    if (restoreFocus) {
-      requestAnimationFrame(() => {
-        if (buttonRef.current?.isConnected && !document.querySelector("dialog[open]")) {
-          buttonRef.current.focus();
-        }
-      });
-    }
-  }
+  const closeMenu = useCallback(
+    (restoreFocus: boolean) => {
+      onOpenChange(false);
+      setItemsAtOpen(null);
+      if (restoreFocus) {
+        requestAnimationFrame(() => {
+          if (buttonRef.current?.isConnected && !document.querySelector("dialog[open]")) {
+            buttonRef.current.focus();
+          }
+        });
+      }
+    },
+    [buttonRef, onOpenChange],
+  );
+  const toggleMenu = useCallback(
+    () => (open ? closeMenu(false) : openMenu()),
+    [closeMenu, open, openMenu],
+  );
 
   function onMenuKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "ArrowDown") {
@@ -114,48 +138,50 @@ export function ActionMenu({
         data-composer-menu-trigger
         icon={triggerIcon}
         label={triggerLabel}
-        onClick={() => (open ? closeMenu(false) : openMenu())}
+        onClick={toggleMenu}
         ref={buttonRef}
         size="sm"
       />
-      <ComposerPopover
-        anchorPoint={anchorPoint}
-        anchorRef={buttonRef}
-        fluidHoverGapClick={{ maxDistance: 6 }}
-        fluidHoverNearest
-        id={menuId}
-        initialFocus={() => itemRefs.current[activeIndex] ?? null}
-        label={label}
-        onClose={() => closeMenu(false)}
-        open={open}
-        role="menu"
-      >
-        <div className={styles.items}>
-          {items.map((item, index) =>
-            "separator" in item ? (
-              <hr className={styles.separator} key={item.id} />
-            ) : (
-              <ActionMenuButton
-                activeIndex={activeIndex}
-                index={index}
-                item={item}
-                key={item.id}
-                onFocus={() => setActiveIndex(index)}
-                onKeyDown={onMenuKeyDown}
-                onSelect={() => {
-                  if (item.disabled) return;
-                  item.onSelect();
-                  closeMenu(true);
-                }}
-                setItemElement={setItemElement}
-              />
-            ),
-          )}
-        </div>
-      </ComposerPopover>
+      {open ? (
+        <ComposerPopover
+          anchorPoint={anchorPoint}
+          anchorRef={buttonRef}
+          fluidHoverGapClick={{ maxDistance: 6 }}
+          fluidHoverNearest
+          id={menuId}
+          initialFocus={() => itemRefs.current[activeIndex] ?? null}
+          label={label}
+          onClose={() => closeMenu(false)}
+          open
+          role="menu"
+        >
+          <div className={styles.items}>
+            {menuItems.map((item, index) =>
+              "separator" in item ? (
+                <hr className={styles.separator} key={item.id} />
+              ) : (
+                <ActionMenuButton
+                  activeIndex={activeIndex}
+                  index={index}
+                  item={item}
+                  key={item.id}
+                  onFocus={() => setActiveIndex(index)}
+                  onKeyDown={onMenuKeyDown}
+                  onSelect={() => {
+                    if (item.disabled) return;
+                    item.onSelect();
+                    closeMenu(true);
+                  }}
+                  setItemElement={setItemElement}
+                />
+              ),
+            )}
+          </div>
+        </ComposerPopover>
+      ) : null}
     </>
   );
-}
+});
 
 function ActionMenuButton({
   item,

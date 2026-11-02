@@ -81,7 +81,13 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
     methods["conversation.get"].result.safeParse({
       conversation: { ...conversation, plan: true },
       messages: [],
+      hasOlderMessages: false,
     }).success,
+    true,
+  );
+  assert.equal(methods["conversation.get"].params.safeParse({ id: "c1", limit: 40 }).success, true);
+  assert.equal(
+    methods["conversation.get"].params.safeParse({ id: "c1", limit: 40, before: "m1" }).success,
     true,
   );
   const parsedConversation = conversationSchema.safeParse(conversation);
@@ -206,7 +212,11 @@ test("contratos guardam partes interativas ordenadas e estados explícitos", () 
     updatedAt: "2026-10-31T10:00:01Z",
   };
   assert.equal(
-    methods["conversation.get"].result.safeParse({ conversation, messages: [message] }).success,
+    methods["conversation.get"].result.safeParse({
+      conversation,
+      messages: [message],
+      hasOlderMessages: true,
+    }).success,
     true,
   );
   assert.equal(

@@ -38,6 +38,9 @@ export const ConversationHistory = memo(function ConversationHistory({
   const optionRefCallbacks = useRef(new Map<string, (element: HTMLDivElement | null) => void>());
   const popoverId = useId();
   const [activeIndex, setActiveIndex] = useState(0);
+  const activeIndexRef = useRef(activeIndex);
+  activeIndexRef.current = activeIndex;
+  const previousEntriesRef = useRef(entries);
   const [hasItemsAbove, setHasItemsAbove] = useState(false);
   const activeMessageId = entries[activeIndex]?.message.id;
 
@@ -61,6 +64,16 @@ export const ConversationHistory = memo(function ConversationHistory({
     option.scrollIntoView({ block: "nearest" });
     setHasItemsAbove(list.scrollTop > 0);
   }, [activeMessageId]);
+
+  useLayoutEffect(() => {
+    const previousEntries = previousEntriesRef.current;
+    previousEntriesRef.current = entries;
+    if (!open) return;
+    const activeMessageId = previousEntries[activeIndexRef.current]?.message.id;
+    if (!activeMessageId) return;
+    const nextIndex = entries.findIndex(({ message }) => message.id === activeMessageId);
+    if (nextIndex >= 0 && nextIndex !== activeIndexRef.current) setActiveIndex(nextIndex);
+  }, [entries, open]);
 
   useLayoutEffect(() => {
     if (!open) return;

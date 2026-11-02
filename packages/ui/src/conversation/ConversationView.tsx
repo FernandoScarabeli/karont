@@ -92,12 +92,15 @@ export function ConversationView({
   const {
     conversation,
     messages,
+    hasOlderMessages,
     loading,
     error,
     liveText,
     responseFinishedId,
     addMessage,
     updateConversation,
+    fetchOlderMessages,
+    fetchAllOlderMessages,
   } = useConversation(id);
   const markSeenInFlight = useRef(false);
   const [draft, setDraft] = useState("");
@@ -109,6 +112,8 @@ export function ConversationView({
   const [pendingHistoryMessageId, setPendingHistoryMessageId] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_MESSAGE_WINDOW_SIZE);
+  const visibleMessageCountRef = useRef(visibleMessageCount);
+  visibleMessageCountRef.current = visibleMessageCount;
   const [isResponding, setIsResponding] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -248,7 +253,8 @@ export function ConversationView({
     () => orderedMessages.reduce((count, message) => count + Number(message.author === "user"), 0),
     [orderedMessages],
   );
-  const hasOlderMessages = visibleMessages.length < orderedMessages.length;
+  const hasLoadedOlderMessages = visibleMessages.length < orderedMessages.length;
+  const canLoadOlderMessages = hasLoadedOlderMessages || hasOlderMessages;
   const hasOlderMessagesRef = useRef(hasOlderMessages);
   hasOlderMessagesRef.current = hasOlderMessages;
   const historyOpen = activePopover === "history";
@@ -283,6 +289,14 @@ export function ConversationView({
   const setHistoryOpen = useCallback((open: boolean) => {
     setActivePopover(open ? "history" : null);
   }, []);
+
+  useEffect(() => {
+    if (!historyOpen || !hasOlderMessages) return;
+    void fetchAllOlderMessages().then((loadedCount) => {
+      if (loadedCount === null) setInteractionError(t.chat.loadFailed);
+    });
+  }, [fetchAllOlderMessages, hasOlderMessages, historyOpen]);
+
   const navigateToHistoryMessage = useCallback((messageId: string) => {
     const currentMessages = orderedMessagesRef.current;
     const messageIndex = currentMessages.findIndex((message) => message.id === messageId);
@@ -339,21 +353,48 @@ export function ConversationView({
     [],
   );
 
-  const loadOlderMessages = useCallback(() => {
+  const loadOlderMessages = useCallback(async () => {
     const list = messageListRef.current;
-    if (!list || !hasOlderMessagesRef.current || olderMessageLoadInFlight.current) return;
+    if (!list || olderMessageLoadInFlight.current) return;
     olderMessageLoadInFlight.current = true;
     previousScrollHeight.current = list.scrollHeight;
     restoreAfterOlder.current = true;
-    setVisibleMessageCount((count) =>
-      nextMessageWindowSize(count, orderedMessagesRef.current.length, MESSAGE_WINDOW_INCREMENT),
-    );
-  }, []);
+    if (visibleMessageCountRef.current < orderedMessagesRef.current.length) {
+      setVisibleMessageCount((count) =>
+        nextMessageWindowSize(count, orderedMessagesRef.current.length, MESSAGE_WINDOW_INCREMENT),
+      );
+      return;
+    }
+    const before = orderedMessagesRef.current[0]?.id;
+    if (!before || !hasOlderMessagesRef.current) {
+      olderMessageLoadInFlight.current = false;
+      restoreAfterOlder.current = false;
+      return;
+    }
+    const loadedCount = await fetchOlderMessages(before);
+    if (loadedCount === null) {
+      olderMessageLoadInFlight.current = false;
+      restoreAfterOlder.current = false;
+      setInteractionError(t.chat.loadFailed);
+      return;
+    }
+    if (loadedCount > 0) {
+      setVisibleMessageCount((count) => count + loadedCount);
+      return;
+    }
+    olderMessageLoadInFlight.current = false;
+    restoreAfterOlder.current = false;
+  }, [fetchOlderMessages]);
 
   useEffect(() => {
     const list = messageListRef.current;
     const sentinel = olderMessagesSentinelRef.current;
-    if (!list || !sentinel || !hasOlderMessages || typeof IntersectionObserver === "undefined") {
+    if (
+      !list ||
+      !sentinel ||
+      !canLoadOlderMessages ||
+      typeof IntersectionObserver === "undefined"
+    ) {
       return;
     }
     const observer = new IntersectionObserver(
@@ -362,11 +403,11 @@ export function ConversationView({
           loadOlderMessages();
         }
       },
-      { root: list, rootMargin: "240px 0px 0px 0px" },
+      { root: list, rootMargin: "320px 0px 0px 0px" },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasOlderMessages, loadOlderMessages]);
+  }, [canLoadOlderMessages, loadOlderMessages]);
   const isWorking = conversation?.state === "working";
   const isWaiting = conversation?.state === "waiting";
   const workingActive = isWorking || isStopping;
@@ -1122,6 +1163,7 @@ export function ConversationView({
             loading={loading}
             messageListRef={messageListRef}
             messages={visibleMessages}
+            canLoadOlderMessages={canLoadOlderMessages}
             olderMessagesSentinelRef={olderMessagesSentinelRef}
             bottomSentinelRef={bottomSentinelRef}
             onAnnounce={announce}

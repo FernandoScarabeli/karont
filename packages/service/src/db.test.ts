@@ -6,12 +6,14 @@ import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import {
   addCustomAgent,
+  addMessage,
   createConversation,
   getConversation,
   getSetting,
   listConversations,
   listCustomAgents,
   listMessages,
+  listMessagesPage,
   listRecentFolderRecords,
   migrations,
   openDatabase,
@@ -20,6 +22,49 @@ import {
   setConversationTitle,
   setSetting,
 } from "./db.ts";
+
+test("listMessagesPage retorna as mensagens recentes e caminha para trás sem pular empates", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-message-pages-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const conversation = createConversation(db, {
+    agent: "claude",
+    title: "Histórico paginado",
+    cwd: root,
+    mode: "edit",
+  });
+  const sameTimestamp = new Date(Date.UTC(2026, 0, 1)).toISOString();
+  const messages = ["m1", "m2", "m3", "m4", "m5"].map((id) => ({
+    id,
+    conversationId: conversation.id,
+    author: "user" as const,
+    status: "done" as const,
+    parts: [],
+    createdAt: sameTimestamp,
+    updatedAt: sameTimestamp,
+  }));
+  for (const message of messages) addMessage(db, message);
+
+  try {
+    const latest = listMessagesPage(db, conversation.id, { limit: 3 });
+    assert.deepEqual(
+      latest.messages.map((message) => message.id),
+      ["m3", "m4", "m5"],
+    );
+    assert.equal(latest.hasOlderMessages, true);
+
+    const older = listMessagesPage(db, conversation.id, {
+      limit: 3,
+      before: latest.messages[0]?.id,
+    });
+    assert.deepEqual(
+      older.messages.map((message) => message.id),
+      ["m1", "m2"],
+    );
+    assert.equal(older.hasOlderMessages, false);
+  } finally {
+    db.close();
+  }
+});
 
 test("migra settings e pastas recentes, persiste user_version e permite reabrir", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ks-"));

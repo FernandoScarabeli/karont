@@ -42,7 +42,7 @@ try {
     await build({
       root: uiRoot,
       configFile: path.join(uiRoot, "vite.config.ts"),
-      mode: "production",
+      mode: "preview",
     });
     ensureNotStopping();
   }

@@ -187,8 +187,16 @@ export const methods = {
     result: z.strictObject({ count: z.number().int().nonnegative() }),
   },
   "conversation.get": {
-    params: z.strictObject({ id: z.string().min(1) }),
-    result: z.strictObject({ conversation: conversationSchema, messages: z.array(messageSchema) }),
+    params: z.strictObject({
+      id: z.string().min(1),
+      limit: z.number().int().min(1).max(100).optional(),
+      before: z.string().min(1).optional(),
+    }),
+    result: z.strictObject({
+      conversation: conversationSchema,
+      messages: z.array(messageSchema),
+      hasOlderMessages: z.boolean(),
+    }),
   },
   "conversation.markSeen": {
     params: z.strictObject({ id: z.string().min(1) }),

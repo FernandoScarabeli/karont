@@ -31,11 +31,59 @@ function stateWithStreamingMessage() {
     messageIds: [message.id],
     messagesById: { [message.id]: message },
     loading: false,
+    hasOlderMessages: false,
     error: "",
     liveText: "",
     responseFinishedId: null,
   };
 }
+
+function historyMessage(id, timestamp) {
+  return {
+    id,
+    conversationId: "conversa-1",
+    author: "user",
+    status: "done",
+    parts: [],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+test("o reducer anexa páginas antigas antes da janela já aberta", () => {
+  const latest = [
+    historyMessage("mensagem-3", "2026-11-01T12:00:03.000Z"),
+    historyMessage("mensagem-4", "2026-11-01T12:00:04.000Z"),
+  ];
+  const older = [
+    historyMessage("mensagem-1", "2026-11-01T12:00:01.000Z"),
+    historyMessage("mensagem-2", "2026-11-01T12:00:02.000Z"),
+  ];
+  const initial = {
+    conversation: null,
+    messageIds: [],
+    messagesById: {},
+    loading: true,
+    hasOlderMessages: false,
+    error: "",
+    liveText: "",
+    responseFinishedId: null,
+  };
+  const loaded = reducer(initial, {
+    type: "loaded",
+    conversation,
+    messages: latest,
+    hasOlderMessages: true,
+  });
+  const paged = reducer(loaded, {
+    type: "olderLoaded",
+    messages: older,
+    hasOlderMessages: false,
+  });
+
+  assert.deepEqual(paged.messageIds, ["mensagem-1", "mensagem-2", "mensagem-3", "mensagem-4"]);
+  assert.equal(paged.hasOlderMessages, false);
+});
 
 test("a conclusão ao vivo mantém startedAt e endedAt da mensagem", () => {
   const next = reducer(stateWithStreamingMessage(), {

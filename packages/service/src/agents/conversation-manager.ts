@@ -32,6 +32,7 @@ import {
   listConversationStates,
   listConversations,
   listMessages,
+  listMessagesPage,
   markConversationSeen,
   type NewConversation,
   saveMessage,
@@ -227,16 +228,34 @@ export class ConversationManager {
     return conversation;
   }
 
-  get(id: string): { conversation: Conversation; messages: ConversationMessage[] } | null {
+  get(
+    id: string,
+    options: { limit?: number; before?: string } = {},
+  ): {
+    conversation: Conversation;
+    messages: ConversationMessage[];
+    hasOlderMessages: boolean;
+  } | null {
     const conversation = getConversation(this.#db, id);
     if (!conversation) return null;
-    const messages = listMessages(this.#db, id);
+    const page =
+      options.limit === undefined && options.before === undefined
+        ? { messages: listMessages(this.#db, id), hasOlderMessages: false }
+        : listMessagesPage(this.#db, id, {
+            limit: options.limit ?? 40,
+            before: options.before,
+          });
+    const { messages } = page;
     const currentMessage = this.#active.get(id)?.currentMessage;
     if (currentMessage) {
       const index = messages.findIndex((message) => message.id === currentMessage.id);
       if (index >= 0) messages[index] = structuredClone(currentMessage);
     }
-    return { conversation: this.#ignoreClaudeFast(conversation), messages };
+    return {
+      conversation: this.#ignoreClaudeFast(conversation),
+      messages,
+      hasOlderMessages: page.hasOlderMessages,
+    };
   }
 
   async files(input: { conversationId: string; query: string } | { cwd: string; query: string }) {

@@ -4,6 +4,8 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
+  useRef,
   useState,
 } from "react";
 import { getBridge } from "../bridge/index.ts";
@@ -57,11 +59,18 @@ type NavigationState = {
   resizeWorkspaceSplit: (splitId: string, sizes: number[]) => void;
 };
 
+type NavigationSnapshot = Pick<
+  NavigationState,
+  "view" | "layout" | "activePaneId" | "statusMessage"
+>;
+type NavigationActions = Omit<NavigationState, keyof NavigationSnapshot>;
+
 const LAYOUT_SETTING = "workspace.layout";
 const LAST_VIEW_SETTING = "navigation.lastView";
 type PersistedView = "home" | "workspace" | "settings";
 
-const NavigationContext = createContext<NavigationState | null>(null);
+const NavigationStateContext = createContext<NavigationSnapshot | null>(null);
+const NavigationActionsContext = createContext<NavigationActions | null>(null);
 
 export function NavigationProvider({ children }: PropsWithChildren) {
   const bridge = getBridge();
@@ -71,6 +80,8 @@ export function NavigationProvider({ children }: PropsWithChildren) {
   const [statusMessage, setStatusMessage] = useState("");
   const [layoutLoaded, setLayoutLoaded] = useState(false);
   const [navigationLoaded, setNavigationLoaded] = useState(false);
+  const navigationRef = useRef({ layout, activePaneId });
+  navigationRef.current = { layout, activePaneId };
 
   useEffect(() => {
     if (!bridge) {
@@ -146,89 +157,81 @@ export function NavigationProvider({ children }: PropsWithChildren) {
     return () => window.clearTimeout(timeout);
   }, [bridge, layout, layoutLoaded]);
 
-  const setActivePane = useCallback(
-    (paneId: string) => {
-      if (!findPane(layout, paneId)) return;
-      setActivePaneId(paneId);
-      setView({ name: "workspace" });
-    },
-    [layout],
-  );
+  const setActivePane = useCallback((paneId: string) => {
+    if (!findPane(navigationRef.current.layout, paneId)) return;
+    setActivePaneId((current) => (current === paneId ? current : paneId));
+    setView((current) => (current.name === "workspace" ? current : { name: "workspace" }));
+  }, []);
 
-  const navigate = useCallback(
-    (target: NavigationTarget) => {
-      if (target.name === "new-conversation") {
-        setLayout((current) => setPaneView(current, activePaneId, { kind: "new-conversation" }));
-        setView({ name: "workspace" });
-        return;
-      }
-      if (target.name === "terminal") {
-        const selected = selectTerminalPane(layout, activePaneId, target.id);
-        if (selected.tree !== layout) setLayout(selected.tree);
-        setActivePaneId(selected.paneId);
-        setView({ name: "workspace" });
-        return;
-      }
-      if (target.name === "conversation") {
-        const existing = findPaneByConversation(layout, target.id);
-        if (existing) {
-          setActivePaneId(existing.id);
-        } else {
-          setLayout((current) =>
-            setPaneView(current, activePaneId, { kind: "chat", conversationId: target.id }),
-          );
-        }
-        setView({ name: "workspace" });
-        return;
-      }
-      setView(target);
-    },
-    [activePaneId, layout],
-  );
-
-  const splitActivePane = useCallback(
-    (direction: "row" | "column", paneId = activePaneId) => {
-      if (paneCount(layout) >= 6) return null;
-      const previousIds = new Set(listPanes(layout).map((pane) => pane.id));
-      const nextLayout = splitPaneInLayout(layout, paneId, direction, "after", {
-        kind: "new-conversation",
-      });
-      const newPane = listPanes(nextLayout).find((pane) => !previousIds.has(pane.id));
-      if (!newPane) return null;
-      setLayout(nextLayout);
-      setActivePaneId(newPane.id);
-      setView({ name: "workspace" });
-      setStatusMessage(t.workspace.paneSplit);
-      return newPane.id;
-    },
-    [activePaneId, layout],
-  );
-
-  const openConversationBeside = useCallback(
-    (conversationId: string) => {
-      const existing = findPaneByConversation(layout, conversationId);
+  const navigate = useCallback((target: NavigationTarget) => {
+    const { layout: currentLayout, activePaneId: currentPaneId } = navigationRef.current;
+    if (target.name === "new-conversation") {
+      setLayout((current) => setPaneView(current, currentPaneId, { kind: "new-conversation" }));
+      setView((current) => (current.name === "workspace" ? current : { name: "workspace" }));
+      return;
+    }
+    if (target.name === "terminal") {
+      const selected = selectTerminalPane(currentLayout, currentPaneId, target.id);
+      if (selected.tree !== currentLayout) setLayout(selected.tree);
+      setActivePaneId((current) => (current === selected.paneId ? current : selected.paneId));
+      setView((current) => (current.name === "workspace" ? current : { name: "workspace" }));
+      return;
+    }
+    if (target.name === "conversation") {
+      const existing = findPaneByConversation(currentLayout, target.id);
       if (existing) {
-        setActivePaneId(existing.id);
-        setView({ name: "workspace" });
-        return existing.id;
+        setActivePaneId((current) => (current === existing.id ? current : existing.id));
+      } else {
+        setLayout((current) =>
+          setPaneView(current, currentPaneId, { kind: "chat", conversationId: target.id }),
+        );
       }
-      if (paneCount(layout) >= 6) return null;
-      const nextLayout = splitPaneInLayout(layout, activePaneId, "row", "after", {
-        kind: "chat",
-        conversationId,
-      });
-      const nextPane = listPanes(nextLayout).find(
-        (pane) => pane.view.kind === "chat" && pane.view.conversationId === conversationId,
-      );
-      if (!nextPane) return null;
-      setLayout(nextLayout);
-      setActivePaneId(nextPane.id);
-      setView({ name: "workspace" });
-      setStatusMessage(t.workspace.paneSplit);
-      return nextPane.id;
-    },
-    [activePaneId, layout],
-  );
+      setView((current) => (current.name === "workspace" ? current : { name: "workspace" }));
+      return;
+    }
+    setView(target);
+  }, []);
+
+  const splitActivePane = useCallback((direction: "row" | "column", paneId?: string) => {
+    const currentLayout = navigationRef.current.layout;
+    const targetPaneId = paneId ?? navigationRef.current.activePaneId;
+    if (paneCount(currentLayout) >= 6) return null;
+    const previousIds = new Set(listPanes(currentLayout).map((pane) => pane.id));
+    const nextLayout = splitPaneInLayout(currentLayout, targetPaneId, direction, "after", {
+      kind: "new-conversation",
+    });
+    const newPane = listPanes(nextLayout).find((pane) => !previousIds.has(pane.id));
+    if (!newPane) return null;
+    setLayout(nextLayout);
+    setActivePaneId(newPane.id);
+    setView({ name: "workspace" });
+    setStatusMessage(t.workspace.paneSplit);
+    return newPane.id;
+  }, []);
+
+  const openConversationBeside = useCallback((conversationId: string) => {
+    const { layout: currentLayout, activePaneId: currentPaneId } = navigationRef.current;
+    const existing = findPaneByConversation(currentLayout, conversationId);
+    if (existing) {
+      setActivePaneId(existing.id);
+      setView((current) => (current.name === "workspace" ? current : { name: "workspace" }));
+      return existing.id;
+    }
+    if (paneCount(currentLayout) >= 6) return null;
+    const nextLayout = splitPaneInLayout(currentLayout, currentPaneId, "row", "after", {
+      kind: "chat",
+      conversationId,
+    });
+    const nextPane = listPanes(nextLayout).find(
+      (pane) => pane.view.kind === "chat" && pane.view.conversationId === conversationId,
+    );
+    if (!nextPane) return null;
+    setLayout(nextLayout);
+    setActivePaneId(nextPane.id);
+    setView({ name: "workspace" });
+    setStatusMessage(t.workspace.paneSplit);
+    return nextPane.id;
+  }, []);
 
   const closeConversationWorkspacePanes = useCallback((conversationId: string) => {
     setLayout((current) => {
@@ -246,20 +249,16 @@ export function NavigationProvider({ children }: PropsWithChildren) {
     setLayout((current) => resetConversationPanes(current));
   }, []);
 
-  const closeWorkspacePane = useCallback(
-    (paneId: string) => {
-      const nextLayout = closePaneInLayout(layout, paneId);
-      setLayout(nextLayout);
-      if (paneId === activePaneId || !findPane(nextLayout, activePaneId)) {
-        setActivePaneId(
-          findPane(nextLayout, paneId)?.id ?? listPanes(nextLayout)[0]?.id ?? "pane-1",
-        );
-      }
-      setView({ name: "workspace" });
-      setStatusMessage(t.workspace.paneClosed);
-    },
-    [activePaneId, layout],
-  );
+  const closeWorkspacePane = useCallback((paneId: string) => {
+    const { layout: currentLayout, activePaneId: currentActivePaneId } = navigationRef.current;
+    const nextLayout = closePaneInLayout(currentLayout, paneId);
+    setLayout(nextLayout);
+    if (paneId === currentActivePaneId || !findPane(nextLayout, currentActivePaneId)) {
+      setActivePaneId(findPane(nextLayout, paneId)?.id ?? listPanes(nextLayout)[0]?.id ?? "pane-1");
+    }
+    setView({ name: "workspace" });
+    setStatusMessage(t.workspace.paneClosed);
+  }, []);
 
   const closeTerminalWorkspacePane = useCallback((terminalId: string) => {
     setLayout((current) => {
@@ -268,43 +267,55 @@ export function NavigationProvider({ children }: PropsWithChildren) {
     });
   }, []);
 
-  const moveWorkspacePane = useCallback(
-    (paneId: string, targetPaneId: string, edge: PaneEdge) => {
-      const nextLayout = movePaneInLayout(layout, paneId, targetPaneId, edge);
-      if (nextLayout === layout) return;
-      setLayout(nextLayout);
-      setActivePaneId(paneId);
-      setView({ name: "workspace" });
-      setStatusMessage(t.workspace.paneMoved);
-    },
-    [layout],
-  );
+  const moveWorkspacePane = useCallback((paneId: string, targetPaneId: string, edge: PaneEdge) => {
+    const currentLayout = navigationRef.current.layout;
+    const nextLayout = movePaneInLayout(currentLayout, paneId, targetPaneId, edge);
+    if (nextLayout === currentLayout) return;
+    setLayout(nextLayout);
+    setActivePaneId(paneId);
+    setView({ name: "workspace" });
+    setStatusMessage(t.workspace.paneMoved);
+  }, []);
 
   const resizeWorkspaceSplit = useCallback((splitId: string, sizes: number[]) => {
     setLayout((current) => setLayoutSizes(current, splitId, sizes));
   }, []);
 
+  const state = useMemo(
+    () => ({ view, layout, activePaneId, statusMessage }),
+    [view, layout, activePaneId, statusMessage],
+  );
+  const actions = useMemo(
+    () => ({
+      navigate,
+      setActivePane,
+      splitActivePane,
+      openConversationBeside,
+      closeConversationWorkspacePanes,
+      closeAllConversationPanes,
+      closeWorkspacePane,
+      closeTerminalWorkspacePane,
+      moveWorkspacePane,
+      resizeWorkspaceSplit,
+    }),
+    [
+      navigate,
+      setActivePane,
+      splitActivePane,
+      openConversationBeside,
+      closeConversationWorkspacePanes,
+      closeAllConversationPanes,
+      closeWorkspacePane,
+      closeTerminalWorkspacePane,
+      moveWorkspacePane,
+      resizeWorkspaceSplit,
+    ],
+  );
+
   return (
-    <NavigationContext.Provider
-      value={{
-        view,
-        layout,
-        activePaneId,
-        statusMessage,
-        navigate,
-        setActivePane,
-        splitActivePane,
-        openConversationBeside,
-        closeConversationWorkspacePanes,
-        closeAllConversationPanes,
-        closeWorkspacePane,
-        closeTerminalWorkspacePane,
-        moveWorkspacePane,
-        resizeWorkspaceSplit,
-      }}
-    >
-      {children}
-    </NavigationContext.Provider>
+    <NavigationActionsContext.Provider value={actions}>
+      <NavigationStateContext.Provider value={state}>{children}</NavigationStateContext.Provider>
+    </NavigationActionsContext.Provider>
   );
 }
 
@@ -319,9 +330,19 @@ function resetConversationPanes(layout: LayoutNode): LayoutNode {
 }
 
 export function useNavigation(): NavigationState {
-  const navigation = useContext(NavigationContext);
-  if (!navigation) throw new Error("useNavigation deve ser usado dentro de NavigationProvider.");
-  return navigation;
+  return { ...useNavigationState(), ...useNavigationActions() };
+}
+
+export function useNavigationState(): NavigationSnapshot {
+  const state = useContext(NavigationStateContext);
+  if (!state) throw new Error("useNavigation deve ser usado dentro de NavigationProvider.");
+  return state;
+}
+
+export function useNavigationActions(): NavigationActions {
+  const actions = useContext(NavigationActionsContext);
+  if (!actions) throw new Error("useNavigation deve ser usado dentro de NavigationProvider.");
+  return actions;
 }
 
 export type { PaneView };
