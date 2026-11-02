@@ -108,16 +108,20 @@ Branch `m2-chat` (sem PR; o dono testa no preview antes de juntar na `main`). De
 - Odeia cartões com faixa/borda colorida lateral (ex.: cartão de erro atual). Ainda **não escolheu** o novo modelo de erro; os 4 propostos foram: (1) inline sem cartão, (2) nota neutra com título, (3) rodapé com separador fino e ações à direita, (4) caixinha compacta de uma linha com botões de ícone e frase só nos detalhes.
 - Quer protótipo visual (tela provisória) antes de implementar mudanças grandes de visual.
 
-### Próximo (pedido do dono)
-- Redesenho da conversa com refs que ele vai mandar (o "Trabalhando…" atual é feio).
-- Trazer o que falta, usando como **referência** os componentes do Agent Elements (https://agent-elements.21st.dev, MIT; são Tailwind + várias libs, então **reescrever no nosso padrão, sem dependência nova**): edição com diff, subagente (Task do Claude), ferramenta MCP, "Trabalhando…" com shimmer, sugestões. Antes, conferir que dados os adaptadores já gravam de cada ferramenta.
-- **Levantamento dos dados (feito em 2026-11-01)** — o que os adaptadores já gravam em `action` (`input` ≤ 8 kB, `output` ≤ 64 kB):
-  - **Diff de edição.** Claude: `Edit`/`Write` guardam **só o caminho** (`summarizeInput` descarta `old_string`/`new_string`/`content`); `MultiEdit` cai em `other`. Precisa mudar o serviço para guardar a edição estruturada. Codex: `fileChange` guarda em `output` o JSON de `changes` com `diff` (unificado) por arquivo (`FileUpdateChange { path, kind, diff }`) → **dá para mostrar diff já**, só a UI.
-  - **Subagente.** Claude `Task` → `other` (título "Task · …", input = `description`); chamadas internas do subagente não são agrupadas. Codex `collabAgentToolCall` → `other` com o item cru em JSON. Precisa `actionType` novo e agrupamento.
-  - **MCP.** Claude `mcp__<servidor>__<ferramenta>` → `other`, input só com os nomes dos parâmetros ("Parâmetros: a, b"). Codex `mcpToolCall` → `other`, título = `item.tool`, input = item cru. Precisa `actionType: "mcp"` com servidor, ferramenta e parâmetros.
-  - **Geração de imagem.** Codex tem `imageGeneration` (com `savedPath`, `revisedPrompt`) e hoje cai em `other` sem mostrar a imagem. Dá para exibir a imagem gerada (ler o arquivo pelo serviço, com validação de caminho).
-  - **"Trabalhando…" com shimmer.** Só UI, não depende de dados.
-- Pendências pequenas: bundle inicial ~508 kB (passou de 500); aviso do PostCSS no build (`from` não passado, provavelmente o `composes` do ScrollArea).
+### Rodada de 2026-11-01 (noite) → 2026-11-02 — também já na `m2-chat`
+- F38: ações da mensagem **só com ícone** (tooltip + `aria-label`): usuário = Copiar, Editar; agente = Copiar, Tentar de novo (só na última resposta, agente parado), **Criar branch**, Linha do tempo. "Criar branch" = **ramificar a conversa** (opção A do dono): `conversation.branch({ id, messageId })`, conversa nova "<título> · ramo" com histórico até o ponto, abre em painel. Fork nativo: Claude `--resume <id> --fork-session` (só a última resposta); Codex `thread/fork` com `lastTurnId` (qualquer turno). Resposta antiga do Claude → sessão nova com o histórico como contexto + aviso discreto. Testado com Codex real: o ramo lembrou do contexto.
+- F40: ícones de ação quadrados (28 px), sem passar da borda.
+- B12/B13: subagente do Codex pelo protocolo **real**: `subAgentActivity` (`started`/`completed`, `agentThreadId`, `agentPath`) + itens da thread filha (`params.threadId`) aninhados por `parentId`; `wait` sem receptores não vira linha. Fixture real sanitizado `fixtures/codex/subagente-real.jsonl`. Testado com Codex real.
+- F39: raio (modo rápido) no composer; Codex manda `serviceTier` (tier anunciado pelo `model/list`, ex. `priority`) por turno.
+
+## Estado ao fim da sessão (2026-11-02) — LEIA ISTO PRIMEIRO
+- Branch `m2-chat`, tudo commitado e testado (unidade + E2E 4/4). **Sem PR ainda.** Preview: `npm run preview:web` (o serviço muda → reiniciar o preview).
+- **Em andamento ao fechar a sessão:** tarefa **F41** no Codex, worktree `~/karont-worktrees/m2-f41-raio-so-codex` (ref `-ref/`: `tarefa.md`, `resposta.md` quando terminar, `codex.log`). Objetivo: **raio só no Codex** (no Claude o ícone nem aparece; o modo rápido do Claude depende de "uso extra" na conta e na do dono vem `extra_usage_disabled`) e **nenhum aviso** de "modo rápido indisponível" (o dono não quer). Próximo orquestrador: conferir `resposta.md`, rodar typecheck/lint/testes/E2E, commitar e fazer merge na `m2-chat`. Se o Codex não terminou, retomar com `codex exec ... resume <SID>` (SID no `codex.log`).
+- B14 (reabrir o Claude ao ligar o raio) foi **cancelada** (perdeu sentido com a F41); a worktree `m2-b14-fast-reinicia` pode ser descartada.
+- **Próximo passo combinado:** PR da `m2-chat` para a `main` com o CI completo. **Push ainda não autorizado** — pedir o ok do dono antes.
+- Pendências pequenas: bundle inicial > 500 kB; aviso do PostCSS no build (`from`); 1 falha intermitente no E2E numa rodada (passou na seguinte) — observar; no Claude, ao terminar, o "Trabalhou por X" já vem ao vivo (F37).
+- Executor: Codex `gpt-6-luna` xhigh fast (o limite estourou e voltou em 2026-11-01; quando estourar, usar subagente Haiku com as mesmas regras).
+- Testes reais: projeto de teste em `/tmp/karont-teste-grande` (loja-mini com git). Scripts Playwright temporários `.x.mjs` na raiz (apagar depois). A ponte `window.karont` não existe no preview; para inspecionar dados, ler o banco em modo leitura: `~/.local/share/karont/karont.db`.
 
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
