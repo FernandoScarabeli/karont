@@ -1,9 +1,11 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, type ReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
+import { pipeline } from "node:stream/promises";
 
 type PreviewBridgeHandler = (request: IncomingMessage, response: ServerResponse) => void;
+type PreviewFileStreamFactory = (filePath: string) => ReadStream;
 const productionPreviewDirectory = "dist-preview";
 
 const contentTypes: Record<string, string> = {
@@ -30,10 +32,12 @@ export function createBuiltPreviewHandler({
   root,
   token,
   bridgeHandler,
+  createFileStream = createReadStream,
 }: {
   root: string;
   token: string;
   bridgeHandler: PreviewBridgeHandler;
+  createFileStream?: PreviewFileStreamFactory;
 }): (request: IncomingMessage, response: ServerResponse) => void {
   const absoluteRoot = path.resolve(root);
 
@@ -42,7 +46,7 @@ export function createBuiltPreviewHandler({
       bridgeHandler(request, response);
       return;
     }
-    void serveBuiltFile(request, response, absoluteRoot, token).catch(() => {
+    void serveBuiltFile(request, response, absoluteRoot, token, createFileStream).catch(() => {
       if (response.headersSent) {
         response.destroy();
         return;
@@ -73,6 +77,7 @@ async function serveBuiltFile(
   response: ServerResponse,
   root: string,
   token: string,
+  createFileStream: PreviewFileStreamFactory,
 ): Promise<void> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     response.writeHead(405, { Allow: "GET, HEAD" }).end();
@@ -132,13 +137,7 @@ async function serveBuiltFile(
     response.end();
     return;
   }
-  await new Promise<void>((resolve, reject) => {
-    const stream = createReadStream(filePath);
-    stream.once("error", reject);
-    response.once("close", resolve);
-    response.once("finish", resolve);
-    stream.pipe(response);
-  });
+  await pipeline(createFileStream(filePath), response);
 }
 
 async function statOrNull(filePath: string) {
