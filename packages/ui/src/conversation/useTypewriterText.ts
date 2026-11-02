@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { alignRevealEnd, DRAIN_MS, getRevealCeiling, planCharRelease } from "./typewriter.ts";
 
 const FIRST_FRAME_MS = 16;
@@ -43,7 +44,8 @@ export function useTypewriterText(text: string, done: boolean): string {
       if (pacer.revealed > ceiling) {
         pacer.revealed = ceiling;
         pacer.carry = 0;
-        setRevealed(latestText.slice(0, ceiling));
+        const clampedText = latestText.slice(0, ceiling);
+        flushSync(() => setRevealed(clampedText));
       }
 
       const backlog = ceiling - pacer.revealed;
@@ -72,7 +74,10 @@ export function useTypewriterText(text: string, done: boolean): string {
 
       if (plan.count > 0) {
         pacer.revealed = alignRevealEnd(latestText, pacer.revealed + plan.count);
-        setRevealed(latestText.slice(0, pacer.revealed));
+        const nextText = latestText.slice(0, pacer.revealed);
+        // flushSync: o DOM novo e o ajuste de rolagem (useLayoutEffect) rodam neste
+        // mesmo quadro, antes da pintura, em vez de um quadro depois.
+        flushSync(() => setRevealed(nextText));
       }
 
       if (plan.count < backlog) {
