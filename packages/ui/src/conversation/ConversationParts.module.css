@@ -233,9 +233,14 @@
 }
 
 .workHistoryBody {
-  display: grid;
-  gap: var(--k-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
   margin-block-start: var(--k-space-2);
+}
+
+.workHistoryBody > .partTarget:has(.markdown) {
+  margin-block: var(--k-space-1);
 }
 
 .workHistoryBody[hidden] {
@@ -572,7 +577,7 @@
   max-height: var(--k-chat-part-max-height);
   overflow: auto;
   margin-block-start: var(--k-space-1);
-  margin-inline-start: var(--k-space-2);
+  margin-inline-start: var(--k-chat-action-label-offset);
 }
 
 .actionGroupBody[hidden] {
@@ -650,6 +655,11 @@
   overflow: auto;
   margin-block-start: var(--k-space-1);
   margin-inline-start: var(--k-space-2);
+}
+
+.commandDetails {
+  max-height: none;
+  overflow: visible;
 }
 
 .actionChildren {
@@ -889,27 +899,235 @@
   text-align: center;
 }
 
-.commandHeader {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--k-space-2);
+.terminalFrame {
+  max-width: 100%;
+  overflow: hidden;
+  border: var(--k-border-width) solid var(--k-color-border);
+  border-radius: var(--k-radius-md);
+  background: var(--k-color-terminal-bg);
 }
 
-.commandHeader > .detailLabel {
+.terminalHeader {
+  box-sizing: border-box;
+  display: flex;
+  min-width: 0;
+  height: var(--k-control-height-sm);
+  align-items: center;
+  gap: var(--k-space-2);
+  padding-inline: var(--k-space-2);
+  border-block-end: var(--k-border-width) solid var(--k-color-border);
+}
+
+.terminalHeaderIcon {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+}
+
+.commandPrompt {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+  font-family: var(--k-font-mono); /* taste-skill-ignore: prompt de terminal */
+  font-size: var(--k-text-12);
+}
+
+.commandName {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-mono); /* taste-skill-ignore: comando literal */
+  font-size: var(--k-text-12);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.exitCode {
+.commandStatus {
+  display: inline-flex;
   flex: 0 0 auto;
-  color: var(--k-color-text-muted);
+  align-items: center;
+  gap: var(--k-space-1);
   font-size: var(--k-text-11);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.commandStatusMuted {
+  color: var(--k-color-text-muted);
+}
+
+.commandStatusWorking {
+  color: var(--k-color-working);
+}
+
+.commandStatusError,
+.terminalOutputErrorMark {
+  color: var(--k-color-danger);
+}
+
+.commandSpinner {
+  animation: commandSpinnerTurn var(--k-working-spiral-duration) linear infinite;
+}
+
+.terminalOutputScroll {
+  min-width: 0;
+  max-height: var(--k-chat-command-output-max-height);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.terminalOutputScroll:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: calc(var(--k-focus-ring-width) * -1);
+}
+
+.terminalOutput {
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+  padding: var(--k-space-3);
+  color: var(--k-color-code-text);
+  font-family: var(--k-font-mono); /* taste-skill-ignore: saída literal do terminal */
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+  white-space: pre;
+}
+
+.terminalAnsiBold {
+  font-weight: var(--k-weight-semibold);
+}
+
+.terminalAnsiDim {
+  opacity: var(--k-opacity-terminal-dim);
+}
+
+.terminalOutputSuccessMark {
+  color: var(--k-color-ok);
+}
+
+.terminalCursor {
+  display: inline-block;
+  width: var(--k-chat-terminal-cursor-width);
+  height: var(--k-chat-terminal-cursor-height);
+  margin-inline-start: var(--k-chat-terminal-cursor-gap);
+  background: currentColor;
+  animation: terminalCursorBlink var(--k-duration-cursor-blink) steps(1, end) infinite;
+  vertical-align: var(--k-chat-terminal-cursor-offset);
+}
+
+.ansiForeground0 {
+  color: var(--k-color-terminal-ansi-0);
+}
+.ansiForeground1 {
+  color: var(--k-color-terminal-ansi-1);
+}
+.ansiForeground2 {
+  color: var(--k-color-terminal-ansi-2);
+}
+.ansiForeground3 {
+  color: var(--k-color-terminal-ansi-3);
+}
+.ansiForeground4 {
+  color: var(--k-color-terminal-ansi-4);
+}
+.ansiForeground5 {
+  color: var(--k-color-terminal-ansi-5);
+}
+.ansiForeground6 {
+  color: var(--k-color-terminal-ansi-6);
+}
+.ansiForeground7 {
+  color: var(--k-color-terminal-ansi-7);
+}
+.ansiForeground8 {
+  color: var(--k-color-terminal-ansi-8);
+}
+.ansiForeground9 {
+  color: var(--k-color-terminal-ansi-9);
+}
+.ansiForeground10 {
+  color: var(--k-color-terminal-ansi-10);
+}
+.ansiForeground11 {
+  color: var(--k-color-terminal-ansi-11);
+}
+.ansiForeground12 {
+  color: var(--k-color-terminal-ansi-12);
+}
+.ansiForeground13 {
+  color: var(--k-color-terminal-ansi-13);
+}
+.ansiForeground14 {
+  color: var(--k-color-terminal-ansi-14);
+}
+.ansiForeground15 {
+  color: var(--k-color-terminal-ansi-15);
+}
+.ansiBackground0 {
+  background-color: var(--k-color-terminal-ansi-0);
+}
+.ansiBackground1 {
+  background-color: var(--k-color-terminal-ansi-1);
+}
+.ansiBackground2 {
+  background-color: var(--k-color-terminal-ansi-2);
+}
+.ansiBackground3 {
+  background-color: var(--k-color-terminal-ansi-3);
+}
+.ansiBackground4 {
+  background-color: var(--k-color-terminal-ansi-4);
+}
+.ansiBackground5 {
+  background-color: var(--k-color-terminal-ansi-5);
+}
+.ansiBackground6 {
+  background-color: var(--k-color-terminal-ansi-6);
+}
+.ansiBackground7 {
+  background-color: var(--k-color-terminal-ansi-7);
+}
+.ansiBackground8 {
+  background-color: var(--k-color-terminal-ansi-8);
+}
+.ansiBackground9 {
+  background-color: var(--k-color-terminal-ansi-9);
+}
+.ansiBackground10 {
+  background-color: var(--k-color-terminal-ansi-10);
+}
+.ansiBackground11 {
+  background-color: var(--k-color-terminal-ansi-11);
+}
+.ansiBackground12 {
+  background-color: var(--k-color-terminal-ansi-12);
+}
+.ansiBackground13 {
+  background-color: var(--k-color-terminal-ansi-13);
+}
+.ansiBackground14 {
+  background-color: var(--k-color-terminal-ansi-14);
+}
+.ansiBackground15 {
+  background-color: var(--k-color-terminal-ansi-15);
+}
+
+@keyframes commandSpinnerTurn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes terminalCursorBlink {
+  50% {
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .commandSpinner,
+  .terminalCursor {
+    animation: none;
+  }
 }
 
 .permissionCard,
