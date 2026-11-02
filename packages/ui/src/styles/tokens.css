@@ -103,7 +103,60 @@
   --k-duration-spring: 260ms;
   --k-duration-cursor-blink: 500ms;
   --k-duration-caret-blink: 1s;
-  --k-duration-caret-fade: 240ms;
+  /* Níveis de movimento (Fluid Functionalism). Espelhados em styles/motion.ts. */
+  --k-motion-fast: 80ms;
+  --k-motion-moderate: 160ms;
+  --k-motion-slow: 240ms;
+  --k-motion-fast-exit: 60ms;
+  --k-motion-moderate-exit: 120ms;
+  --k-motion-slow-exit: 160ms;
+  /* Molas em linear(): criticamente amortecida (moderate, 160 ms) e bounce 0,12 (slow). */
+  --k-ease-spring-moderate: linear(
+    0,
+    0.04,
+    0.13,
+    0.241,
+    0.355,
+    0.463,
+    0.559,
+    0.642,
+    0.713,
+    0.771,
+    0.819,
+    0.857,
+    0.888,
+    0.913,
+    0.932,
+    0.948,
+    1
+  );
+  --k-ease-spring-slow: linear(
+    0,
+    0.019,
+    0.068,
+    0.136,
+    0.214,
+    0.296,
+    0.379,
+    0.459,
+    0.534,
+    0.603,
+    0.665,
+    0.72,
+    0.768,
+    0.81,
+    0.846,
+    0.876,
+    0.902,
+    0.923,
+    0.941,
+    0.955,
+    0.967,
+    0.976,
+    0.983,
+    0.989,
+    1
+  );
   --k-duration-highlight: 1.2s;
   --k-duration-status-pulse-slow: 2.4s;
   --k-duration-status-pulse-medium: 1.6s;

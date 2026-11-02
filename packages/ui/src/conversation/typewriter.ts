@@ -1,22 +1,35 @@
 // Ritmo da máquina de escrever para o texto que chega em fluxo. Funções puras,
 // sem React, para o loop de quadros poder ser testado isoladamente.
 
-export const DRAIN_MS = 350;
-// Tempo do fade do cursor depois de done. Deve bater com --k-duration-caret-fade.
-export const CARET_FADE_MS = 240;
+// Drenagem depois de done: o atraso restante escoa em cerca de 1,2 s. Se o atraso
+// for grande, o ritmo sobe em vez de o tempo crescer.
+export const DRAIN_MS = 1200;
 
-const BASE_CHARS_PER_SECOND = 220;
-const CHARS_PER_SECOND_PER_BACKLOG_CHAR = 1.5;
-const MAX_CHARS_PER_SECOND = 1200;
+const BASE_CHARS_PER_SECOND = 75;
+// Até ~3 s de atraso (3 × 75 caracteres) o ritmo fica no base.
+const FREE_LAG_CHARS = 225;
+const CHARS_PER_SECOND_PER_EXTRA_CHAR = 0.6;
+const MAX_CHARS_PER_SECOND = 400;
 const MIN_DRAIN_MS = 16;
+// Constante de tempo da suavização do ritmo. Mudanças de velocidade não são bruscas.
+const RATE_SMOOTHING_MS = 300;
 
-// Ritmo adaptativo: sobe com o atraso acumulado, para o texto revelado não ficar
-// muito atrás do que já chegou.
+export { BASE_CHARS_PER_SECOND };
+
+// Ritmo alvo para o atraso atual: base, e acelera devagar só depois de FREE_LAG_CHARS.
 export function getCharsPerSecond(backlogChars: number): number {
+  const extra = Math.max(0, backlogChars - FREE_LAG_CHARS);
   return Math.min(
     MAX_CHARS_PER_SECOND,
-    BASE_CHARS_PER_SECOND + Math.max(0, backlogChars) * CHARS_PER_SECOND_PER_BACKLOG_CHAR,
+    BASE_CHARS_PER_SECOND + extra * CHARS_PER_SECOND_PER_EXTRA_CHAR,
   );
+}
+
+// Aproxima `current` de `target` com suavização exponencial (constante de tempo de
+// 300 ms). A velocidade muda gradualmente.
+export function smoothRate(current: number, target: number, elapsedMs: number): number {
+  const alpha = 1 - Math.exp(-Math.max(0, elapsedMs) / RATE_SMOOTHING_MS);
+  return current + (target - current) * alpha;
 }
 
 export type CharReleaseInput = {
@@ -25,30 +38,36 @@ export type CharReleaseInput = {
   done?: boolean;
   carryChars?: number;
   drainMsLeft?: number;
+  rateCps?: number;
 };
 
 export type CharReleasePlan = {
   count: number;
   carryChars: number;
   drainMsLeft: number;
+  rateCps: number;
 };
 
-// Quantos caracteres liberar neste quadro. A parte fracionária é guardada em
-// carryChars. Depois de done, o atraso escoa linearmente até drainMsLeft.
+// Quantos caracteres liberar neste quadro. A parte fracionária vai para carryChars
+// e a velocidade suavizada volta em rateCps. Depois de done, a drenagem não é
+// suavizada: ela tem prazo e precisa terminar.
 export function planCharRelease({
   backlogChars,
   elapsedMs,
   done = false,
   carryChars = 0,
   drainMsLeft = DRAIN_MS,
+  rateCps = BASE_CHARS_PER_SECOND,
 }: CharReleaseInput): CharReleasePlan {
-  if (backlogChars <= 0) return { count: 0, carryChars: 0, drainMsLeft: DRAIN_MS };
+  if (backlogChars <= 0) {
+    return { count: 0, carryChars: 0, drainMsLeft: DRAIN_MS, rateCps };
+  }
 
   const elapsed = Math.max(0, elapsedMs);
-  const paceChars = getCharsPerSecond(backlogChars);
+  const target = getCharsPerSecond(backlogChars);
   const rate = done
-    ? Math.max(paceChars, (backlogChars * 1000) / Math.max(drainMsLeft, MIN_DRAIN_MS))
-    : paceChars;
+    ? Math.max(target, (backlogChars * 1000) / Math.max(drainMsLeft, MIN_DRAIN_MS))
+    : smoothRate(rateCps, target, elapsed);
   const accumulated = carryChars + (rate * elapsed) / 1000;
   const count = Math.min(backlogChars, Math.floor(accumulated));
 
@@ -56,6 +75,7 @@ export function planCharRelease({
     count,
     carryChars: count === backlogChars ? 0 : accumulated - count,
     drainMsLeft: done ? Math.max(0, drainMsLeft - elapsed) : DRAIN_MS,
+    rateCps: rate,
   };
 }
 
