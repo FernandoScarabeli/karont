@@ -223,6 +223,11 @@
   cursor: pointer;
 }
 
+.olderMessagesSentinel {
+  min-height: var(--k-border-width);
+  flex: 0 0 var(--k-border-width);
+}
+
 .olderMessages:hover,
 .olderMessages:focus-visible {
   background: var(--k-color-bg-hover);
