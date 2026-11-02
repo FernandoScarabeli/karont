@@ -13,6 +13,12 @@ export type ComposerSkillReference = {
   path?: string;
 };
 
+export function consumePendingComposerCaret(pending: { current: number | null }): number | null {
+  const caret = pending.current;
+  pending.current = null;
+  return caret;
+}
+
 export function detectComposerShortcut(
   value: string,
   caret: number,
