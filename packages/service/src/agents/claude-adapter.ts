@@ -23,6 +23,7 @@ import type {
 } from "./adapter.ts";
 import { claudeContextUsage } from "./context-usage.ts";
 import { resolveAgentCommand } from "./detect.ts";
+import { removeSkillMentions } from "./skill-mention.ts";
 import { makeMessageSource, mergeMessageSources } from "./source-metadata.ts";
 import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
 
@@ -324,7 +325,8 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#activeThinkingPartId = undefined;
     this.#todosPartId = undefined;
     this.#todos = [];
-    const prompt = skills[0] ? `/${skills[0].name}${text ? ` ${text}` : ""}` : text;
+    const skillText = skills[0] ? removeSkillMentions(text, [skills[0].name]) : text;
+    const prompt = skills[0] ? `/${skills[0].name}${skillText ? ` ${skillText}` : ""}` : text;
     const content = attachments.length
       ? [
           { type: "text", text: prompt },

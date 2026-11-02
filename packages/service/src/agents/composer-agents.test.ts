@@ -90,6 +90,30 @@ test("Claude prefixa a skill na mensagem e compacta com /compact", async () => {
   }
 });
 
+test("Claude remove a menção exata da skill antes de prefixar o prompt", async () => {
+  const fake = createFakeClaudeSpawn(fileURLToPath(new URL("texto.jsonl", claudeFixtures)));
+  const adapter = new ClaudeAdapter(() => undefined, {
+    env: { ...process.env, KARONT_CLAUDE_CLI: "claude" },
+    spawn: fake,
+  });
+  try {
+    await adapter.start(conversation("claude"), "claude-skill-mention-test", false);
+    await adapter.send(
+      "$project-helper veja auth.ts; preserve $project-helper-extra e literal$project-helper.",
+      false,
+      [],
+      [{ name: "project-helper" }],
+    );
+    const userMessage = fake.messages.find((message) => message.type === "user");
+    assert.equal(
+      (userMessage?.message as { content?: unknown } | undefined)?.content,
+      "/project-helper veja auth.ts; preserve $project-helper-extra e literal$project-helper.",
+    );
+  } finally {
+    await adapter.dispose();
+  }
+});
+
 test("loader Codex mapeia skills/list do app-server e omite skills desativadas", async () => {
   const fake = createFakeCodexSpawn(fileURLToPath(new URL("skills.jsonl", codexFixtures)), {
     cwdOverride: "/tmp",
@@ -125,7 +149,7 @@ test("Codex envia o item skill e compacta via app-server", async () => {
   try {
     await skillAdapter.start(conversation("codex"), "codex-session-test", false);
     await skillAdapter.send(
-      "Faça a revisão.",
+      "$project-helper Faça a revisão.",
       false,
       [],
       [{ name: "project-helper", path: testSkillPath }],

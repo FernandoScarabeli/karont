@@ -27,6 +27,7 @@ import type {
 import { AgentCliError } from "./claude-adapter.ts";
 import { codexContextUsage } from "./context-usage.ts";
 import { resolveAgentCommand } from "./detect.ts";
+import { removeSkillMentions } from "./skill-mention.ts";
 import { makeMessageSource, mergeMessageSources } from "./source-metadata.ts";
 import { mapCodexSpecialAction, truncateUtf8 } from "./tool-actions.ts";
 
@@ -1219,7 +1220,13 @@ export class CodexAdapter implements AgentAdapter {
         );
       return { type: "skill", name: skill.name, path: skill.path };
     });
-    input.push({ type: "text", text });
+    input.push({
+      type: "text",
+      text: removeSkillMentions(
+        text,
+        skills.map((skill) => skill.name),
+      ),
+    });
     try {
       for (const attachment of attachments) {
         if (attachment.kind === "text") {
