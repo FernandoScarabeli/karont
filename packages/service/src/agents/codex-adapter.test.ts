@@ -270,6 +270,56 @@ test("agrupa spawn e wait do Codex em uma ação de subagente e aninha ações d
   }
 });
 
+test("processa subAgentActivity e itens da thread filha conforme a captura real do Codex", async () => {
+  const harness = await createHarness("subagente-real");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, fixturePrompt("subagente-real"), false);
+    await waitForPart(
+      harness,
+      conversation.id,
+      (part) => part.type === "action" && part.actionType === "subagent" && part.state === "ok",
+    );
+
+    const parts = latestAgent(harness, conversation.id)?.parts ?? [];
+    const actions = parts.filter(
+      (part): part is Extract<MessagePart, { type: "action" }> => part.type === "action",
+    );
+    const subagents = actions.filter((action) => action.actionType === "subagent");
+    assert.equal(subagents.length, 1);
+    const subagent = subagents[0];
+    assert.ok(subagent);
+    assert.equal(subagent.title, "Listar arquivos");
+    assert.equal(subagent.input, "Modelo: gpt-5.6-terra · esforço: medium");
+    assert.equal(subagent.state, "ok");
+    assert.ok((subagent.durationMs ?? 0) > 0);
+    assert.match(subagent.output, /configura o pacote ES Modules/);
+    assert.match(subagent.output, /consolidação de produto repetido/);
+
+    const childActions = actions.filter((action) => action.parentId === subagent.id);
+    assert.equal(childActions.length, 2);
+    assert.ok(childActions.some((action) => action.title === "Leu arquivos"));
+    assert.ok(childActions.some((action) => action.title === "Leu package.json"));
+    assert.deepEqual(
+      actions.filter((action) => action.parentId === undefined),
+      [subagent],
+    );
+    assert.equal(
+      actions.some((action) => action.title === "Usou um subagente"),
+      false,
+    );
+
+    const mainText = parts
+      .filter((part): part is Extract<MessagePart, { type: "text" }> => part.type === "text")
+      .map((part) => part.markdown)
+      .join("\n");
+    assert.match(mainText, /Vou delegar apenas o inventário/);
+    assert.doesNotMatch(mainText, /consolidação de produto repetido/);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("não deixa subagente em andamento quando o turno termina", async () => {
   const harness = await createHarness("subagente-em-progresso");
   try {
