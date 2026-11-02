@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 
 type PreviewBridgeHandler = (request: IncomingMessage, response: ServerResponse) => void;
+const productionPreviewDirectory = "dist-preview";
 
 const contentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -49,6 +50,22 @@ export function createBuiltPreviewHandler({
       response.writeHead(500).end();
     });
   };
+}
+
+export function createProductionPreviewHandler({
+  uiRoot,
+  token,
+  bridgeHandler,
+}: {
+  uiRoot: string;
+  token: string;
+  bridgeHandler: PreviewBridgeHandler;
+}): (request: IncomingMessage, response: ServerResponse) => void {
+  return createBuiltPreviewHandler({
+    root: path.join(uiRoot, productionPreviewDirectory),
+    token,
+    bridgeHandler,
+  });
 }
 
 async function serveBuiltFile(

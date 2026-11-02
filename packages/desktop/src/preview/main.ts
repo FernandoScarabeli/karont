@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { connectService, resolvePaths, type ServiceClient } from "@karont/service";
 import { build, createServer as createViteServer, type ViteDevServer } from "vite";
 import { createPreviewBridge } from "./bridge.ts";
-import { createBuiltPreviewHandler, injectBridgeToken } from "./static.ts";
+import { createProductionPreviewHandler, injectBridgeToken } from "./static.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packagesDir = path.resolve(here, "../../..");
@@ -75,8 +75,8 @@ try {
   });
 
   if (productionPreview) {
-    const serveBuiltPreview = createBuiltPreviewHandler({
-      root: path.join(uiRoot, "dist"),
+    const serveBuiltPreview = createProductionPreviewHandler({
+      uiRoot,
       token,
       bridgeHandler: bridge.handler,
     });
