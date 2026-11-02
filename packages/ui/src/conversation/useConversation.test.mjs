@@ -79,3 +79,22 @@ test("um aviso de estado sem horário não apaga o horário já conhecido", () =
   assert.equal(message.startedAt, 1_000);
   assert.equal(message.endedAt, 19_000);
 });
+
+test("ignora deltas já incluídos na foto ao reabrir uma resposta", () => {
+  const state = stateWithStreamingMessage();
+  state.messagesById["mensagem-1"] = {
+    ...state.messagesById["mensagem-1"],
+    parts: [{ id: "texto-1", type: "text", markdown: "hello world" }],
+  };
+
+  const next = reducer(state, {
+    type: "deltas",
+    deltas: [
+      { messageId: "mensagem-1", partId: "texto-1", startOffset: 0, delta: "hello" },
+      { messageId: "mensagem-1", partId: "texto-1", startOffset: 5, delta: " world!" },
+    ],
+  });
+
+  assert.equal(next.messagesById["mensagem-1"].parts[0].markdown, "hello world!");
+  assert.equal(next.liveText, "!");
+});

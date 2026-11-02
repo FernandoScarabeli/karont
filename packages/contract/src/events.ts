@@ -48,6 +48,7 @@ export const events = {
       messageId: z.string(),
       kind: z.literal("delta"),
       partId: z.string(),
+      startOffset: z.number().int().nonnegative(),
       delta: z.string(),
       startedAt: z.number().int().nonnegative().optional(),
       endedAt: z.number().int().nonnegative().optional(),

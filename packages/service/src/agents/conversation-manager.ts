@@ -189,12 +189,14 @@ export class ConversationManager {
 
   get(id: string): { conversation: Conversation; messages: ConversationMessage[] } | null {
     const conversation = getConversation(this.#db, id);
-    return conversation
-      ? {
-          conversation: this.#ignoreClaudeFast(conversation),
-          messages: listMessages(this.#db, id),
-        }
-      : null;
+    if (!conversation) return null;
+    const messages = listMessages(this.#db, id);
+    const currentMessage = this.#active.get(id)?.currentMessage;
+    if (currentMessage) {
+      const index = messages.findIndex((message) => message.id === currentMessage.id);
+      if (index >= 0) messages[index] = structuredClone(currentMessage);
+    }
+    return { conversation: this.#ignoreClaudeFast(conversation), messages };
   }
 
   async branch(id: string, messageId: string): Promise<Conversation> {
@@ -817,6 +819,12 @@ export class ConversationManager {
             else if (part.type === "thinking") part.text += delta;
             message.updatedAt = this.#now();
             this.#scheduleMessageSave(active, message);
+            const startOffset =
+              part.type === "text"
+                ? part.markdown.length - delta.length
+                : part.type === "thinking"
+                  ? part.text.length - delta.length
+                  : 0;
             await this.#emit({
               event: "conversation.partUpdated",
               payload: {
@@ -824,6 +832,7 @@ export class ConversationManager {
                 messageId: message.id,
                 kind: "delta",
                 partId: event.partId,
+                startOffset,
                 delta,
                 startedAt: part.startedAt,
                 endedAt: part.endedAt,

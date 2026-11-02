@@ -66,6 +66,42 @@ test("a mensagem é gravada com debounce no streaming e imediatamente ao conclui
   }
 });
 
+test("get inclui o texto em andamento antes do próximo salvamento", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-live-message-get-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  let announceDelta!: () => void;
+  const firstDelta = new Promise<void>((resolve) => {
+    announceDelta = resolve;
+  });
+  const manager = new ConversationManager({
+    db,
+    env: { ...process.env, KARONT_MESSAGE_SAVE_DEBOUNCE_MS: "1000" },
+    broadcast: async (event) => {
+      if (event.event === "conversation.partUpdated" && event.payload.kind === "delta")
+        announceDelta();
+    },
+    adapterFactory: (_conversation, emit) => new LifecycleTestAdapter(emit, () => undefined),
+  });
+  const conversation = manager.create({
+    agent: "claude",
+    title: "Resposta em andamento",
+    cwd: root,
+    mode: "edit",
+  });
+
+  try {
+    const sending = manager.send(conversation.id, "Responda.");
+    await firstDelta;
+    const message = manager.get(conversation.id)?.messages.at(-1);
+    assert.ok(message?.parts.some((part) => part.type === "text" && part.markdown === "rascunho"));
+    await manager.stop(conversation.id);
+    await sending;
+  } finally {
+    await manager.close();
+    db.close();
+  }
+});
+
 test("parar e encerrar o serviço gravam o texto pendente imediatamente", async (t) => {
   await t.test("parar", async () => {
     const harness = await createLifecycleHarness();

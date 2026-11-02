@@ -255,6 +255,7 @@ test("eventos de texto levam só o delta; eventos de método e parte passam pela
       messageId: "m1",
       kind: "delta",
       partId: "text1",
+      startOffset: 0,
       delta: "novo trecho",
       startedAt: 1_798_000_000_000,
       endedAt: 1_798_000_000_010,

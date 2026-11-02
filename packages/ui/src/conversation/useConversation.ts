@@ -25,6 +25,7 @@ export type Action =
       deltas: Array<{
         partId: string;
         messageId: string;
+        startOffset?: number;
         delta: string;
         startedAt?: number;
         endedAt?: number;
@@ -73,6 +74,7 @@ export function useConversation(conversationId: string) {
       {
         partId: string;
         messageId: string;
+        startOffset: number;
         delta: string;
         startedAt?: number;
         endedAt?: number;
@@ -95,6 +97,7 @@ export function useConversation(conversationId: string) {
         pendingDeltas.set(key, {
           partId: event.payload.partId,
           messageId: event.payload.messageId,
+          startOffset: current?.startOffset ?? event.payload.startOffset,
           delta: `${current?.delta ?? ""}${event.payload.delta}`,
           ...(current?.startedAt !== undefined || event.payload.startedAt !== undefined
             ? { startedAt: current?.startedAt ?? event.payload.startedAt }
@@ -237,9 +240,8 @@ export function reducer(state: State, action: Action): State {
     return state;
   }
 
-  let liveText = "";
-  for (const delta of action.deltas) liveText += delta.delta;
-  return { ...appendDeltaBatch(state, action.deltas), liveText };
+  const { state: next, liveText } = appendDeltaBatch(state, action.deltas);
+  return { ...next, liveText };
 }
 
 function upsertMessage(state: State, message: ConversationMessage): State {
@@ -278,12 +280,14 @@ function appendDeltaBatch(
   deltas: Array<{
     partId: string;
     messageId: string;
+    startOffset?: number;
     delta: string;
     startedAt?: number;
     endedAt?: number;
   }>,
-): State {
+): { state: State; liveText: string } {
   const changedMessages = new Map<string, { message: ConversationMessage; parts: MessagePart[] }>();
+  let liveText = "";
   for (const delta of deltas) {
     const current = changedMessages.get(delta.messageId);
     const message = current?.message ?? state.messagesById[delta.messageId];
@@ -293,30 +297,40 @@ function appendDeltaBatch(
     if (partIndex < 0) continue;
     const part = parts[partIndex];
     if (part?.type === "text") {
+      const skipped =
+        delta.startOffset === undefined ? 0 : Math.max(0, part.markdown.length - delta.startOffset);
+      const appended = delta.delta.slice(skipped);
+      if (!appended) continue;
       parts[partIndex] = {
         ...part,
-        markdown: `${part.markdown}${delta.delta}`,
+        markdown: `${part.markdown}${appended}`,
         ...(delta.startedAt !== undefined ? { startedAt: delta.startedAt } : {}),
         ...(delta.endedAt !== undefined ? { endedAt: delta.endedAt } : {}),
       };
+      liveText += appended;
     } else if (part?.type === "thinking") {
+      const skipped =
+        delta.startOffset === undefined ? 0 : Math.max(0, part.text.length - delta.startOffset);
+      const appended = delta.delta.slice(skipped);
+      if (!appended) continue;
       parts[partIndex] = {
         ...part,
-        text: `${part.text}${delta.delta}`,
+        text: `${part.text}${appended}`,
         ...(delta.startedAt !== undefined ? { startedAt: delta.startedAt } : {}),
         ...(delta.endedAt !== undefined ? { endedAt: delta.endedAt } : {}),
       };
+      liveText += appended;
     } else {
       continue;
     }
     changedMessages.set(delta.messageId, { message, parts });
   }
-  if (changedMessages.size === 0) return state;
+  if (changedMessages.size === 0) return { state, liveText };
   const messagesById = { ...state.messagesById };
   for (const [id, current] of changedMessages) {
     messagesById[id] = { ...current.message, parts: current.parts };
   }
-  return { ...state, messagesById };
+  return { state: { ...state, messagesById }, liveText };
 }
 
 function isConversationEvent(event: AnyEvent, conversationId: string): boolean {
