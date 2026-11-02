@@ -16,7 +16,7 @@
   border-radius: var(--k-radius-full);
   background: var(--k-color-scrollbar-thumb);
   background-clip: content-box;
-  transition: background-color var(--k-duration-fast) var(--k-ease);
+  transition: background-color var(--k-motion-fast) var(--k-ease);
 }
 
 .scrollArea:hover::-webkit-scrollbar-thumb,

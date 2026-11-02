@@ -93,7 +93,7 @@
   min-width: 0;
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--k-duration-fast) var(--k-ease);
+  transition: opacity var(--k-motion-fast) var(--k-ease);
 }
 
 .message:hover .messageDateOptions,
@@ -142,7 +142,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .messageDateOptions,
-  .messageOptions {
+  .messageOptions,
+  .actionDisclosure {
     transition: none;
   }
 }
@@ -625,7 +626,7 @@
 .actionDisclosure {
   flex: 0 0 auto;
   color: var(--k-color-text-muted);
-  transition: transform var(--k-duration-fast) var(--k-ease);
+  transition: transform var(--k-motion-moderate) var(--k-ease-spring-moderate);
 }
 
 .todosDisclosure > summary > .actionDisclosure {
@@ -1941,12 +1942,12 @@
 
 @media (prefers-reduced-motion: reduce) {
   .partHighlight {
-    animation-duration: var(--k-duration-fast);
+    animation-duration: var(--k-motion-fast);
   }
 }
 
 /* Cursor de bloco do texto em digitação. Sólido enquanto chega, pisca quando parado
-   e some em fade depois de done (--k-motion-fast, o mesmo que MOTION_MS.fast). */
+   e some em fade depois de done (--k-motion-fast-exit, o mesmo que MOTION_EXIT_MS.fast). */
 .streamingCaret {
   display: inline-block;
   width: var(--k-space-2);
@@ -1961,7 +1962,7 @@
 }
 
 .markdown[data-caret="done"] .streamingCaret {
-  animation: streamingCaretFade var(--k-motion-fast) var(--k-ease) forwards;
+  animation: streamingCaretFade var(--k-motion-fast-exit) var(--k-ease) forwards;
 }
 
 @keyframes streamingCaretBlink {

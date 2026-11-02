@@ -99,9 +99,9 @@
   pointer-events: none;
   transform: translate(-50%, var(--k-space-1));
   transition:
-    opacity var(--k-duration-fast) var(--k-ease),
-    transform var(--k-duration-fast) var(--k-ease),
-    visibility 0s linear var(--k-duration-fast);
+    opacity var(--k-motion-fast-exit) var(--k-ease),
+    transform var(--k-motion-fast-exit) var(--k-ease),
+    visibility 0s linear var(--k-motion-fast-exit);
   visibility: hidden;
   white-space: nowrap;
 }
@@ -112,6 +112,7 @@
   opacity: 1;
   transform: translate(-50%, 0);
   transition-delay: 0s;
+  transition-duration: var(--k-motion-fast);
   visibility: visible;
 }
 
@@ -320,7 +321,7 @@
   padding: var(--k-space-1);
   border-radius: var(--k-radius-full);
   background: var(--k-color-bg-control);
-  transition: background-color var(--k-duration-fast) var(--k-ease);
+  transition: background-color var(--k-motion-fast) var(--k-ease);
 }
 
 .switchTrack[data-checked="true"] {
@@ -333,8 +334,8 @@
   border-radius: var(--k-radius-full);
   background: var(--k-color-text-secondary);
   transition:
-    transform var(--k-duration-fast) var(--k-ease),
-    background-color var(--k-duration-fast) var(--k-ease);
+    transform var(--k-motion-fast) var(--k-ease),
+    background-color var(--k-motion-fast) var(--k-ease);
 }
 
 .switchTrack[data-checked="true"] .switchThumb {

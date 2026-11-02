@@ -10,7 +10,7 @@
 }
 
 .indicator[data-exiting="true"] {
-  animation: workingExit var(--k-working-transition-duration) var(--k-ease) both;
+  animation: workingExit var(--k-motion-moderate-exit) var(--k-ease) both;
 }
 
 .mainLine {

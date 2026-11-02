@@ -84,7 +84,7 @@
 .sectionActionsMenu {
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--k-duration-fast) var(--k-ease);
+  transition: opacity var(--k-motion-fast) var(--k-ease);
 }
 
 .sectionHeader:hover .sectionActionsMenu,
@@ -146,7 +146,7 @@
   opacity: 0;
   pointer-events: none;
   transform: translateY(-50%);
-  transition: opacity var(--k-duration-fast) var(--k-ease);
+  transition: opacity var(--k-motion-fast) var(--k-ease);
 }
 
 .conversationItem:focus-within .conversationActions,
@@ -164,7 +164,7 @@
   inset-inline-end: 0;
   opacity: 0;
   transform: translateY(-50%);
-  transition: opacity var(--k-duration-fast) var(--k-ease);
+  transition: opacity var(--k-motion-fast) var(--k-ease);
 }
 
 .conversationItem:focus-within .endTerminalButton,

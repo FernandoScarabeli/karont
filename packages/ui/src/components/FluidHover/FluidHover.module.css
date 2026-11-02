@@ -11,10 +11,10 @@
   pointer-events: none;
   transform: translate3d(var(--fluid-hover-x, 0px), var(--fluid-hover-y, 0px), 0);
   transition:
-    transform var(--k-duration-spring) var(--k-ease-spring),
-    width var(--k-duration-spring) var(--k-ease-spring),
-    height var(--k-duration-spring) var(--k-ease-spring),
-    opacity var(--k-duration-fast) var(--k-ease);
+    transform var(--k-motion-moderate) var(--k-ease-spring-moderate),
+    width var(--k-motion-moderate) var(--k-ease-spring-moderate),
+    height var(--k-motion-moderate) var(--k-ease-spring-moderate),
+    opacity var(--k-motion-fast) var(--k-ease);
 }
 
 .highlight[data-fluid-hover-snap="true"] {
@@ -23,6 +23,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .highlight {
-    transition: opacity var(--k-duration-fast) var(--k-ease);
+    transition: opacity var(--k-motion-fast) var(--k-ease);
   }
 }

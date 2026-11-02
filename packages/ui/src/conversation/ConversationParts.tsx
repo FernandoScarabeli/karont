@@ -47,7 +47,7 @@ import remarkGfm from "remark-gfm";
 import { Button } from "../components/Button/Button.tsx";
 import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
 import { t } from "../i18n/pt-BR.ts";
-import { MOTION_MS } from "../styles/motion.ts";
+import { MOTION_EXIT_MS } from "../styles/motion.ts";
 import {
   countDiffLines,
   formatDiffStats,
@@ -787,7 +787,7 @@ function TypewriterMarkdownBody({
 
   useEffect(() => {
     if (!done || !caughtUp) return;
-    const timer = window.setTimeout(onSettled, MOTION_MS.fast);
+    const timer = window.setTimeout(onSettled, MOTION_EXIT_MS.fast);
     return () => window.clearTimeout(timer);
   }, [caughtUp, done, onSettled]);
 
