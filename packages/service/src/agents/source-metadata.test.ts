@@ -105,6 +105,23 @@ test("mapeia resultados do item webSearch do Codex sem expor detalhes do agente 
   assert.deepEqual(extractCodexWebSearchSources({ type: "commandExecution", results: [] }), []);
 });
 
+test("descarta fontes cuja URL segura excede o limite do contrato", () => {
+  const prefix = "https://example.com/?q=";
+  const maxLengthUrl = `${prefix}${"x".repeat(2_048 - prefix.length)}`;
+  const sources = extractCodexWebSearchSources({
+    type: "webSearch",
+    results: [
+      { url: maxLengthUrl, title: "No limite" },
+      { url: `${maxLengthUrl}x`, title: "Acima do limite" },
+    ],
+  });
+
+  assert.deepEqual(
+    sources.map(({ url }) => url),
+    [maxLengthUrl],
+  );
+});
+
 test("normaliza URL e limita campos e quantidade de fontes", () => {
   const original = makeMessageSource({
     url: "https://example.com/article?utm_source=first",

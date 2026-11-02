@@ -8,6 +8,7 @@ import {
 const SOURCE_TITLE_LIMIT = 240;
 const SOURCE_SNIPPET_LIMIT = 720;
 const SOURCE_DATE_LIMIT = 80;
+const SOURCE_URL_LIMIT = 2_048;
 
 export function makeMessageSource(input: {
   url: unknown;
@@ -17,7 +18,7 @@ export function makeMessageSource(input: {
 }): MessageSource | null {
   if (typeof input.url !== "string") return null;
   const url = safeSourceUrl(input.url);
-  if (!url) return null;
+  if (!url || url.length > SOURCE_URL_LIMIT) return null;
   const title = cleanSourceText(input.title, SOURCE_TITLE_LIMIT);
   const snippet = cleanSourceText(input.snippet, SOURCE_SNIPPET_LIMIT);
   const date = cleanSourceText(input.date, SOURCE_DATE_LIMIT);
