@@ -1,4 +1,6 @@
 .message {
+  --k-chat-message-intrinsic-size: 320px;
+
   --message-action-icon-size: var(--k-space-4);
   --message-action-optical-inset: calc(
     (var(--k-control-height-sm) - var(--message-action-icon-size)) /

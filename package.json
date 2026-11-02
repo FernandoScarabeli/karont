@@ -20,7 +20,8 @@
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build -w @karont/ui && npm run build -w @karont/desktop",
     "start:desktop": "npm run build && npm run start -w @karont/desktop",
-    "preview:web": "npm run preview:web -w @karont/desktop",
+    "preview:web": "npm run preview:web -w @karont/desktop --",
+    "preview:web:prod": "npm run preview:web -w @karont/desktop -- --prod",
     "check": "npm run typecheck && npm run lint && npm run test",
     "test:e2e": "playwright test"
   },

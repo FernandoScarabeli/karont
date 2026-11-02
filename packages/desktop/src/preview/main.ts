@@ -4,8 +4,9 @@ import { createServer as createHttpServer, type Server as HttpServer } from "nod
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { connectService, resolvePaths, type ServiceClient } from "@karont/service";
-import { createServer as createViteServer, type ViteDevServer } from "vite";
+import { build, createServer as createViteServer, type ViteDevServer } from "vite";
 import { createPreviewBridge } from "./bridge.ts";
+import { createBuiltPreviewHandler, injectBridgeToken } from "./static.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packagesDir = path.resolve(here, "../../..");
@@ -18,6 +19,7 @@ let ownedService: ChildProcess | undefined;
 let client: ServiceClient | undefined;
 let bridge: ReturnType<typeof createPreviewBridge> | undefined;
 let httpServer: HttpServer | undefined;
+let webServer: HttpServer | undefined;
 let vite: ViteDevServer | undefined;
 let shuttingDown = false;
 let shutdownRequested = false;
@@ -35,6 +37,16 @@ process.once("SIGINT", onSignal);
 process.once("SIGTERM", onSignal);
 
 try {
+  const productionPreview = process.argv.includes("--prod");
+  if (productionPreview) {
+    await build({
+      root: uiRoot,
+      configFile: path.join(uiRoot, "vite.config.ts"),
+      mode: "production",
+    });
+    ensureNotStopping();
+  }
+
   const paths = resolvePaths();
   try {
     client = await connectService({ paths, timeoutMs: 2_000 });
@@ -51,8 +63,6 @@ try {
 
   ensureNotStopping();
   const token = randomBytes(32).toString("hex");
-  const bridgePort = await listenBridge();
-  ensureNotStopping();
   const allowedHosts = new Set(["127.0.0.1:5173", "localhost:5173"]);
   const allowedOrigins = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
   if (!client) throw new Error("O cliente do serviço não foi iniciado.");
@@ -64,35 +74,54 @@ try {
     allowedOrigins,
   });
 
-  const bridgePortForProxy = bridgePort;
-  vite = await createViteServer({
-    root: uiRoot,
-    configFile: path.join(uiRoot, "vite.config.ts"),
-    server: {
-      host: previewHost,
-      port: previewPort,
-      strictPort: true,
-      proxy: {
-        "/__karont": {
-          target: `http://${previewHost}:${bridgePortForProxy}`,
-          changeOrigin: false,
+  if (productionPreview) {
+    const serveBuiltPreview = createBuiltPreviewHandler({
+      root: path.join(uiRoot, "dist"),
+      token,
+      bridgeHandler: bridge.handler,
+    });
+    webServer = createHttpServer((request, response) => {
+      if (!allowedHosts.has(request.headers.host ?? "")) {
+        response.writeHead(403).end();
+        return;
+      }
+      serveBuiltPreview(request, response);
+    });
+    ensureNotStopping();
+    await listenWebServer(webServer);
+  } else {
+    const bridgePort = await listenBridge();
+    const bridgePortForProxy = bridgePort;
+    vite = await createViteServer({
+      root: uiRoot,
+      configFile: path.join(uiRoot, "vite.config.ts"),
+      server: {
+        host: previewHost,
+        port: previewPort,
+        strictPort: true,
+        proxy: {
+          "/__karont": {
+            target: `http://${previewHost}:${bridgePortForProxy}`,
+            changeOrigin: false,
+          },
         },
       },
-    },
-    plugins: [
-      {
-        name: "karont-preview-bridge-token",
-        transformIndexHtml(html) {
-          const meta = `<meta name="karont-dev-bridge" content="${token}">`;
-          return html.replace("<head>", `<head>\n    ${meta}`);
+      plugins: [
+        {
+          name: "karont-preview-bridge-token",
+          transformIndexHtml(html) {
+            return injectBridgeToken(html, token);
+          },
         },
-      },
-    ],
-  });
+      ],
+    });
+    ensureNotStopping();
+    await vite.listen();
+  }
   ensureNotStopping();
-  await vite.listen();
-  ensureNotStopping();
-  process.stdout.write(`Preview: http://${previewHost}:${previewPort}/\n`);
+  process.stdout.write(
+    `Preview${productionPreview ? " (produção)" : ""}: http://${previewHost}:${previewPort}/\n`,
+  );
   startupFinished = true;
 } catch (error) {
   if (!shutdownRequested) {
@@ -121,6 +150,16 @@ async function listenBridge(): Promise<number> {
   if (!address || typeof address === "string")
     throw new Error("Não foi possível obter a porta da ponte HTTP.");
   return address.port;
+}
+
+function listenWebServer(server: HttpServer): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(previewPort, previewHost, () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
 }
 
 function waitForServiceReady(child: ChildProcess, timeoutMs: number): Promise<void> {
@@ -163,6 +202,9 @@ async function shutdown(): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   await vite?.close().catch(() => undefined);
+  if (webServer?.listening) {
+    await new Promise<void>((resolve) => webServer?.close(() => resolve()));
+  }
   bridge?.close();
   if (httpServer?.listening) {
     await new Promise<void>((resolve) => httpServer?.close(() => resolve()));
