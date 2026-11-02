@@ -511,8 +511,10 @@ export function ConversationView({
       try {
         await navigator.clipboard.writeText(text);
         announce(t.chat.copied);
+        return true;
       } catch {
         setInteractionError(t.chat.copyFailed);
+        return false;
       }
     },
     [announce],
