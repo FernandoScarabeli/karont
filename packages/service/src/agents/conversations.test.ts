@@ -320,6 +320,40 @@ test("Claude registra diff, subagente com ações filhas e resultado MCP", async
   }
 });
 
+test("Claude 2.1.x chama o subagente de Agent: ações filhas ficam aninhadas e eventos task_* não viram ações", async () => {
+  const harness = await createHarness("subagente-agent");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Liste os arquivos do projeto.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const actions =
+      latestAgent(harness, conversation.id)?.parts.filter(
+        (part): part is Extract<MessagePart, { type: "action" }> => part.type === "action",
+      ) ?? [];
+    assert.equal(actions.length, 2);
+    const subagent = actions.find((action) => String(action.actionType) === "subagent");
+    assert.ok(subagent);
+    assert.equal(subagent.title, "Listar arquivos do projeto");
+    assert.match(subagent.input, /^Explore · Liste todos os arquivos deste projeto/);
+    assert.equal(
+      subagent.output,
+      "package.json,src/carrinho.js,src/desconto.js,test/carrinho.test.js,test/desconto.test.js",
+    );
+    assert.equal(subagent.state, "ok");
+
+    const childBash = actions.find((action) => action.actionType === "command");
+    assert.ok(childBash);
+    assert.equal(childBash.parentId, subagent.id);
+    assert.equal(
+      actions.some((action) => action.actionType === "other"),
+      false,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
 test("fluxo da UI create + send gera e transmite título após resposta concluída", async () => {
   let captured: { agent: string; userMessage: string; agentResponse: string } | undefined;
   const titleCli = createFakeTitleCli('### **Título:** `"Karont: app desktop de chat"`\n');
