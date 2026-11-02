@@ -118,14 +118,10 @@ export function ComposerPreferences({
   const configPopoverId = useId();
   const configContentId = useId();
   const planDescriptionId = useId();
-<<<<<<< HEAD
-  const modelName = modelDisplayName(models, model);
-  const modelTooltipLabel = model ? t.chat.modelTooltip(modelName) : t.chat.model;
-=======
   const selectedModelId = model ? resolveModelId(models, model) || model : null;
   const selectedModel = selectedModelId ? findModelByIdOrAlias(models, selectedModelId) : undefined;
   const modelName = modelDisplayName(models, selectedModelId);
->>>>>>> m2-b15-revisao
+  const modelTooltipLabel = selectedModelId ? t.chat.modelTooltip(modelName) : t.chat.model;
   const modelOptions: ComposerMenuOption[] = (models?.models ?? []).map((option) => ({
     id: option.id,
     content: (
