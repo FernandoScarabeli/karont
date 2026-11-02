@@ -42,6 +42,7 @@ import styles from "./ConversationView.module.css";
 import { cacheAgentModels, getCachedAgentModels } from "./conversationCache.ts";
 import { formatFolderPath } from "./displayText.ts";
 import { FollowBottomContext } from "./followBottom.ts";
+import { type FollowEvent, type FollowState, nextFollowState } from "./followState.ts";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
@@ -153,7 +154,7 @@ export function ConversationView({
   const titleHeadingRef = useRef<HTMLHeadingElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const scrollFrameRef = useRef<number | null>(null);
-  const wasNearBottom = useRef(true);
+  const followRef = useRef<FollowState>("following");
   const previousScrollHeight = useRef(0);
   const restoreAfterOlder = useRef(false);
   const previousScrollVersion = useRef("");
@@ -277,6 +278,7 @@ export function ConversationView({
   useEffect(() => {
     if (previousConversationIdRef.current === id) return;
     previousConversationIdRef.current = id;
+    followRef.current = "following";
     optimisticConversationIdRef.current = id;
     optimisticOptionsRef.current = {};
     setOptimisticOptions({});
@@ -297,53 +299,94 @@ export function ConversationView({
     [latestMessage],
   );
 
-  useEffect(() => {
-    const list = messageListRef.current;
-    const sentinel = bottomSentinelRef.current;
-    if (!list || !sentinel) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry) wasNearBottom.current = entry.isIntersecting;
-      },
-      { root: list, rootMargin: "0px 0px 120px 0px", threshold: 0 },
-    );
-    observer.observe(sentinel);
-    return () => {
-      observer.disconnect();
+  useEffect(
+    () => () => {
       if (scrollFrameRef.current !== null) {
         window.cancelAnimationFrame(scrollFrameRef.current);
         scrollFrameRef.current = null;
       }
-    };
-  }, []);
+    },
+    [],
+  );
 
   // O texto digitado cresce entre um delta e outro. Enquanto o usuário está no fim,
   // acompanha a altura da última mensagem; se ele subiu, não mexe na rolagem.
-  // Chamado pelo texto digitado a cada quadro (antes da pintura). Só lê a altura
-  // ao fixar, e só se o usuário estiver no fim.
+  // Chamado a cada quadro do texto digitado (antes da pintura). Enquanto o
+  // acompanhamento está ligado, sempre fixa no fim; não consulta o IntersectionObserver.
   const pinToBottom = useCallback(() => {
     const list = messageListRef.current;
-    if (list && wasNearBottom.current) list.scrollTop = list.scrollHeight;
+    if (list && followRef.current === "following") list.scrollTop = list.scrollHeight;
   }, []);
 
-  // Subir com a roda ou com o teclado marca o usuário como fora do fim antes de
-  // qualquer quadro seguinte. A rolagem para cima aparece no evento de scroll.
+  // Só a intenção explícita do usuário desliga o acompanhamento; a volta é decidida
+  // pela rolagem até perto do fim (ver followState.ts).
   useEffect(() => {
     const list = messageListRef.current;
     if (!list) return;
+    const follow = (event: FollowEvent) => {
+      followRef.current = nextFollowState(followRef.current, event);
+    };
     let lastScrollTop = list.scrollTop;
+    let lastDistance = list.scrollHeight - list.scrollTop - list.clientHeight;
+    let lastTouchY: number | null = null;
+    let grabbingScrollbar = false;
+
     const onScroll = () => {
-      if (list.scrollTop < lastScrollTop) wasNearBottom.current = false;
+      // Arrastar a barra de rolagem para cima é intenção do usuário.
+      if (grabbingScrollbar && list.scrollTop < lastScrollTop) follow({ type: "userScrollUp" });
       lastScrollTop = list.scrollTop;
+      const distance = list.scrollHeight - list.scrollTop - list.clientHeight;
+      follow({
+        type: "scroll",
+        distanceFromBottom: distance,
+        previousDistanceFromBottom: lastDistance,
+      });
+      lastDistance = distance;
     };
     const onWheel = (event: WheelEvent) => {
-      if (event.deltaY < 0) wasNearBottom.current = false;
+      if (event.deltaY < 0) follow({ type: "userScrollUp" });
     };
+    const onTouchStart = (event: TouchEvent) => {
+      lastTouchY = event.touches[0]?.clientY ?? null;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      const y = event.touches[0]?.clientY;
+      if (y === undefined) return;
+      // Dedo descendo = conteúdo subindo.
+      if (lastTouchY !== null && y > lastTouchY) follow({ type: "userScrollUp" });
+      lastTouchY = y;
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "PageUp" || event.key === "ArrowUp" || event.key === "Home") {
+        follow({ type: "userScrollUp" });
+      }
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const rect = list.getBoundingClientRect();
+      grabbingScrollbar =
+        event.target === list && event.clientX - rect.left >= list.clientWidth + list.clientLeft;
+    };
+    const releaseScrollbar = () => {
+      grabbingScrollbar = false;
+    };
+
     list.addEventListener("scroll", onScroll, { passive: true });
     list.addEventListener("wheel", onWheel, { passive: true });
+    list.addEventListener("touchstart", onTouchStart, { passive: true });
+    list.addEventListener("touchmove", onTouchMove, { passive: true });
+    list.addEventListener("keydown", onKeyDown);
+    list.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", releaseScrollbar);
+    window.addEventListener("pointercancel", releaseScrollbar);
     return () => {
       list.removeEventListener("scroll", onScroll);
       list.removeEventListener("wheel", onWheel);
+      list.removeEventListener("touchstart", onTouchStart);
+      list.removeEventListener("touchmove", onTouchMove);
+      list.removeEventListener("keydown", onKeyDown);
+      list.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", releaseScrollbar);
+      window.removeEventListener("pointercancel", releaseScrollbar);
     };
   }, []);
 
@@ -370,7 +413,7 @@ export function ConversationView({
       const heightDifference = list.scrollHeight - previousScrollHeight.current;
       list.scrollTop += heightDifference;
       restoreAfterOlder.current = false;
-    } else if (wasNearBottom.current && contentChanged) {
+    } else if (followRef.current === "following" && contentChanged) {
       if (scrollFrameRef.current !== null) {
         window.cancelAnimationFrame(scrollFrameRef.current);
       }
@@ -420,6 +463,7 @@ export function ConversationView({
       )
         return;
       const conversationId = id;
+      followRef.current = nextFollowState(followRef.current, { type: "newMessage" });
       const sendRevision = ++sendRevisionRef.current;
       sendPendingRef.current = true;
       setInteractionError("");
