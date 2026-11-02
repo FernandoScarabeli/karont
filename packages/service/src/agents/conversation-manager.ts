@@ -447,7 +447,14 @@ export class ConversationManager {
       conversationId: id,
       author: "user",
       status: "done",
-      parts: [{ id: randomUUID(), type: "text", markdown: text }],
+      parts: [
+        {
+          id: randomUUID(),
+          type: "text",
+          markdown: text,
+          ...(operation === "compact" ? { operation: "compact" as const } : {}),
+        },
+      ],
       ...(validatedAttachments.metadata.length
         ? { attachments: validatedAttachments.metadata }
         : {}),
@@ -524,6 +531,8 @@ export class ConversationManager {
       .find((message) => message.author === "user");
     const textPart = user?.parts.find((part) => part.type === "text");
     const text = textPart?.type === "text" ? textPart.markdown : "";
+    const operation =
+      textPart?.type === "text" && textPart.operation === "compact" ? "compact" : "send";
     if (!user || !text)
       throw new Error("A mensagem original não está disponível para nova tentativa.");
     let attachments: ConversationAttachment[] = [];
@@ -540,9 +549,13 @@ export class ConversationManager {
     await this.#startTurn(
       conversation,
       agentMessage,
-      withBranchContext(text, getBranchContextPending(this.#db, id)),
+      operation === "compact"
+        ? text
+        : withBranchContext(text, getBranchContextPending(this.#db, id)),
       undefined,
       attachments,
+      [],
+      operation,
     );
     return agentMessage;
   }

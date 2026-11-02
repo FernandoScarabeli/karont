@@ -2133,6 +2133,59 @@ test("retry reenvia os bytes dos anexos da mensagem original", async () => {
   }
 });
 
+test("retry repete uma compactação pela operação do adaptador", async () => {
+  let compactCalls = 0;
+  let sendCalls = 0;
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => emit({ kind: "session", sessionId: "sessao-teste" }),
+    send: async () => {
+      sendCalls += 1;
+      emit({ kind: "turn-end", status: "done" });
+    },
+    compact: async () => {
+      compactCalls += 1;
+      emit({
+        kind: "turn-end",
+        status: compactCalls === 1 ? "error" : "done",
+        ...(compactCalls === 1
+          ? { error: { type: "failed" as const, text: "Falha simulada." } }
+          : {}),
+      });
+    },
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness("texto", {}, { adapterFactory });
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Mensagem original.");
+    await waitForState(harness, conversation.id, "idle");
+
+    await harness.manager.compact(conversation.id);
+    await waitForState(harness, conversation.id, "error");
+    const compactMarker = harness.manager
+      .get(conversation.id)
+      ?.messages.filter((message) => message.author === "user")
+      .at(-1)
+      ?.parts.find((part) => part.type === "text");
+    assert.equal(compactMarker?.type === "text" ? compactMarker.operation : undefined, "compact");
+    const failed = harness.manager
+      .get(conversation.id)
+      ?.messages.filter((message) => message.author === "agent")
+      .at(-1);
+    assert.ok(failed);
+
+    await harness.manager.retry(conversation.id, failed.id);
+    await waitForState(harness, conversation.id, "idle");
+
+    assert.equal(compactCalls, 2);
+    assert.equal(sendCalls, 1);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("retry descarta os bytes de anexos das conversas mais antigas", async () => {
   const adapterFactory: AdapterFactory = (_conversation, emit) => ({
     start: async () => undefined,

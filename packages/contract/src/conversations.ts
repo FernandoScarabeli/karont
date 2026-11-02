@@ -74,6 +74,7 @@ export const messagePartSchema = z.discriminatedUnion("type", [
     ...messagePartBase,
     type: z.literal("text"),
     markdown: z.string(),
+    operation: z.literal("compact").optional(),
     sources: z.array(messageSourceSchema).max(MAX_MESSAGE_SOURCES).optional(),
   }),
   z.strictObject({ ...messagePartBase, type: z.literal("thinking"), text: z.string() }),
