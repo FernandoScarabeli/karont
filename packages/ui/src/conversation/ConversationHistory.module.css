@@ -42,6 +42,13 @@
 }
 
 .preview {
+  position: relative;
+  inset-inline-end: calc(
+    0px -
+    var(--k-space-2) -
+    var(--k-space-1) -
+    var(--k-scrollbar-track-width)
+  );
   display: block;
   width: fit-content;
   max-width: min(var(--k-chat-history-item-max-width), 100%);

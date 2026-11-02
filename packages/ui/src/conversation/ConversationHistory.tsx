@@ -133,7 +133,7 @@ export const ConversationHistory = memo(function ConversationHistory({
 
   return (
     <>
-      <Tooltip align="end" label={t.conversationHistory.button}>
+      <Tooltip align="end" label={t.conversationHistory.button} open={open}>
         <IconButton
           aria-controls={popoverId}
           aria-expanded={open}
