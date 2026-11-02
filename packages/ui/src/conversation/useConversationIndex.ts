@@ -138,6 +138,32 @@ export function useConversationIndex(archived = false) {
   );
 }
 
+export function getConversationIndexEntry(id: string): Conversation | null {
+  if (deletedIds.has(id)) return null;
+  return (
+    latestConversations.get(id) ??
+    snapshots.active.conversations.find((conversation) => conversation.id === id) ??
+    snapshots.archived.conversations.find((conversation) => conversation.id === id) ??
+    null
+  );
+}
+
+export function useConversationIndexEntry(id: string): Conversation | null {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.active.add(listener);
+      listeners.archived.add(listener);
+      connect();
+      return () => {
+        listeners.active.delete(listener);
+        listeners.archived.delete(listener);
+      };
+    },
+    () => getConversationIndexEntry(id),
+    () => getConversationIndexEntry(id),
+  );
+}
+
 export function upsertConversation(conversation: Conversation) {
   latestConversations.set(conversation.id, conversation);
   deletedIds.delete(conversation.id);

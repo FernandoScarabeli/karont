@@ -13,6 +13,7 @@ import {
 
 export type State = {
   conversation: Conversation | null;
+  requestedConversationId: string | null;
   messageIds: string[];
   messagesById: Record<string, ConversationMessage>;
   loading: boolean;
@@ -23,6 +24,7 @@ export type State = {
 };
 
 export type Action =
+  | { type: "requesting"; conversationId: string }
   | { type: "conversation"; conversation: Conversation }
   | { type: "message"; message: ConversationMessage }
   | {
@@ -44,10 +46,11 @@ export type Action =
         endedAt?: number;
       }>;
     }
-  | { type: "failed"; error: string };
+  | { type: "failed"; conversationId: string; error: string };
 
 const initialState: State = {
   conversation: null,
+  requestedConversationId: null,
   messageIds: [],
   messagesById: {},
   loading: true,
@@ -73,6 +76,16 @@ export function useConversation(conversationId: string) {
   hasOlderMessagesRef.current = state.hasOlderMessages;
   const conversationIdRef = useRef(conversationId);
   conversationIdRef.current = conversationId;
+  const stateMatchesConversation = state.conversation?.id === conversationId;
+  const cachedSnapshot = stateMatchesConversation
+    ? undefined
+    : getConversationSnapshot(conversationId);
+  const visibleConversation = stateMatchesConversation
+    ? state.conversation
+    : (cachedSnapshot?.conversation ?? state.conversation);
+  const visibleMessages = stateMatchesConversation
+    ? messages
+    : (cachedSnapshot?.messages ?? messages);
 
   useEffect(() => {
     if (!state.conversation) return;
@@ -84,9 +97,10 @@ export function useConversation(conversationId: string) {
   }, [messages, state.conversation, state.hasOlderMessages]);
 
   useEffect(() => {
+    dispatch({ type: "requesting", conversationId });
     const bridge = getBridge();
     if (!bridge) {
-      dispatch({ type: "failed", error: t.conversation.noBridge });
+      dispatch({ type: "failed", conversationId, error: t.conversation.noBridge });
       return;
     }
 
@@ -166,6 +180,7 @@ export function useConversation(conversationId: string) {
         if (!mounted) return;
         dispatch({
           type: "failed",
+          conversationId,
           error: error instanceof BridgeError && error.message ? error.message : t.chat.loadFailed,
         });
       });
@@ -177,14 +192,14 @@ export function useConversation(conversationId: string) {
     };
   }, [conversationId]);
 
-  const addMessage = useCallback(
-    (message: ConversationMessage) => dispatch({ type: "message", message }),
-    [],
-  );
-  const updateConversation = useCallback(
-    (conversation: Conversation) => dispatch({ type: "conversation", conversation }),
-    [],
-  );
+  const addMessage = useCallback((message: ConversationMessage) => {
+    if (conversationIdRef.current !== message.conversationId) return;
+    dispatch({ type: "message", message });
+  }, []);
+  const updateConversation = useCallback((conversation: Conversation) => {
+    if (conversationIdRef.current !== conversation.id) return;
+    dispatch({ type: "conversation", conversation });
+  }, []);
   const fetchOlderMessages = useCallback(
     async (before: string): Promise<number | null> => {
       const bridge = getBridge();
@@ -195,6 +210,7 @@ export function useConversation(conversationId: string) {
           limit: OLDER_MESSAGE_PAGE_SIZE,
           before,
         });
+        if (conversationIdRef.current !== conversationId) return null;
         const page = prependOlderMessagePage(
           messagesRef.current,
           result.messages,
@@ -258,7 +274,15 @@ export function useConversation(conversationId: string) {
 
   return {
     ...state,
-    messages,
+    conversation: visibleConversation,
+    messages: visibleMessages,
+    loading: state.loading || state.requestedConversationId !== conversationId,
+    hasOlderMessages: stateMatchesConversation
+      ? state.hasOlderMessages
+      : (cachedSnapshot?.hasOlderMessages ?? false),
+    error: state.requestedConversationId === conversationId ? state.error : "",
+    liveText: stateMatchesConversation ? state.liveText : "",
+    responseFinishedId: stateMatchesConversation ? state.responseFinishedId : null,
     addMessage,
     updateConversation,
     fetchOlderMessages,
@@ -268,7 +292,7 @@ export function useConversation(conversationId: string) {
 
 function createInitialState(conversationId: string): State {
   const snapshot = getConversationSnapshot(conversationId);
-  if (!snapshot) return initialState;
+  if (!snapshot) return { ...initialState, requestedConversationId: conversationId };
   const messagesById: Record<string, ConversationMessage> = {};
   const messageIds: string[] = [];
   for (const message of snapshot.messages) {
@@ -277,6 +301,7 @@ function createInitialState(conversationId: string): State {
   }
   return {
     ...initialState,
+    requestedConversationId: conversationId,
     conversation: snapshot.conversation,
     messageIds,
     messagesById,
@@ -285,6 +310,16 @@ function createInitialState(conversationId: string): State {
 }
 
 export function reducer(state: State, action: Action): State {
+  if (action.type === "requesting") {
+    return {
+      ...state,
+      requestedConversationId: action.conversationId,
+      loading: true,
+      error: "",
+      liveText: "",
+      responseFinishedId: null,
+    };
+  }
   if (action.type === "message") return upsertMessage(state, action.message);
   if (action.type === "conversation") return { ...state, conversation: action.conversation };
   if (action.type === "loaded") {
@@ -298,6 +333,7 @@ export function reducer(state: State, action: Action): State {
     const merged = mergeLatestMessages(currentMessages, action.messages);
     return {
       ...state,
+      requestedConversationId: action.conversation.id,
       conversation: action.conversation,
       messageIds: merged.map((message) => message.id),
       messagesById: Object.fromEntries(merged.map((message) => [message.id, message])),
@@ -324,7 +360,10 @@ export function reducer(state: State, action: Action): State {
     };
   }
 
-  if (action.type === "failed") return { ...state, loading: false, error: action.error };
+  if (action.type === "failed") {
+    if (state.requestedConversationId !== action.conversationId) return state;
+    return { ...state, loading: false, error: action.error };
+  }
 
   if (action.type === "event") {
     if (action.event.event === "conversation.messageCreated") {

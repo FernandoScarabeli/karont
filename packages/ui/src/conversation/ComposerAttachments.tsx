@@ -38,6 +38,7 @@ class AttachmentInputError extends Error {
 
 export function useComposerAttachments(enabled: boolean, contextKey: string) {
   const [attachments, setAttachments] = useState<PendingComposerAttachment[]>([]);
+  const [attachmentsContextKey, setAttachmentsContextKey] = useState(contextKey);
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [isPreparing, setIsPreparing] = useState(false);
@@ -55,6 +56,7 @@ export function useComposerAttachments(enabled: boolean, contextKey: string) {
   const replaceAttachments = useCallback((next: PendingComposerAttachment[]) => {
     attachmentsRef.current = next;
     setAttachments(next);
+    setAttachmentsContextKey(contextKeyRef.current);
   }, []);
 
   const clear = useCallback(() => {
@@ -100,6 +102,9 @@ export function useComposerAttachments(enabled: boolean, contextKey: string) {
   useEffect(() => {
     if (previousContextKeyRef.current === contextKey) return;
     previousContextKeyRef.current = contextKey;
+    dragDepthRef.current = 0;
+    setIsDragging(false);
+    setIsPreparing(false);
     clear();
   }, [clear, contextKey]);
 
@@ -200,10 +205,10 @@ export function useComposerAttachments(enabled: boolean, contextKey: string) {
   );
 
   return {
-    attachments,
-    error,
-    isDragging,
-    isPreparing,
+    attachments: attachmentsContextKey === contextKey ? attachments : [],
+    error: attachmentsContextKey === contextKey ? error : "",
+    isDragging: attachmentsContextKey === contextKey && isDragging,
+    isPreparing: attachmentsContextKey === contextKey && isPreparing,
     addFiles,
     clear,
     getRequestAttachments,

@@ -13,6 +13,7 @@ import {
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { ConversationLoadingFallback } from "../conversation/ConversationLoadingFrame.tsx";
 import { NewConversationView } from "../conversation/NewConversationView.tsx";
+import { useConversationIndexEntry } from "../conversation/useConversationIndex.ts";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { getTerminalDisplayTitles, useTerminals } from "../terminal/useTerminals.ts";
@@ -52,17 +53,24 @@ function LazyConversationPanel({
   };
 }) {
   const openedAt = useRef(Date.now()).current;
+  const conversation = useConversationIndexEntry(id);
 
   return (
     <Suspense
-      fallback={<ConversationLoadingFallback headerActions={headerActions} openedAt={openedAt} />}
+      fallback={
+        <ConversationLoadingFallback
+          conversation={conversation}
+          headerActions={headerActions}
+          openedAt={openedAt}
+        />
+      }
     >
       <ConversationView
+        conversationSummary={conversation}
         dragHandleProps={dragHandleProps}
         headerActions={headerActions}
         id={id}
         isActivePane={isActivePane}
-        key={id}
         openedAt={openedAt}
       />
     </Suspense>
@@ -294,7 +302,6 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
         headerActions={renderToolbar(pane)}
         id={pane.view.conversationId}
         isActivePane={isActive}
-        key={pane.view.conversationId}
       />
     );
   }
