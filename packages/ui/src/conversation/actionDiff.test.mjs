@@ -62,7 +62,7 @@ test("omite a contagem de edição que for zero", () => {
   assert.equal(formatDiffStats(0, 0), "");
 });
 
-test("remove cabeçalhos do diff e oculta o único hunk", () => {
+test("remove cabeçalhos do diff e calcula as duas colunas de linha", () => {
   const lines = getDiffDisplayLines(
     [
       "diff --git a/src/app.ts b/src/app.ts",
@@ -76,22 +76,63 @@ test("remove cabeçalhos do diff e oculta o único hunk", () => {
   );
 
   assert.deepEqual(lines, [
-    { text: "-antes", kind: "removed" },
-    { text: "+depois", kind: "added" },
+    { text: "antes", kind: "removed", oldLine: 1 },
+    { text: "depois", kind: "added", newLine: 1 },
   ]);
 });
 
-test("mantém hunks múltiplos como separadores discretos", () => {
+test("mantém números vazios quando o diff não informa posição", () => {
   assert.deepEqual(
-    getDiffDisplayLines(["@@ -1 +1 @@", "-antes", "+depois", "@@ -5 +5 @@", "-x", "+y"].join("\n")),
+    getDiffDisplayLines(["--- a/src/app.ts", "+++ b/src/app.ts", "-antes", "+depois"].join("\n")),
     [
-      { text: "@@ -1 +1 @@", kind: "hunk" },
-      { text: "-antes", kind: "removed" },
-      { text: "+depois", kind: "added" },
-      { text: "@@ -5 +5 @@", kind: "hunk" },
-      { text: "-x", kind: "removed" },
-      { text: "+y", kind: "added" },
+      { text: "antes", kind: "removed" },
+      { text: "depois", kind: "added" },
     ],
+  );
+});
+
+test("calcula linhas por hunk e separa múltiplos hunks com reticências", () => {
+  assert.deepEqual(
+    getDiffDisplayLines(
+      [
+        "@@ -10,2 +20,3 @@",
+        " contexto",
+        "-antes",
+        "+depois",
+        "+nova",
+        "@@ -30 +42 @@ função",
+        "-x",
+        "+y",
+      ].join("\n"),
+    ),
+    [
+      { text: "contexto", kind: "context", oldLine: 10, newLine: 20 },
+      { text: "antes", kind: "removed", oldLine: 11 },
+      { text: "depois", kind: "added", newLine: 21 },
+      { text: "nova", kind: "added", newLine: 22 },
+      { text: "⋯", kind: "separator" },
+      { text: "x", kind: "removed", oldLine: 30 },
+      { text: "y", kind: "added", newLine: 42 },
+    ],
+  );
+});
+
+test("conta somente linhas adicionadas e removidas do corpo", () => {
+  assert.deepEqual(
+    countDiffLines(
+      [
+        "--- a/src/app.ts",
+        "+++ b/src/app.ts",
+        "@@ -1,2 +1,3 @@",
+        " contexto",
+        "-antiga",
+        "+nova",
+        "+mais",
+        "@@ -8 +9 @@",
+        "-removida",
+      ].join("\n"),
+    ),
+    { added: 2, removed: 2 },
   );
 });
 

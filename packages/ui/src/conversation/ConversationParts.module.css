@@ -706,38 +706,185 @@
   overflow-wrap: anywhere;
 }
 
-.diffFile {
+.diffPanel {
   min-width: 0;
+  overflow: hidden;
+  border: var(--k-border-width) solid var(--k-color-border);
+  border-radius: var(--k-radius-md);
+  background: var(--k-color-bg-raised);
 }
 
-.diffOutput {
-  max-height: var(--k-chat-part-max-height);
-  margin-block-start: var(--k-space-1);
+.diffHeader {
+  display: flex;
+  min-width: 0;
+  min-height: var(--k-control-height-md);
+  align-items: center;
+  gap: var(--k-space-2);
+  padding-inline: var(--k-space-3);
+  border-block-end: var(--k-border-width) solid var(--k-color-border);
+}
+
+.diffHeaderIcon {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+}
+
+.diffPath {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-mono); /* taste-skill-ignore: caminho de arquivo */
+  font-size: var(--k-text-12);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diffStats {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: var(--k-space-2);
+  font-family: var(--k-font-mono); /* taste-skill-ignore: contagem de linhas do diff */
+  font-size: var(--k-text-12);
+  font-variant-numeric: tabular-nums;
+}
+
+.diffStatsAdded {
+  color: var(--k-color-ok);
+}
+
+.diffStatsRemoved {
+  color: var(--k-color-danger);
+}
+
+.diffScrollArea {
+  max-height: var(--k-chat-diff-max-height);
   overflow: auto;
+}
+
+.diffScrollArea:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: calc(var(--k-focus-ring-width) * -1);
+}
+
+.diffLines {
+  width: max-content;
+  min-width: 100%;
+  padding-block: var(--k-space-1);
   color: var(--k-color-code-text);
-  font-family: var(--k-font-mono); /* taste-skill-ignore: diff unificado de código */
+  font-family: var(--k-font-mono); /* taste-skill-ignore: linhas de código */
   font-size: var(--k-text-12);
   line-height: var(--k-leading-normal);
+}
+
+.diffLine {
+  display: grid;
+  width: max-content;
+  min-width: 100%;
+  align-items: stretch;
+  grid-template-columns: var(--k-chat-diff-marker-width) max-content;
+  white-space: pre;
+}
+
+.diffLines[data-has-line-numbers="true"] .diffLine {
+  grid-template-columns:
+    var(--k-chat-diff-line-number-width)
+    var(--k-chat-diff-line-number-width)
+    var(--k-chat-diff-marker-width)
+    max-content;
+}
+
+.diffLineNumber {
+  display: block;
+  padding-inline-end: var(--k-space-2);
+  color: var(--k-color-text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  user-select: none;
+}
+
+.diffMarker {
+  color: var(--k-color-text-muted);
+  text-align: center;
+  user-select: none;
+}
+
+.diffLineAdded {
+  border-inline-start: var(--k-chat-diff-edge-width) solid var(--k-color-ok);
+  background: var(--k-color-diff-added-bg);
+}
+
+.diffLineRemoved {
+  border-inline-start: var(--k-border-width) solid var(--k-color-danger);
+  background: var(--k-color-diff-removed-bg);
+}
+
+.diffLineAdded .diffMarker {
+  color: var(--k-color-ok);
+}
+
+.diffLineRemoved .diffMarker {
+  color: var(--k-color-danger);
+}
+
+.diffLine > pre {
+  min-height: 1lh;
+  margin: 0;
+  overflow: visible;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
   tab-size: 2;
   white-space: pre;
 }
 
-.diffOutput > span {
+.diffLine :global(code) {
+  font: inherit;
+  white-space: inherit;
+}
+
+.diffCodePlain {
   display: block;
   min-height: 1lh;
 }
 
-.diffAdded {
-  color: var(--k-color-ok);
+.diffLine :global(.hljs-keyword),
+.diffLine :global(.hljs-selector-tag),
+.diffLine :global(.hljs-literal) {
+  color: var(--k-color-code-keyword);
 }
 
-.diffRemoved {
-  color: var(--k-color-danger);
+.diffLine :global(.hljs-string),
+.diffLine :global(.hljs-attr) {
+  color: var(--k-color-code-string);
 }
 
-.diffHunk {
+.diffLine :global(.hljs-number),
+.diffLine :global(.hljs-symbol) {
+  color: var(--k-color-code-number);
+}
+
+.diffLine :global(.hljs-comment) {
+  color: var(--k-color-code-comment);
+}
+
+.diffLine :global(.hljs-title),
+.diffLine :global(.hljs-function) {
+  color: var(--k-color-code-title);
+}
+
+.diffLine :global(.hljs-meta),
+.diffLine :global(.hljs-built_in) {
+  color: var(--k-color-code-meta);
+}
+
+.diffSeparator {
+  width: max-content;
+  min-width: 100%;
+  padding-block: var(--k-space-1);
   color: var(--k-color-text-muted);
   font-size: var(--k-text-11);
+  text-align: center;
 }
 
 .commandHeader {

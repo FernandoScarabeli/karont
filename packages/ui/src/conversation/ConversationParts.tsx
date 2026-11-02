@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Circle,
   Clock3,
+  Code,
   Copy,
   FileCode2,
   FileText,
@@ -40,6 +41,7 @@ import {
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "../components/Button/Button.tsx";
+import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
 import { t } from "../i18n/pt-BR.ts";
 import {
   countDiffLines,
@@ -981,7 +983,7 @@ export const ActionItem = memo(function ActionItem({
         <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
       </button>
       <div hidden={!expanded} id={detailsId}>
-        <ActionDetails action={action} cwd={cwd} />
+        <ActionDetails action={action} cwd={cwd} open={expanded} />
         {nestedActions.length > 0 ? (
           <fieldset className={styles.actionChildren}>
             <legend className={styles.srOnly}>{t.chat.subagentActions}</legend>
@@ -1046,7 +1048,7 @@ const ActionBatch = memo(function ActionBatch({
                 <span className={styles.srOnly}>{t.chat.permissionGrantedDescription}</span>
               ) : null}
             </div>
-            <ActionDetails action={action} cwd={cwd} />
+            <ActionDetails action={action} cwd={cwd} open={expanded} />
           </div>
         ))}
       </div>
@@ -1054,10 +1056,22 @@ const ActionBatch = memo(function ActionBatch({
   );
 });
 
-function ActionDetails({ action, cwd }: { action: ConversationAction; cwd: string }) {
+function ActionDetails({
+  action,
+  cwd,
+  open,
+}: {
+  action: ConversationAction;
+  cwd: string;
+  open: boolean;
+}) {
   const category = categoryForAction(action);
   const paths = actionPaths(action, cwd);
-  const changes = parseFileChanges(action.output);
+  const changes = useMemo(
+    () =>
+      open && (category === "edit" || category === "write") ? parseFileChanges(action.output) : [],
+    [action.output, category, open],
+  );
 
   if (category === "read") {
     return (
@@ -1096,14 +1110,7 @@ function ActionDetails({ action, cwd }: { action: ConversationAction; cwd: strin
     return (
       <div className={styles.actionDetails}>
         {hasDiff ? (
-          changes.map((change) => (
-            <div className={styles.diffFile} key={change.path}>
-              <span className={styles.detailLabel}>{change.path}</span>
-              {change.diff ? (
-                <pre className={styles.diffOutput}>{renderDiff(change.diff)}</pre>
-              ) : null}
-            </div>
-          ))
+          changes.map((change) => <DiffFilePanel change={change} key={change.path} open={open} />)
         ) : (
           <ul className={styles.detailPaths}>
             {paths.map((path) => (
@@ -1204,6 +1211,172 @@ function ActionDetails({ action, cwd }: { action: ConversationAction; cwd: strin
       ) : null}
     </div>
   );
+}
+
+const DiffFilePanel = memo(function DiffFilePanel({
+  change,
+  open,
+}: {
+  change: { path: string; diff: string };
+  open: boolean;
+}) {
+  const lines = useMemo(() => getDiffDisplayLines(change.diff), [change.diff]);
+  const displayLines = useMemo(() => {
+    const keyOccurrences = new Map<string, number>();
+    return lines.map((line) => {
+      const keyBase = `${line.kind}:${line.oldLine ?? ""}:${line.newLine ?? ""}:${line.text}`;
+      const occurrence = keyOccurrences.get(keyBase) ?? 0;
+      keyOccurrences.set(keyBase, occurrence + 1);
+      return { ...line, key: `${keyBase}:${occurrence}` };
+    });
+  }, [lines]);
+  const added = lines.filter((line) => line.kind === "added").length;
+  const removed = lines.filter((line) => line.kind === "removed").length;
+  const stats = formatDiffStats(added, removed);
+  const language = languageForPath(change.path);
+  const scrollLabel = `Alterações em ${change.path}`;
+  const scrollClassName = `${scrollAreaStyles.scrollArea} ${styles.diffScrollArea}`;
+  const hasLineNumbers = lines.some(
+    (line) => line.oldLine !== undefined || line.newLine !== undefined,
+  );
+  const [highlightPlugin, setHighlightPlugin] = useState<HighlightPlugin | null>(null);
+
+  useEffect(() => {
+    if (!open || !language || highlightPlugin) return;
+    let mounted = true;
+    void loadHighlightPlugin().then((plugin) => {
+      if (mounted && plugin) setHighlightPlugin(() => plugin);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [highlightPlugin, language, open]);
+
+  return (
+    <section aria-label={change.path} className={styles.diffPanel}>
+      <div className={styles.diffHeader}>
+        <Code aria-hidden="true" className={styles.diffHeaderIcon} size={14} />
+        <span className={styles.diffPath} title={change.path}>
+          {change.path}
+        </span>
+        {stats ? (
+          <span className={styles.diffStats}>
+            {added > 0 ? <span className={styles.diffStatsAdded}>+{added}</span> : null}
+            {removed > 0 ? <span className={styles.diffStatsRemoved}>−{removed}</span> : null}
+          </span>
+        ) : null}
+      </div>
+      {open ? (
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: área de rolagem acessível por teclado.
+        <section aria-label={scrollLabel} className={scrollClassName} tabIndex={0}>
+          <div className={styles.diffLines} data-has-line-numbers={hasLineNumbers}>
+            {displayLines.map((line) =>
+              line.kind === "separator" ? (
+                <div className={styles.diffSeparator} key={line.key}>
+                  {line.text}
+                </div>
+              ) : (
+                <div
+                  className={`${styles.diffLine} ${line.kind === "added" ? styles.diffLineAdded : line.kind === "removed" ? styles.diffLineRemoved : ""}`}
+                  key={line.key}
+                >
+                  {hasLineNumbers ? (
+                    <>
+                      <span className={styles.diffLineNumber}>{line.oldLine ?? ""}</span>
+                      <span className={styles.diffLineNumber}>{line.newLine ?? ""}</span>
+                    </>
+                  ) : null}
+                  <span className={styles.diffMarker}>
+                    {line.kind === "added" ? "+" : line.kind === "removed" ? "−" : ""}
+                  </span>
+                  <DiffCodeLine
+                    highlightPlugin={highlightPlugin}
+                    language={language}
+                    text={line.text}
+                  />
+                </div>
+              ),
+            )}
+          </div>
+        </section>
+      ) : null}
+    </section>
+  );
+});
+
+const DiffCodeLine = memo(function DiffCodeLine({
+  highlightPlugin,
+  language,
+  text,
+}: {
+  highlightPlugin: HighlightPlugin | null;
+  language: string | null;
+  text: string;
+}) {
+  if (!language) return <span className={styles.diffCodePlain}>{text || " "}</span>;
+
+  const fence = codeFence(text);
+  return (
+    <Markdown rehypePlugins={highlightPlugin ? [highlightPlugin] : []}>
+      {`${fence}${language}\n${text || " "}\n${fence}`}
+    </Markdown>
+  );
+});
+
+function languageForPath(path: string): string | null {
+  const extension = path.slice(path.lastIndexOf(".")).toLowerCase();
+  const languages: Record<string, string> = {
+    ".bash": "bash",
+    ".c": "c",
+    ".cc": "cpp",
+    ".cjs": "javascript",
+    ".cpp": "cpp",
+    ".cs": "csharp",
+    ".css": "css",
+    ".cxx": "cpp",
+    ".go": "go",
+    ".h": "c",
+    ".hpp": "cpp",
+    ".htm": "xml",
+    ".html": "xml",
+    ".java": "java",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".json": "json",
+    ".jsonc": "json",
+    ".kt": "kotlin",
+    ".md": "markdown",
+    ".mjs": "javascript",
+    ".mts": "typescript",
+    ".php": "php",
+    ".py": "python",
+    ".rb": "ruby",
+    ".rs": "rust",
+    ".scss": "scss",
+    ".sh": "bash",
+    ".sql": "sql",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".xml": "xml",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".zsh": "bash",
+  };
+  return languages[extension] ?? null;
+}
+
+function codeFence(text: string): string {
+  let longestRun = 0;
+  let currentRun = 0;
+  for (const character of text) {
+    if (character === "`") {
+      currentRun += 1;
+      longestRun = Math.max(longestRun, currentRun);
+    } else {
+      currentRun = 0;
+    }
+  }
+  return "`".repeat(Math.max(3, longestRun + 1));
 }
 
 function actionRowLabel(action: ConversationAction, cwd: string, fallback?: string): string {
@@ -1308,27 +1481,6 @@ function commandOutput(value: string): { output: string; exitCode: string | null
     output: match ? value.replace(match[0], "").trimEnd() : value,
     exitCode: match?.[1] ?? null,
   };
-}
-
-function renderDiff(diff: string): ReactNode[] {
-  const occurrences = new Map<string, number>();
-  return getDiffDisplayLines(diff).map(({ text: line, kind }) => {
-    const occurrence = occurrences.get(line) ?? 0;
-    occurrences.set(line, occurrence + 1);
-    const className =
-      kind === "added"
-        ? styles.diffAdded
-        : kind === "removed"
-          ? styles.diffRemoved
-          : kind === "hunk"
-            ? styles.diffHunk
-            : "";
-    return (
-      <span className={className} key={`${line}:${occurrence}`}>
-        {line || " "}
-      </span>
-    );
-  });
 }
 
 function formatRawValue(value: string): string {
