@@ -104,7 +104,7 @@ export const ConversationMessageList = memo(function ConversationMessageList({
         <div className={styles.empty}>
           <MessageSquareText aria-hidden="true" size={22} />
           <p>{t.chat.emptyTitle(conversation ? agentDisplayName(conversation.agent) : "")}</p>
-          <span>{t.conversation.promptPlaceholder}</span>
+          <span>{t.conversation.promptPlaceholder(false)}</span>
         </div>
       ) : null}
       {canLoadOlderMessages ? (

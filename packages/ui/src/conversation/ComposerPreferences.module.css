@@ -119,6 +119,27 @@
   transition: transform var(--k-duration-effort-needle) var(--k-ease);
 }
 
+.effortPopover {
+  width: min(var(--k-menu-min-width), calc(100vw - var(--k-space-4)));
+  padding: var(--k-space-1);
+}
+
+.effortMenuOption {
+  display: flex;
+  min-width: 0;
+  min-height: var(--k-control-height-lg);
+  align-items: center;
+  padding-inline: var(--k-space-2);
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-sm);
+  cursor: pointer;
+}
+
+.effortMenuOption:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: calc(-1 * var(--k-focus-ring-width));
+}
+
 .configGroup {
   position: relative;
   display: inline-flex;

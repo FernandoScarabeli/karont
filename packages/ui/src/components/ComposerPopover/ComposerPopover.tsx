@@ -32,6 +32,7 @@ export function ComposerPopover({
   id,
   role = "group",
   label,
+  placement: preferredPlacement = "auto",
   fluidHoverAxis = "y",
   fluidHoverGapClick = false,
   fluidHoverNearest,
@@ -47,6 +48,7 @@ export function ComposerPopover({
   id?: string;
   role?: "group" | "dialog" | "menu" | "listbox";
   label?: string;
+  placement?: "auto" | "above";
   fluidHoverAxis?: FluidHoverAxis;
   fluidHoverGapClick?: FluidHoverGapClick;
   fluidHoverNearest?: boolean;
@@ -95,24 +97,39 @@ export function ComposerPopover({
       const edge = Number.isFinite(tokenSpace) ? tokenSpace : 0;
       const gap = edge;
       const maxHeight = Math.max(0, window.innerHeight - edge * 2);
-      const height = Math.min(bounds.height, maxHeight);
       const roomBelow = window.innerHeight - rect.bottom - edge;
-      const openAbove = roomBelow < height + gap && rect.top - edge >= height + gap;
+      const roomAbove = Math.max(0, rect.top - edge - gap);
+      const preferredHeight = Math.min(bounds.height, maxHeight);
+      const canOpenAbove = roomAbove >= preferredHeight;
+      const openAbove =
+        preferredPlacement === "above"
+          ? roomAbove > 0
+          : roomBelow < preferredHeight + gap && canOpenAbove;
+      const availableHeight = openAbove ? roomAbove : maxHeight;
+      const height = Math.min(bounds.height, availableHeight);
       const top = openAbove
         ? Math.max(edge, rect.top - height - gap)
         : Math.min(window.innerHeight - height - edge, rect.bottom + gap);
       const left = Math.max(edge, Math.min(rect.left, window.innerWidth - bounds.width - edge));
-      setPlacement({ left, top, maxHeight });
+      setPlacement((current) =>
+        current?.left === left && current.top === top && current.maxHeight === availableHeight
+          ? current
+          : { left, top, maxHeight: availableHeight },
+      );
     };
 
     measure();
+    const popover = popoverRef.current;
+    const observer = popover ? new ResizeObserver(measure) : null;
+    if (popover && observer) observer.observe(popover);
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
     return () => {
+      observer?.disconnect();
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };
-  }, [anchorPoint, anchorRef, open]);
+  }, [anchorPoint, anchorRef, open, preferredPlacement]);
 
   useLayoutEffect(() => {
     if (open && placement) fluidHover.remeasure();

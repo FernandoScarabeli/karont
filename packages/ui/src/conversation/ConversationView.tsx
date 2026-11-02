@@ -1,4 +1,11 @@
-import type { Conversation, ConversationAttachment, ConversationMessage } from "@karont/contract";
+import type {
+  AgentCapabilities,
+  ComposerSkill,
+  Conversation,
+  ConversationAttachment,
+  ConversationMessage,
+  ResultOf,
+} from "@karont/contract";
 import { BridgeError } from "@karont/contract";
 import { Check, Folder, TriangleAlert, X } from "lucide-react";
 import {
@@ -13,7 +20,7 @@ import {
 } from "react";
 import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { getBridge } from "../bridge/index.ts";
-import { Composer } from "../components/Composer/Composer.tsx";
+import { Composer, type ComposerAutocompleteOption } from "../components/Composer/Composer.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
@@ -44,6 +51,14 @@ import {
 import { ConversationMessageList } from "./ConversationMessageList.tsx";
 import { type ResponseInput, TodosPart } from "./ConversationParts.tsx";
 import styles from "./ConversationView.module.css";
+import {
+  type ComposerShortcutTrigger,
+  detectComposerShortcut,
+  findMentionedSkills,
+  fuzzyFilter,
+  insertComposerShortcut,
+  removeComposerCommand,
+} from "./composerShortcuts.ts";
 import { cacheAgentModels, getCachedAgentModels } from "./conversationCache.ts";
 import { getConversationHistory } from "./conversationHistory.ts";
 import { formatFolderPath } from "./displayText.ts";
@@ -63,6 +78,8 @@ import {
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
 import { getFinalRunningActions } from "./workingLabel.ts";
+
+type ComposerFile = ResultOf<"composer.files">["files"][number];
 
 type ConversationOptionsPatch = {
   mode?: Conversation["mode"];
@@ -91,7 +108,7 @@ export function ConversationView({
   };
 }) {
   const bridge = getBridge();
-  const { openConversationBeside } = useNavigation();
+  const { navigate, openConversationBeside } = useNavigation();
   const {
     conversation,
     messages,
@@ -108,6 +125,14 @@ export function ConversationView({
   const markSeenInFlight = useRef(false);
   const [draft, setDraft] = useState("");
   const [models, setModels] = useState<AgentModels | null>(null);
+  const [capabilities, setCapabilities] = useState<AgentCapabilities | null>(null);
+  const [capabilitiesLoading, setCapabilitiesLoading] = useState(false);
+  const [shortcutTrigger, setShortcutTrigger] = useState<ComposerShortcutTrigger | null>(null);
+  const [activeShortcutIndex, setActiveShortcutIndex] = useState(0);
+  const [fileSuggestions, setFileSuggestions] = useState<ComposerFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [skillCatalog, setSkillCatalog] = useState<ComposerSkill[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
   const [activePopover, setActivePopover] = useState<ComposerPopoverName>(null);
   const [optimisticOptions, setOptimisticOptions] = useState<ConversationOptionsPatch>({});
   const [interactionError, setInteractionError] = useState("");
@@ -121,6 +146,7 @@ export function ConversationView({
   const [isResponding, setIsResponding] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isCompacting, setIsCompacting] = useState(false);
   const [isRenamingTitle, setIsRenamingTitle] = useState(false);
   const [workingIndicatorPresence, setWorkingIndicatorPresence] = useState(() => ({
     conversationId: id,
@@ -211,6 +237,36 @@ export function ConversationView({
 
   useEffect(() => {
     if (!agent || !bridge) {
+      setCapabilities(null);
+      setCapabilitiesLoading(false);
+      setSkillCatalog([]);
+      return;
+    }
+    let mounted = true;
+    setCapabilities(null);
+    setCapabilitiesLoading(true);
+    setSkillCatalog([]);
+    void bridge
+      .request("agent.capabilities", { agent })
+      .then((result) => {
+        if (mounted) {
+          setCapabilities(result.capabilities);
+          setCapabilitiesLoading(false);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setCapabilities(null);
+          setCapabilitiesLoading(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [agent, bridge]);
+
+  useEffect(() => {
+    if (!agent || !bridge) {
       setModels(null);
       return;
     }
@@ -275,6 +331,134 @@ export function ConversationView({
     () => (historyOpen ? getConversationHistory(orderedMessages) : []),
     [historyOpen, orderedMessages],
   );
+  const fileQuery = shortcutTrigger?.type === "file" ? shortcutTrigger.query : null;
+  const skillsShortcutOpen = shortcutTrigger?.type === "skill";
+  const shortcutLabels = t.chat.shortcutSuggestions;
+  const shortcutCommands = useMemo(
+    () =>
+      (
+        [
+          ["compact", shortcutLabels.commandsByName.compact],
+          ["plan", shortcutLabels.commandsByName.plan],
+          ["model", shortcutLabels.commandsByName.model],
+          ["effort", shortcutLabels.commandsByName.effort],
+          ["access", shortcutLabels.commandsByName.access],
+          ["new", shortcutLabels.commandsByName.new],
+          ["rename", shortcutLabels.commandsByName.rename],
+        ] as const
+      )
+        .filter(([command]) => command !== "compact" || capabilities?.compact === true)
+        .map(([command, value]) => ({
+          command,
+          id: `command:${command}`,
+          type: "command" as const,
+          primary: value,
+          secondary: shortcutLabels.commandDescriptions[command],
+        })),
+    [capabilities?.compact, shortcutLabels],
+  );
+  const shortcutOptions = useMemo<ComposerAutocompleteOption[]>(() => {
+    if (!shortcutTrigger) return [];
+    if (shortcutTrigger.type === "file") {
+      return fileSuggestions.map((file) => {
+        const directory = file.path.slice(0, Math.max(0, file.path.length - file.name.length));
+        return {
+          id: `file:${file.path}`,
+          type: "file",
+          primary: file.name,
+          secondary: directory,
+          detail: file.path,
+        };
+      });
+    }
+    if (shortcutTrigger.type === "skill") {
+      return fuzzyFilter(
+        skillCatalog,
+        shortcutTrigger.query,
+        (skill) => `${skill.name} ${skill.description}`,
+      ).map((skill) => ({
+        id: `skill:${skill.name}`,
+        type: "skill",
+        primary: `$${skill.name}`,
+        secondary: skill.description,
+      }));
+    }
+    return fuzzyFilter(
+      shortcutCommands,
+      shortcutTrigger.query,
+      (command) => `${command.primary} ${command.secondary}`,
+    );
+  }, [fileSuggestions, shortcutCommands, shortcutTrigger, skillCatalog]);
+  const shortcutLoading =
+    shortcutTrigger?.type === "file"
+      ? filesLoading
+      : shortcutTrigger?.type === "skill"
+        ? skillsLoading || (capabilitiesLoading && capabilities === null)
+        : false;
+
+  useEffect(() => {
+    if (
+      !capabilitiesLoading &&
+      capabilities?.skills !== true &&
+      shortcutTrigger?.type === "skill"
+    ) {
+      setShortcutTrigger(null);
+    }
+  }, [capabilities?.skills, capabilitiesLoading, shortcutTrigger?.type]);
+
+  useEffect(() => {
+    if (fileQuery === null || !bridge || conversation?.id !== id) {
+      setFileSuggestions([]);
+      setFilesLoading(false);
+      return;
+    }
+    let active = true;
+    setFilesLoading(true);
+    const timer = window.setTimeout(() => {
+      void bridge
+        .request("composer.files", { conversationId: id, query: fileQuery })
+        .then((result) => {
+          if (active) setFileSuggestions(result.files.slice(0, 50));
+        })
+        .catch(() => {
+          if (active) setFileSuggestions([]);
+        })
+        .finally(() => {
+          if (active) setFilesLoading(false);
+        });
+    }, 80);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [bridge, conversation?.id, fileQuery, id]);
+
+  useEffect(() => {
+    if (
+      !skillsShortcutOpen ||
+      capabilities?.skills !== true ||
+      !bridge ||
+      conversation?.id !== id
+    ) {
+      if (!skillsShortcutOpen) setSkillsLoading(false);
+      return;
+    }
+    let active = true;
+    setSkillsLoading(true);
+    const request = bridge
+      .request("composer.skills", { conversationId: id })
+      .then((result) => result.skills)
+      .catch(() => []);
+    void request.then((skills) => {
+      if (!active) return;
+      setSkillCatalog(skills);
+      setSkillsLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [bridge, capabilities?.skills, conversation?.id, id, skillsShortcutOpen]);
+
   const latestMessage = visibleMessages.at(-1);
   const latestAgentMessageId = useMemo(
     () => orderedMessages.findLast((message) => message.author === "agent")?.id,
@@ -504,6 +688,9 @@ export function ConversationView({
     sendPendingRef.current = false;
     setIsSending(false);
     setDraft("");
+    setShortcutTrigger(null);
+    setFileSuggestions([]);
+    setSkillCatalog([]);
     setInteractionError("");
     setPendingHistoryMessageId(null);
     setHighlightedMessageId(null);
@@ -683,6 +870,85 @@ export function ConversationView({
     });
   }, []);
 
+  const updateShortcutAtCaret = useCallback(
+    (value: string, caret: number) => {
+      const supportsSkills = capabilitiesLoading || capabilities?.skills === true;
+      const next = detectComposerShortcut(value, caret, supportsSkills);
+      const isSame =
+        shortcutTrigger?.type === next?.type &&
+        shortcutTrigger?.start === next?.start &&
+        shortcutTrigger?.caret === next?.caret &&
+        shortcutTrigger?.tokenEnd === next?.tokenEnd &&
+        shortcutTrigger?.query === next?.query;
+      if (!isSame) {
+        setActiveShortcutIndex(0);
+        setShortcutTrigger(next);
+      }
+    },
+    [capabilities?.skills, capabilitiesLoading, shortcutTrigger],
+  );
+
+  const closeShortcutSuggestions = useCallback(() => setShortcutTrigger(null), []);
+
+  function applyShortcutText(value: string, caret: number) {
+    setDraft(value);
+    setShortcutTrigger(null);
+    requestAnimationFrame(() => {
+      const textarea = composerSectionRef.current?.querySelector("textarea");
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(caret, caret);
+    });
+  }
+
+  function selectComposerSuggestion(option: ComposerAutocompleteOption) {
+    if (!shortcutTrigger) return;
+    if (shortcutTrigger.type === "file" && option.type === "file" && option.detail) {
+      const result = insertComposerShortcut(draft, shortcutTrigger, `@${option.detail} `);
+      applyShortcutText(result.value, result.caret);
+      return;
+    }
+    if (shortcutTrigger.type === "skill" && option.type === "skill") {
+      const skill = skillCatalog.find((entry) => option.id === `skill:${entry.name}`);
+      if (!skill) return;
+      const result = insertComposerShortcut(draft, shortcutTrigger, `$${skill.name} `);
+      applyShortcutText(result.value, result.caret);
+      return;
+    }
+    if (shortcutTrigger.type !== "command" || option.type !== "command") return;
+    const command = shortcutCommands.find((entry) => entry.id === option.id)?.command;
+    if (!command) return;
+    const result = removeComposerCommand(draft, shortcutTrigger);
+    applyShortcutText(result.value, result.caret);
+
+    if (command === "compact") {
+      if (!bridge || !conversation || isCompacting) return;
+      setIsCompacting(true);
+      void bridge
+        .request("conversation.compact", { id })
+        .catch((compactError) => {
+          setInteractionError(
+            compactError instanceof BridgeError && compactError.message
+              ? compactError.message
+              : t.chat.compactFailed,
+          );
+        })
+        .finally(() => setIsCompacting(false));
+    } else if (command === "plan") {
+      void saveOptions({ plan: !(visibleConversation?.plan ?? false) });
+    } else if (command === "model") {
+      setActivePopover("model");
+    } else if (command === "effort") {
+      setActivePopover("effort");
+    } else if (command === "access") {
+      setActivePopover("config");
+    } else if (command === "new") {
+      navigate({ name: "new-conversation" });
+    } else if (command === "rename") {
+      beginTitleRename();
+    }
+  }
+
   const sendMessage = useCallback(
     async (
       textValue: string,
@@ -690,6 +956,11 @@ export function ConversationView({
       attachmentIds: string[] = [],
     ) => {
       const text = textValue.trim();
+      const selectedSkills = findMentionedSkills(
+        text,
+        skillCatalog,
+        capabilities?.maxSkillsPerMessage ?? 8,
+      );
       if (
         !bridge ||
         !conversation ||
@@ -720,6 +991,7 @@ export function ConversationView({
           id: conversationId,
           text: text || " ",
           ...(files.length ? { attachments: files } : {}),
+          ...(selectedSkills.length ? { skills: selectedSkills } : {}),
         });
         if (activeConversationIdRef.current === conversationId) {
           addMessage(result.userMessage);
@@ -755,6 +1027,8 @@ export function ConversationView({
       isSending,
       isWaiting,
       isWorking,
+      capabilities?.maxSkillsPerMessage,
+      skillCatalog,
       updateFollowState,
     ],
   );
@@ -1131,6 +1405,30 @@ export function ConversationView({
       sendMessage,
     ],
   );
+  const composerAutocomplete = shortcutTrigger
+    ? {
+        open: true,
+        label:
+          shortcutTrigger.type === "file"
+            ? shortcutLabels.files
+            : shortcutTrigger.type === "skill"
+              ? shortcutLabels.skills
+              : shortcutLabels.commands,
+        options: shortcutOptions,
+        activeIndex: activeShortcutIndex,
+        loading: shortcutLoading,
+        loadingLabel:
+          shortcutTrigger.type === "file"
+            ? shortcutLabels.loadingFiles
+            : shortcutTrigger.type === "skill"
+              ? shortcutLabels.loadingSkills
+              : shortcutLabels.loadingCommands,
+        emptyLabel: shortcutLabels.nothingFound,
+        onActiveIndexChange: setActiveShortcutIndex,
+        onSelect: selectComposerSuggestion,
+        onClose: closeShortcutSuggestions,
+      }
+    : undefined;
 
   return (
     <section
@@ -1271,7 +1569,7 @@ export function ConversationView({
           ariaDescription={t.conversation.composerKeyboardDescription}
           below={composerBelow}
           busy={isWorking}
-          disabled={isWaiting || isResponding || isSending}
+          disabled={isWaiting || isResponding || isSending || isCompacting}
           leading={composerLeading}
           trailing={
             conversation && userMessageCount >= 2 ? (
@@ -1291,9 +1589,11 @@ export function ConversationView({
           onDragOver={composerAttachments.onDragOver}
           onDrop={composerAttachments.onDrop}
           onPaste={composerAttachments.onPaste}
+          onCaretChange={updateShortcutAtCaret}
           onStop={composerStop}
           onSubmit={composerSubmit}
-          placeholder={t.chat.messageInput}
+          placeholder={t.chat.composerPlaceholder(capabilities?.skills === true)}
+          autocomplete={composerAutocomplete}
           submitDisabled={
             !bridge ||
             !conversation ||
@@ -1301,7 +1601,8 @@ export function ConversationView({
             composerAttachments.isPreparing ||
             (!draft.trim() && composerAttachments.attachments.length === 0) ||
             isWaiting ||
-            isSending
+            isSending ||
+            isCompacting
           }
           submitLabel={isWorking ? t.chat.stop : t.chat.send}
           submitTooltipLabel={isWorking ? t.chat.stop : t.chat.sendTooltip}

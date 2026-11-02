@@ -1,4 +1,11 @@
-import type { Agent, Conversation, ConversationAttachment } from "@karont/contract";
+import type {
+  Agent,
+  AgentCapabilities,
+  ComposerSkill,
+  Conversation,
+  ConversationAttachment,
+  ResultOf,
+} from "@karont/contract";
 import { BridgeError } from "@karont/contract";
 import { Folder, TriangleAlert } from "lucide-react";
 import {
@@ -8,13 +15,14 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
-import { Composer } from "../components/Composer/Composer.tsx";
+import { Composer, type ComposerAutocompleteOption } from "../components/Composer/Composer.tsx";
 import { ComposerMenu, type ComposerMenuOption } from "../components/ComposerMenu/ComposerMenu.tsx";
 import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { TextField } from "../components/TextField/TextField.tsx";
@@ -35,11 +43,20 @@ import {
   initialEffortForModel,
   modelSettingKey,
 } from "./ComposerPreferences.tsx";
+import {
+  type ComposerShortcutTrigger,
+  detectComposerShortcut,
+  findMentionedSkills,
+  fuzzyFilter,
+  insertComposerShortcut,
+  removeComposerCommand,
+} from "./composerShortcuts.ts";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import { resolveModelId } from "./modelCatalog.ts";
 import styles from "./NewConversationView.module.css";
-import { TextType } from "./TextType.tsx";
 import { upsertConversation } from "./useConversationIndex.ts";
+
+type ComposerFile = ResultOf<"composer.files">["files"][number];
 
 const LAST_AGENT_SETTING = "newConversation.lastAgent";
 const LAST_FOLDER_SETTING = "newConversation.lastFolder";
@@ -76,6 +93,14 @@ export function NewConversationView({
   const [error, setError] = useState("");
   const [agentsError, setAgentsError] = useState(false);
   const [models, setModels] = useState<AgentModels | null>(null);
+  const [capabilities, setCapabilities] = useState<AgentCapabilities | null>(null);
+  const [capabilitiesLoading, setCapabilitiesLoading] = useState(false);
+  const [shortcutTrigger, setShortcutTrigger] = useState<ComposerShortcutTrigger | null>(null);
+  const [activeShortcutIndex, setActiveShortcutIndex] = useState(0);
+  const [fileSuggestions, setFileSuggestions] = useState<ComposerFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [skillCatalog, setSkillCatalog] = useState<ComposerSkill[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
   const [mode, setMode] = useState<Conversation["mode"]>("edit");
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState<AgentEffort | "">("");
@@ -91,6 +116,7 @@ export function NewConversationView({
   const folderTouchedRef = useRef(false);
   const titleId = useId();
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const composerSectionRef = useRef<HTMLElement>(null);
   const folderDialogFormId = useId();
 
   const updateFolderPath = useCallback((path: string) => {
@@ -193,6 +219,7 @@ export function NewConversationView({
   }, [bridge, saveSetting, updateFolderPath]);
 
   const selectedAgent = agents.find((agent) => agent.id === choice);
+  const selectedAgentForShortcuts = selectedAgent?.id;
   const selectedTitle = selectedAgent?.name ?? t.conversation.terminal;
   const canAttachFiles = Boolean(
     bridge &&
@@ -205,6 +232,7 @@ export function NewConversationView({
     choice === TERMINAL_CHOICE ? "terminal" : "agent",
   );
   const gitPath = folderPath === PERSONAL_FOLDER ? homePath : folderPath;
+  const suggestionCwd = folderPath === PERSONAL_FOLDER ? homePath : folderPath;
   const { info: gitInfo } = useGitInfo(gitPath, "new-conversation");
   const isPersonalFolderSelected = folderPath === PERSONAL_FOLDER || folderPath === homePath;
   const folderName = isPersonalFolderSelected ? PERSONAL_FOLDER : getFolderName(folderPath);
@@ -219,6 +247,152 @@ export function NewConversationView({
   const modelListAvailable = Boolean(currentModels?.models.length);
   const currentModel = currentModels?.models.some((option) => option.id === model) ? model : "";
   const currentEffort = currentModel ? effort : "";
+
+  useEffect(() => {
+    if (!bridge || !selectedAgent) {
+      setCapabilities(null);
+      setCapabilitiesLoading(false);
+      return;
+    }
+    let mounted = true;
+    setCapabilities(null);
+    setCapabilitiesLoading(true);
+    void bridge
+      .request("agent.capabilities", { agent: selectedAgent.id })
+      .then((result) => {
+        if (mounted) {
+          setCapabilities(result.capabilities);
+          setCapabilitiesLoading(false);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setCapabilities(null);
+          setCapabilitiesLoading(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [bridge, selectedAgent]);
+
+  const fileQuery = shortcutTrigger?.type === "file" ? shortcutTrigger.query : null;
+  const shortcutLabels = t.chat.shortcutSuggestions;
+  const shortcutCommands = useMemo(
+    () =>
+      (
+        [
+          ["plan", shortcutLabels.commandsByName.plan],
+          ["model", shortcutLabels.commandsByName.model],
+          ["effort", shortcutLabels.commandsByName.effort],
+          ["access", shortcutLabels.commandsByName.access],
+          ["new", shortcutLabels.commandsByName.new],
+        ] as const
+      ).map(([command, value]) => ({
+        command,
+        id: `command:${command}`,
+        type: "command" as const,
+        primary: value,
+        secondary: shortcutLabels.commandDescriptions[command],
+      })),
+    [shortcutLabels],
+  );
+  const shortcutOptions = useMemo<ComposerAutocompleteOption[]>(() => {
+    if (!shortcutTrigger) return [];
+    if (shortcutTrigger.type === "file") {
+      return fileSuggestions.map((file) => ({
+        id: `file:${file.path}`,
+        type: "file",
+        primary: file.name,
+        secondary: file.path.slice(0, Math.max(0, file.path.length - file.name.length)),
+        detail: file.path,
+      }));
+    }
+    if (shortcutTrigger.type === "skill") {
+      return fuzzyFilter(
+        skillCatalog,
+        shortcutTrigger.query,
+        (skill) => `${skill.name} ${skill.description}`,
+      ).map((skill) => ({
+        id: `skill:${skill.name}`,
+        type: "skill",
+        primary: `$${skill.name}`,
+        secondary: skill.description,
+      }));
+    }
+    return fuzzyFilter(
+      shortcutCommands,
+      shortcutTrigger.query,
+      (command) => `${command.primary} ${command.secondary}`,
+    );
+  }, [fileSuggestions, shortcutCommands, shortcutTrigger, skillCatalog]);
+  const shortcutLoading =
+    shortcutTrigger?.type === "file"
+      ? filesLoading
+      : shortcutTrigger?.type === "skill"
+        ? skillsLoading || (capabilitiesLoading && capabilities === null)
+        : false;
+
+  useEffect(() => {
+    if (fileQuery === null || !bridge || !suggestionCwd) {
+      setFileSuggestions([]);
+      setFilesLoading(false);
+      return;
+    }
+    let active = true;
+    setFilesLoading(true);
+    const timer = window.setTimeout(() => {
+      void bridge
+        .request("composer.files", { cwd: suggestionCwd, query: fileQuery })
+        .then((result) => {
+          if (active) setFileSuggestions(result.files.slice(0, 50));
+        })
+        .catch(() => {
+          if (active) setFileSuggestions([]);
+        })
+        .finally(() => {
+          if (active) setFilesLoading(false);
+        });
+    }, 80);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [bridge, fileQuery, suggestionCwd]);
+
+  useEffect(() => {
+    setSkillCatalog([]);
+    if (!bridge || !selectedAgentForShortcuts || !suggestionCwd || capabilities?.skills !== true) {
+      setSkillsLoading(false);
+      return;
+    }
+    let active = true;
+    setSkillsLoading(true);
+    void bridge
+      .request("composer.skills", { agent: selectedAgentForShortcuts, cwd: suggestionCwd })
+      .then((result) => {
+        if (active) setSkillCatalog(result.skills);
+      })
+      .catch(() => {
+        if (active) setSkillCatalog([]);
+      })
+      .finally(() => {
+        if (active) setSkillsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [bridge, capabilities?.skills, selectedAgentForShortcuts, suggestionCwd]);
+
+  useEffect(() => {
+    if (
+      !capabilitiesLoading &&
+      capabilities?.skills !== true &&
+      shortcutTrigger?.type === "skill"
+    ) {
+      setShortcutTrigger(null);
+    }
+  }, [capabilities?.skills, capabilitiesLoading, shortcutTrigger?.type]);
 
   useEffect(() => {
     if (!bridge || !selectedAgentId) {
@@ -285,6 +459,7 @@ export function NewConversationView({
     choiceTouchedRef.current = true;
     if (option === TERMINAL_CHOICE) composerAttachments.clear();
     setChoice(option);
+    setShortcutTrigger(null);
     setActivePopover(null);
     setError("");
     saveSetting(LAST_AGENT_SETTING, option, t.conversation.settingsSaveFailed);
@@ -451,6 +626,11 @@ export function NewConversationView({
       return;
     }
     const text = value.trim();
+    const selectedSkills = findMentionedSkills(
+      text,
+      skillCatalog,
+      capabilities?.maxSkillsPerMessage ?? 8,
+    );
     const files: ConversationAttachment[] = composerAttachments.getRequestAttachments();
     if (!text && files.length === 0) return;
     setError("");
@@ -480,6 +660,7 @@ export function NewConversationView({
         id: created.id,
         text: text || " ",
         ...(files.length ? { attachments: files } : {}),
+        ...(selectedSkills.length ? { skills: selectedSkills } : {}),
       });
       composerAttachments.clear();
       navigate({ name: "conversation", id: created.id });
@@ -499,6 +680,87 @@ export function NewConversationView({
     else void openAgentConversation(command);
   }
 
+  function updateShortcutAtCaret(value: string, caret: number) {
+    const supportsSkills = capabilitiesLoading || capabilities?.skills === true;
+    const next =
+      choice === TERMINAL_CHOICE ? null : detectComposerShortcut(value, caret, supportsSkills);
+    const isSame =
+      shortcutTrigger?.type === next?.type &&
+      shortcutTrigger?.start === next?.start &&
+      shortcutTrigger?.caret === next?.caret &&
+      shortcutTrigger?.tokenEnd === next?.tokenEnd &&
+      shortcutTrigger?.query === next?.query;
+    if (!isSame) {
+      setActiveShortcutIndex(0);
+      setShortcutTrigger(next);
+    }
+  }
+
+  function applyShortcutText(value: string, caret: number) {
+    setCommand(value);
+    setShortcutTrigger(null);
+    requestAnimationFrame(() => {
+      const textarea = composerSectionRef.current?.querySelector("textarea");
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(caret, caret);
+    });
+  }
+
+  function selectComposerSuggestion(option: ComposerAutocompleteOption) {
+    if (!shortcutTrigger) return;
+    if (shortcutTrigger.type === "file" && option.type === "file" && option.detail) {
+      const result = insertComposerShortcut(command, shortcutTrigger, `@${option.detail} `);
+      applyShortcutText(result.value, result.caret);
+      return;
+    }
+    if (shortcutTrigger.type === "skill" && option.type === "skill") {
+      const skill = skillCatalog.find((entry) => option.id === `skill:${entry.name}`);
+      if (!skill) return;
+      const result = insertComposerShortcut(command, shortcutTrigger, `$${skill.name} `);
+      applyShortcutText(result.value, result.caret);
+      return;
+    }
+    if (shortcutTrigger.type !== "command" || option.type !== "command") return;
+    const shortcutCommand = shortcutCommands.find((entry) => entry.id === option.id)?.command;
+    if (!shortcutCommand) return;
+    const result = removeComposerCommand(command, shortcutTrigger);
+    applyShortcutText(result.value, result.caret);
+
+    if (shortcutCommand === "plan") setPlanMode((current) => !current);
+    else if (shortcutCommand === "model") setActivePopover("model");
+    else if (shortcutCommand === "effort") setActivePopover("effort");
+    else if (shortcutCommand === "access") setActivePopover("config");
+    else if (shortcutCommand === "new") {
+      composerAttachments.clear();
+      navigate({ name: "new-conversation" });
+    }
+  }
+
+  const composerAutocomplete = shortcutTrigger
+    ? {
+        open: true,
+        label:
+          shortcutTrigger.type === "file"
+            ? shortcutLabels.files
+            : shortcutTrigger.type === "skill"
+              ? shortcutLabels.skills
+              : shortcutLabels.commands,
+        options: shortcutOptions,
+        activeIndex: activeShortcutIndex,
+        loading: shortcutLoading,
+        loadingLabel:
+          shortcutTrigger.type === "file"
+            ? shortcutLabels.loadingFiles
+            : shortcutTrigger.type === "skill"
+              ? shortcutLabels.loadingSkills
+              : shortcutLabels.loadingCommands,
+        emptyLabel: shortcutLabels.nothingFound,
+        onActiveIndexChange: setActiveShortcutIndex,
+        onSelect: selectComposerSuggestion,
+        onClose: () => setShortcutTrigger(null),
+      }
+    : undefined;
   const choiceOptions = buildChoiceOptions();
 
   return (
@@ -517,7 +779,11 @@ export function NewConversationView({
         {headerActions}
       </header>
 
-      <section aria-labelledby={titleId} className={styles.composerSection}>
+      <section
+        aria-labelledby={titleId}
+        className={styles.composerSection}
+        ref={composerSectionRef}
+      >
         <p className={styles.welcome} data-k-new-conversation-title>
           {t.conversation.welcomeTitle(greetingName, openingGreeting.hour, openingGreeting.sample)}
         </p>
@@ -604,6 +870,7 @@ export function NewConversationView({
           }
           mono={choice === TERMINAL_CHOICE}
           onChange={setCommand}
+          onCaretChange={updateShortcutAtCaret}
           onDragEnter={composerAttachments.onDragEnter}
           onDragLeave={composerAttachments.onDragLeave}
           onDragOver={composerAttachments.onDragOver}
@@ -613,9 +880,9 @@ export function NewConversationView({
           placeholder={
             choice === TERMINAL_CHOICE
               ? t.conversation.terminalCommandPlaceholder
-              : t.conversation.promptPlaceholder
+              : t.conversation.promptPlaceholder(capabilities?.skills === true)
           }
-          animatedPlaceholder={choice !== TERMINAL_CHOICE && selectedAgent ? <TextType /> : null}
+          autocomplete={composerAutocomplete}
           submitDisabled={
             !bridge ||
             isOpening ||

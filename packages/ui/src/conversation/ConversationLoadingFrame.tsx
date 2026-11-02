@@ -52,7 +52,7 @@ export function ConversationLoadingFrame({
           leading={<ConversationLoadingControls />}
           onChange={ignoreChange}
           onSubmit={ignoreSubmit}
-          placeholder={t.chat.messageInput}
+          placeholder={t.chat.composerPlaceholder(false)}
           submitDisabled
           submitLabel={t.chat.send}
           submitTooltipLabel={t.chat.sendTooltip}
