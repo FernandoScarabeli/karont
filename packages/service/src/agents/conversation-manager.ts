@@ -66,6 +66,7 @@ import { createCodexAdapterRegistration, createCodexModelLoader } from "./codex-
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
 const CODEX_MODELS_SETTING = "agent.codex.models";
+const SKILL_CACHE_TTL_MS = 5 * 60_000;
 const BRANCH_CONTEXT_LIMIT = 24_000;
 const MAX_ATTACHMENT_CACHE_CONVERSATIONS = 3;
 const MAX_ATTACHMENT_CACHE_BYTES = 25 * 1024 * 1024;
@@ -144,6 +145,7 @@ export class ConversationManager {
   #deletingAll = false;
   readonly #agentOperations = new Set<Promise<unknown>>();
   readonly #skillCache = new Map<string, { cachedAt: number; skills: ComposerSkill[] }>();
+  readonly #skillLoads = new Map<string, Promise<ComposerSkill[]>>();
 
   constructor(options: ConversationManagerOptions) {
     this.#db = options.db;
@@ -305,18 +307,29 @@ export class ConversationManager {
 
     const key = skillCacheKey(agent, cwd);
     const cached = this.#skillCache.get(key);
-    if (cached && Date.now() - cached.cachedAt < 10_000)
+    if (cached && Date.now() - cached.cachedAt < SKILL_CACHE_TTL_MS)
       return { skills: cloneSkills(cached.skills) };
     if (cached) this.#skillCache.delete(key);
 
+    const pending = this.#skillLoads.get(key);
+    if (pending) return { skills: cloneSkills(await pending) };
+
+    const load = Promise.resolve().then(async () => {
+      try {
+        const skills = registration.loadSkills ? await registration.loadSkills(cwd) : [];
+        this.#cacheSkills(agent, cwd, skills);
+        return skills;
+      } catch {
+        const skills: ComposerSkill[] = [];
+        this.#cacheSkills(agent, cwd, skills);
+        return skills;
+      }
+    });
+    this.#skillLoads.set(key, load);
     try {
-      const skills = registration.loadSkills ? await registration.loadSkills(cwd) : [];
-      this.#cacheSkills(agent, cwd, skills);
-      return { skills: cloneSkills(skills) };
-    } catch {
-      const skills: ComposerSkill[] = [];
-      this.#cacheSkills(agent, cwd, skills);
-      return { skills };
+      return { skills: cloneSkills(await load) };
+    } finally {
+      if (this.#skillLoads.get(key) === load) this.#skillLoads.delete(key);
     }
   }
 

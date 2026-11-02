@@ -27,7 +27,12 @@ import {
   setSetting,
 } from "../db.ts";
 import type { AdapterFactory, AdapterModelList, AgentAdapterRegistration } from "./adapter.ts";
-import { AgentCliError, ClaudeAdapter, createClaudeModelLoader } from "./claude-adapter.ts";
+import {
+  AgentCliError,
+  ClaudeAdapter,
+  createClaudeModelLoader,
+  createClaudeSkillLoader,
+} from "./claude-adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
 import { createFakeClaudeSpawn, type FakeClaudeSpawn } from "./testing/fake-claude-process.ts";
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
@@ -35,6 +40,9 @@ import { generateConversationTitle, type TitleGeneratorOptions } from "./title-g
 const fixtureDir = new URL("./fixtures/claude/", import.meta.url);
 const modelFixture = JSON.parse(
   readFileSync(fileURLToPath(new URL("modelos.json", fixtureDir)), "utf8"),
+) as Record<string, unknown>[];
+const claudeCommands = JSON.parse(
+  readFileSync(fileURLToPath(new URL("comandos.json", fixtureDir)), "utf8"),
 ) as Record<string, unknown>[];
 
 type Harness = {
@@ -207,6 +215,89 @@ test("capacidades e skills vazias usam o registro do agente", async () => {
     });
     await assert.rejects(harness.manager.capabilities("nao-registrado"), /não está registrado/);
   } finally {
+    await harness.close();
+  }
+});
+
+test("pedidos simultâneos de skills compartilham a carga do agente", async () => {
+  let releaseLoad!: () => void;
+  const loadGate = new Promise<void>((resolve) => {
+    releaseLoad = resolve;
+  });
+  let signalStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    signalStarted = resolve;
+  });
+  let processCount = 0;
+  let firstProcessStarted = false;
+  const fakeSpawn = createFakeClaudeSpawn(fileURLToPath(new URL("texto.jsonl", fixtureDir)), {
+    initializeCommands: claudeCommands,
+    initializeGate: {
+      started: () => {
+        processCount += 1;
+        if (!firstProcessStarted) {
+          firstProcessStarted = true;
+          signalStarted();
+        }
+      },
+      released: loadGate,
+    },
+  });
+  const loadSkills = createClaudeSkillLoader({
+    env: { ...process.env, KARONT_CLAUDE_CLI: "claude" },
+    spawn: fakeSpawn,
+  });
+  const expectedSkills: ComposerSkill[] = [
+    {
+      name: "project-helper",
+      description: "Executa uma tarefa de exemplo no Projeto.",
+      argumentHint: "[arquivo]",
+      source: "claude",
+    },
+  ];
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      agentRegistrations: {
+        teste: {
+          factory: () => {
+            throw new Error("A fábrica de teste não deve iniciar uma conversa.");
+          },
+          capabilities: {
+            skills: true,
+            compact: false,
+            contextUsage: false,
+            fileMentions: false,
+            fastMode: false,
+            plan: false,
+            fork: false,
+          },
+          loadSkills,
+        },
+      },
+    },
+  );
+  const originalNow = Date.now;
+  let currentTime = originalNow();
+  Date.now = () => currentTime;
+  try {
+    const first = harness.manager.skills({ agent: "teste", cwd: os.tmpdir() });
+    const second = harness.manager.skills({ agent: "teste", cwd: os.tmpdir() });
+    await started;
+    releaseLoad();
+
+    const results = await Promise.all([first, second]);
+    assert.equal(processCount, 1);
+    assert.deepEqual(results, [{ skills: expectedSkills }, { skills: expectedSkills }]);
+
+    currentTime += 11_000;
+    assert.deepEqual(await harness.manager.skills({ agent: "teste", cwd: os.tmpdir() }), {
+      skills: expectedSkills,
+    });
+    assert.equal(processCount, 1);
+  } finally {
+    Date.now = originalNow;
     await harness.close();
   }
 });
