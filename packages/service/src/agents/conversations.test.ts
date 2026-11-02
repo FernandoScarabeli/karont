@@ -301,7 +301,7 @@ test("Claude registra diff, subagente com ações filhas e resultado MCP", async
     );
     assert.match(editRecord[0]?.diff ?? "", /-const antigo = 1;/);
     assert.match(editRecord[0]?.diff ?? "", /\+const novo = 2;/);
-    assert.equal(multiEditRecord[0]?.diff.match(/^@@ /gm)?.length, 2);
+    assert.doesNotMatch(multiEditRecord[0]?.diff ?? "", /^@@ /m);
     assert.match(multiEditRecord[0]?.diff ?? "", /\+1º/);
     assert.deepEqual(
       writeRecord.map(({ path, kind }) => ({ path, kind })),

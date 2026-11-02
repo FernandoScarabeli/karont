@@ -1,6 +1,12 @@
+import { constants } from "node:fs";
+import { lstat, open, realpath } from "node:fs/promises";
+import pathModule from "node:path";
+
 export type FileChangeRecord = { path: string; kind: unknown; diff: string };
 
 const TRUNCATION_MARKER = "\n… [truncado]";
+const MAX_DIFF_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_DIFF_WORK = 200_000;
 
 export function truncateUtf8(
   value: string,
@@ -53,13 +59,7 @@ export function serializeFileChanges(
 export function replacementDiff(oldText: string, newText: string): string {
   const oldLines = diffLines(oldText);
   const newLines = diffLines(newText);
-  const oldStart = oldLines.length ? 1 : 0;
-  const newStart = newLines.length ? 1 : 0;
-  return [
-    `@@ -${oldStart},${oldLines.length} +${newStart},${newLines.length} @@`,
-    ...oldLines.map((line) => `-${line}`),
-    ...newLines.map((line) => `+${line}`),
-  ].join("\n");
+  return [...oldLines.map((line) => `-${line}`), ...newLines.map((line) => `+${line}`)].join("\n");
 }
 
 export function unifiedDiff(path: string, kind: string, hunks: string[]): string {
@@ -82,14 +82,46 @@ export type MappedActionData = Pick<
 > &
   Pick<Action, "server" | "tool" | "parentId">;
 
-export function mapClaudeToolAction(
+export async function mapClaudeToolAction(
   name: string,
   input: Record<string, unknown>,
   parentId?: string,
-): MappedActionData {
+  cwd?: string,
+): Promise<MappedActionData> {
   const withParent = (action: MappedActionData): MappedActionData =>
     parentId ? { ...action, parentId } : action;
-  if (name === "Edit" || name === "NotebookEdit") {
+  if (name === "Edit") {
+    const path = stringValue(input.file_path);
+    const oldText = stringValue(input.old_string);
+    const newText = stringValue(input.new_string);
+    const before = path ? await readSafeFile(path, cwd) : { status: "unavailable" as const };
+    const edits = [{ oldText, newText, replaceAll: input.replace_all === true }];
+    const applied = before.status === "read" ? applyEdits(before.content, edits) : undefined;
+    const positioned =
+      before.status === "read" && applied?.positioned
+        ? makeUnifiedHunks(before.content, applied.content)
+        : undefined;
+    const hunks = positioned ?? edits.map((edit) => replacementDiff(edit.oldText, edit.newText));
+    const fileChanges = path
+      ? [
+          {
+            path,
+            kind: { type: "update" },
+            diff: unifiedDiff(path, "update", hunks),
+          },
+        ]
+      : [];
+    const output = serializeFileChanges(fileChanges, 64 * 1024);
+    const boundedInput = truncateUtf8(path || "", 8 * 1024);
+    return withParent({
+      actionType: "edit",
+      title: `${name}${path ? ` · ${path}` : ""}`,
+      input: boundedInput.text,
+      output: output.text,
+      truncated: boundedInput.truncated || output.truncated,
+    });
+  }
+  if (name === "NotebookEdit") {
     const path = stringValue(input.file_path);
     const oldText = stringValue(input.old_string);
     const newText = stringValue(input.new_string);
@@ -106,7 +138,7 @@ export function mapClaudeToolAction(
     const boundedInput = truncateUtf8(path || "", 8 * 1024);
     return withParent({
       actionType: "edit",
-      title: `${name}${path ? ` · ${path}` : ""}`,
+      title: `NotebookEdit${path ? ` · ${path}` : ""}`,
       input: boundedInput.text,
       output: output.text,
       truncated: boundedInput.truncated || output.truncated,
@@ -115,9 +147,19 @@ export function mapClaudeToolAction(
   if (name === "MultiEdit") {
     const path = stringValue(input.file_path);
     const edits = Array.isArray(input.edits) ? input.edits.filter(isRecord) : [];
-    const hunks = edits.map((edit) =>
-      replacementDiff(stringValue(edit.old_string), stringValue(edit.new_string)),
-    );
+    const replacements = edits.map((edit) => ({
+      oldText: stringValue(edit.old_string),
+      newText: stringValue(edit.new_string),
+      replaceAll: edit.replace_all === true,
+    }));
+    const before = path ? await readSafeFile(path, cwd) : { status: "unavailable" as const };
+    const applied = before.status === "read" ? applyEdits(before.content, replacements) : undefined;
+    const positioned =
+      before.status === "read" && applied?.positioned
+        ? makeUnifiedHunks(before.content, applied.content)
+        : undefined;
+    const hunks =
+      positioned ?? replacements.map((edit) => replacementDiff(edit.oldText, edit.newText));
     const fileChanges = path.length
       ? [{ path, kind: { type: "update" }, diff: unifiedDiff(path, "update", hunks) }]
       : [];
@@ -134,12 +176,22 @@ export function mapClaudeToolAction(
   if (name === "Write") {
     const path = stringValue(input.file_path);
     const content = stringValue(input.content);
+    const previous = path ? await readSafeFile(path, cwd) : { status: "unavailable" as const };
     const lines = diffLines(content);
-    const diff = unifiedDiff(path, "add", [
-      [`@@ -0,0 +1,${lines.length} @@`, ...lines.map((line) => `+${line}`)].join("\n"),
-    ]);
+    const kind = previous.status === "missing" ? "add" : "update";
+    const hunks =
+      previous.status === "missing"
+        ? [`@@ -0,0 +1,${lines.length} @@\n${lines.map((line) => `+${line}`).join("\n")}`]
+        : previous.status === "read"
+          ? (makeUnifiedHunks(previous.content, content) ?? [
+              replacementDiff(previous.content, content),
+            ])
+          : [lines.map((line) => `+${line}`).join("\n")];
+    const diff = unifiedDiff(path, kind, hunks);
     const output = serializeFileChanges(
-      path ? [{ path, kind: { type: "add" }, diff }] : [],
+      path
+        ? [{ path, kind: { type: previous.status === "missing" ? "add" : "update" }, diff }]
+        : [],
       64 * 1024,
     );
     const boundedInput = truncateUtf8(path || "", 8 * 1024);
@@ -185,6 +237,228 @@ export function mapClaudeToolAction(
     output: "",
     truncated: boundedInput.truncated,
   });
+}
+
+type FileReadResult =
+  | { status: "read"; content: string }
+  | { status: "missing" }
+  | { status: "unavailable" };
+
+async function readSafeFile(filePath: string, cwd = process.cwd()): Promise<FileReadResult> {
+  try {
+    const candidate = pathModule.isAbsolute(filePath)
+      ? pathModule.resolve(filePath)
+      : pathModule.resolve(cwd, filePath);
+    let parent: string;
+    try {
+      parent = await realpath(pathModule.dirname(candidate));
+    } catch (error) {
+      return isFileMissing(error) ? { status: "missing" } : { status: "unavailable" };
+    }
+    const target = pathModule.resolve(parent, pathModule.basename(candidate));
+    try {
+      const initialStat = await lstat(target);
+      if (!initialStat.isFile() || initialStat.isSymbolicLink()) return { status: "unavailable" };
+    } catch (error) {
+      return isFileMissing(error) ? { status: "missing" } : { status: "unavailable" };
+    }
+    if ((await realpath(target)) !== target) return { status: "unavailable" };
+
+    const file = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const stats = await file.stat();
+      if (!stats.isFile() || stats.size > MAX_DIFF_FILE_BYTES) return { status: "unavailable" };
+      const bytes = await file.readFile();
+      if (bytes.byteLength > MAX_DIFF_FILE_BYTES || bytes.includes(0))
+        return { status: "unavailable" };
+      return { status: "read", content: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+    } finally {
+      await file.close();
+    }
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
+function isFileMissing(error: unknown): boolean {
+  return isRecord(error) && error.code === "ENOENT";
+}
+
+type TextEdit = { oldText: string; newText: string; replaceAll: boolean };
+
+function applyEdits(source: string, edits: TextEdit[]): { content: string; positioned: boolean } {
+  let content = source;
+  let positioned = true;
+  for (const edit of edits) {
+    if (!edit.oldText) {
+      positioned = false;
+      continue;
+    }
+    const occurrences: number[] = [];
+    let searchFrom = 0;
+    while (searchFrom <= content.length - edit.oldText.length) {
+      const index = content.indexOf(edit.oldText, searchFrom);
+      if (index < 0) break;
+      occurrences.push(index);
+      searchFrom = index + edit.oldText.length;
+      if (!edit.replaceAll) break;
+    }
+    const totalOccurrences = edit.replaceAll
+      ? occurrences.length
+      : countOccurrences(content, edit.oldText);
+    if (!occurrences.length) {
+      positioned = false;
+      continue;
+    }
+    const firstOccurrence = occurrences[0];
+    if (firstOccurrence === undefined) {
+      positioned = false;
+      continue;
+    }
+    if (!edit.replaceAll && totalOccurrences !== 1) positioned = false;
+    if (edit.replaceAll && occurrences.length !== totalOccurrences) positioned = false;
+    const indexes = edit.replaceAll ? occurrences : [firstOccurrence];
+    for (const index of indexes.reverse())
+      content = `${content.slice(0, index)}${edit.newText}${content.slice(index + edit.oldText.length)}`;
+  }
+  return { content, positioned };
+}
+
+function countOccurrences(value: string, search: string): number {
+  let count = 0;
+  let from = 0;
+  while (from <= value.length - search.length) {
+    const index = value.indexOf(search, from);
+    if (index < 0) break;
+    count += 1;
+    from = index + search.length;
+  }
+  return count;
+}
+
+type DiffOperation = { type: "equal" | "delete" | "insert"; line: string };
+
+function makeUnifiedHunks(oldText: string, newText: string): string[] | undefined {
+  if (oldText === newText) return [];
+  const oldLines = diffLines(oldText);
+  const newLines = diffLines(newText);
+  const operations = myersDiff(oldLines, newLines);
+  if (!operations) return undefined;
+  const changed = operations.flatMap((operation, index) =>
+    operation.type === "equal" ? [] : [index],
+  );
+  if (!changed.length) return undefined;
+
+  const ranges: Array<{ start: number; end: number }> = [];
+  for (const index of changed) {
+    const start = Math.max(0, index - 3);
+    const end = Math.min(operations.length - 1, index + 3);
+    const previous = ranges.at(-1);
+    if (previous && start <= previous.end + 1) previous.end = end;
+    else ranges.push({ start, end });
+  }
+
+  return ranges.map(({ start, end }) => {
+    let oldBefore = 0;
+    let newBefore = 0;
+    for (let index = 0; index < start; index++) {
+      const type = operations[index]?.type;
+      if (!type) continue;
+      if (type !== "insert") oldBefore += 1;
+      if (type !== "delete") newBefore += 1;
+    }
+    const slice = operations.slice(start, end + 1);
+    const oldCount = slice.filter((operation) => operation.type !== "insert").length;
+    const newCount = slice.filter((operation) => operation.type !== "delete").length;
+    const oldStart = oldCount === 0 ? oldBefore : oldBefore + 1;
+    const newStart = newCount === 0 ? newBefore : newBefore + 1;
+    return [
+      `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`,
+      ...slice.map((operation) =>
+        operation.type === "equal"
+          ? ` ${operation.line}`
+          : `${operation.type === "delete" ? "-" : "+"}${operation.line}`,
+      ),
+    ].join("\n");
+  });
+}
+
+function myersDiff(oldLines: string[], newLines: string[]): DiffOperation[] | undefined {
+  const maxDistance = Math.min(
+    oldLines.length + newLines.length,
+    Math.floor(Math.sqrt(MAX_DIFF_WORK * 2)),
+  );
+  const offset = maxDistance + 1;
+  const frontier = new Int32Array(offset * 2 + 1);
+  frontier.fill(-1);
+  frontier[offset + 1] = 0;
+  const trace: Int32Array[] = [];
+  let distance = -1;
+  let work = 0;
+
+  for (let d = 0; d <= maxDistance; d++) {
+    work += 2 * d + 1;
+    if (work > MAX_DIFF_WORK) return undefined;
+    for (let k = -d; k <= d; k += 2) {
+      const index = offset + k;
+      const before = frontier[index - 1] ?? -1;
+      const after = frontier[index + 1] ?? -1;
+      let x = k === -d || (k !== d && before < after) ? after : before + 1;
+      let y = x - k;
+      while (x < oldLines.length && y < newLines.length && oldLines[x] === newLines[y]) {
+        x += 1;
+        y += 1;
+      }
+      frontier[index] = x;
+      if (x >= oldLines.length && y >= newLines.length) {
+        distance = d;
+        break;
+      }
+    }
+    trace.push(frontier.slice());
+    if (distance >= 0) break;
+  }
+  if (distance < 0) return undefined;
+
+  let x = oldLines.length;
+  let y = newLines.length;
+  const reversed: DiffOperation[] = [];
+  for (let d = distance; d > 0; d--) {
+    const previous = trace[d - 1];
+    if (!previous) return undefined;
+    const k = x - y;
+    const before = previous[offset + k - 1] ?? -1;
+    const after = previous[offset + k + 1] ?? -1;
+    const previousK = k === -d || (k !== d && before < after) ? k + 1 : k - 1;
+    const previousX = previous[offset + previousK] ?? -1;
+    const previousY = previousX - previousK;
+    while (x > previousX && y > previousY) {
+      reversed.push({ type: "equal", line: oldLines[x - 1] ?? "" });
+      x -= 1;
+      y -= 1;
+    }
+    if (x === previousX) {
+      reversed.push({ type: "insert", line: newLines[y - 1] ?? "" });
+      y -= 1;
+    } else {
+      reversed.push({ type: "delete", line: oldLines[x - 1] ?? "" });
+      x -= 1;
+    }
+  }
+  while (x > 0 && y > 0) {
+    reversed.push({ type: "equal", line: oldLines[x - 1] ?? "" });
+    x -= 1;
+    y -= 1;
+  }
+  while (x > 0) {
+    reversed.push({ type: "delete", line: oldLines[x - 1] ?? "" });
+    x -= 1;
+  }
+  while (y > 0) {
+    reversed.push({ type: "insert", line: newLines[y - 1] ?? "" });
+    y -= 1;
+  }
+  return reversed.reverse();
 }
 
 export function mapCodexSpecialAction(item: Record<string, unknown>): MappedActionData | undefined {
