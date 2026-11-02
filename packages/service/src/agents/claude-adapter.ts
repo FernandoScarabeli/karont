@@ -1388,27 +1388,51 @@ function makeClaudeSource(value: Record<string, unknown>): MessageSource | null 
 }
 
 function sourcesFromSearchText(text: string): MessageSource[] {
-  const sources: MessageSource[] = [];
-  for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/giu)) {
-    const rawUrl = match[0].replace(/[),.;\]}]+$/u, "");
-    const index = match.index ?? 0;
-    const before = text
-      .slice(0, index)
-      .split(/\r?\n/u)
-      .filter((line) => line.trim());
-    const after = text
-      .slice(index + match[0].length)
-      .split(/\r?\n/u)
-      .filter((line) => line.trim());
-    const title = before
-      .at(-1)
-      ?.replace(/^\s*(?:[-*•]|\d+[.)])\s*/u, "")
-      .trim();
-    const snippet = after[0]?.trim();
-    const source = makeMessageSource({ url: rawUrl, title, snippet });
-    if (source) sources.push(source);
+  const links = searchResultLinks(text);
+  if (links) {
+    return links.flatMap((value) => {
+      if (!isRecord(value) || typeof value.url !== "string") return [];
+      const source = makeClaudeSource(value);
+      return source ? [source] : [];
+    });
   }
-  return sources;
+
+  return [];
+}
+
+function searchResultLinks(text: string): unknown[] | null {
+  const marker = /(?:^|\n)\s*(?:Links|Results)\s*:\s*/iu.exec(text);
+  if (!marker) return null;
+  let start = marker.index + marker[0].length;
+  while (/\s/u.test(text[start] ?? "")) start += 1;
+  if (text[start] !== "[") return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') inString = true;
+    else if (character === "[") depth += 1;
+    else if (character === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          const parsed: unknown = JSON.parse(text.slice(start, index + 1));
+          return Array.isArray(parsed) ? parsed : null;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 function summarizeImage(item: Record<string, unknown>): string {

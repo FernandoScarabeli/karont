@@ -42,7 +42,8 @@
 
 .sourceCitationBadge:focus-visible,
 .sourceCitationNavButton:focus-visible,
-.sourceCitationTitle:focus-visible {
+.sourceCitationTitle:focus-visible,
+.sourceCitationUrl:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-color-focus);
   outline-offset: var(--k-focus-ring-offset);
 }
@@ -76,10 +77,11 @@
 }
 
 .sourceCitationCard {
-  position: absolute;
+  position: fixed;
   z-index: var(--k-layer-popover);
   display: grid;
-  width: min(var(--k-chat-citation-card-width), 76cqw, calc(100vw - var(--k-space-8)));
+  width: min(var(--k-chat-citation-card-width), calc(100vw - var(--k-space-6)));
+  max-height: calc(100vh - var(--k-space-6));
   gap: var(--k-space-2);
   padding: var(--k-space-3);
   border: var(--k-border-width) solid var(--k-color-border-strong);
@@ -87,28 +89,9 @@
   background: var(--k-color-bg-sheet);
   box-shadow: var(--k-shadow-dialog);
   color: var(--k-color-text-primary);
+  overflow-y: auto;
   overflow-wrap: anywhere;
-}
-
-.sourceCitationWrap[data-side="below"] .sourceCitationCard {
-  top: calc(100% + var(--k-space-2));
-}
-
-.sourceCitationWrap[data-side="above"] .sourceCitationCard {
-  bottom: calc(100% + var(--k-space-2));
-}
-
-.sourceCitationWrap[data-align="start"] .sourceCitationCard {
-  left: 0;
-}
-
-.sourceCitationWrap[data-align="center"] .sourceCitationCard {
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.sourceCitationWrap[data-align="end"] .sourceCitationCard {
-  right: 0;
+  overscroll-behavior: contain;
 }
 
 .sourceCitationCardHeader {
@@ -176,6 +159,27 @@
 }
 
 .sourceCitationTitle:hover {
+  text-decoration: underline;
+  text-underline-offset: var(--k-space-1);
+}
+
+.sourceCitationUrl {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  font: inherit;
+  font-size: var(--k-text-11);
+  line-height: var(--k-leading-normal);
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.sourceCitationUrl:hover {
+  color: var(--k-color-text-primary);
   text-decoration: underline;
   text-underline-offset: var(--k-space-1);
 }
