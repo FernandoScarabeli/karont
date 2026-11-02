@@ -1033,6 +1033,35 @@ test("pergunta, plano aprovado e atualização da lista de tarefas", async (t) =
   });
 });
 
+test("parar descarta o plano pendente e libera a conversa", async () => {
+  const harness = await createHarness("plano");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, fixturePrompt("plano"), true);
+    const plan = await waitForPart(
+      harness,
+      conversation.id,
+      (part) => part.type === "plan" && part.state === "pending",
+    );
+    await waitForState(harness, conversation.id, "waiting");
+
+    assert.equal(await harness.manager.stop(conversation.id), true);
+
+    const stopped = harness.manager.get(conversation.id);
+    assert.equal(stopped?.conversation.state, "idle");
+    assert.equal(latestAgent(harness, conversation.id)?.status, "interrupted");
+    const finalPlan = latestAgent(harness, conversation.id)?.parts.find(
+      (part) => part.id === plan.id,
+    );
+    assert.equal(finalPlan?.type === "plan" ? finalPlan.state : undefined, "rejected");
+    await assert.doesNotReject(() =>
+      harness.manager.send(conversation.id, fixturePrompt("plano"), true),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
 test("retoma thread, interrompe turno e trata CLI ausente", async (t) => {
   await t.test("retomar thread", async () => {
     const harness = await createHarness("continuar", { resumeExisting: true });

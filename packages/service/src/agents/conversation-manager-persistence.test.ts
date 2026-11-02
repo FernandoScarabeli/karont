@@ -102,6 +102,61 @@ test("get inclui o texto em andamento antes do próximo salvamento", async () =>
   }
 });
 
+test("parar durante a inicialização não envia a mensagem", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-stop-opening-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  let announceStart!: () => void;
+  let releaseStart!: () => void;
+  const startBegan = new Promise<void>((resolve) => {
+    announceStart = resolve;
+  });
+  const opening = new Promise<void>((resolve) => {
+    releaseStart = resolve;
+  });
+  let sends = 0;
+  const manager = new ConversationManager({
+    db,
+    env: { ...process.env, KARONT_DISABLE_AGENT_DETECTION: "1" },
+    broadcast: async () => undefined,
+    adapterFactory: (_conversation, emit) => ({
+      start: async () => {
+        announceStart();
+        await opening;
+      },
+      send: async () => {
+        sends += 1;
+        emit({ kind: "turn-end", status: "done" });
+      },
+      respond: async () => undefined,
+      interrupt: async () => undefined,
+      dispose: async () => undefined,
+    }),
+  });
+  const conversation = manager.create({
+    agent: "claude",
+    title: "Abertura lenta",
+    cwd: os.tmpdir(),
+    mode: "edit",
+  });
+
+  try {
+    const sending = manager.send(conversation.id, "Não envie depois de parar.");
+    await startBegan;
+    assert.equal(await manager.stop(conversation.id), true);
+    releaseStart();
+    await sending;
+
+    const snapshot = manager.get(conversation.id);
+    assert.equal(sends, 0);
+    assert.equal(snapshot?.conversation.state, "idle");
+    assert.equal(snapshot?.messages.at(-1)?.status, "interrupted");
+  } finally {
+    releaseStart();
+    await manager.close();
+    db.close();
+  }
+});
+
 test("parar e encerrar o serviço gravam o texto pendente imediatamente", async (t) => {
   await t.test("parar", async () => {
     const harness = await createLifecycleHarness();

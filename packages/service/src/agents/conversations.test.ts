@@ -73,6 +73,7 @@ async function createHarness(
   fakeOptions: {
     exitAfterResult?: boolean;
     planDecision?: "approve" | "adjust";
+    initializeGate?: { started: () => void; released: Promise<void> };
     titleGenerator?: (
       agent: Conversation["agent"],
       userMessage: string,
@@ -1007,6 +1008,41 @@ test("retomada usa --resume; interrupção usa o protocolo e mantém mensagem in
         ),
       );
     } finally {
+      await harness.close();
+    }
+  });
+  await t.test("parar durante a abertura não envia a mensagem à CLI", async () => {
+    let announceOpening!: () => void;
+    let releaseOpening!: () => void;
+    const opening = new Promise<void>((resolve) => {
+      releaseOpening = resolve;
+    });
+    const openingStarted = new Promise<void>((resolve) => {
+      announceOpening = resolve;
+    });
+    const harness = await createHarness(
+      "texto",
+      {},
+      {
+        initializeGate: { started: announceOpening, released: opening },
+      },
+    );
+    try {
+      const conversation = createConversation(harness.manager);
+      const sending = harness.manager.send(conversation.id, "Não envie depois de parar.");
+      await openingStarted;
+      assert.equal(await harness.manager.stop(conversation.id), true);
+      assert.equal(harness.manager.get(conversation.id)?.conversation.state, "idle");
+      assert.equal(latestAgent(harness, conversation.id)?.status, "interrupted");
+
+      releaseOpening();
+      await sending;
+      assert.equal(
+        harness.claudeFake.messages.some((message) => message.type === "user"),
+        false,
+      );
+    } finally {
+      releaseOpening();
       await harness.close();
     }
   });

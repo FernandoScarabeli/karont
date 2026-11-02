@@ -62,6 +62,8 @@ type ActiveConversation = {
   messageSaveTimer?: ReturnType<typeof setTimeout>;
   messageToSave?: ConversationMessage;
   currentMessage?: ConversationMessage;
+  stopRequested: boolean;
+  turnStarted: boolean;
   coalescers: Map<string, DeltaCoalescer>;
   deltaTimes: Map<string, { startedAt: number; endedAt: number }>;
   eventQueue: Promise<void>;
@@ -390,6 +392,29 @@ export class ConversationManager {
   async stop(id: string): Promise<boolean> {
     const active = this.#active.get(id);
     if (!active?.currentMessage) return false;
+    if (!active.turnStarted) {
+      active.stopRequested = true;
+      const pendingPlan = active.currentMessage.parts.find(
+        (part) => part.type === "plan" && part.state === "pending",
+      );
+      if (pendingPlan?.type === "plan") {
+        await this.#handleAdapterEvent(id, {
+          kind: "part",
+          part: { ...pendingPlan, state: "rejected" },
+        });
+      }
+      await this.#flushCoalescers(active);
+      this.#flushMessageSave(active);
+      await this.#handleAdapterEvent(id, {
+        kind: "turn-end",
+        status: "interrupted",
+        error: { type: "interrupted", text: "Resposta interrompida pelo usuário." },
+      });
+      if (active.idleTimer) clearTimeout(active.idleTimer);
+      await active.adapter.dispose();
+      if (this.#active.get(id) === active) this.#active.delete(id);
+      return true;
+    }
     await this.#flushCoalescers(active);
     this.#flushMessageSave(active);
     await active.adapter.interrupt();
@@ -669,6 +694,8 @@ export class ConversationManager {
         deltaTimes: new Map(),
         currentMessage: message,
         eventQueue: Promise.resolve(),
+        stopRequested: false,
+        turnStarted: false,
       };
       active = activeRef;
       this.#active.set(conversation.id, activeRef);
@@ -683,12 +710,12 @@ export class ConversationManager {
           if (modelList) this.#cacheCodexModelList(modelList);
         })
         .catch(async (error: unknown) => {
-          if (!this.#closing) {
+          if (!this.#closing && !activeRef.stopRequested) {
             const kind = error instanceof AgentCliError ? error.errorType : "failed";
             const detail = error instanceof Error ? error.message : String(error);
             await this.#finishWithError(conversation, message, kind, detail);
           }
-          await adapter.dispose();
+          if (!activeRef.stopRequested) await adapter.dispose();
           if (this.#active.get(conversation.id) === activeRef) this.#active.delete(conversation.id);
           throw error;
         });
@@ -701,6 +728,8 @@ export class ConversationManager {
     active.currentMessage = message;
     try {
       await active.startPromise;
+      if (active.stopRequested) return;
+      active.turnStarted = true;
       await active.adapter.send(text, plan, attachments);
     } catch (error) {
       if (message.status === "streaming" && !this.#closing) {
@@ -744,6 +773,7 @@ export class ConversationManager {
     }
     if (event.kind === "state") {
       const conversation = this.#requireConversation(conversationId);
+      if (event.state === "working") active.turnStarted = true;
       if (event.state === "working" && message.status !== "streaming") {
         message.status = "streaming";
         message.updatedAt = this.#now();
@@ -849,6 +879,7 @@ export class ConversationManager {
     if (event.kind === "turn-end") {
       await this.#flushCoalescers(active);
       active.deltaTimes.clear();
+      active.turnStarted = false;
       if (event.status === "done") completeBranchContext(this.#db, conversationId);
       const endedAt = this.#epochNow();
       const completedAt = this.#now();

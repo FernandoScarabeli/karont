@@ -391,6 +391,7 @@ export class ClaudeAdapter implements AgentAdapter {
 
   async dispose(): Promise<void> {
     this.#disposed = true;
+    this.#initReject?.(new AgentCliError("failed", "A CLI Claude foi encerrada."));
     this.#rejectControlRequests(new AgentCliError("failed", "A CLI Claude foi encerrada."));
     if (this.#interruptTimer) clearTimeout(this.#interruptTimer);
     this.#interruptTimer = undefined;

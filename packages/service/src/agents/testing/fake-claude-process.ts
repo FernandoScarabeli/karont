@@ -7,6 +7,7 @@ type FixtureLine = { direction: string; stream: string; line: string };
 type FakeClaudeOptions = {
   exitAfterResult?: boolean;
   planDecision?: "approve" | "adjust";
+  initializeGate?: { started: () => void; released: Promise<void> };
 };
 
 export type FakeClaudeSpawn = ((
@@ -105,7 +106,18 @@ class FakeClaudeProcess extends EventEmitter {
     this.#messages.push(value);
     if (value.type === "control_request") {
       const request = value.request as Record<string, unknown> | undefined;
-      if (request?.subtype === "initialize" || request?.subtype === "interrupt") {
+      if (request?.subtype === "initialize") {
+        this.#consumeHost("control_request", request.subtype);
+        const gate = this.#options.initializeGate;
+        if (gate) {
+          gate.started();
+          void gate.released.then(() => {
+            if (this.exitCode === null && this.signalCode === null) this.#pump();
+          });
+        } else this.#pump();
+        return;
+      }
+      if (request?.subtype === "interrupt") {
         this.#consumeHost("control_request", request.subtype);
         this.#pump();
         return;
