@@ -4,6 +4,7 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   type AnyEvent,
   agentModelsSchema,
+  type ComposerSkill,
   type Conversation,
   type ConversationAttachment,
   type ConversationMessage,
@@ -13,6 +14,7 @@ import {
 } from "@karont/contract";
 import { validateAttachments } from "../attachments.ts";
 import { DeltaCoalescer } from "../coalescer.ts";
+import { ComposerFileSearch } from "../composer-files.ts";
 import {
   addMessage,
   completeBranchContext,
@@ -51,8 +53,13 @@ import {
   AgentCliError,
   createClaudeAdapterFactory,
   createClaudeModelLoader,
+  createClaudeSkillLoader,
 } from "./claude-adapter.ts";
-import { createCodexAdapterFactory, createCodexModelLoader } from "./codex-adapter.ts";
+import {
+  createCodexAdapterFactory,
+  createCodexModelLoader,
+  createCodexSkillLoader,
+} from "./codex-adapter.ts";
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
 const CODEX_MODELS_SETTING = "agent.codex.models";
@@ -86,6 +93,8 @@ export type ConversationManagerOptions = {
   adapterFactory?: AdapterFactory;
   codexModelLoader?: (cwd: string) => Promise<AdapterModelList>;
   claudeModelLoader?: (cwd: string) => Promise<AdapterModelList>;
+  codexSkillLoader?: (cwd: string) => Promise<ComposerSkill[]>;
+  claudeSkillLoader?: (cwd: string) => Promise<ComposerSkill[]>;
   now?: () => string;
   titleGenerator?: (
     agent: Conversation["agent"],
@@ -102,6 +111,9 @@ export class ConversationManager {
   readonly #factory: AdapterFactory;
   readonly #codexModelLoader: (cwd: string) => Promise<AdapterModelList>;
   readonly #claudeModelLoader: (cwd: string) => Promise<AdapterModelList>;
+  readonly #codexSkillLoader: (cwd: string) => Promise<ComposerSkill[]>;
+  readonly #claudeSkillLoader: (cwd: string) => Promise<ComposerSkill[]>;
+  readonly #fileSearch = new ComposerFileSearch();
   readonly #now: () => string;
   readonly #titleGenerator: NonNullable<ConversationManagerOptions["titleGenerator"]>;
   readonly #active = new Map<string, ActiveConversation>();
@@ -125,6 +137,7 @@ export class ConversationManager {
   #closing = false;
   #deletingAll = false;
   readonly #agentOperations = new Set<Promise<unknown>>();
+  readonly #skillCache = new Map<string, { cachedAt: number; skills: ComposerSkill[] }>();
 
   constructor(options: ConversationManagerOptions) {
     this.#db = options.db;
@@ -135,6 +148,9 @@ export class ConversationManager {
     this.#codexModelLoader = options.codexModelLoader ?? createCodexModelLoader({ env: this.#env });
     this.#claudeModelLoader =
       options.claudeModelLoader ?? createClaudeModelLoader({ env: this.#env });
+    this.#codexSkillLoader = options.codexSkillLoader ?? createCodexSkillLoader({ env: this.#env });
+    this.#claudeSkillLoader =
+      options.claudeSkillLoader ?? createClaudeSkillLoader({ env: this.#env });
     this.#factory =
       options.adapterFactory ??
       ((conversation, emit) =>
@@ -224,6 +240,56 @@ export class ConversationManager {
     return { conversation: this.#ignoreClaudeFast(conversation), messages };
   }
 
+  async files(input: { conversationId: string; query: string } | { cwd: string; query: string }) {
+    const cwd =
+      "conversationId" in input ? this.#requireConversation(input.conversationId).cwd : input.cwd;
+    return { files: await this.#fileSearch.search(cwd, input.query) };
+  }
+
+  async skills(
+    input: { conversationId: string } | { agent: Conversation["agent"]; cwd: string },
+  ): Promise<{ skills: ComposerSkill[] }> {
+    const conversation =
+      "conversationId" in input ? this.#requireConversation(input.conversationId) : undefined;
+    const agent = "agent" in input ? input.agent : conversation?.agent;
+    const cwd = "cwd" in input ? input.cwd : conversation?.cwd;
+    if (!agent || !cwd) return { skills: [] };
+    const active = conversation
+      ? this.#active.get(conversation.id)
+      : [...this.#active.entries()].find(([id, entry]) => {
+          const existing = getConversation(this.#db, id);
+          return entry.agent === agent && existing?.cwd === cwd;
+        })?.[1];
+
+    if (active?.adapter.getSkills) {
+      try {
+        await active.startPromise;
+        const skills = await active.adapter.getSkills();
+        this.#cacheSkills(agent, cwd, skills);
+        return { skills: cloneSkills(skills) };
+      } catch {
+        // A CLI ausente deixa o catálogo vazio, como no fallback de modelos.
+      }
+    }
+
+    const key = skillCacheKey(agent, cwd);
+    const cached = this.#skillCache.get(key);
+    if (cached && Date.now() - cached.cachedAt < 10_000)
+      return { skills: cloneSkills(cached.skills) };
+    if (cached) this.#skillCache.delete(key);
+
+    try {
+      const loader = agent === "claude" ? this.#claudeSkillLoader : this.#codexSkillLoader;
+      const skills = await loader(cwd);
+      this.#cacheSkills(agent, cwd, skills);
+      return { skills: cloneSkills(skills) };
+    } catch {
+      const skills: ComposerSkill[] = [];
+      this.#cacheSkills(agent, cwd, skills);
+      return { skills };
+    }
+  }
+
   async branch(id: string, messageId: string): Promise<Conversation> {
     this.#assertNotDeletingAll();
     return this.#trackAgentOperation(this.#branch(id, messageId));
@@ -307,9 +373,21 @@ export class ConversationManager {
     text: string,
     plan?: boolean,
     attachments?: ConversationAttachment[],
+    skills: Array<Pick<ComposerSkill, "name" | "path">> = [],
   ): Promise<{ userMessage: ConversationMessage; agentMessage: ConversationMessage }> {
     this.#assertNotDeletingAll();
-    return this.#trackAgentOperation(this.#send(id, text, plan, attachments));
+    return this.#trackAgentOperation(this.#send(id, text, plan, attachments, skills));
+  }
+
+  async compact(id: string): Promise<{ ok: true }> {
+    this.#assertNotDeletingAll();
+    this.#requireConversation(id);
+    if (!getAgentSession(this.#db, id))
+      throw new Error("Envie uma mensagem antes de compactar esta conversa.");
+    await this.#trackAgentOperation(
+      this.#send(id, "/compactar", undefined, undefined, [], "compact"),
+    );
+    return { ok: true };
   }
 
   async #send(
@@ -317,13 +395,18 @@ export class ConversationManager {
     text: string,
     plan?: boolean,
     attachments?: ConversationAttachment[],
+    skills: Array<Pick<ComposerSkill, "name" | "path">> = [],
+    operation: "send" | "compact" = "send",
   ): Promise<{ userMessage: ConversationMessage; agentMessage: ConversationMessage }> {
     const validatedAttachments = validateAttachments(attachments);
     const conversation = this.#requireConversation(id);
     if (conversation.state === "working" || conversation.state === "waiting")
       throw new Error("A conversa já está em andamento.");
+    if (operation === "send" && conversation.agent === "claude" && skills.length > 1)
+      throw new Error("O Claude Code aceita uma skill por mensagem.");
     const now = this.#now();
     if (
+      operation === "send" &&
       !listMessages(this.#db, id).some((message) => message.author === "user") &&
       conversation.title === "Nova conversa"
     ) {
@@ -364,14 +447,17 @@ export class ConversationManager {
     }
     const agentMessage = this.#newAgentMessage(id);
     // O desligado mantém a inferência textual já usada pelo adaptador Codex.
-    const requestedPlan = plan ?? (conversation.plan ? true : undefined);
-    const branchContext = getBranchContextPending(this.#db, id);
+    const requestedPlan =
+      operation === "compact" ? undefined : (plan ?? (conversation.plan ? true : undefined));
+    const branchContext = operation === "compact" ? null : getBranchContextPending(this.#db, id);
     await this.#startTurn(
       conversation,
       agentMessage,
       withBranchContext(text, branchContext),
       requestedPlan,
       validatedAttachments.data,
+      skills,
+      operation,
     );
     return { userMessage, agentMessage };
   }
@@ -774,6 +860,18 @@ export class ConversationManager {
     }
   }
 
+  #cacheSkills(agent: Conversation["agent"], cwd: string, skills: ComposerSkill[]): void {
+    this.#skillCache.set(skillCacheKey(agent, cwd), {
+      cachedAt: Date.now(),
+      skills: cloneSkills(skills),
+    });
+    while (this.#skillCache.size > 32) {
+      const oldest = this.#skillCache.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.#skillCache.delete(oldest);
+    }
+  }
+
   async close(): Promise<void> {
     this.#closing = true;
     const adapters = [...this.#active.values()];
@@ -800,6 +898,8 @@ export class ConversationManager {
     text: string,
     plan?: boolean,
     attachments: ConversationAttachment[] = [],
+    skills: Array<Pick<ComposerSkill, "name" | "path">> = [],
+    operation: "send" | "compact" = "send",
   ): Promise<void> {
     conversation = this.#requireConversation(conversation.id);
     addMessage(this.#db, message);
@@ -878,7 +978,12 @@ export class ConversationManager {
       await active.startPromise;
       if (active.stopRequested || active.removed) return;
       active.turnStarted = true;
-      await active.adapter.send(text, plan, attachments);
+      if (operation === "compact") {
+        if (!active.adapter.compact) throw new Error("Este agente não oferece compactação.");
+        await active.adapter.compact();
+      } else {
+        await active.adapter.send(text, plan, attachments, skills);
+      }
     } catch (error) {
       if (message.status === "streaming" && !this.#closing && !active.removed) {
         const kind = error instanceof AgentCliError ? error.errorType : "failed";
@@ -1519,4 +1624,12 @@ function buildBranchContext(messages: readonly ConversationMessage[]): string {
 
 function withBranchContext(text: string, context: string | null): string {
   return context ? `${context}\n\nMensagem nova do usuário:\n${text}` : text;
+}
+
+function skillCacheKey(agent: Conversation["agent"], cwd: string): string {
+  return `${agent}\0${cwd}`;
+}
+
+function cloneSkills(skills: ComposerSkill[]): ComposerSkill[] {
+  return skills.map((skill) => ({ ...skill }));
 }

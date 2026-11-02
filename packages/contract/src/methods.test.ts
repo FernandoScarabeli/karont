@@ -60,6 +60,10 @@ test("conversation.send aceita até 8 anexos e a mensagem expõe só metadados",
     true,
   );
   assert.equal(
+    schema.safeParse({ id: "c1", text: "Leia", skills: [{ name: "project-helper" }] }).success,
+    true,
+  );
+  assert.equal(
     schema.safeParse({
       id: "c1",
       text: "Leia",
@@ -93,6 +97,48 @@ test("conversation.send aceita até 8 anexos e a mensagem expõe só metadados",
     }).success,
     false,
   );
+});
+
+test("contratos do composer e compactação validam os formatos por agente", () => {
+  assert.equal(
+    methods["composer.files"].params.safeParse({ conversationId: "c1", query: "readme" }).success,
+    true,
+  );
+  assert.equal(
+    methods["composer.files"].params.safeParse({ cwd: "/tmp/projeto", query: "src/a" }).success,
+    true,
+  );
+  assert.equal(
+    methods["composer.files"].params.safeParse({ cwd: "/tmp/projeto", query: "x", extra: true })
+      .success,
+    false,
+  );
+  assert.equal(
+    methods["composer.files"].result.safeParse({
+      files: [{ path: "src/index.ts", name: "index.ts" }],
+    }).success,
+    true,
+  );
+  assert.equal(methods["composer.skills"].params.safeParse({ conversationId: "c1" }).success, true);
+  assert.equal(
+    methods["composer.skills"].params.safeParse({ agent: "codex", cwd: "/tmp/projeto" }).success,
+    true,
+  );
+  assert.equal(
+    methods["composer.skills"].result.safeParse({
+      skills: [
+        {
+          name: "project-helper",
+          description: "Executa uma tarefa de exemplo.",
+          source: "codex",
+          path: "/tmp/projeto/.agents/skills/project-helper/SKILL.md",
+        },
+      ],
+    }).success,
+    true,
+  );
+  assert.equal(methods["conversation.compact"].params.safeParse({ id: "c1" }).success, true);
+  assert.equal(methods["conversation.compact"].result.safeParse({ ok: true }).success, true);
 });
 
 test("parâmetros rejeitam chaves extras e tipos errados", () => {

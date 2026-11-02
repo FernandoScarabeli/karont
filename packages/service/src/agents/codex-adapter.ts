@@ -6,6 +6,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { createInterface } from "node:readline";
 import {
+  type ComposerSkill,
   type Conversation,
   type ConversationAttachment,
   describeAgentError,
@@ -86,6 +87,8 @@ export class CodexAdapter implements AgentAdapter {
   #turnId = "";
   #nextRpcId = 1;
   #models: AdapterModelList = { models: [], efforts: [...EFFORTS] };
+  #skills: ComposerSkill[] = [];
+  #skillsLoaded = false;
   #modelId = "";
   #fastServiceTier: string | undefined;
   #fast = false;
@@ -118,6 +121,8 @@ export class CodexAdapter implements AgentAdapter {
     this.#turnId = "";
     this.#stopRequested = false;
     this.#models = { models: [], efforts: [...EFFORTS] };
+    this.#skills = [];
+    this.#skillsLoaded = false;
     await this.#startServer(conversation.cwd);
     this.#throwIfDisposed();
     const catalog = await this.#request("model/list", { limit: 100, includeHidden: false });
@@ -253,10 +258,23 @@ export class CodexAdapter implements AgentAdapter {
     }
   }
 
+  async loadSkillCatalog(cwd: string): Promise<ComposerSkill[]> {
+    this.#disposed = false;
+    this.#skills = [];
+    this.#skillsLoaded = false;
+    try {
+      await this.#startServer(cwd);
+      return await this.#requestSkills(cwd);
+    } finally {
+      await this.dispose();
+    }
+  }
+
   async send(
     text: string,
     plan?: boolean,
     attachments: ConversationAttachment[] = [],
+    skills: Array<Pick<ComposerSkill, "name" | "path">> = [],
   ): Promise<void> {
     if (!isRunning(this.#child)) {
       if (!this.#conversation || !this.#threadId)
@@ -264,7 +282,34 @@ export class CodexAdapter implements AgentAdapter {
       await this.start(this.#conversation, this.#threadId, true);
     }
     this.#approvedPlanPartId = undefined;
-    await this.#startTurn(text, (plan ?? usesPlanMode(text)) ? "plan" : undefined, attachments);
+    await this.#startTurn(
+      text,
+      (plan ?? usesPlanMode(text)) ? "plan" : undefined,
+      attachments,
+      skills,
+    );
+  }
+
+  async compact(): Promise<void> {
+    if (!isRunning(this.#child)) {
+      if (!this.#conversation || !this.#threadId)
+        throw new AgentCliError("failed", "O processo Codex não está ativo.");
+      await this.start(this.#conversation, this.#threadId, true);
+    }
+    this.#turnOpen = true;
+    this.#stopRequested = false;
+    this.#turnId = "";
+    this.#turnComplete = new Promise<void>((resolve) => {
+      this.#turnCompleteResolve = resolve;
+    });
+    try {
+      await this.#request("thread/compact/start", { threadId: this.#threadId });
+    } catch (error) {
+      this.#turnOpen = false;
+      this.#turnCompleteResolve?.();
+      this.#turnCompleteResolve = undefined;
+      throw error;
+    }
   }
 
   setFastEnabled(enabled: boolean): void {
@@ -387,6 +432,13 @@ export class CodexAdapter implements AgentAdapter {
     };
   }
 
+  async getSkills(): Promise<ComposerSkill[]> {
+    if (this.#skillsLoaded) return this.#skills.map((skill) => ({ ...skill }));
+    const cwd = this.#conversation?.cwd;
+    if (!cwd) return [];
+    return this.#requestSkills(cwd);
+  }
+
   async #startServer(cwd: string): Promise<void> {
     const folder = await validateFolder(cwd);
     this.#throwIfDisposed();
@@ -444,12 +496,13 @@ export class CodexAdapter implements AgentAdapter {
     text: string,
     collaborationMode?: "default" | "plan",
     attachments: ConversationAttachment[] = [],
+    skills: Array<Pick<ComposerSkill, "name" | "path">> = [],
   ): Promise<void> {
     const conversation = this.#conversation;
     if (!conversation || !this.#threadId)
       throw new AgentCliError("failed", "A conversa Codex não foi iniciada.");
     const { approvalPolicy } = permissionSettings(conversation.mode);
-    const input = await this.#prepareInput(text, attachments);
+    const input = await this.#prepareInput(text, attachments, skills);
     this.#turnOpen = true;
     this.#stopRequested = false;
     this.#turnId = "";
@@ -647,6 +700,10 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   #handleNotification(method: string, params: JsonRecord): void {
+    if (method === "skills/changed") {
+      this.#skillsLoaded = false;
+      return;
+    }
     if (method === "thread/settings/updated") {
       const threadId = stringValue(params.threadId);
       const matchesThread = this.#threadStarting || !threadId || threadId === this.#threadId;
@@ -1116,9 +1173,21 @@ export class CodexAdapter implements AgentAdapter {
     }
   }
 
-  async #prepareInput(text: string, attachments: ConversationAttachment[]): Promise<JsonRecord[]> {
+  async #prepareInput(
+    text: string,
+    attachments: ConversationAttachment[],
+    skills: Array<Pick<ComposerSkill, "name" | "path">>,
+  ): Promise<JsonRecord[]> {
     await this.#attachmentCleanup;
-    const input: JsonRecord[] = [{ type: "text", text }];
+    const input: JsonRecord[] = skills.map((skill) => {
+      if (!skill.path)
+        throw new AgentCliError(
+          "failed",
+          `A skill Codex “${skill.name}” não tem caminho disponível.`,
+        );
+      return { type: "skill", name: skill.name, path: skill.path };
+    });
+    input.push({ type: "text", text });
     try {
       for (const attachment of attachments) {
         if (attachment.kind === "text") {
@@ -1145,6 +1214,13 @@ export class CodexAdapter implements AgentAdapter {
       throw error;
     }
     return input;
+  }
+
+  async #requestSkills(cwd: string): Promise<ComposerSkill[]> {
+    const result = await this.#request("skills/list", { cwds: [cwd], forceReload: true });
+    this.#skills = parseSkillList(result);
+    this.#skillsLoaded = true;
+    return this.#skills.map((skill) => ({ ...skill }));
   }
 
   async #cleanupAttachmentFiles(): Promise<void> {
@@ -1212,6 +1288,12 @@ export function createCodexModelLoader(
   return async (cwd) => new CodexAdapter(() => undefined, options).loadModelCatalog(cwd);
 }
 
+export function createCodexSkillLoader(
+  options: CodexAdapterOptions = {},
+): (cwd: string) => Promise<ComposerSkill[]> {
+  return async (cwd) => new CodexAdapter(() => undefined, options).loadSkillCatalog(cwd);
+}
+
 function permissionSettings(mode: Conversation["mode"]): {
   sandbox: "read-only" | "workspace-write" | "danger-full-access";
   approvalPolicy: "never" | "on-request" | "untrusted";
@@ -1255,6 +1337,25 @@ function parseModelList(value: unknown): AdapterModelList {
   });
   const efforts = [...new Set(models.flatMap((model) => model.efforts))];
   return { models, efforts: efforts.length ? efforts : [...EFFORTS] };
+}
+
+function parseSkillList(value: unknown): ComposerSkill[] {
+  const entries = isRecord(value) && Array.isArray(value.data) ? value.data.filter(isRecord) : [];
+  const skills = entries.flatMap((entry) =>
+    Array.isArray(entry.skills) ? entry.skills.filter(isRecord) : [],
+  );
+  return skills.flatMap((skill) => {
+    const name = stringValue(skill.name);
+    if (!name || skill.enabled === false) return [];
+    return [
+      {
+        name,
+        description: stringValue(skill.description),
+        source: "codex",
+        ...(stringValue(skill.path) ? { path: stringValue(skill.path) } : {}),
+      },
+    ];
+  });
 }
 
 function selectModel(

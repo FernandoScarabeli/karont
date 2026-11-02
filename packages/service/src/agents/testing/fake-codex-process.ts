@@ -300,7 +300,17 @@ function matchesAdjustmentTurn(expected: unknown, actual: unknown): boolean {
 function overrideFixtureCwd(record: FixtureLine, cwd: string): FixtureLine {
   if (record.direction !== "out" || record.stream !== "stdin") return record;
   const message = parseFixture(record.line);
-  if (!isRecord(message.params) || typeof message.params.cwd !== "string") return record;
+  if (!isRecord(message.params)) return record;
+  if (message.method === "skills/list" && Array.isArray(message.params.cwds)) {
+    return {
+      ...record,
+      line: JSON.stringify({
+        ...message,
+        params: { ...message.params, cwds: message.params.cwds.map(() => cwd) },
+      }),
+    };
+  }
+  if (typeof message.params.cwd !== "string") return record;
   return {
     ...record,
     line: JSON.stringify({ ...message, params: { ...message.params, cwd } }),

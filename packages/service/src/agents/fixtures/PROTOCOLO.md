@@ -1,5 +1,14 @@
 # Protocolos descobertos
 
+## Atalhos do composer (M2-B17)
+
+Decisão provisória do orquestrador, revisável pelo dono:
+
+- `@` consulta os arquivos do Projeto no serviço. Em repositórios Git, a fonte é `git ls-files --cached --others --exclude-standard`; fora do Git, o serviço percorre até 25.000 arquivos, 50.000 entradas ou 32 níveis e ignora diretórios e arquivos ocultos, `node_modules`, `.git`, `dist` e `build`. A busca aceita subsequência no caminho, prioriza o nome do arquivo e retorna até 50 itens. O índice fica em memória por pasta por 10 segundos, sem polling.
+- `$` consulta skills do agente. Claude Code fornece `response.commands` no `initialize`; entram na lista os itens cujo `builtin` não é `true`. O Codex usa `skills/list` com `cwds`; skills desabilitadas são omitidas. O serviço memoriza catálogos por agente e pasta; falha ao consultar retorna lista vazia. O Codex invalida o catálogo ativo quando recebe `skills/changed`.
+- Ao enviar uma skill Claude, o serviço prefixa a mensagem com `/<name> `; Claude aceita uma skill por mensagem. No Codex, o serviço envia um item de entrada `{ type: "skill", name, path }` antes do texto.
+- `/compactar` é tratado pelo serviço: Claude recebe `/compact`; Codex recebe `thread/compact/start`. Os demais comandos com `/` pertencem à interface e não são enviados como comandos interativos da CLI.
+
 As fixtures sanitizadas ficam em `claude/` e `codex/`. O gravador salva primeiro a troca crua em `scripts/record-fixtures/out/`, ignorada pelo Git, e só depois sanitiza. O JSONL cru pode conter dados pessoais; não deve ser publicado.
 
 ## Gravador

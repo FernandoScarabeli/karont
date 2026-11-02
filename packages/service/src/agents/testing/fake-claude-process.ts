@@ -10,6 +10,7 @@ type FakeClaudeOptions = {
   initializeGate?: { started: () => void; released: Promise<void> };
   largeImageBytes?: number;
   initializeModels?: Record<string, unknown>[];
+  initializeCommands?: Record<string, unknown>[];
 };
 
 export type FakeClaudeSpawn = ((
@@ -228,7 +229,7 @@ class FakeClaudeProcess extends EventEmitter {
       type?: string;
       response?: {
         request_id?: string;
-        response?: { models?: unknown };
+        response?: { models?: unknown; commands?: unknown };
       };
       message?: { content?: unknown };
     };
@@ -239,6 +240,14 @@ class FakeClaudeProcess extends EventEmitter {
       value.response.response
     ) {
       value.response.response.models = this.#options.initializeModels;
+    }
+    if (
+      value.type === "control_response" &&
+      value.response?.request_id === "karont-initialize" &&
+      this.#options.initializeCommands &&
+      value.response.response
+    ) {
+      value.response.response.commands = this.#options.initializeCommands;
     }
     const imageBytes = this.#options.largeImageBytes;
     if (

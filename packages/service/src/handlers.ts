@@ -149,10 +149,15 @@ export function createHandlers({
             request.params.text,
             request.params.plan,
             request.params.attachments,
+            request.params.skills,
           )
           .catch((error: unknown) => {
             throw conversationError(error);
           });
+      case "conversation.compact":
+        return conversationManager.compact(request.params.id).catch((error: unknown) => {
+          throw conversationError(error);
+        });
       case "conversation.stop":
         return conversationManager
           .stop(request.params.id)
@@ -227,6 +232,10 @@ export function createHandlers({
           });
       case "agent.models":
         return conversationManager.models(request.params.agent);
+      case "composer.files":
+        return conversationManager.files(request.params);
+      case "composer.skills":
+        return conversationManager.skills(request.params);
       case "folders.recent":
         return listRecentFolders(db, homeDir);
       case "folders.validate":

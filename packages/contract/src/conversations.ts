@@ -168,6 +168,29 @@ export const conversationSendParamsSchema = z.strictObject({
   text: z.string().min(1).max(65_536),
   plan: z.boolean().optional(),
   attachments: z.array(conversationAttachmentSchema).max(8).optional(),
+  skills: z
+    .array(
+      z.strictObject({
+        name: z.string().min(1).max(240),
+        path: z.string().min(1).max(4_096).optional(),
+      }),
+    )
+    .max(8)
+    .optional(),
+});
+
+export const composerSkillSchema = z.strictObject({
+  name: z.string().min(1).max(240),
+  description: z.string(),
+  argumentHint: z.string().optional(),
+  source: z.enum(["claude", "codex"]),
+  path: z.string().min(1).max(4_096).optional(),
+});
+export type ComposerSkill = z.infer<typeof composerSkillSchema>;
+
+export const composerFileSchema = z.strictObject({
+  path: z.string().min(1).max(4_096),
+  name: z.string().min(1).max(4_096),
 });
 export const agentModelsSchema = z.strictObject({
   agent: conversationAgentSchema,
