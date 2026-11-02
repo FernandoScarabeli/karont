@@ -8,6 +8,7 @@ type FakeClaudeOptions = {
   exitAfterResult?: boolean;
   planDecision?: "approve" | "adjust";
   initializeGate?: { started: () => void; released: Promise<void> };
+  largeImageBytes?: number;
 };
 
 export type FakeClaudeSpawn = ((
@@ -204,7 +205,7 @@ class FakeClaudeProcess extends EventEmitter {
       this.#cursor += 1;
       if (record.direction === "stderr") this.stderr.write(`${record.line}\n`);
       else if (record.direction === "in" && record.stream === "stdout")
-        this.stdout.write(`${record.line}\n`);
+        this.stdout.write(`${this.#outputLine(record.line)}\n`);
     }
     const hasResult = this.#records.some(
       (record) =>
@@ -219,6 +220,28 @@ class FakeClaudeProcess extends EventEmitter {
   #fail(message: string): void {
     this.stderr.write(`fake claude: ${message}\n`);
     this.#finish(2, null);
+  }
+
+  #outputLine(line: string): string {
+    const imageBytes = this.#options.largeImageBytes;
+    if (imageBytes === undefined) return line;
+    const value = JSON.parse(line) as {
+      type?: string;
+      message?: { content?: unknown };
+    };
+    if (value.type !== "user" || !Array.isArray(value.message?.content)) return line;
+    const data = "A".repeat(Math.ceil(imageBytes / 3) * 4);
+    const content = value.message.content.map((item) => {
+      if (typeof item !== "object" || item === null || !("type" in item)) return item;
+      const result = item as { type?: unknown; tool_use_id?: unknown };
+      return result.type === "tool_result"
+        ? {
+            ...result,
+            content: [{ type: "image", source: { type: "base64", media_type: "image/png", data } }],
+          }
+        : item;
+    });
+    return JSON.stringify({ ...value, message: { ...value.message, content } });
   }
 
   #finish(code: number | null, signal: NodeJS.Signals | null): void {

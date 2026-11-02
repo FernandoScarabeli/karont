@@ -1,7 +1,6 @@
 import { type ChildProcess, spawn as nodeSpawn, type SpawnOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
-import { createInterface } from "node:readline";
 import {
   type Conversation,
   type ConversationAttachment,
@@ -21,6 +20,7 @@ import { resolveAgentCommand } from "./detect.ts";
 import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
 
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
+const MAX_STDOUT_LINE_BYTES = 32 * 1024 * 1024;
 const CONTROL_REQUEST_TIMEOUT_MS = 10_000;
 const READ_ONLY_ALLOWED_TOOLS = new Set([
   "Read",
@@ -110,6 +110,10 @@ export class ClaudeAdapter implements AgentAdapter {
   #interruptResolve: (() => void) | undefined;
   #stderrErrorText = "";
   #lineQueue: Promise<void> = Promise.resolve();
+  #stdoutLineChunks: Buffer[] = [];
+  #stdoutLineBytes = 0;
+  #stdoutLineOverflow = false;
+  #stdoutEnd: Promise<void> = Promise.resolve();
 
   constructor(emit: (event: AdapterEvent) => void, options: ClaudeAdapterOptions = {}) {
     this.#emit = emit;
@@ -136,6 +140,9 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#forkSessionSourceId = this.#forkSessionPending ? sessionId : undefined;
     this.#stderrErrorType = undefined;
     this.#stderrErrorText = "";
+    this.#stdoutLineChunks = [];
+    this.#stdoutLineBytes = 0;
+    this.#stdoutLineOverflow = false;
     const folder = await validateFolder(conversation.cwd);
     if (!folder.exists || !folder.isDirectory) {
       throw new AgentCliError("failed", `A pasta do projeto não existe mais: ${conversation.cwd}`);
@@ -186,16 +193,30 @@ export class ClaudeAdapter implements AgentAdapter {
     const stdin = child.stdin;
     if (!stdout || !stderr || !stdin)
       throw new AgentCliError("failed", "A CLI não abriu os canais de comunicação esperados.");
-    const lines = createInterface({ input: stdout, crlfDelay: Infinity });
-    lines.on("line", (line) => {
-      this.#lineQueue = this.#lineQueue
-        .then(() => this.#handleLine(line))
-        .catch(() =>
-          this.#completeTurn("error", {
-            type: "failed",
-            text: "Não foi possível processar uma ação da CLI Claude.",
-          }),
-        );
+    let resolveStdoutEnd!: () => void;
+    this.#stdoutEnd = new Promise<void>((resolve) => {
+      resolveStdoutEnd = resolve;
+    });
+    let stdoutEnded = false;
+    const finishStdout = () => {
+      if (stdoutEnded) return;
+      stdoutEnded = true;
+      this.#flushStdoutLine();
+      resolveStdoutEnd();
+    };
+    stdout.on("data", (chunk: Buffer | string) => {
+      const previousQueue = this.#lineQueue;
+      this.#readStdout(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8"));
+      if (this.#lineQueue !== previousQueue) {
+        stdout.pause();
+        const queuedLines = this.#lineQueue;
+        void queuedLines.then(() => stdout.resume());
+      }
+    });
+    stdout.once("end", finishStdout);
+    stdout.once("close", () => {
+      if (stdout.readableLength === 0) finishStdout();
+      else stdout.resume();
     });
     stderr.setEncoding("utf8");
     stderr.on("data", (chunk: string) => {
@@ -417,15 +438,62 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#child = undefined;
   }
 
-  async #handleLine(line: string): Promise<void> {
-    if (Buffer.byteLength(line, "utf8") > 4 * 1024 * 1024) {
+  #readStdout(chunk: Buffer): void {
+    if (this.#stdoutLineOverflow) return;
+    let offset = 0;
+    while (offset < chunk.length) {
+      const newline = chunk.indexOf(0x0a, offset);
+      const end = newline < 0 ? chunk.length : newline;
+      if (!this.#appendStdoutLineChunk(chunk.subarray(offset, end))) return;
+      if (newline < 0) return;
+      this.#queueLine(this.#takeStdoutLine());
+      offset = newline + 1;
+    }
+  }
+
+  #appendStdoutLineChunk(chunk: Buffer): boolean {
+    if (this.#stdoutLineBytes + chunk.byteLength > MAX_STDOUT_LINE_BYTES) {
+      this.#stdoutLineChunks = [];
+      this.#stdoutLineBytes = 0;
+      this.#stdoutLineOverflow = true;
       this.#completeTurn("error", {
         type: "failed",
-        text: "A CLI enviou um evento acima do limite de 4 MiB.",
+        text: "A CLI enviou um evento acima do limite de 32 MiB.",
       });
       this.#child?.kill("SIGTERM");
-      return;
+      return false;
     }
+    if (chunk.length > 0) {
+      this.#stdoutLineChunks.push(chunk);
+      this.#stdoutLineBytes += chunk.byteLength;
+    }
+    return true;
+  }
+
+  #takeStdoutLine(): string {
+    const line = Buffer.concat(this.#stdoutLineChunks, this.#stdoutLineBytes).toString("utf8");
+    this.#stdoutLineChunks = [];
+    this.#stdoutLineBytes = 0;
+    return line.endsWith("\r") ? line.slice(0, -1) : line;
+  }
+
+  #flushStdoutLine(): void {
+    if (this.#stdoutLineOverflow || this.#stdoutLineBytes === 0) return;
+    this.#queueLine(this.#takeStdoutLine());
+  }
+
+  #queueLine(line: string): void {
+    this.#lineQueue = this.#lineQueue
+      .then(() => this.#handleLine(line))
+      .catch(() =>
+        this.#completeTurn("error", {
+          type: "failed",
+          text: "Não foi possível processar uma ação da CLI Claude.",
+        }),
+      );
+  }
+
+  async #handleLine(line: string): Promise<void> {
     let value: Record<string, unknown>;
     try {
       value = JSON.parse(line) as Record<string, unknown>;
@@ -812,7 +880,8 @@ export class ClaudeAdapter implements AgentAdapter {
     if (this.#child !== child) return;
     this.#child = undefined;
     if (this.#disposed) return;
-    void this.#lineQueue.then(() => this.#completeAfterExit(error));
+    const stdoutEnd = this.#stdoutEnd;
+    void stdoutEnd.then(() => this.#lineQueue).then(() => this.#completeAfterExit(error));
   }
 
   #completeAfterExit(error: Error): void {
@@ -960,10 +1029,19 @@ function contentToText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return content == null ? "" : JSON.stringify(content);
   return content
-    .map((item) =>
-      isRecord(item) && typeof item.text === "string" ? item.text : JSON.stringify(item),
-    )
+    .map((item) => {
+      if (isRecord(item) && item.type === "image") return summarizeImage(item);
+      return isRecord(item) && typeof item.text === "string" ? item.text : JSON.stringify(item);
+    })
     .join("\n");
+}
+function summarizeImage(item: Record<string, unknown>): string {
+  const source = isRecord(item.source) ? item.source : undefined;
+  if (typeof source?.data !== "string") return "imagem";
+  const data = source.data;
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  const bytes = Math.max(0, Math.floor((data.length * 3) / 4) - padding);
+  return `imagem, ${Math.ceil(bytes / 1024)} kB`;
 }
 function summarizeInput(input: Record<string, unknown>): string {
   const raw = [

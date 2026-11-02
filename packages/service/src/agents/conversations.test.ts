@@ -80,6 +80,7 @@ async function createHarness(
     exitAfterResult?: boolean;
     planDecision?: "approve" | "adjust";
     initializeGate?: { started: () => void; released: Promise<void> };
+    largeImageBytes?: number;
     messageCreatedGate?: { started: () => void; released: Promise<void> };
     titleGenerator?: (
       agent: Conversation["agent"],
@@ -691,6 +692,31 @@ test("Claude transmite texto em deltas e converte leitura em ação", async () =
     assert.ok(
       message?.parts.some((part) => part.type === "text" && part.markdown.includes("README")),
     );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude conclui leitura com imagem grande sem guardar o base64", async () => {
+  const harness = await createHarness(
+    "leitura",
+    {},
+    { largeImageBytes: 3_500_001, titleGenerator: async () => null },
+  );
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Leia a imagem.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const message = latestAgent(harness, conversation.id);
+    const action = message?.parts.find(
+      (part): part is Extract<MessagePart, { type: "action" }> =>
+        part.type === "action" && part.actionType === "read",
+    );
+    assert.equal(message?.status, "done");
+    assert.equal(action?.state, "ok");
+    assert.equal(action?.output, "imagem, 3418 kB");
+    assert.equal(action?.output.includes("AAAA"), false);
   } finally {
     await harness.close();
   }
