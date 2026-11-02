@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { alignRevealEnd, DRAIN_MS, getRevealCeiling, planCharRelease } from "./typewriter.ts";
+import {
+  alignRevealEnd,
+  BASE_CHARS_PER_SECOND,
+  DRAIN_MS,
+  getRevealCeiling,
+  planCharRelease,
+} from "./typewriter.ts";
 
 const FIRST_FRAME_MS = 16;
 const MAX_FRAME_MS = 100;
@@ -9,6 +15,7 @@ type Pacer = {
   revealed: number;
   carry: number;
   drainMsLeft: number;
+  rateCps: number;
   lastFrameTime: number | null;
   frame: number | null;
 };
@@ -26,6 +33,7 @@ export function useTypewriterText(text: string, done: boolean): string {
       revealed: 0,
       carry: 0,
       drainMsLeft: DRAIN_MS,
+      rateCps: BASE_CHARS_PER_SECOND,
       lastFrameTime: null,
       frame: null,
     };
@@ -68,9 +76,11 @@ export function useTypewriterText(text: string, done: boolean): string {
         done: latestDone,
         carryChars: pacer.carry,
         drainMsLeft: pacer.drainMsLeft,
+        rateCps: pacer.rateCps,
       });
       pacer.carry = plan.carryChars;
       pacer.drainMsLeft = plan.drainMsLeft;
+      pacer.rateCps = plan.rateCps;
 
       if (plan.count > 0) {
         pacer.revealed = alignRevealEnd(latestText, pacer.revealed + plan.count);

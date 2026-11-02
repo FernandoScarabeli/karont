@@ -47,6 +47,7 @@ import remarkGfm from "remark-gfm";
 import { Button } from "../components/Button/Button.tsx";
 import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
 import { t } from "../i18n/pt-BR.ts";
+import { MOTION_MS } from "../styles/motion.ts";
 import {
   countDiffLines,
   formatDiffStats,
@@ -71,7 +72,6 @@ import { getAllowedExternalUrl } from "./externalLinks.ts";
 import { FollowBottomContext } from "./followBottom.ts";
 import { splitMarkdownBlocks } from "./markdownBlocks.ts";
 import { rehypeCaret } from "./rehypeCaret.ts";
-import { CARET_FADE_MS } from "./typewriter.ts";
 import type { ConversationMessage, MessagePart } from "./useConversation.ts";
 import { useTypewriterText } from "./useTypewriterText.ts";
 import { WorkingIndicator } from "./WorkingIndicator.tsx";
@@ -787,7 +787,7 @@ function TypewriterMarkdownBody({
 
   useEffect(() => {
     if (!done || !caughtUp) return;
-    const timer = window.setTimeout(onSettled, CARET_FADE_MS);
+    const timer = window.setTimeout(onSettled, MOTION_MS.fast);
     return () => window.clearTimeout(timer);
   }, [caughtUp, done, onSettled]);
 

@@ -1946,7 +1946,7 @@
 }
 
 /* Cursor de bloco do texto em digitação. Sólido enquanto chega, pisca quando parado
-   e some em fade depois de done (a duração bate com CARET_FADE_MS em typewriter.ts). */
+   e some em fade depois de done (--k-motion-fast, o mesmo que MOTION_MS.fast). */
 .streamingCaret {
   display: inline-block;
   width: var(--k-space-2);
@@ -1961,7 +1961,7 @@
 }
 
 .markdown[data-caret="done"] .streamingCaret {
-  animation: streamingCaretFade var(--k-duration-caret-fade) var(--k-ease) forwards;
+  animation: streamingCaretFade var(--k-motion-fast) var(--k-ease) forwards;
 }
 
 @keyframes streamingCaretBlink {

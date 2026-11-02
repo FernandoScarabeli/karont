@@ -42,6 +42,7 @@ import styles from "./ConversationView.module.css";
 import { cacheAgentModels, getCachedAgentModels } from "./conversationCache.ts";
 import { formatFolderPath } from "./displayText.ts";
 import { FollowBottomContext } from "./followBottom.ts";
+import { FollowScroller } from "./followScroll.ts";
 import { type FollowEvent, type FollowState, nextFollowState } from "./followState.ts";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import { useConversation } from "./useConversation.ts";
@@ -153,7 +154,7 @@ export function ConversationView({
   const composerSectionRef = useRef<HTMLElement>(null);
   const titleHeadingRef = useRef<HTMLHeadingElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const scrollFrameRef = useRef<number | null>(null);
+  const followScrollerRef = useRef<FollowScroller | null>(null);
   const followRef = useRef<FollowState>("following");
   const previousScrollHeight = useRef(0);
   const restoreAfterOlder = useRef(false);
@@ -299,23 +300,12 @@ export function ConversationView({
     [latestMessage],
   );
 
-  useEffect(
-    () => () => {
-      if (scrollFrameRef.current !== null) {
-        window.cancelAnimationFrame(scrollFrameRef.current);
-        scrollFrameRef.current = null;
-      }
-    },
-    [],
-  );
-
   // O texto digitado cresce entre um delta e outro. Enquanto o usuário está no fim,
   // acompanha a altura da última mensagem; se ele subiu, não mexe na rolagem.
   // Chamado a cada quadro do texto digitado (antes da pintura). Enquanto o
   // acompanhamento está ligado, sempre fixa no fim; não consulta o IntersectionObserver.
   const pinToBottom = useCallback(() => {
-    const list = messageListRef.current;
-    if (list && followRef.current === "following") list.scrollTop = list.scrollHeight;
+    followScrollerRef.current?.kick();
   }, []);
 
   // Só a intenção explícita do usuário desliga o acompanhamento; a volta é decidida
@@ -323,8 +313,13 @@ export function ConversationView({
   useEffect(() => {
     const list = messageListRef.current;
     if (!list) return;
+    const scroller = new FollowScroller(list, () => followRef.current === "following");
+    followScrollerRef.current = scroller;
     const follow = (event: FollowEvent) => {
-      followRef.current = nextFollowState(followRef.current, event);
+      const before = followRef.current;
+      followRef.current = nextFollowState(before, event);
+      // Rolar para cima para a mola na hora.
+      if (before === "following" && followRef.current === "free") scroller.stop();
     };
     let lastScrollTop = list.scrollTop;
     let lastDistance = list.scrollHeight - list.scrollTop - list.clientHeight;
@@ -387,6 +382,8 @@ export function ConversationView({
       list.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointerup", releaseScrollbar);
       window.removeEventListener("pointercancel", releaseScrollbar);
+      scroller.dispose();
+      followScrollerRef.current = null;
     };
   }, []);
 
@@ -414,13 +411,7 @@ export function ConversationView({
       list.scrollTop += heightDifference;
       restoreAfterOlder.current = false;
     } else if (followRef.current === "following" && contentChanged) {
-      if (scrollFrameRef.current !== null) {
-        window.cancelAnimationFrame(scrollFrameRef.current);
-      }
-      scrollFrameRef.current = window.requestAnimationFrame(() => {
-        scrollFrameRef.current = null;
-        bottomSentinelRef.current?.scrollIntoView({ block: "end", inline: "nearest" });
-      });
+      followScrollerRef.current?.kick();
     }
   }, [scrollVersion]);
 
