@@ -229,6 +229,9 @@
   --k-duration-effort-needle: 220ms;
   --k-chat-content-max-width: 860px;
   --k-chat-user-bubble-max-width: 720px;
+  --k-chat-history-item-max-width: 60ch;
+  --k-chat-history-fade-size: 24px;
+  --k-chat-message-action-gap: 6px;
   --k-chat-code-max-height: 360px;
   --k-chat-part-max-height: 240px;
   --k-chat-diff-max-height: 360px;

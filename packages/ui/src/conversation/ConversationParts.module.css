@@ -132,6 +132,10 @@
   transition: opacity var(--k-motion-fast) var(--k-ease);
 }
 
+.messageOptions {
+  margin-block-start: var(--k-chat-message-action-gap);
+}
+
 .userMessage .messageOptions {
   width: calc(100% + var(--message-action-optical-inset));
   margin-inline-end: calc(var(--message-action-optical-inset) * -1);
