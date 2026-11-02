@@ -520,7 +520,7 @@
 .thinkingText {
   max-height: var(--k-chat-part-max-height);
   overflow: auto;
-  padding: var(--k-space-2) var(--k-space-4);
+  padding: var(--k-space-1) 0 0 var(--k-space-2);
   color: var(--k-color-text-secondary);
   font-size: var(--k-text-12);
   line-height: var(--k-leading-normal);
@@ -572,10 +572,7 @@
   max-height: var(--k-chat-part-max-height);
   overflow: auto;
   margin-block-start: var(--k-space-1);
-  padding: var(--k-space-3);
-  border: var(--k-border-width) solid var(--k-color-border);
-  border-radius: var(--k-radius-md);
-  background: var(--k-color-bg-raised);
+  margin-inline-start: var(--k-space-2);
 }
 
 .actionGroupBody[hidden] {
@@ -652,10 +649,7 @@
   max-height: var(--k-chat-part-max-height);
   overflow: auto;
   margin-block-start: var(--k-space-1);
-  padding: var(--k-space-3) var(--k-space-4);
-  border: var(--k-border-width) solid var(--k-color-border);
-  border-radius: var(--k-radius-md);
-  background: var(--k-color-bg-raised);
+  margin-inline-start: var(--k-space-2);
 }
 
 .actionChildren {
@@ -663,18 +657,22 @@
   gap: var(--k-space-1);
   min-inline-size: 0;
   margin: var(--k-space-2) 0 0 var(--k-space-2);
-  padding: 0 0 0 var(--k-space-3);
+  padding: 0;
   border: 0;
-  border-inline-start: var(--k-border-width) solid var(--k-color-border);
 }
 
 .actionGroupBody .actionDetails {
   max-height: none;
-  margin-block-start: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+}
+
+.detailBlock {
+  display: grid;
+  min-width: 0;
+  gap: var(--k-space-1);
+  padding: var(--k-space-2);
+  border: var(--k-border-width) solid var(--k-color-border);
+  border-radius: var(--k-radius-md);
+  background: var(--k-color-bg-raised);
 }
 
 .actionDetails pre {
@@ -687,6 +685,10 @@
   line-height: var(--k-leading-normal);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.detailBlock pre {
+  margin: 0;
 }
 
 .detailLabel {
