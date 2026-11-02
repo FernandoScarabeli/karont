@@ -83,6 +83,13 @@ export {
   settingKeySchema,
   terminalInfoSchema,
 } from "./methods.ts";
+export type { MessageSource } from "./sources.ts";
+export {
+  MAX_MESSAGE_SOURCES,
+  messageSourceSchema,
+  normalizeSourceUrl,
+  safeSourceUrl,
+} from "./sources.ts";
 export type {
   ParsedRequest,
   ParseEventResult,

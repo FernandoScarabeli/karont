@@ -8,6 +8,7 @@ import {
   describeAgentError,
   MAX_FRAME_BYTES,
   type MessagePart,
+  type MessageSource,
   reasoningEffortSchema,
 } from "@karont/contract";
 import { validateFolder } from "../folders.ts";
@@ -21,6 +22,7 @@ import type {
   AgentAdapterRegistration,
 } from "./adapter.ts";
 import { resolveAgentCommand } from "./detect.ts";
+import { makeMessageSource, mergeMessageSources } from "./source-metadata.ts";
 import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
 
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
@@ -68,7 +70,10 @@ export class ClaudeAdapter implements AgentAdapter {
   readonly #spawn: SpawnFunction;
   readonly #homeDir: string;
   readonly #platform: NodeJS.Platform;
-  readonly #actions = new Map<string, { partId: string; startedAt: number }>();
+  readonly #actions = new Map<
+    string,
+    { partId: string; startedAt: number; toolName: string; input: Record<string, unknown> }
+  >();
   // Mantém todas as partes de ações: filhos de subagentes chegam depois do resultado do Agent.
   readonly #partIdByToolUse = new Map<string, string>();
   readonly #pending = new Map<
@@ -99,6 +104,7 @@ export class ClaudeAdapter implements AgentAdapter {
   #initPromise: Promise<void> | undefined;
   #stderrErrorType: "cli-not-found" | "not-logged-in" | undefined;
   #activeTextPartId: string | undefined;
+  #sources: MessageSource[] = [];
   #activeThinkingPartId: string | undefined;
   #todosPartId: string | undefined;
   #todos: Array<{
@@ -305,6 +311,7 @@ export class ClaudeAdapter implements AgentAdapter {
     await this.#ensurePermissionMode(plan ? "plan" : permissionModeFor(conversation));
     this.#turnOpen = true;
     this.#stopRequested = false;
+    this.#sources = [];
     this.#activeTextPartId = undefined;
     this.#activeThinkingPartId = undefined;
     this.#todosPartId = undefined;
@@ -617,6 +624,7 @@ export class ClaudeAdapter implements AgentAdapter {
     if (type === "assistant") {
       const message = value.message as Record<string, unknown> | undefined;
       const content = Array.isArray(message?.content) ? message.content : [];
+      this.#addSources(extractClaudeAssistantSources(content));
       for (const item of content) {
         if (!isRecord(item) || item.type !== "tool_use" || typeof item.name !== "string") continue;
         await this.#handleToolUse(
@@ -727,7 +735,7 @@ export class ClaudeAdapter implements AgentAdapter {
       state: "running",
       durationMs: null,
     };
-    this.#actions.set(id, { partId, startedAt: Date.now() });
+    this.#actions.set(id, { partId, startedAt: Date.now(), toolName: name, input });
     this.#partIdByToolUse.set(id, partId);
     this.#part(action);
     if (name === "Write" && typeof input.content === "string") this.#lastPlan = input.content;
@@ -737,6 +745,7 @@ export class ClaudeAdapter implements AgentAdapter {
     const toolId = String(item.tool_use_id ?? "");
     const actionInfo = this.#actions.get(toolId);
     if (!actionInfo) return;
+    this.#addSources(extractClaudeToolSources(actionInfo.toolName, actionInfo.input, item.content));
     const output = contentToText(item.content);
     const existing = this.#pendingPart(actionInfo.partId);
     const text =
@@ -912,6 +921,14 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#emit({ kind: "part", part });
   }
 
+  #addSources(additions: MessageSource[]): void {
+    if (!additions.length) return;
+    const next = mergeMessageSources(this.#sources, additions);
+    if (JSON.stringify(next) === JSON.stringify(this.#sources)) return;
+    this.#sources = next;
+    this.#emit({ kind: "sources", sources: next });
+  }
+
   async #write(value: unknown): Promise<void> {
     const stdin = this.#child?.stdin;
     if (!stdin || stdin.destroyed)
@@ -979,6 +996,7 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#pending.clear();
     this.#taskIds.clear();
     this.#lastPlan = "";
+    this.#sources = [];
   }
 
   async #setPermissionMode(mode: string): Promise<void> {
@@ -1263,6 +1281,136 @@ function contentToText(content: unknown): string {
     })
     .join("\n");
 }
+
+export function extractClaudeAssistantSources(content: unknown): MessageSource[] {
+  const sources: MessageSource[] = [];
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (!isRecord(value)) return;
+    if (Array.isArray(value.citations)) {
+      for (const citation of value.citations) {
+        if (!isRecord(citation)) continue;
+        const source = makeClaudeSource(citation);
+        if (source) sources.push(source);
+      }
+    }
+    if (
+      typeof value.url === "string" &&
+      typeof value.type === "string" &&
+      /citation|web_search_result/iu.test(value.type)
+    ) {
+      const source = makeClaudeSource(value);
+      if (source) sources.push(source);
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key !== "citations") visit(child);
+    }
+  };
+  visit(content);
+  return mergeMessageSources([], sources);
+}
+
+export function extractClaudeToolSources(
+  toolName: string,
+  input: Record<string, unknown>,
+  result: unknown,
+): MessageSource[] {
+  const tool = toolName.toLowerCase();
+  if (tool !== "websearch" && tool !== "web_search" && tool !== "webfetch" && tool !== "web_fetch")
+    return [];
+  const isSearch = tool === "websearch" || tool === "web_search";
+  const sources: MessageSource[] = [];
+  const plainText: string[] = [];
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if ((trimmed.startsWith("{") || trimmed.startsWith("[")) && trimmed.length < 256_000) {
+        try {
+          visit(JSON.parse(trimmed) as unknown);
+          return;
+        } catch {
+          // Texto livre do resultado, processado abaixo.
+        }
+      }
+      plainText.push(value);
+      if (isSearch) sources.push(...sourcesFromSearchText(value));
+      return;
+    }
+    if (!isRecord(value)) return;
+    if (typeof value.url === "string") {
+      const source = makeClaudeSource(value);
+      if (source) sources.push(source);
+    }
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(result);
+
+  if (!isSearch && typeof input.url === "string") {
+    const text = plainText
+      .join(" ")
+      .replace(/<[^>]*>/gu, " ")
+      .replace(/\s+/gu, " ")
+      .trim();
+    const title =
+      /(?:page\s+)?title\s*[:-]\s*([^\n]+)/iu.exec(plainText.join("\n"))?.[1] ??
+      /^\s*#{1,3}\s+([^\n]+)/mu.exec(plainText.join("\n"))?.[1];
+    const source = makeMessageSource({
+      url: input.url,
+      title,
+      snippet: text,
+    });
+    if (source) sources.push(source);
+  }
+  return mergeMessageSources([], sources);
+}
+
+function makeClaudeSource(value: Record<string, unknown>): MessageSource | null {
+  return makeMessageSource({
+    url: value.url,
+    title: value.title ?? value.name ?? value.headline,
+    snippet:
+      value.cited_text ?? value.snippet ?? value.description ?? value.excerpt ?? value.summary,
+    date:
+      value.page_age ??
+      value.date ??
+      value.publishedAt ??
+      value.published_at ??
+      value.published ??
+      value.updated_at,
+  });
+}
+
+function sourcesFromSearchText(text: string): MessageSource[] {
+  const sources: MessageSource[] = [];
+  for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/giu)) {
+    const rawUrl = match[0].replace(/[),.;\]}]+$/u, "");
+    const index = match.index ?? 0;
+    const before = text
+      .slice(0, index)
+      .split(/\r?\n/u)
+      .filter((line) => line.trim());
+    const after = text
+      .slice(index + match[0].length)
+      .split(/\r?\n/u)
+      .filter((line) => line.trim());
+    const title = before
+      .at(-1)
+      ?.replace(/^\s*(?:[-*•]|\d+[.)])\s*/u, "")
+      .trim();
+    const snippet = after[0]?.trim();
+    const source = makeMessageSource({ url: rawUrl, title, snippet });
+    if (source) sources.push(source);
+  }
+  return sources;
+}
+
 function summarizeImage(item: Record<string, unknown>): string {
   const source = isRecord(item.source) ? item.source : undefined;
   if (typeof source?.data !== "string") return "imagem";

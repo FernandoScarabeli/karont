@@ -1,4 +1,9 @@
-import { type AgentErrorAgent, describeAgentError } from "@karont/contract";
+import {
+  type AgentErrorAgent,
+  describeAgentError,
+  type MessageSource,
+  normalizeSourceUrl,
+} from "@karont/contract";
 import {
   AlertTriangle,
   Bot,
@@ -29,10 +34,13 @@ import {
   XCircle,
 } from "lucide-react";
 import {
+  Children,
   type FormEvent,
   Fragment,
+  isValidElement,
   type KeyboardEvent,
   memo,
+  type ReactElement,
   type ReactNode,
   type UIEvent,
   useCallback,
@@ -75,6 +83,8 @@ import { getAllowedExternalUrl } from "./externalLinks.ts";
 import { FollowBottomContext } from "./followBottom.ts";
 import { splitMarkdownBlocks } from "./markdownBlocks.ts";
 import { rehypeCaret } from "./rehypeCaret.ts";
+import { SourceCitationBadge } from "./SourceCitationBadge.tsx";
+import { type CitationView, findCitationForLink, isCitationSeparator } from "./sourceCitations.ts";
 import type { ConversationMessage, MessagePart } from "./useConversation.ts";
 import { useTypewriterText } from "./useTypewriterText.ts";
 import { WorkingIndicator } from "./WorkingIndicator.tsx";
@@ -156,6 +166,7 @@ const messageTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
   hourCycle: "h23",
 });
 const ignoreAnnouncement = () => undefined;
+const EMPTY_CITATION_SOURCES: readonly MessageSource[] = [];
 const commandDurationFormatter = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 1,
 });
@@ -319,6 +330,12 @@ export const MessageRow = memo(function MessageRow({
           .trim()
       : "";
   const visibleParts = message.parts.slice(-visiblePartCount);
+  const citationSources = useMemo(() => {
+    for (const part of message.parts) {
+      if (part.type === "text" && part.sources?.length) return part.sources;
+    }
+    return EMPTY_CITATION_SOURCES;
+  }, [message.parts]);
   const typewriterPartId =
     message.author === "agent" ? findLastTextPartId(visibleParts) : undefined;
   const typewriterLive =
@@ -462,6 +479,7 @@ export const MessageRow = memo(function MessageRow({
                   onCopyCode,
                   cwd,
                   agent,
+                  sources: citationSources,
                 },
                 visiblePartCount,
               )}
@@ -487,6 +505,7 @@ export const MessageRow = memo(function MessageRow({
                   onCopyCode,
                   cwd,
                   agent,
+                  citationSources,
                   typewriterLive && typewriterPartId
                     ? { partId: typewriterPartId, onSettled: handleTypewriterSettled }
                     : undefined,
@@ -615,6 +634,7 @@ function renderParts(
   onCopyCode: ((code: string) => void) | undefined,
   cwd: string,
   agent?: AgentErrorAgent,
+  sources: readonly MessageSource[] = [],
   typewriter?: { partId: string; onSettled: () => void },
 ) {
   const elements: ReactNode[] = [];
@@ -717,6 +737,7 @@ function renderParts(
         part={part}
         cwd={cwd}
         agent={agent}
+        sources={sources}
         typewriterSettled={
           typewriter && typewriter.partId === part.id ? typewriter.onSettled : undefined
         }
@@ -774,6 +795,7 @@ function renderCompletedMessage(
     onCopyCode?: (code: string) => void;
     cwd: string;
     agent?: AgentErrorAgent;
+    sources: readonly MessageSource[];
   },
   visiblePartCount: number,
 ) {
@@ -799,6 +821,7 @@ function renderCompletedMessage(
             options.onCopyCode,
             options.cwd,
             options.agent,
+            options.sources,
           )}
         </WorkHistoryDisclosure>
       ) : null}
@@ -813,6 +836,7 @@ function renderCompletedMessage(
           part={part}
           cwd={options.cwd}
           agent={options.agent}
+          sources={options.sources}
         />
       ))}
       {finalAnswer.map((part) => (
@@ -826,6 +850,7 @@ function renderCompletedMessage(
           part={part}
           cwd={options.cwd}
           agent={options.agent}
+          sources={options.sources}
         />
       ))}
     </div>
@@ -871,6 +896,7 @@ const PartItem = memo(
     onCopyCode,
     cwd,
     agent,
+    sources,
     typewriterSettled,
   }: {
     part: MessagePart;
@@ -881,6 +907,7 @@ const PartItem = memo(
     onCopyCode: ((code: string) => void) | undefined;
     cwd: string;
     agent?: AgentErrorAgent;
+    sources: readonly MessageSource[];
     typewriterSettled?: () => void;
   }) {
     let content: ReactNode;
@@ -893,6 +920,7 @@ const PartItem = memo(
             onAnnounce={onAnnounce}
             onCopyCode={onCopyCode}
             onSettled={typewriterSettled}
+            sources={sources}
           />
         ) : (
           <MarkdownBody
@@ -900,6 +928,7 @@ const PartItem = memo(
             markdown={part.markdown}
             onAnnounce={onAnnounce}
             onCopyCode={onCopyCode}
+            sources={sources}
           />
         );
         break;
@@ -939,6 +968,7 @@ const PartItem = memo(
     previous.onCopyCode === next.onCopyCode &&
     previous.cwd === next.cwd &&
     previous.agent === next.agent &&
+    previous.sources === next.sources &&
     previous.typewriterSettled === next.typewriterSettled,
 );
 
@@ -951,12 +981,14 @@ function TypewriterMarkdownBody({
   onAnnounce,
   onCopyCode,
   onSettled,
+  sources,
 }: {
   done: boolean;
   markdown: string;
   onAnnounce: (text: string) => void;
   onCopyCode?: (code: string) => void;
   onSettled: () => void;
+  sources: readonly MessageSource[];
 }) {
   const revealed = useTypewriterText(markdown, done);
   const caughtUp = revealed.length === markdown.length;
@@ -986,6 +1018,7 @@ function TypewriterMarkdownBody({
       markdown={revealed}
       onAnnounce={onAnnounce}
       onCopyCode={onCopyCode}
+      sources={sources}
     />
   );
 }
@@ -1001,12 +1034,14 @@ const MarkdownBody = memo(function MarkdownBody({
   caretPhase,
   onAnnounce,
   onCopyCode,
+  sources = EMPTY_CITATION_SOURCES,
 }: {
   markdown: string;
   isStreaming?: boolean;
   caretPhase?: CaretPhase;
   onAnnounce: (text: string) => void;
   onCopyCode?: (code: string) => void;
+  sources?: readonly MessageSource[];
 }) {
   const [highlightPlugin, setHighlightPlugin] = useState<HighlightPlugin | null>(null);
   const blocks = useMemo(() => splitMarkdownBlocks(markdown), [markdown]);
@@ -1022,7 +1057,7 @@ const MarkdownBody = memo(function MarkdownBody({
   }, [hasClosedCodeBlock]);
 
   return (
-    <div className={styles.markdown} data-caret={caretPhase}>
+    <div className={styles.markdown} data-caret={caretPhase} data-k-markdown>
       {blocks.map((block, index) => (
         <MarkdownBlock
           block={block.markdown}
@@ -1031,6 +1066,7 @@ const MarkdownBody = memo(function MarkdownBody({
           key={block.start}
           onAnnounce={onAnnounce}
           onCopyCode={onCopyCode}
+          sources={sources}
           useHighlight={
             highlightPlugin !== null && block.hasFencedCode && (block.closed || !isStreaming)
           }
@@ -1047,6 +1083,7 @@ const MarkdownBlock = memo(
     highlightPlugin,
     onAnnounce,
     onCopyCode,
+    sources,
     useHighlight,
   }: {
     block: string;
@@ -1054,12 +1091,35 @@ const MarkdownBlock = memo(
     highlightPlugin: HighlightPlugin | null;
     onAnnounce: (text: string) => void;
     onCopyCode?: (code: string) => void;
+    sources: readonly MessageSource[];
     useHighlight: boolean;
   }) {
     const components = useMemo(
       () => ({
-        a: ({ children, href }: { children?: ReactNode; href?: string }) => {
+        a: ({
+          children,
+          href,
+          node,
+        }: {
+          children?: ReactNode;
+          href?: string;
+          node?: { position?: { end?: { offset?: number } } };
+        }) => {
+          const citation = findCitationForLink(
+            href,
+            markdownNodeText(children),
+            block,
+            node?.position?.end?.offset,
+            sources,
+          );
           const externalUrl = getAllowedExternalUrl(href);
+          if (citation)
+            return (
+              <CitationMarker
+                citation={citation}
+                onOpen={(url) => void openExternalUrl(url, onAnnounce)}
+              />
+            );
           return externalUrl ? (
             <button
               className={styles.markdownLink}
@@ -1079,8 +1139,12 @@ const MarkdownBlock = memo(
             {children}
           </CodeBlock>
         ),
+        p: ({ children }: { children?: ReactNode }) => <p>{groupCitationChildren(children)}</p>,
+        li: ({ children }: { children?: ReactNode }) => <li>{groupCitationChildren(children)}</li>,
+        td: ({ children }: { children?: ReactNode }) => <td>{groupCitationChildren(children)}</td>,
+        th: ({ children }: { children?: ReactNode }) => <th>{groupCitationChildren(children)}</th>,
       }),
-      [onAnnounce, onCopyCode],
+      [block, onAnnounce, onCopyCode, sources],
     );
 
     return (
@@ -1101,9 +1165,70 @@ const MarkdownBlock = memo(
     previous.caret === next.caret &&
     previous.onAnnounce === next.onAnnounce &&
     previous.onCopyCode === next.onCopyCode &&
+    previous.sources === next.sources &&
     previous.useHighlight === next.useHighlight &&
     (!next.useHighlight || previous.highlightPlugin === next.highlightPlugin),
 );
+
+type CitationMarkerProps = {
+  citation: CitationView;
+  onOpen: (url: string) => void;
+};
+
+function CitationMarker({ citation, onOpen }: CitationMarkerProps) {
+  return <SourceCitationBadge citations={[citation]} onOpen={onOpen} />;
+}
+
+function isCitationMarker(value: ReactNode): value is ReactElement<CitationMarkerProps> {
+  return isValidElement<CitationMarkerProps>(value) && value.type === CitationMarker;
+}
+
+function groupCitationChildren(children: ReactNode): ReactNode[] {
+  const nodes = Children.toArray(children);
+  const grouped: ReactNode[] = [];
+  for (let index = 0; index < nodes.length; index += 1) {
+    const marker = nodes[index];
+    if (!isCitationMarker(marker)) {
+      grouped.push(marker);
+      continue;
+    }
+
+    const citations = [marker.props.citation];
+    let cursor = index + 1;
+    while (
+      cursor + 1 < nodes.length &&
+      typeof nodes[cursor] === "string" &&
+      isCitationSeparator(nodes[cursor] as string) &&
+      isCitationMarker(nodes[cursor + 1])
+    ) {
+      citations.push((nodes[cursor + 1] as ReactElement<CitationMarkerProps>).props.citation);
+      cursor += 2;
+    }
+
+    const uniqueCitations = new Map<string, CitationView>();
+    for (const citation of citations) {
+      const key = normalizeSourceUrl(citation.source.url);
+      if (key && !uniqueCitations.has(key)) uniqueCitations.set(key, citation);
+    }
+    grouped.push(
+      <SourceCitationBadge
+        citations={[...uniqueCitations.values()]}
+        key={marker.key ?? `source-${index}`}
+        onOpen={marker.props.onOpen}
+      />,
+    );
+    index = cursor - 1;
+  }
+  return grouped;
+}
+
+function markdownNodeText(value: ReactNode): string {
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (Array.isArray(value)) return value.map(markdownNodeText).join("");
+  if (isValidElement<{ children?: ReactNode }>(value))
+    return markdownNodeText(value.props.children);
+  return "";
+}
 
 async function openExternalUrl(url: string, onAnnounce: (text: string) => void): Promise<void> {
   try {

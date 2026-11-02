@@ -11,6 +11,7 @@ import {
   type ConversationAttachment,
   describeAgentError,
   type MessagePart,
+  type MessageSource,
   reasoningEffortSchema,
 } from "@karont/contract";
 import { validateFolder } from "../folders.ts";
@@ -25,6 +26,7 @@ import type {
 } from "./adapter.ts";
 import { AgentCliError } from "./claude-adapter.ts";
 import { resolveAgentCommand } from "./detect.ts";
+import { makeMessageSource, mergeMessageSources } from "./source-metadata.ts";
 import { mapCodexSpecialAction, truncateUtf8 } from "./tool-actions.ts";
 
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
@@ -88,6 +90,7 @@ export class CodexAdapter implements AgentAdapter {
   #turnId = "";
   #nextRpcId = 1;
   #models: AdapterModelList = { models: [], efforts: [...EFFORTS] };
+  #sources: MessageSource[] = [];
   #skills: ComposerSkill[] = [];
   #skillsLoaded = false;
   #modelId = "";
@@ -299,6 +302,7 @@ export class CodexAdapter implements AgentAdapter {
     }
     this.#turnOpen = true;
     this.#stopRequested = false;
+    this.#sources = [];
     this.#turnId = "";
     this.#turnComplete = new Promise<void>((resolve) => {
       this.#turnCompleteResolve = resolve;
@@ -506,6 +510,7 @@ export class CodexAdapter implements AgentAdapter {
     const input = await this.#prepareInput(text, attachments, skills);
     this.#turnOpen = true;
     this.#stopRequested = false;
+    this.#sources = [];
     this.#turnId = "";
     this.#turnComplete = new Promise<void>((resolve) => {
       this.#turnCompleteResolve = resolve;
@@ -784,6 +789,10 @@ export class CodexAdapter implements AgentAdapter {
     if (!type || !id) return;
     if (type === "subAgentActivity") {
       this.#handleSubagentActivity(stage, item, threadId, notificationTime);
+      return;
+    }
+    if (type === "webSearch") {
+      if (stage === "completed") this.#addSources(extractCodexWebSearchSources(item));
       return;
     }
     if (
@@ -1128,6 +1137,14 @@ export class CodexAdapter implements AgentAdapter {
   #emitPart(part: MessagePart): void {
     this.#parts.set(part.id, part);
     this.#emit({ kind: "part", part });
+  }
+
+  #addSources(additions: MessageSource[]): void {
+    if (!additions.length) return;
+    const next = mergeMessageSources(this.#sources, additions);
+    if (JSON.stringify(next) === JSON.stringify(this.#sources)) return;
+    this.#sources = next;
+    this.#emit({ kind: "sources", sources: next });
   }
 
   #completeTurn(
@@ -1539,6 +1556,53 @@ function actionOutput(item: JsonRecord): string {
 function fileChangeSummary(value: unknown): string {
   if (!isRecord(value)) return "";
   return Object.keys(value).join("\n");
+}
+
+export function extractCodexWebSearchSources(item: Record<string, unknown>): MessageSource[] {
+  if (item.type !== "webSearch") return [];
+  const sources: MessageSource[] = [];
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry);
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if ((trimmed.startsWith("{") || trimmed.startsWith("[")) && trimmed.length < 256_000) {
+        try {
+          visit(JSON.parse(trimmed) as unknown);
+        } catch {
+          // The Codex schema leaves result items opaque; unstructured text is not source metadata.
+        }
+      }
+      return;
+    }
+    if (!isRecord(value)) return;
+    if (typeof value.url === "string") {
+      const source = makeMessageSource({
+        url: value.url,
+        title: value.title ?? value.name ?? value.headline,
+        snippet:
+          value.snippet ??
+          value.cited_text ??
+          value.description ??
+          value.excerpt ??
+          value.summary ??
+          value.text,
+        date:
+          value.date ??
+          value.publishedAt ??
+          value.published_at ??
+          value.published ??
+          value.page_age ??
+          value.updatedAt,
+      });
+      if (source) sources.push(source);
+    }
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(item.results);
+  return mergeMessageSources([], sources);
 }
 
 function truncateCharacters(value: string, max: number): string {

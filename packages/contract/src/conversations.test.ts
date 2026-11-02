@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { conversationSchema, messagePartSchema } from "./conversations.ts";
 import { events } from "./events.ts";
 import { methods } from "./methods.ts";
+import { messageSourceSchema } from "./sources.ts";
 import { parseEvent, parseRequest } from "./validate.ts";
 
 const conversation = {
@@ -152,6 +153,27 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
       fetchedAt: "2026-10-31T10:00:00Z",
     }).success,
     true,
+  );
+});
+
+test("fontes de mensagem aceitam somente metadados web limitados", () => {
+  assert.equal(
+    messageSourceSchema.safeParse({
+      url: "https://example.com/article",
+      title: "Título",
+      snippet: "Trecho curto",
+      date: "2026-11-01",
+    }).success,
+    true,
+  );
+  assert.equal(messageSourceSchema.safeParse({ url: "file:///etc/passwd" }).success, false);
+  assert.equal(
+    messageSourceSchema.safeParse({ url: "https://example.com", secret: "token" }).success,
+    false,
+  );
+  assert.equal(
+    messageSourceSchema.safeParse({ url: "https://example.com", title: "x".repeat(241) }).success,
+    false,
   );
 });
 

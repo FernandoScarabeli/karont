@@ -305,6 +305,12 @@ export const t = {
     detachedHead: "HEAD destacado",
     linkUnavailable: "Este link usa um endereço que o Karont não pode abrir.",
     linkOpenFailed: "Não foi possível abrir o link.",
+    sourceBadge: (site: string, more: number) =>
+      more > 0 ? `Fonte: ${site} e mais ${more}` : `Fonte: ${site}`,
+    sourceCard: (site: string) => `Fonte: ${site}`,
+    sourcePrevious: "Fonte anterior",
+    sourceNext: "Próxima fonte",
+    sourcePosition: (current: number, total: number) => `${current}/${total}`,
     messageList: "Mensagens da conversa",
     messageComposer: "Compor mensagem",
     showOlderMessages: "Carregar mensagens anteriores",

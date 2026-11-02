@@ -252,6 +252,8 @@
   --k-chat-action-mark-size: 18px;
   --k-chat-action-label-offset: 22px;
   --k-chat-focus-outline-offset: 1px;
+  --k-chat-citation-card-width: 320px;
+  --k-chat-citation-site-max-width: 9ch;
   --k-chat-space-large: 48px;
   --k-chat-progress-min-width: 24px;
   --k-chat-progress-max-width: 100%;
