@@ -23,6 +23,8 @@
   --k-color-focus: var(--k-color-primary);
   --k-color-brand: #f3eee3;
   --k-color-ok: #6fcf97;
+  --k-color-diff-added-bg: color-mix(in srgb, var(--k-color-ok) 9%, transparent);
+  --k-color-diff-removed-bg: color-mix(in srgb, var(--k-color-danger) 8%, transparent);
   --k-color-terminal-selection: rgb(243 238 227 / 30%);
   --k-color-scrollbar-thumb: rgb(133 133 139 / 8%);
   --k-color-scrollbar-thumb-hover: rgb(133 133 139 / 30%);
@@ -156,6 +158,10 @@
   --k-chat-user-bubble-max-width: 720px;
   --k-chat-code-max-height: 360px;
   --k-chat-part-max-height: 240px;
+  --k-chat-diff-max-height: 360px;
+  --k-chat-diff-line-number-width: 3.5rem;
+  --k-chat-diff-marker-width: 1.5rem;
+  --k-chat-diff-edge-width: 2px;
   --k-chat-timeline-track-height: 12px;
   --k-chat-timeline-axis-height: 32px;
   --k-chat-timeline-kind-width: 144px;

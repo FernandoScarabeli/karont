@@ -1,8 +1,12 @@
 export type FileChangeDetail = { path: string; kind: string; diff: string };
 export type DiffDisplayLine = {
   text: string;
-  kind: "added" | "removed" | "hunk" | "context";
+  kind: "added" | "removed" | "separator" | "context";
+  oldLine?: number;
+  newLine?: number;
 };
+
+const hunkHeaderPattern = /^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@(?:\s.*)?$/u;
 
 export function parseFileChanges(output: string): FileChangeDetail[] {
   let parsed: unknown;
@@ -37,29 +41,46 @@ export function formatDiffStats(added: number, removed: number): string {
 
 export function getDiffDisplayLines(diff: string): DiffDisplayLine[] {
   const lines = diff.split(/\r?\n/u);
-  const hunkCount = lines.filter((line) => line.startsWith("@@")).length;
   let inHunk = false;
+  let oldLine: number | undefined;
+  let newLine: number | undefined;
+  let hunkCount = 0;
   const displayLines: DiffDisplayLine[] = [];
 
   for (const line of lines) {
+    if (!line) continue;
     if (line.startsWith("diff --git ")) {
       inHunk = false;
+      oldLine = undefined;
+      newLine = undefined;
+      hunkCount = 0;
       continue;
     }
-    if (line.startsWith("index ")) continue;
-    if (line.startsWith("@@")) {
+    if (line.startsWith("index ") || line.startsWith("\\ No newline at end of file")) continue;
+
+    const hunkHeader = hunkHeaderPattern.exec(line);
+    if (hunkHeader) {
       inHunk = true;
-      if (hunkCount > 1) displayLines.push({ text: line, kind: "hunk" });
+      hunkCount += 1;
+      oldLine = Number(hunkHeader[1]);
+      newLine = Number(hunkHeader[3]);
+      if (hunkCount > 1) displayLines.push({ text: "⋯", kind: "separator" });
       continue;
     }
-    if (!inHunk && isFileHeader(line)) continue;
+    if (line.startsWith("@@")) continue;
 
     const kind: DiffDisplayLine["kind"] = line.startsWith("+")
       ? "added"
       : line.startsWith("-")
         ? "removed"
         : "context";
-    displayLines.push({ text: line, kind });
+    if (!inHunk && isFileHeader(line)) continue;
+
+    const text = kind === "context" ? (line.startsWith(" ") ? line.slice(1) : line) : line.slice(1);
+    const displayLine: DiffDisplayLine = { text, kind };
+    if (kind !== "added" && oldLine !== undefined) displayLine.oldLine = oldLine++;
+    if (kind !== "removed" && newLine !== undefined) displayLine.newLine = newLine++;
+    displayLines.push(displayLine);
   }
 
   return displayLines;
