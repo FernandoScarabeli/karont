@@ -13,7 +13,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
-import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
 import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./ConversationHistory.module.css";
@@ -34,6 +33,7 @@ export const ConversationHistory = memo(function ConversationHistory({
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const initialSelectionPendingRef = useRef(false);
   const optionRefs = useRef(new Map<string, HTMLDivElement>());
   const optionRefCallbacks = useRef(new Map<string, (element: HTMLDivElement | null) => void>());
   const popoverId = useId();
@@ -58,29 +58,44 @@ export const ConversationHistory = memo(function ConversationHistory({
     const list = listRef.current;
     if (!option || !list) return;
     option.focus({ preventScroll: true });
-    const optionTop = option.offsetTop;
-    const optionBottom = optionTop + option.offsetHeight;
-    if (optionTop < list.scrollTop) list.scrollTop = optionTop;
-    else if (optionBottom > list.scrollTop + list.clientHeight) {
-      list.scrollTop = optionBottom - list.clientHeight;
-    }
+    option.scrollIntoView({ block: "nearest" });
     setHasItemsAbove(list.scrollTop > 0);
   }, [activeMessageId]);
 
   useLayoutEffect(() => {
     if (!open) return;
+    const list = listRef.current;
+    if (!list) return;
+    list.scrollTop = list.scrollHeight;
+    setHasItemsAbove(list.scrollTop > 0);
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      initialSelectionPendingRef.current = false;
+      return;
+    }
+    if (initialSelectionPendingRef.current) {
+      if (entries.length === 0) return;
+      const lastIndex = entries.length - 1;
+      if (activeIndex !== lastIndex) {
+        setActiveIndex(lastIndex);
+        return;
+      }
+      initialSelectionPendingRef.current = false;
+    }
     focusActiveOption();
-  }, [focusActiveOption, open]);
+  }, [activeIndex, entries.length, focusActiveOption, open]);
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) {
-        setActiveIndex(Math.max(entries.length - 1, 0));
+        initialSelectionPendingRef.current = true;
         setHasItemsAbove(false);
       }
       onOpenChange(nextOpen);
     },
-    [entries.length, onOpenChange],
+    [onOpenChange],
   );
 
   const selectMessage = useCallback(
@@ -133,7 +148,7 @@ export const ConversationHistory = memo(function ConversationHistory({
 
   return (
     <>
-      <Tooltip align="end" label={t.conversationHistory.button}>
+      <Tooltip align="end" label={t.conversationHistory.button} open={open}>
         <IconButton
           aria-controls={popoverId}
           aria-expanded={open}
@@ -156,7 +171,7 @@ export const ConversationHistory = memo(function ConversationHistory({
             <div
               aria-label={t.conversationHistory.listAccessibleName}
               aria-multiselectable="false"
-              className={`${styles.popover} ${scrollAreaStyles.scrollArea}`}
+              className={styles.popover}
               data-has-items-above={hasItemsAbove}
               id={popoverId}
               ref={listRef}

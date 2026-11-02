@@ -48,6 +48,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "../components/Button/Button.tsx";
 import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
+import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { MOTION_EXIT_MS } from "../styles/motion.ts";
 import {
@@ -120,6 +121,7 @@ const messageTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
   minute: "2-digit",
   hourCycle: "h23",
 });
+const ignoreAnnouncement = () => undefined;
 const commandDurationFormatter = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 1,
 });
@@ -180,6 +182,44 @@ export type ResponseInput =
     };
 type OnRespond = (response: ResponseInput) => Promise<void>;
 
+function DisclosureChevron() {
+  return <ChevronRight aria-hidden="true" className={styles.disclosureChevron} size={14} />;
+}
+
+function DisclosureContent({
+  children,
+  id,
+  open,
+  lazy = false,
+  className,
+}: {
+  children: ReactNode;
+  id?: string;
+  open: boolean;
+  lazy?: boolean;
+  className?: string;
+}) {
+  const [hasOpened, setHasOpened] = useState(open);
+
+  useEffect(() => {
+    if (open) setHasOpened(true);
+  }, [open]);
+
+  return (
+    <div
+      aria-hidden={!open}
+      className={styles.disclosurePanel}
+      data-expanded={open}
+      id={id}
+      inert={!open}
+    >
+      <div className={styles.disclosureContent}>
+        <div className={className}>{!lazy || open || hasOpened ? children : null}</div>
+      </div>
+    </div>
+  );
+}
+
 export const MessageRow = memo(function MessageRow({
   message,
   onCopy,
@@ -199,7 +239,7 @@ export const MessageRow = memo(function MessageRow({
 }: {
   message: ConversationMessage;
   agent?: AgentErrorAgent;
-  onCopy: (text: string) => void;
+  onCopy: (text: string) => Promise<boolean>;
   onCopyCode?: (code: string) => void;
   onEdit: (text: string) => void;
   onRespond: OnRespond;
@@ -219,11 +259,15 @@ export const MessageRow = memo(function MessageRow({
   onWorkingIndicatorExit?: () => void;
 }) {
   const [showTimeline, setShowTimeline] = useState(false);
+  const [copyTooltipLabel, setCopyTooltipLabel] = useState("Copiar");
   const [visiblePartCount, setVisiblePartCount] = useState(120);
   // Verdadeiro enquanto a última parte de texto ainda está sendo digitada depois de
   // done. Só muda duas vezes por mensagem; o ritmo por quadro fica no componente.
   const [typewriterPending, setTypewriterPending] = useState(() => message.status === "streaming");
   const timelineId = useId();
+  const timelinePanelId = useId();
+  const timelineToggleRef = useRef<HTMLButtonElement>(null);
+  const copyTooltipTimerRef = useRef<number | null>(null);
   const messageRef = useRef<HTMLElement>(null);
   const isUserMessage = message.author === "user";
   const text = isUserMessage
@@ -250,6 +294,30 @@ export const MessageRow = memo(function MessageRow({
   const hasTimeline = message.author === "agent" && message.parts.length > 0;
   const attachmentOccurrences = new Map<string, number>();
 
+  useEffect(
+    () => () => {
+      if (copyTooltipTimerRef.current !== null) {
+        window.clearTimeout(copyTooltipTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const copyMessageText = useCallback(
+    async (value: string) => {
+      if (!(await onCopy(value))) return;
+      setCopyTooltipLabel("Copiado");
+      if (copyTooltipTimerRef.current !== null) {
+        window.clearTimeout(copyTooltipTimerRef.current);
+      }
+      copyTooltipTimerRef.current = window.setTimeout(() => {
+        setCopyTooltipLabel("Copiar");
+        copyTooltipTimerRef.current = null;
+      }, 1200);
+    },
+    [onCopy],
+  );
+
   const navigateToPart = useCallback(
     (partId: string) => {
       setVisiblePartCount(message.parts.length);
@@ -260,12 +328,11 @@ export const MessageRow = memo(function MessageRow({
         if (!target) return;
 
         for (let parent = target.parentElement; parent; parent = parent.parentElement) {
-          if (parent instanceof HTMLDetailsElement) parent.open = true;
+          const trigger = parent.querySelector<HTMLButtonElement>(":scope > button[aria-controls]");
+          if (trigger?.getAttribute("aria-expanded") === "false") trigger.click();
         }
         const scrollTarget =
-          target instanceof HTMLDetailsElement
-            ? (target.querySelector("summary") ?? target)
-            : target;
+          target.querySelector<HTMLButtonElement>(":scope > button[aria-controls]") ?? target;
         scrollTarget.scrollIntoView({ behavior: "smooth", block: "center" });
         const highlightClass = styles.partHighlight;
         if (!highlightClass) return;
@@ -284,7 +351,10 @@ export const MessageRow = memo(function MessageRow({
     [message.parts.length],
   );
 
-  const closeTimeline = useCallback(() => setShowTimeline(false), []);
+  const closeTimeline = useCallback(() => {
+    setShowTimeline(false);
+    requestAnimationFrame(() => timelineToggleRef.current?.focus());
+  }, []);
 
   return (
     <article
@@ -401,82 +471,100 @@ export const MessageRow = memo(function MessageRow({
             <div className={styles.messageActions}>
               {message.author === "user" && text.trim() ? (
                 <>
+                  <Tooltip
+                    align="start"
+                    label={copyTooltipLabel}
+                    visible={copyTooltipLabel === "Copiado"}
+                  >
+                    <button
+                      aria-label={t.chat.copy}
+                      className={styles.textAction}
+                      onClick={() => void copyMessageText(text)}
+                      type="button"
+                    >
+                      <Copy aria-hidden="true" size={16} />
+                    </button>
+                  </Tooltip>
+                  <Tooltip align="end" label="Editar">
+                    <button
+                      aria-label={t.chat.edit}
+                      className={styles.textAction}
+                      onClick={() => onEdit(text)}
+                      type="button"
+                    >
+                      <Pencil aria-hidden="true" size={16} />
+                    </button>
+                  </Tooltip>
+                </>
+              ) : null}
+              {!isUserMessage && answerText ? (
+                <Tooltip
+                  align="start"
+                  label={copyTooltipLabel}
+                  visible={copyTooltipLabel === "Copiado"}
+                >
                   <button
-                    aria-label={t.chat.copy}
+                    aria-label={t.chat.copyAnswer}
                     className={styles.textAction}
-                    onClick={() => onCopy(text)}
-                    title={t.chat.copy}
+                    onClick={() => void copyMessageText(answerText)}
                     type="button"
                   >
                     <Copy aria-hidden="true" size={16} />
                   </button>
-                  <button
-                    aria-label={t.chat.edit}
-                    className={styles.textAction}
-                    onClick={() => onEdit(text)}
-                    title={t.chat.edit}
-                    type="button"
-                  >
-                    <Pencil aria-hidden="true" size={16} />
-                  </button>
-                </>
-              ) : null}
-              {!isUserMessage && answerText ? (
-                <button
-                  aria-label={t.chat.copyAnswer}
-                  className={styles.textAction}
-                  onClick={() => onCopy(answerText)}
-                  title={t.chat.copyAnswer}
-                  type="button"
-                >
-                  <Copy aria-hidden="true" size={16} />
-                </button>
+                </Tooltip>
               ) : null}
               {!isUserMessage && canRetry && message.status !== "streaming" ? (
-                <button
-                  aria-label={t.chat.retry}
-                  className={styles.textAction}
-                  onClick={() => onRetry(message.id)}
-                  title={t.chat.retry}
-                  type="button"
-                >
-                  <RotateCcw aria-hidden="true" size={16} />
-                </button>
+                <Tooltip align="center" label="Tentar de novo">
+                  <button
+                    aria-label={t.chat.retry}
+                    className={styles.textAction}
+                    onClick={() => onRetry(message.id)}
+                    type="button"
+                  >
+                    <RotateCcw aria-hidden="true" size={16} />
+                  </button>
+                </Tooltip>
               ) : null}
               {!isUserMessage && canBranch && message.status === "done" ? (
-                <button
-                  aria-label={t.chat.createBranch}
-                  className={styles.textAction}
-                  onClick={() => onBranch(message.id)}
-                  title={t.chat.createBranch}
-                  type="button"
-                >
-                  <GitBranch aria-hidden="true" size={16} />
-                </button>
+                <Tooltip align="center" label="Criar branch">
+                  <button
+                    aria-label={t.chat.createBranch}
+                    className={styles.textAction}
+                    onClick={() => onBranch(message.id)}
+                    type="button"
+                  >
+                    <GitBranch aria-hidden="true" size={16} />
+                  </button>
+                </Tooltip>
               ) : null}
               {hasTimeline ? (
-                <button
-                  aria-controls={timelineId}
-                  aria-label={t.chat.timeline}
-                  aria-expanded={showTimeline}
-                  className={styles.timelineToggle}
-                  onClick={() => setShowTimeline((value) => !value)}
-                  title={t.chat.timeline}
-                  type="button"
-                >
-                  <Clock3 aria-hidden="true" size={16} />
-                </button>
+                <Tooltip align="end" label="Linha do tempo">
+                  <button
+                    aria-controls={timelinePanelId}
+                    aria-label={t.chat.timeline}
+                    aria-expanded={showTimeline}
+                    className={styles.timelineToggle}
+                    onClick={() => setShowTimeline((value) => !value)}
+                    ref={timelineToggleRef}
+                    type="button"
+                  >
+                    <Clock3 aria-hidden="true" size={16} />
+                  </button>
+                </Tooltip>
               ) : null}
             </div>
           </div>
-          {hasTimeline && showTimeline ? (
-            <TimelineView
-              id={timelineId}
-              message={message}
-              cwd={cwd}
-              onClose={closeTimeline}
-              onNavigate={navigateToPart}
-            />
+          {hasTimeline ? (
+            <DisclosureContent id={timelinePanelId} lazy open={showTimeline}>
+              <TimelineView
+                id={timelineId}
+                message={message}
+                cwd={cwd}
+                onClose={closeTimeline}
+                onNavigate={navigateToPart}
+                autoFocus={showTimeline}
+              />
+            </DisclosureContent>
           ) : null}
         </div>
       </div>
@@ -667,24 +755,18 @@ function renderCompletedMessage(
   return (
     <div className={styles.parts}>
       {historyParts.length > 0 ? (
-        <details className={styles.workHistory}>
-          <summary className={styles.workHistoryToggle}>
-            <span>{formatWorkDuration(durationMs)}</span>
-            <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
-          </summary>
-          <div className={styles.workHistoryBody}>
-            {renderParts(
-              historyParts,
-              message.id,
-              false,
-              options.onRespond,
-              options.onAnnounce,
-              options.onCopyCode,
-              options.cwd,
-              options.agent,
-            )}
-          </div>
-        </details>
+        <WorkHistoryDisclosure durationMs={durationMs}>
+          {renderParts(
+            historyParts,
+            message.id,
+            false,
+            options.onRespond,
+            options.onAnnounce,
+            options.onCopyCode,
+            options.cwd,
+            options.agent,
+          )}
+        </WorkHistoryDisclosure>
       ) : null}
       {pendingParts.map((part) => (
         <PartItem
@@ -712,6 +794,35 @@ function renderCompletedMessage(
           agent={options.agent}
         />
       ))}
+    </div>
+  );
+}
+
+function WorkHistoryDisclosure({
+  children,
+  durationMs,
+}: {
+  children: ReactNode;
+  durationMs: number | undefined;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
+
+  return (
+    <div className={styles.workHistory} data-expanded={expanded}>
+      <button
+        aria-controls={detailsId}
+        aria-expanded={expanded}
+        className={`${styles.workHistoryToggle} ${styles.disclosureToggle}`}
+        onClick={() => setExpanded((value) => !value)}
+        type="button"
+      >
+        <span>{formatWorkDuration(durationMs)}</span>
+        <DisclosureChevron />
+      </button>
+      <DisclosureContent className={styles.workHistoryBody} id={detailsId} open={expanded}>
+        {children}
+      </DisclosureContent>
     </div>
   );
 }
@@ -1045,14 +1156,17 @@ const ThinkingPart = memo(function ThinkingPart({
       ? Math.max(0, Math.round((part.endedAt - part.startedAt) / 1_000))
       : null;
   useEffect(() => setExpanded(isStreaming), [isStreaming]);
+  const detailsId = useId();
 
   return (
-    <details
-      className={styles.thinking}
-      onToggle={(event) => setExpanded(event.currentTarget.open)}
-      open={expanded}
-    >
-      <summary>
+    <div className={styles.thinking}>
+      <button
+        aria-controls={detailsId}
+        aria-expanded={expanded}
+        className={styles.disclosureToggle}
+        onClick={() => setExpanded((value) => !value)}
+        type="button"
+      >
         {isStreaming ? (
           <LoaderCircle aria-hidden="true" className={styles.thinkingIcon} size={15} />
         ) : (
@@ -1063,9 +1177,12 @@ const ThinkingPart = memo(function ThinkingPart({
           : duration === null
             ? t.chat.thinkingDone
             : t.chat.thinkingDuration(duration)}
-      </summary>
-      <div className={styles.thinkingText}>{part.text}</div>
-    </details>
+        <DisclosureChevron />
+      </button>
+      <DisclosureContent className={styles.thinkingText} id={detailsId} open={expanded}>
+        {part.text}
+      </DisclosureContent>
+    </div>
   );
 });
 
@@ -1173,12 +1290,17 @@ export const ActionItem = memo(function ActionItem({
   const displayTitle = formatConversationText(actionRowLabel(action, cwd, summary), cwd, 160);
   const detailsId = useId();
   return (
-    <div className={styles.action} data-message-id={messageId} data-part-id={action.id}>
+    <div
+      className={styles.action}
+      data-expanded={expanded}
+      data-message-id={messageId}
+      data-part-id={action.id}
+    >
       <button
         aria-controls={detailsId}
         aria-description={permitted ? t.chat.permissionGrantedDescription : undefined}
         aria-expanded={expanded}
-        className={styles.actionToggle}
+        className={`${styles.actionToggle} ${styles.disclosureToggle}`}
         onClick={() => setExpanded((value) => !value)}
         type="button"
       >
@@ -1186,10 +1308,10 @@ export const ActionItem = memo(function ActionItem({
         <span className={styles.actionTitle} title={displayTitle.title}>
           {displayTitle.text}
         </span>
-        <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
+        <DisclosureChevron />
       </button>
-      <div hidden={!expanded} id={detailsId}>
-        <ActionDetails action={action} cwd={cwd} open={expanded} />
+      <DisclosureContent id={detailsId} open={expanded}>
+        <LazyActionDetails action={action} cwd={cwd} open={expanded} />
         {nestedActions.length > 0 ? (
           <fieldset className={styles.actionChildren}>
             <legend className={styles.srOnly}>{t.chat.subagentActions}</legend>
@@ -1205,7 +1327,7 @@ export const ActionItem = memo(function ActionItem({
             ))}
           </fieldset>
         ) : null}
-      </div>
+      </DisclosureContent>
     </div>
   );
 });
@@ -1230,7 +1352,7 @@ const ActionBatch = memo(function ActionBatch({
       <button
         aria-controls={detailsId}
         aria-expanded={expanded}
-        className={styles.actionGroupToggle}
+        className={`${styles.actionGroupToggle} ${styles.disclosureToggle}`}
         onClick={() => setExpanded((value) => !value)}
         type="button"
       >
@@ -1238,9 +1360,9 @@ const ActionBatch = memo(function ActionBatch({
         <span className={styles.actionTitle} title={displayLabel.title}>
           {displayLabel.text}
         </span>
-        <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
+        <DisclosureChevron />
       </button>
-      <div className={styles.actionGroupBody} hidden={!expanded} id={detailsId}>
+      <DisclosureContent className={styles.actionGroupBody} id={detailsId} open={expanded}>
         {actions.map(({ action, permitted }) => (
           <div
             className={styles.actionBatchItem}
@@ -1254,10 +1376,10 @@ const ActionBatch = memo(function ActionBatch({
                 <span className={styles.srOnly}>{t.chat.permissionGrantedDescription}</span>
               ) : null}
             </div>
-            <ActionDetails action={action} cwd={cwd} open={expanded} />
+            <LazyActionDetails action={action} cwd={cwd} open={expanded} />
           </div>
         ))}
-      </div>
+      </DisclosureContent>
     </div>
   );
 });
@@ -1274,9 +1396,8 @@ function ActionDetails({
   const category = categoryForAction(action);
   const paths = actionPaths(action, cwd);
   const changes = useMemo(
-    () =>
-      open && (category === "edit" || category === "write") ? parseFileChanges(action.output) : [],
-    [action.output, category, open],
+    () => (category === "edit" || category === "write" ? parseFileChanges(action.output) : []),
+    [action.output, category],
   );
 
   if (category === "read") {
@@ -1411,6 +1532,24 @@ function ActionDetails({
     </div>
   );
 }
+
+const LazyActionDetails = memo(function LazyActionDetails({
+  action,
+  cwd,
+  open,
+}: {
+  action: ConversationAction;
+  cwd: string;
+  open: boolean;
+}) {
+  const [hasOpened, setHasOpened] = useState(open);
+
+  useEffect(() => {
+    if (open) setHasOpened(true);
+  }, [open]);
+
+  return open || hasOpened ? <ActionDetails action={action} cwd={cwd} open={open} /> : null;
+});
 
 const CommandPanel = memo(function CommandPanel({
   command,
@@ -1593,7 +1732,13 @@ const DiffFilePanel = memo(function DiffFilePanel({
   const hasLineNumbers = lines.some(
     (line) => line.oldLine !== undefined || line.newLine !== undefined,
   );
+  const [hasOpened, setHasOpened] = useState(open);
   const [highlightPlugin, setHighlightPlugin] = useState<HighlightPlugin | null>(null);
+  const contentVisible = open || hasOpened;
+
+  useEffect(() => {
+    if (open) setHasOpened(true);
+  }, [open]);
 
   useEffect(() => {
     if (!open || !language || highlightPlugin) return;
@@ -1620,7 +1765,7 @@ const DiffFilePanel = memo(function DiffFilePanel({
           </span>
         ) : null}
       </div>
-      {open ? (
+      {contentVisible ? (
         // biome-ignore lint/a11y/noNoninteractiveTabindex: área de rolagem acessível por teclado.
         <section aria-label={scrollLabel} className={scrollClassName} tabIndex={0}>
           <div className={styles.diffLines} data-has-line-numbers={hasLineNumbers}>
@@ -1862,24 +2007,32 @@ const PermissionPart = memo(function PermissionPart({
   onRespond: OnRespond;
   cwd: string;
 }) {
+  const detailsId = useId();
+  const [expanded, setExpanded] = useState(false);
   const headingId = useId();
   if (part.state !== "pending") {
     const stateLabel =
       part.state === "allowed" ? t.chat.permissionResults.allowed : t.chat.permissionResults.denied;
     return (
-      <details className={styles.responseDisclosure}>
-        <summary>
+      <div className={styles.responseDisclosure}>
+        <button
+          aria-controls={detailsId}
+          aria-expanded={expanded}
+          className={`${styles.responseToggle} ${styles.disclosureToggle}`}
+          onClick={() => setExpanded((value) => !value)}
+          type="button"
+        >
           <LockKeyhole aria-hidden="true" className={styles.actionIcon} size={14} />
           <span>{`${stateLabel} · ${part.tool}`}</span>
-          <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
-        </summary>
-        <div className={styles.actionDetails}>
+          <DisclosureChevron />
+        </button>
+        <DisclosureContent className={styles.actionDetails} id={detailsId} open={expanded}>
           <p className={styles.permissionDescription}>{part.summary}</p>
           {part.description ? (
             <p className={styles.permissionDescription}>{part.description}</p>
           ) : null}
-        </div>
-      </details>
+        </DisclosureContent>
+      </div>
     );
   }
   const permission = part as typeof part & { command?: string; description?: string };
@@ -1951,15 +2104,23 @@ const QuestionPart = memo(function QuestionPart({
   const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [freeText, setFreeText] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const detailsId = useId();
+  const [expanded, setExpanded] = useState(false);
   if (part.state === "answered") {
     return (
-      <details className={styles.responseDisclosure}>
-        <summary>
+      <div className={styles.responseDisclosure}>
+        <button
+          aria-controls={detailsId}
+          aria-expanded={expanded}
+          className={`${styles.responseToggle} ${styles.disclosureToggle}`}
+          onClick={() => setExpanded((value) => !value)}
+          type="button"
+        >
           <HelpCircle aria-hidden="true" className={styles.actionIcon} size={14} />
           <span>{t.chat.questionAnswered}</span>
-          <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
-        </summary>
-        <div className={styles.actionDetails}>
+          <DisclosureChevron />
+        </button>
+        <DisclosureContent className={styles.actionDetails} id={detailsId} open={expanded}>
           {part.questions.map((question) => (
             <div
               className={styles.answeredQuestion}
@@ -1976,8 +2137,8 @@ const QuestionPart = memo(function QuestionPart({
               </ul>
             </div>
           ))}
-        </div>
-      </details>
+        </DisclosureContent>
+      </div>
     );
   }
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -2071,22 +2232,31 @@ const PlanPart = memo(function PlanPart({
   const [adjusting, setAdjusting] = useState(false);
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
   if (part.state !== "pending") {
     return (
-      <details className={styles.planResult}>
-        <summary className={styles.planSummary}>
+      <div className={styles.planResult} data-expanded={expanded}>
+        <button
+          aria-controls={detailsId}
+          aria-expanded={expanded}
+          className={`${styles.planSummary} ${styles.disclosureToggle}`}
+          onClick={() => setExpanded((value) => !value)}
+          type="button"
+        >
           <Check aria-hidden="true" size={15} />
           {part.state === "approved" ? t.chat.planResults.approved : t.chat.planResults.rejected}
-        </summary>
-        <div className={styles.planResultBody}>
+          <DisclosureChevron />
+        </button>
+        <DisclosureContent className={styles.planResultBody} id={detailsId} lazy open={expanded}>
           <MarkdownBody
             markdown={part.markdown}
-            onAnnounce={() => undefined}
+            onAnnounce={ignoreAnnouncement}
             onCopyCode={onCopyCode}
           />
           {part.comment ? <p className={styles.planComment}>{part.comment}</p> : null}
-        </div>
-      </details>
+        </DisclosureContent>
+      </div>
     );
   }
   return (
@@ -2095,7 +2265,11 @@ const PlanPart = memo(function PlanPart({
         <ListTodo aria-hidden="true" size={16} />
         {t.chat.plan}
       </h3>
-      <MarkdownBody markdown={part.markdown} onAnnounce={() => undefined} onCopyCode={onCopyCode} />
+      <MarkdownBody
+        markdown={part.markdown}
+        onAnnounce={ignoreAnnouncement}
+        onCopyCode={onCopyCode}
+      />
       {adjusting ? (
         <label className={styles.adjustment}>
           <span>{t.chat.adjustment}</span>
@@ -2163,27 +2337,37 @@ const TodosDisclosure = memo(function TodosDisclosure({
   part: Extract<MessagePart, { type: "todos" }>;
 }) {
   const completed = part.items.filter((item) => item.state === "done").length;
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
   return (
-    <details className={styles.todosDisclosure}>
-      <summary>
+    <div className={styles.todosDisclosure}>
+      <button
+        aria-controls={detailsId}
+        aria-expanded={expanded}
+        className={`${styles.todosToggle} ${styles.disclosureToggle}`}
+        onClick={() => setExpanded((value) => !value)}
+        type="button"
+      >
         <ListTodo aria-hidden="true" className={styles.actionIcon} size={14} />
         <span>{t.chat.todoSummary(completed, part.items.length)}</span>
-        <ChevronRight aria-hidden="true" className={styles.actionDisclosure} size={14} />
-      </summary>
-      <ul>
-        {part.items.map((item) => {
-          const Icon =
-            item.state === "done" ? CheckCircle2 : item.state === "working" ? Play : Circle;
-          return (
-            <li className={styles[`todo_${item.state}`]} key={item.id}>
-              <Icon aria-hidden="true" size={14} />
-              <span>{item.title}</span>
-              <span className={styles.todoState}>{t.chat.todoStates[item.state]}</span>
-            </li>
-          );
-        })}
-      </ul>
-    </details>
+        <DisclosureChevron />
+      </button>
+      <DisclosureContent className={styles.todosBody} id={detailsId} open={expanded}>
+        <ul>
+          {part.items.map((item) => {
+            const Icon =
+              item.state === "done" ? CheckCircle2 : item.state === "working" ? Play : Circle;
+            return (
+              <li className={styles[`todo_${item.state}`]} key={item.id}>
+                <Icon aria-hidden="true" size={14} />
+                <span>{item.title}</span>
+                <span className={styles.todoState}>{t.chat.todoStates[item.state]}</span>
+              </li>
+            );
+          })}
+        </ul>
+      </DisclosureContent>
+    </div>
   );
 });
 
@@ -2237,18 +2421,19 @@ const ErrorPart = memo(function ErrorPart({
           <button
             aria-controls={detailsId}
             aria-expanded={detailsOpen}
-            className={styles.errorAction}
+            className={`${styles.errorAction} ${styles.disclosureToggle}`}
             onClick={() => setDetailsOpen((value) => !value)}
             type="button"
           >
             {detailsOpen ? t.chat.hideDetails : t.chat.showDetails}
+            <DisclosureChevron />
           </button>
         </div>
       ) : null}
       {details ? (
-        <pre className={styles.errorDetailsText} hidden={!detailsOpen} id={detailsId}>
-          {details}
-        </pre>
+        <DisclosureContent id={detailsId} lazy open={detailsOpen}>
+          <pre className={styles.errorDetailsText}>{details}</pre>
+        </DisclosureContent>
       ) : null}
     </section>
   );
