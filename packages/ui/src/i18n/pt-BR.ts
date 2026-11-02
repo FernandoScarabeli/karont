@@ -383,6 +383,71 @@ export const t = {
     messageEmpty: "A conversa ainda não tem mensagens.",
     loadingOlder: "Carregando mensagens anteriores…",
   },
+  historyPrototype: {
+    notice: "Tela provisória · dados de exemplo",
+    conversationTitle: "Conversa de exemplo",
+    conversationScope: "Workspace Pessoal · Projeto Atlas",
+    variantLabel: "Variante do histórico",
+    variantA: "A · sobre a conversa",
+    variantB: "B · popover",
+    historyButton: "Histórico",
+    listAccessibleName: "Histórico das suas mensagens",
+    messageOptionLabel: (time: string, message: string) => `Mensagem sua às ${time}: ${message}`,
+    composerPlaceholder: "Escreva uma mensagem",
+    agentLabel: "Codex",
+    samplePairs: [
+      {
+        user: "Quero deixar a tela de conversa mais fácil de percorrer sem tirar o foco das respostas.",
+        agent:
+          "Podemos manter a conversa como área principal e aproximar as ações do campo de mensagem. Assim, a navegação aparece no mesmo lugar em que você decide o próximo passo.",
+      },
+      {
+        user: "E se eu quiser voltar a uma pergunta que fiz várias mensagens atrás?",
+        agent:
+          "Um botão de histórico junto ao envio abre uma lista das suas mensagens. Escolher uma delas leva direto à posição correspondente no chat.",
+      },
+      {
+        user: "A lista deve trazer só o que eu escrevi, certo?",
+        agent:
+          "Isso. As mensagens do agente ficam no contexto da conversa, mas não ocupam espaço na lista. O balão mantém o mesmo alinhamento à direita que você já reconhece no chat.",
+      },
+      {
+        user: "Com bastante conteúdo, quero ver primeiro o que mandei por último.",
+        agent:
+          "A ordem segue a conversa, da mais antiga no alto à mais recente embaixo. Ao abrir, a rolagem começa no fim; as mensagens anteriores continuam acessíveis ao subir a lista.",
+      },
+      {
+        user: "Quando eu escolher uma, prefiro que ela fique perto do topo para reler a resposta.",
+        agent:
+          "O chat pode alinhar a mensagem escolhida perto do topo e marcar o balão por um instante. O brilho desaparece sozinho sem deslocar as mensagens ao redor.",
+      },
+      {
+        user: "A navegação também precisa funcionar sem mouse.",
+        agent:
+          "O botão abre com Enter ou Espaço. Na lista, as setas mudam a seleção, Enter navega e Esc fecha o histórico e devolve o foco ao botão.",
+      },
+      {
+        user: "Vamos comparar com uma versão mais compacta também.",
+        agent:
+          "A variante B pode usar um popover com fundo próprio. Cada mensagem ocupa uma linha, com o horário alinhado à direita, sem cobrir a conversa com uma camada escura.",
+      },
+      {
+        user: "E na versão sobre a conversa, como deixamos o fundo mais discreto?",
+        agent:
+          "A lista fica sem moldura pesada, e o conteúdo do chat perde um pouco de contraste enquanto ela está aberta. O botão de histórico e o campo de mensagem continuam no lugar.",
+      },
+      {
+        user: "As prévias podem cortar as mensagens maiores, mas não podem virar um bloco enorme.",
+        agent:
+          "Cada balão fica limitado a duas linhas, com reticências no fim. A lista pode rolar quando necessário, mantendo a mensagem mais recente junto ao composer.",
+      },
+      {
+        user: "Ótimo. Quero ver as duas opções usando uma conversa longa de exemplo.",
+        agent:
+          "A tela provisória reúne dez pares de mensagens em português, o composer conhecido e um seletor discreto entre as variantes. As interações navegam somente pelos dados de exemplo.",
+      },
+    ],
+  },
   workspace: {
     panels: "Painéis de conversas",
     split: "Dividir",
