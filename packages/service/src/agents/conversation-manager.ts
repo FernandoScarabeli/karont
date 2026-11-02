@@ -60,12 +60,15 @@ type ActiveConversation = {
   startPromise: Promise<void>;
   idleTimer?: ReturnType<typeof setTimeout>;
   messageSaveTimer?: ReturnType<typeof setTimeout>;
+  disposePromise?: Promise<void>;
   messageToSave?: ConversationMessage;
   currentMessage?: ConversationMessage;
   stopRequested: boolean;
+  removed: boolean;
   turnStarted: boolean;
   coalescers: Map<string, DeltaCoalescer>;
   deltaTimes: Map<string, { startedAt: number; endedAt: number }>;
+  pendingPartIds: Set<string>;
   eventQueue: Promise<void>;
 };
 
@@ -437,7 +440,7 @@ export class ConversationManager {
         error: { type: "interrupted", text: "Resposta interrompida pelo usuário." },
       });
       if (active.idleTimer) clearTimeout(active.idleTimer);
-      await active.adapter.dispose();
+      await this.#disposeAdapter(active);
       if (this.#active.get(id) === active) this.#active.delete(id);
       return true;
     }
@@ -478,7 +481,7 @@ export class ConversationManager {
     const active = this.#active.get(id);
     if (active) {
       if (active.idleTimer) clearTimeout(active.idleTimer);
-      await active.adapter.dispose();
+      await this.#disposeAdapter(active);
       this.#active.delete(id);
       conversation = this.#requireConversation(id);
       if (conversation.state === "working" || conversation.state === "waiting")
@@ -528,18 +531,34 @@ export class ConversationManager {
     this.#assertNotDeletingAll();
     const active = this.#active.get(id);
     if (active) {
-      if (active.idleTimer) clearTimeout(active.idleTimer);
-      await active.adapter.dispose();
-      this.#active.delete(id);
+      this.#markRemoved(id, active);
+      await this.#flushCoalescers(active);
+      await this.#disposeAdapter(active);
+      await active.eventQueue;
+      if (this.#active.get(id) === active) this.#active.delete(id);
+    } else {
+      this.#titleRequests.delete(id);
+      this.#latestUserAttachments.delete(id);
     }
-    this.#latestUserAttachments.delete(id);
-    return deleteConversation(this.#db, id);
+    const deleted = deleteConversation(this.#db, id);
+    if (deleted) {
+      await this.#broadcast({ event: "conversation.removed", payload: { id } }).catch(
+        () => undefined,
+      );
+    }
+    return deleted;
   }
 
   async deleteAll(): Promise<number> {
     this.#assertNotDeletingAll();
     this.#deletingAll = true;
     try {
+      const activeBeforeDeleteAll = [...this.#active.entries()];
+      for (const { id } of listConversationStates(this.#db)) {
+        const active = this.#active.get(id);
+        if (active) this.#markRemoved(id, active, true);
+      }
+      await Promise.all(activeBeforeDeleteAll.map(([, session]) => this.#flushCoalescers(session)));
       await Promise.all(
         [...this.#agentOperations].map((operation) => operation.catch(() => undefined)),
       );
@@ -552,17 +571,17 @@ export class ConversationManager {
       );
 
       const active = [...this.#active.entries()];
-      for (const [, session] of active) {
-        if (session.idleTimer) clearTimeout(session.idleTimer);
+      for (const [id, session] of active) {
+        this.#markRemoved(id, session);
       }
-      await Promise.all(active.map(([, session]) => session.adapter.dispose()));
-      await Promise.all(active.map(([, session]) => session.eventQueue));
+      this.#pendingParts.clear();
       await Promise.all(
         active.map(async ([, session]) => {
           await this.#flushCoalescers(session);
-          this.#flushMessageSave(session);
+          await this.#disposeAdapter(session);
         }),
       );
+      await Promise.all(active.map(([, session]) => session.eventQueue));
       for (const [id] of active) this.#active.delete(id);
 
       const deleted = deleteAllConversations(this.#db);
@@ -570,9 +589,6 @@ export class ConversationManager {
       for (const id of deletedIds) {
         this.#titleRequests.delete(id);
         this.#latestUserAttachments.delete(id);
-      }
-      for (const [partId, pending] of this.#pendingParts) {
-        if (deletedIds.has(pending.conversationId)) this.#pendingParts.delete(partId);
       }
       if (deleted > 0) {
         await this.#broadcast({ event: "conversation.deletedAll", payload: { deleted } }).catch(
@@ -678,7 +694,7 @@ export class ConversationManager {
     await Promise.all(
       adapters.map(async (active) => {
         if (active.idleTimer) clearTimeout(active.idleTimer);
-        await active.adapter.dispose();
+        await this.#disposeAdapter(active);
       }),
     );
     await Promise.all(adapters.map((active) => active.eventQueue));
@@ -709,6 +725,7 @@ export class ConversationManager {
       payload: { conversationId: conversation.id, message },
     });
     await this.#stateEvent(conversation);
+    if (this.#deletingAll || !getConversation(this.#db, conversation.id)) return;
 
     // Ponto único para aplicar o limite/fila de agentes quando a configuração da M3 existir.
     let active = this.#active.get(conversation.id);
@@ -717,6 +734,7 @@ export class ConversationManager {
       const sessionId = previousSession ?? randomUUID();
       let activeRef: ActiveConversation;
       const adapter = this.#factory(conversation, (event) => {
+        if (activeRef.removed || this.#deletingAll) return;
         activeRef.eventQueue = activeRef.eventQueue
           .then(() => this.#handleAdapterEvent(conversation.id, event))
           .catch(() => undefined);
@@ -728,9 +746,11 @@ export class ConversationManager {
         startPromise: Promise.resolve(),
         coalescers: new Map(),
         deltaTimes: new Map(),
+        pendingPartIds: new Set(),
         currentMessage: message,
         eventQueue: Promise.resolve(),
         stopRequested: false,
+        removed: false,
         turnStarted: false,
       };
       active = activeRef;
@@ -741,17 +761,18 @@ export class ConversationManager {
         })
         .then(async () => {
           await activeRef.eventQueue;
+          if (activeRef.removed || this.#deletingAll) return;
           if (conversation.agent !== "codex") return;
           const modelList = await adapter.getModels?.();
           if (modelList) this.#cacheCodexModelList(modelList);
         })
         .catch(async (error: unknown) => {
-          if (!this.#closing && !activeRef.stopRequested) {
+          if (!this.#closing && !activeRef.stopRequested && !activeRef.removed) {
             const kind = error instanceof AgentCliError ? error.errorType : "failed";
             const detail = error instanceof Error ? error.message : String(error);
             await this.#finishWithError(conversation, message, kind, detail);
           }
-          if (!activeRef.stopRequested) await adapter.dispose();
+          if (!activeRef.stopRequested) await this.#disposeAdapter(activeRef);
           if (this.#active.get(conversation.id) === activeRef) this.#active.delete(conversation.id);
           throw error;
         });
@@ -764,11 +785,11 @@ export class ConversationManager {
     active.currentMessage = message;
     try {
       await active.startPromise;
-      if (active.stopRequested) return;
+      if (active.stopRequested || active.removed) return;
       active.turnStarted = true;
       await active.adapter.send(text, plan, attachments);
     } catch (error) {
-      if (message.status === "streaming" && !this.#closing) {
+      if (message.status === "streaming" && !this.#closing && !active.removed) {
         const kind = error instanceof AgentCliError ? error.errorType : "failed";
         await this.#finishWithError(
           conversation,
@@ -783,7 +804,7 @@ export class ConversationManager {
   async #handleAdapterEvent(conversationId: string, event: AdapterEvent): Promise<void> {
     const active = this.#active.get(conversationId);
     const message = active?.currentMessage;
-    if (!active || !message) return;
+    if (!active || active.removed || this.#deletingAll || !message) return;
     if (event.kind === "session") {
       active.sessionId = event.sessionId;
       setAgentSession(this.#db, conversationId, event.sessionId);
@@ -826,9 +847,13 @@ export class ConversationManager {
       const part = this.#timestampPart(message, event.part);
       this.#upsertPart(message, part);
       if (part.type === "permission" || part.type === "question" || part.type === "plan") {
-        if (part.state === "pending")
+        if (part.state === "pending") {
           this.#pendingParts.set(part.id, { conversationId, messageId: message.id });
-        else this.#pendingParts.delete(part.id);
+          active.pendingPartIds.add(part.id);
+        } else {
+          this.#pendingParts.delete(part.id);
+          active.pendingPartIds.delete(part.id);
+        }
       }
       message.updatedAt = this.#now();
       this.#flushMessageSave(active, message);
@@ -850,6 +875,7 @@ export class ConversationManager {
       if (!coalescer) {
         coalescer = new DeltaCoalescer(
           async (delta) => {
+            if (active.removed) return;
             let part = message.parts.find((item) => item.id === event.partId);
             if (!part) {
               const times = active.deltaTimes.get(event.partId);
@@ -946,8 +972,8 @@ export class ConversationManager {
         message.parts.some((part) => part.type === "plan" && part.state === "pending");
       if (!pendingPlan) {
         active.currentMessage = undefined;
-        for (const [partId, pending] of this.#pendingParts)
-          if (pending.messageId === message.id) this.#pendingParts.delete(partId);
+        for (const partId of active.pendingPartIds) this.#pendingParts.delete(partId);
+        active.pendingPartIds.clear();
       }
       const conversation = this.#requireConversation(conversationId);
       conversation.state = event.status === "error" ? "error" : pendingPlan ? "waiting" : "idle";
@@ -969,7 +995,8 @@ export class ConversationManager {
         ? Math.min(configured, 24 * 60 * 60 * 1_000)
         : 10 * 60 * 1_000;
     active.idleTimer = setTimeout(() => {
-      if (this.#active.get(conversationId) !== active || active.currentMessage) return;
+      if (active.removed || this.#active.get(conversationId) !== active || active.currentMessage)
+        return;
       this.#active.delete(conversationId);
       void active.adapter.dispose();
     }, idleMs);
@@ -996,7 +1023,13 @@ export class ConversationManager {
         : undefined;
     void this.#titleGenerator(conversation.agent, userMessage, response, titleOptions)
       .then(async (title) => {
-        if (!title) return;
+        if (
+          !title ||
+          this.#deletingAll ||
+          this.#active.get(conversation.id)?.removed ||
+          !getConversation(this.#db, conversation.id)
+        )
+          return;
         const updated = setConversationTitle(this.#db, conversation.id, title, this.#now(), false);
         if (updated) await this.#stateEvent(updated);
       })
@@ -1010,7 +1043,32 @@ export class ConversationManager {
     active.coalescers.clear();
   }
 
+  #markRemoved(
+    conversationId: string,
+    active: ActiveConversation,
+    preserveCurrentMessage = false,
+  ): void {
+    active.removed = true;
+    if (active.idleTimer) clearTimeout(active.idleTimer);
+    active.idleTimer = undefined;
+    if (active.messageSaveTimer) clearTimeout(active.messageSaveTimer);
+    active.messageSaveTimer = undefined;
+    active.messageToSave = undefined;
+    if (!preserveCurrentMessage) active.currentMessage = undefined;
+    active.deltaTimes.clear();
+    for (const partId of active.pendingPartIds) this.#pendingParts.delete(partId);
+    active.pendingPartIds.clear();
+    this.#titleRequests.delete(conversationId);
+    this.#latestUserAttachments.delete(conversationId);
+  }
+
+  async #disposeAdapter(active: ActiveConversation): Promise<void> {
+    active.disposePromise ??= active.adapter.dispose();
+    await active.disposePromise;
+  }
+
   #scheduleMessageSave(active: ActiveConversation, message: ConversationMessage): void {
+    if (active.removed) return;
     active.messageToSave = message;
     if (active.messageSaveTimer) return;
     const configured = Number(this.#env.KARONT_MESSAGE_SAVE_DEBOUNCE_MS ?? 1_000);
@@ -1023,6 +1081,10 @@ export class ConversationManager {
   #flushMessageSave(active: ActiveConversation, message?: ConversationMessage): void {
     if (active.messageSaveTimer) clearTimeout(active.messageSaveTimer);
     active.messageSaveTimer = undefined;
+    if (active.removed) {
+      active.messageToSave = undefined;
+      return;
+    }
     const pending = active.messageToSave;
     active.messageToSave = undefined;
     if (pending) saveMessage(this.#db, pending);
@@ -1061,6 +1123,8 @@ export class ConversationManager {
     text: string,
   ): Promise<void> {
     if (message.status !== "streaming") return;
+    if (this.#active.get(conversation.id)?.removed || !getConversation(this.#db, conversation.id))
+      return;
     const endedAt = this.#epochNow();
     const description = describeAgentError(text, conversation.agent);
     const part: MessagePart = {
@@ -1156,6 +1220,19 @@ export class ConversationManager {
   }
 
   async #emit(event: AnyEvent): Promise<void> {
+    const conversationId =
+      event.event === "conversation.messageCreated" || event.event === "conversation.partUpdated"
+        ? event.payload.conversationId
+        : event.event === "conversation.stateChanged"
+          ? event.payload.conversation.id
+          : undefined;
+    if (
+      conversationId &&
+      (this.#deletingAll ||
+        this.#active.get(conversationId)?.removed ||
+        !getConversation(this.#db, conversationId))
+    )
+      return;
     await this.#broadcast(event);
   }
 }

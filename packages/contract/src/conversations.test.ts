@@ -31,6 +31,10 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
     parseEvent({ type: "event", event: "conversation.deletedAll", payload: { deleted: 2 } }).ok,
     true,
   );
+  assert.equal(
+    parseEvent({ type: "event", event: "conversation.removed", payload: { id: "c1" } }).ok,
+    true,
+  );
   const creation = methods["conversation.create"].params.safeParse({
     agent: "claude",
     cwd: "/tmp",

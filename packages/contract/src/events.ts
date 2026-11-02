@@ -65,6 +65,7 @@ export const events = {
     }),
   ]),
   "conversation.deletedAll": z.strictObject({ deleted: z.number().int().nonnegative() }),
+  "conversation.removed": z.strictObject({ id: z.string().min(1) }),
 } as const satisfies Record<string, z.ZodType>;
 
 export type EventName = keyof typeof events;

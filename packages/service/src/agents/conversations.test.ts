@@ -251,6 +251,213 @@ function addTranscriptMessages(
   }
 }
 
+test("remover durante a abertura ignora a falha tardia e avisa a interface", async () => {
+  let announceStart!: () => void;
+  let rejectOpening!: (error: Error) => void;
+  let announceDisposal!: () => void;
+  let releaseDisposal!: () => void;
+  let disposeCalls = 0;
+  const started = new Promise<void>((resolve) => {
+    announceStart = resolve;
+  });
+  const disposalStarted = new Promise<void>((resolve) => {
+    announceDisposal = resolve;
+  });
+  const disposalGate = new Promise<void>((resolve) => {
+    releaseDisposal = resolve;
+  });
+  const opening = new Promise<void>((_resolve, reject) => {
+    rejectOpening = reject;
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: (_conversation, _emit) => {
+        return {
+          start: async () => {
+            announceStart();
+            await opening;
+          },
+          send: async () => undefined,
+          respond: async () => undefined,
+          interrupt: async () => undefined,
+          dispose: async () => {
+            disposeCalls += 1;
+            if (disposeCalls === 1) {
+              announceDisposal();
+              await disposalGate;
+            }
+          },
+        };
+      },
+    },
+  );
+  const conversation = createConversation(harness.manager);
+  const sending = harness.manager.send(conversation.id, "Falhe durante a abertura.");
+
+  try {
+    await started;
+    const removing = harness.manager.remove(conversation.id);
+    await disposalStarted;
+    rejectOpening(new Error("A abertura falhou depois da remoção."));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          "messageStatus" in event.payload &&
+          event.payload.conversation.id === conversation.id &&
+          event.payload.messageStatus === "error",
+      ),
+      false,
+      "a falha de abertura não pode publicar estado de uma conversa em remoção",
+    );
+
+    releaseDisposal();
+    const [deleted] = await Promise.all([removing, sending]);
+    assert.equal(deleted, true);
+    assert.ok(
+      harness.events.some(
+        (event) => event.event === "conversation.removed" && event.payload.id === conversation.id,
+      ),
+    );
+  } finally {
+    releaseDisposal();
+    await harness.close();
+  }
+});
+
+test("apagar todas invalida falhas tardias durante a abertura", async () => {
+  let announceStart!: () => void;
+  let rejectOpening!: (error: Error) => void;
+  let disposed = false;
+  const started = new Promise<void>((resolve) => {
+    announceStart = resolve;
+  });
+  const opening = new Promise<void>((_resolve, reject) => {
+    rejectOpening = reject;
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: () => ({
+        start: async () => {
+          announceStart();
+          await opening;
+        },
+        send: async () => undefined,
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => {
+          disposed = true;
+        },
+      }),
+    },
+  );
+  const conversation = createConversation(harness.manager);
+  const sending = harness.manager.send(conversation.id, "Falhe durante o apagamento.");
+
+  try {
+    await started;
+    const deleting = harness.manager.deleteAll();
+    rejectOpening(new Error("A abertura falhou durante o apagamento."));
+    const [deleted] = await Promise.all([deleting, sending]);
+
+    assert.equal(deleted, 1);
+    assert.equal(disposed, true);
+    assert.equal(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          "messageStatus" in event.payload &&
+          event.payload.conversation.id === conversation.id &&
+          event.payload.messageStatus === "error",
+      ),
+      false,
+    );
+    assert.ok(harness.events.some((event) => event.event === "conversation.deletedAll"));
+  } finally {
+    await harness.close();
+  }
+});
+
+test("remover limpa partes pendentes e o temporizador de deltas", async () => {
+  let announcePermission!: () => void;
+  const permissionPublished = new Promise<void>((resolve) => {
+    announcePermission = resolve;
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: (_conversation, emit) => ({
+        start: async () => undefined,
+        send: async () => {
+          emit({
+            kind: "part",
+            part: {
+              id: "permissao-pendente",
+              type: "permission",
+              tool: "Bash",
+              summary: "Executar comando",
+              options: ["allow", "always", "deny"],
+              state: "pending",
+            },
+          });
+          emit({
+            kind: "text-delta",
+            partType: "text",
+            partId: "texto-pendente",
+            delta: "rascunho",
+          });
+        },
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      }),
+    },
+  );
+  const conversation = createConversation(harness.manager);
+  harness.subscribe((event) => {
+    if (
+      event.event === "conversation.partUpdated" &&
+      event.payload.kind === "upsert" &&
+      event.payload.part.id === "permissao-pendente"
+    )
+      announcePermission();
+  });
+
+  try {
+    await harness.manager.send(conversation.id, "Gere uma resposta.");
+    await permissionPublished;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await harness.manager.remove(conversation.id);
+
+    await assert.rejects(
+      harness.manager.respond(conversation.id, "permissao-pendente", {
+        responseType: "permission",
+        decision: "allow",
+      }),
+      /A parte não está aguardando resposta/,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    assert.equal(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.partUpdated" &&
+          event.payload.conversationId === conversation.id &&
+          event.payload.kind === "delta",
+      ),
+      false,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
 test("ramifica a última resposta Claude com --resume e --fork-session", async () => {
   const harness = await createHarness("texto");
   try {

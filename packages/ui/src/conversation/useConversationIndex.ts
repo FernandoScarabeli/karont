@@ -114,12 +114,12 @@ function connect() {
       clearAllConversationsFromIndex();
       return;
     }
+    if (event.event === "conversation.removed") {
+      removeConversationFromIndex(event.payload.id);
+      return;
+    }
     if (event.event !== "conversation.stateChanged") return;
-    const conversation = event.payload.conversation;
-    latestConversations.set(conversation.id, conversation);
-    deletedIds.delete(conversation.id);
-    applyToBucket("active", conversation);
-    applyToBucket("archived", conversation);
+    applyConversationStateChange(event.payload.conversation);
   });
   loadBucket("active");
 }
@@ -145,6 +145,14 @@ export function upsertConversation(conversation: Conversation) {
   applyToBucket("archived", conversation);
 }
 
+export function applyConversationStateChange(conversation: Conversation): boolean {
+  if (deletedIds.has(conversation.id)) return false;
+  latestConversations.set(conversation.id, conversation);
+  applyToBucket("active", conversation);
+  applyToBucket("archived", conversation);
+  return true;
+}
+
 export function removeConversationFromIndex(id: string) {
   deletedIds.add(id);
   latestConversations.delete(id);
@@ -158,10 +166,11 @@ export function removeConversationFromIndex(id: string) {
 }
 
 export function clearAllConversationsFromIndex() {
+  for (const id of latestConversations.keys()) deletedIds.add(id);
   latestConversations.clear();
-  deletedIds.clear();
   for (const bucket of ["active", "archived"] as const) {
     loadGeneration[bucket] += 1;
+    for (const conversation of snapshots[bucket].conversations) deletedIds.add(conversation.id);
     snapshots[bucket] = { conversations: [], loading: false, error: false };
     notify(bucket);
   }
