@@ -46,6 +46,21 @@ export function mergeMessageSources(
 
 function cleanSourceText(value: unknown, maxLength: number): string | undefined {
   if (typeof value !== "string") return undefined;
-  const text = value.replace(/\s+/gu, " ").trim().slice(0, maxLength);
+  if (looksLikeRawSourceData(value)) return undefined;
+  const text = value
+    .replace(/<[^>]*>/gu, " ")
+    .replace(/!?\[([^\]]*)\]\((?:<[^>]+>|[^)]+)\)/gu, "$1")
+    .replace(/^\s{0,3}(?:#{1,6}\s*|>\s*|[-*+]\s+)/gmu, "")
+    .replace(/[`*_~]/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, maxLength);
   return text || undefined;
+}
+
+function looksLikeRawSourceData(value: string): boolean {
+  return (
+    /^\s*(?:links|results|search results)\s*:\s*\[/iu.test(value) ||
+    /(?:^|[{,]\s*)["']?(?:url|title|snippet|description|summary)["']?\s*:/iu.test(value)
+  );
 }

@@ -1,8 +1,17 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { extractClaudeAssistantSources, extractClaudeToolSources } from "./claude-adapter.ts";
 import { extractCodexWebSearchSources } from "./codex-adapter.ts";
 import { makeMessageSource, mergeMessageSources } from "./source-metadata.ts";
+
+const realWebSearchFixture = JSON.parse(
+  readFileSync(new URL("./fixtures/claude/websearch-citations-real.json", import.meta.url), "utf8"),
+) as {
+  input: Record<string, unknown>;
+  result: string;
+  expectedSources: Array<{ url: string; title: string }>;
+};
 
 test("mapeia resultados estruturados de WebSearch do Claude", () => {
   const sources = extractClaudeToolSources("WebSearch", { query: "notícia" }, [
@@ -23,6 +32,21 @@ test("mapeia resultados estruturados de WebSearch do Claude", () => {
       date: "2 days ago",
     },
   ]);
+});
+
+test("lê os links do resultado real do Claude sem associar fragmentos JSON como trechos", () => {
+  const sources = extractClaudeToolSources(
+    "WebSearch",
+    realWebSearchFixture.input,
+    realWebSearchFixture.result,
+  );
+
+  assert.deepEqual(
+    sources.map(({ url, title }) => ({ url, title })),
+    realWebSearchFixture.expectedSources,
+  );
+  assert.ok(sources.every((source) => source.snippet === undefined));
+  assert.ok(sources.every((source) => !source.title?.startsWith("Links:")));
 });
 
 test("mapeia citações WebSearch que acompanham a resposta do Claude", () => {

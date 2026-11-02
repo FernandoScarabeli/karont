@@ -1,9 +1,4 @@
-import {
-  type AgentErrorAgent,
-  describeAgentError,
-  type MessageSource,
-  normalizeSourceUrl,
-} from "@karont/contract";
+import { type AgentErrorAgent, describeAgentError, type MessageSource } from "@karont/contract";
 import {
   AlertTriangle,
   Bot,
@@ -84,7 +79,13 @@ import { FollowBottomContext } from "./followBottom.ts";
 import { splitMarkdownBlocks } from "./markdownBlocks.ts";
 import { rehypeCaret } from "./rehypeCaret.ts";
 import { SourceCitationBadge } from "./SourceCitationBadge.tsx";
-import { type CitationView, findCitationForLink, isCitationSeparator } from "./sourceCitations.ts";
+import {
+  type CitationView,
+  findCitationForLink,
+  isCitationSeparator,
+  normalizeCitationUrl,
+  unwrapTrailingCitationGroup,
+} from "./sourceCitations.ts";
 import type { ConversationMessage, MessagePart } from "./useConversation.ts";
 import { useTypewriterText } from "./useTypewriterText.ts";
 import { WorkingIndicator } from "./WorkingIndicator.tsx";
@@ -1205,9 +1206,20 @@ function groupCitationChildren(children: ReactNode): ReactNode[] {
       cursor += 2;
     }
 
+    const prefix = grouped.at(-1);
+    const suffix = nodes[cursor];
+    if (citations.length > 1 && typeof prefix === "string" && typeof suffix === "string") {
+      const unwrapped = unwrapTrailingCitationGroup(prefix, suffix);
+      if (unwrapped) {
+        if (unwrapped.prefix) grouped[grouped.length - 1] = unwrapped.prefix;
+        else grouped.pop();
+        nodes[cursor] = unwrapped.suffix;
+      }
+    }
+
     const uniqueCitations = new Map<string, CitationView>();
     for (const citation of citations) {
-      const key = normalizeSourceUrl(citation.source.url);
+      const key = normalizeCitationUrl(citation.source.url);
       if (key && !uniqueCitations.has(key)) uniqueCitations.set(key, citation);
     }
     grouped.push(

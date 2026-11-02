@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeSourceUrl } from "@karont/contract";
 import {
+  calculateCitationPopoverPosition,
+  cleanCitationText,
   findCitationForLink,
   isCitationSeparator,
   isTrailingReference,
+  normalizeCitationUrl,
   sourceSiteName,
+  unwrapTrailingCitationGroup,
 } from "./sourceCitations.ts";
 
 const sources = [
@@ -22,6 +26,10 @@ test("normaliza URLs equivalentes para casar metadados do resultado", () => {
     normalizeSourceUrl("https://bbc.com/news/story#reader?utm_campaign=test"),
     normalizeSourceUrl("https://www.bbc.com/news/story/?utm_source=assistant"),
   );
+  assert.equal(
+    normalizeCitationUrl("http://www.example.org/article/?utm_source=assistant"),
+    normalizeCitationUrl("https://example.org/article"),
+  );
 });
 
 test("converte link com nome do site em selo e usa metadados casados por URL", () => {
@@ -36,6 +44,36 @@ test("converte link com nome do site em selo e usa metadados casados por URL", (
   assert.equal(citation?.site, "BBC");
   assert.equal(citation?.source.title, "BBC report");
   assert.equal(citation?.source.snippet, "Trecho do resultado da busca.");
+});
+
+test("casa por host e caminho e descarta metadados brutos do resultado real", () => {
+  const citation = findCitationForLink(
+    "https://blog.logrocket.com/node-js-24-new/?utm_campaign=chat",
+    "Logrocket",
+    "A versão foi lançada.",
+    24,
+    [
+      {
+        url: "https://www.blog.logrocket.com/node-js-24-new?utm_source=claude",
+        title: 'Links: [{"title":"blog.logrocket.com","url":"',
+        snippet:
+          '","url":"https://blog.logrocket.com/node-js-24-new"},{"title":"forest.watch.impress.co.jp","url":"https://forest.watch.impress.co.jp/docs/news/2012357.html"}]',
+      },
+    ],
+  );
+
+  assert.equal(citation?.site, "Logrocket");
+  assert.equal(citation?.source.title, undefined);
+  assert.equal(citation?.source.snippet, undefined);
+});
+
+test("limpa markdown da descrição e rejeita texto serializado como trecho", () => {
+  assert.equal(
+    cleanCitationText("**A versão** usa [Node.js](https://nodejs.org)."),
+    "A versão usa Node.js.",
+  );
+  assert.equal(cleanCitationText('{"title":"Outro site","url":"https://example.com"}'), undefined);
+  assert.equal(cleanCitationText('"}]'), undefined);
 });
 
 test("converte referências entre parênteses no fim da frase em selo", () => {
@@ -80,7 +118,50 @@ test("aceita um grupo de referências em sequência até o fim da frase", () => 
   assert.equal(isTrailingReference(markdown, end), true);
   assert.equal(isCitationSeparator(", "), true);
   assert.equal(isCitationSeparator(" e "), true);
+  assert.equal(isCitationSeparator("; "), true);
   assert.equal(isCitationSeparator(". Depois "), false);
+  for (const separator of [", ", " e ", "; "]) {
+    const markdown = `Fontes ([Logrocket](https://logrocket.com/a)${separator}[Clever](https://clever.cloud/b)).`;
+    const end =
+      markdown.indexOf("](https://logrocket.com/a)") + "](https://logrocket.com/a)".length;
+    assert.equal(isTrailingReference(markdown, end), true);
+  }
+  const bracketedMarkdown =
+    "Fontes [[Logrocket](https://logrocket.com/a); [Clever](https://clever.cloud/b)].";
+  const bracketedEnd =
+    bracketedMarkdown.indexOf("](https://logrocket.com/a)") + "](https://logrocket.com/a)".length;
+  assert.equal(isTrailingReference(bracketedMarkdown, bracketedEnd), true);
+  assert.deepEqual(unwrapTrailingCitationGroup("Fontes (", ")."), {
+    prefix: "Fontes ",
+    suffix: ".",
+  });
+  assert.deepEqual(unwrapTrailingCitationGroup("Fontes [", "]"), {
+    prefix: "Fontes ",
+    suffix: "",
+  });
+  assert.equal(unwrapTrailingCitationGroup("Fontes (", "). Em seguida"), null);
+});
+
+test("posiciona o cartão acima ou abaixo dentro dos limites da janela", () => {
+  assert.deepEqual(
+    calculateCitationPopoverPosition({
+      anchor: { top: 500, bottom: 520, left: 20, width: 30 },
+      card: { width: 320, height: 200 },
+      viewport: { width: 800, height: 600 },
+      gap: 8,
+      margin: 12,
+    }),
+    { side: "above", top: 292, left: 12, maxHeight: 480 },
+  );
+
+  const position = calculateCitationPopoverPosition({
+    anchor: { top: 200, bottom: 220, left: 380, width: 30 },
+    card: { width: 320, height: 900 },
+    viewport: { width: 400, height: 400 },
+    gap: 8,
+    margin: 12,
+  });
+  assert.deepEqual(position, { side: "above", top: 12, left: 68, maxHeight: 180 });
 });
 
 test("deriva nomes curtos de domínios compostos", () => {

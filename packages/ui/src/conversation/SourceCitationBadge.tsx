@@ -1,9 +1,10 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import type { KeyboardEvent } from "react";
+import type { FocusEvent, KeyboardEvent } from "react";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./SourceCitationBadge.module.css";
-import type { CitationView } from "./sourceCitations.ts";
+import { type CitationView, calculateCitationPopoverPosition } from "./sourceCitations.ts";
 
 const OPEN_DELAY_MS = 120;
 const CLOSE_DELAY_MS = 160;
@@ -17,8 +18,6 @@ export function SourceCitationBadge({
 }) {
   const [open, setOpen] = useState(false);
   const [index, setIndex] = useState(0);
-  const [side, setSide] = useState<"above" | "below">("below");
-  const [align, setAlign] = useState<"start" | "center" | "end">("center");
   const wrapperRef = useRef<HTMLFieldSetElement>(null);
   const badgeRef = useRef<HTMLButtonElement>(null);
   const cardRef = useRef<HTMLElement>(null);
@@ -26,6 +25,14 @@ export function SourceCitationBadge({
   const cardId = useId();
   const currentIndex = citations.length > 0 ? index % citations.length : 0;
   const current = citations[currentIndex] ?? citations[0];
+
+  const hasFocusInside = useCallback(() => {
+    const activeElement = document.activeElement;
+    return Boolean(
+      activeElement &&
+        (wrapperRef.current?.contains(activeElement) || cardRef.current?.contains(activeElement)),
+    );
+  }, []);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
@@ -40,9 +47,9 @@ export function SourceCitationBadge({
   const scheduleClose = useCallback(() => {
     clearTimer();
     timerRef.current = window.setTimeout(() => {
-      if (!wrapperRef.current?.contains(document.activeElement)) setOpen(false);
+      if (!hasFocusInside()) setOpen(false);
     }, CLOSE_DELAY_MS);
-  }, [clearTimer]);
+  }, [clearTimer, hasFocusInside]);
 
   const close = useCallback(() => {
     clearTimer();
@@ -55,42 +62,46 @@ export function SourceCitationBadge({
     if (!open || !current) return;
     const badge = badgeRef.current;
     const card = cardRef.current;
-    const wrapper = wrapperRef.current;
-    if (!badge || !card || !wrapper) return;
+    if (!badge || !card) return;
 
-    const badgeRect = badge.getBoundingClientRect();
-    const wrapperRect = wrapper.getBoundingClientRect();
-    const cardRect = card.getBoundingClientRect();
-    const markdown = wrapper.closest<HTMLElement>("[data-k-markdown]") ?? wrapper.parentElement;
-    const messageViewport = wrapper.closest<HTMLElement>("[data-k-chat-scroll]");
-    const columnRect = markdown?.getBoundingClientRect();
-    const viewportRect = messageViewport?.getBoundingClientRect();
-    const top = Math.max(0, viewportRect?.top ?? 0);
-    const bottom = Math.min(window.innerHeight, viewportRect?.bottom ?? window.innerHeight);
-    const spaceAbove = badgeRect.top - top;
-    const spaceBelow = bottom - badgeRect.bottom;
-    const gap = Number.parseFloat(getComputedStyle(card).getPropertyValue("--k-space-2")) || 0;
-    const placeAbove = spaceBelow < cardRect.height + gap && spaceAbove > spaceBelow;
-    const availableVerticalSpace = placeAbove ? spaceAbove : spaceBelow;
-    card.style.maxHeight = `${Math.max(0, availableVerticalSpace - gap)}px`;
-    card.style.overflowY = "auto";
-    setSide(placeAbove ? "above" : "below");
+    const positionCard = () => {
+      const badgeRect = badge.getBoundingClientRect();
+      const computedStyle = getComputedStyle(card);
+      const gap = Number.parseFloat(computedStyle.getPropertyValue("--k-space-2")) || 8;
+      const margin = Number.parseFloat(computedStyle.getPropertyValue("--k-space-3")) || 12;
+      card.style.visibility = "hidden";
+      card.style.maxHeight = "none";
+      const cardRect = card.getBoundingClientRect();
+      const layout = calculateCitationPopoverPosition({
+        anchor: {
+          top: badgeRect.top,
+          bottom: badgeRect.bottom,
+          left: badgeRect.left,
+          width: badgeRect.width,
+        },
+        card: { width: cardRect.width, height: Math.max(cardRect.height, card.scrollHeight) },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        gap,
+        margin,
+      });
+      card.style.top = `${layout.top}px`;
+      card.style.left = `${layout.left}px`;
+      card.style.maxHeight = `${layout.maxHeight}px`;
+      card.style.visibility = "visible";
+    };
 
-    if (columnRect) {
-      const cardWidth = cardRect.width;
-      const spaceFromStart = columnRect.right - wrapperRect.left;
-      const spaceFromEnd = wrapperRect.right - columnRect.left;
-      const startFits = spaceFromStart >= cardWidth;
-      const endFits = spaceFromEnd >= cardWidth;
-      if (startFits && !endFits) setAlign("start");
-      else if (endFits && !startFits) setAlign("end");
-      else setAlign("center");
-    }
+    positionCard();
+    window.addEventListener("resize", positionCard);
+    window.addEventListener("scroll", positionCard, true);
+    return () => {
+      window.removeEventListener("resize", positionCard);
+      window.removeEventListener("scroll", positionCard, true);
+    };
   }, [current, open]);
 
   if (!current || citations.length === 0) return null;
 
-  const onKeyDown = (event: KeyboardEvent<HTMLFieldSetElement>) => {
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape" && open) {
       event.preventDefault();
       close();
@@ -105,15 +116,20 @@ export function SourceCitationBadge({
   };
 
   const openCurrent = () => onOpen(current.source.url);
+  const handleBlurCapture = (event: FocusEvent<HTMLElement>) => {
+    const target = event.relatedTarget;
+    if (
+      target instanceof Node &&
+      (wrapperRef.current?.contains(target) || cardRef.current?.contains(target))
+    )
+      return;
+    scheduleClose();
+  };
 
   return (
     <fieldset
       className={styles.sourceCitationWrap}
-      data-align={align}
-      data-side={side}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) scheduleClose();
-      }}
+      onBlurCapture={handleBlurCapture}
       onFocusCapture={scheduleOpen}
       onKeyDown={onKeyDown}
       onMouseEnter={scheduleOpen}
@@ -144,62 +160,81 @@ export function SourceCitationBadge({
           </span>
         ) : null}
       </button>
-      {open ? (
-        <section
-          aria-label={t.chat.sourceCard(current.site)}
-          className={styles.sourceCitationCard}
-          id={cardId}
-          ref={cardRef}
-        >
-          <div className={styles.sourceCitationCardHeader}>
-            <span aria-hidden="true" className={styles.sourceCitationInitial}>
-              {Array.from(current.site)[0] ?? "S"}
-            </span>
-            <span className={styles.sourceCitationCardSite}>{current.site}</span>
-            {citations.length > 1 ? (
-              <span className={styles.sourceCitationNavigation}>
-                <button
-                  aria-label={t.chat.sourcePrevious}
-                  className={styles.sourceCitationNavButton}
-                  onClick={() =>
-                    setIndex((value) => (value + citations.length - 1) % citations.length)
-                  }
-                  onFocus={scheduleOpen}
-                  type="button"
-                >
-                  <ChevronLeft aria-hidden="true" size={14} />
-                </button>
-                <span aria-live="polite" className={styles.sourceCitationPosition}>
-                  {t.chat.sourcePosition(currentIndex + 1, citations.length)}
+      {open
+        ? createPortal(
+            <section
+              aria-label={t.chat.sourceCard(current.site)}
+              className={styles.sourceCitationCard}
+              id={cardId}
+              onBlurCapture={handleBlurCapture}
+              onFocusCapture={scheduleOpen}
+              onKeyDown={onKeyDown}
+              onMouseEnter={scheduleOpen}
+              onMouseLeave={scheduleClose}
+              ref={cardRef}
+              style={{ visibility: "hidden" }}
+            >
+              <div className={styles.sourceCitationCardHeader}>
+                <span aria-hidden="true" className={styles.sourceCitationInitial}>
+                  {Array.from(current.site)[0] ?? "S"}
                 </span>
+                <span className={styles.sourceCitationCardSite}>{current.site}</span>
+                {citations.length > 1 ? (
+                  <span className={styles.sourceCitationNavigation}>
+                    <button
+                      aria-label={t.chat.sourcePrevious}
+                      className={styles.sourceCitationNavButton}
+                      onClick={() =>
+                        setIndex((value) => (value + citations.length - 1) % citations.length)
+                      }
+                      onFocus={scheduleOpen}
+                      type="button"
+                    >
+                      <ChevronLeft aria-hidden="true" size={14} />
+                    </button>
+                    <span aria-live="polite" className={styles.sourceCitationPosition}>
+                      {t.chat.sourcePosition(currentIndex + 1, citations.length)}
+                    </span>
+                    <button
+                      aria-label={t.chat.sourceNext}
+                      className={styles.sourceCitationNavButton}
+                      onClick={() => setIndex((value) => (value + 1) % citations.length)}
+                      onFocus={scheduleOpen}
+                      type="button"
+                    >
+                      <ChevronRight aria-hidden="true" size={14} />
+                    </button>
+                  </span>
+                ) : null}
+              </div>
+              {current.source.title ? (
                 <button
-                  aria-label={t.chat.sourceNext}
-                  className={styles.sourceCitationNavButton}
-                  onClick={() => setIndex((value) => (value + 1) % citations.length)}
+                  className={styles.sourceCitationTitle}
+                  onClick={openCurrent}
                   onFocus={scheduleOpen}
                   type="button"
                 >
-                  <ChevronRight aria-hidden="true" size={14} />
+                  {current.source.title}
                 </button>
-              </span>
-            ) : null}
-          </div>
-          <button
-            className={styles.sourceCitationTitle}
-            onClick={openCurrent}
-            onFocus={scheduleOpen}
-            type="button"
-          >
-            {current.source.title || current.source.url}
-          </button>
-          {current.source.snippet ? (
-            <p className={styles.sourceCitationSnippet}>{current.source.snippet}</p>
-          ) : null}
-          {current.source.date ? (
-            <p className={styles.sourceCitationDate}>{current.source.date}</p>
-          ) : null}
-        </section>
-      ) : null}
+              ) : null}
+              {current.source.snippet ? (
+                <p className={styles.sourceCitationSnippet}>{current.source.snippet}</p>
+              ) : null}
+              {current.source.date ? (
+                <p className={styles.sourceCitationDate}>{current.source.date}</p>
+              ) : null}
+              <button
+                className={styles.sourceCitationUrl}
+                onClick={openCurrent}
+                onFocus={scheduleOpen}
+                type="button"
+              >
+                {current.source.url}
+              </button>
+            </section>,
+            document.body,
+          )
+        : null}
     </fieldset>
   );
 }

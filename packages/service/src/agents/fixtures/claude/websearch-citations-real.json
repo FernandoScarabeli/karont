@@ -1,0 +1,36 @@
+{
+  "input": {
+    "query": "Node.js 24 release date announced"
+  },
+  "result": "Web search results for query: \"Node.js 24 release date announced\"\n\nLinks: [{\"title\":\"blog.logrocket.com\",\"url\":\"https://blog.logrocket.com/?p=204649\"},{\"title\":\"node js 24 new\",\"url\":\"https://blog.logrocket.com/node-js-24-new\"},{\"title\":\"forest.watch.impress.co.jp\",\"url\":\"https://forest.watch.impress.co.jp/docs/news/2012357.html\"},{\"title\":\"Node.js's icon\",\"url\":\"https://hub.turbo.net/run/nodejs/nodejs-24.1/releases\"},{\"title\":\"Node.js's icon\",\"url\":\"https://hub.turbo.net/run/nodejs/nodejs-24.4/releases\"},{\"title\":\"Node.js's icon\",\"url\":\"https://hub.turbo.net/run/nodejs/nodejs-24.3/releases\"},{\"title\":\"05 07 node 24\",\"url\":\"https://www.clever.cloud/developers/changelog/2025/05-07-node-24/\"}]\n\nNode.js 24 was released on May 6, 2025. A Japanese news report says it came out that day and is free to download from nodejs.org (index 3-1). LogRocket also gives May 6, 2025 as the official launch date (index 1-1).\n\nThe release was initially \"Current.\" Clever Cloud notes that it was set to become LTS in October 2025 and would be supported until April 2028 (index 7-1, 7-2). Node.js 24.0 is the first release. Turbo.net lists 24.1 as dated May 22, 2025, and 24.3 as June 25, 2025 (index 4-2, 6-2).\n\n\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.",
+  "expectedSources": [
+    {
+      "url": "https://blog.logrocket.com/?p=204649",
+      "title": "blog.logrocket.com"
+    },
+    {
+      "url": "https://blog.logrocket.com/node-js-24-new",
+      "title": "node js 24 new"
+    },
+    {
+      "url": "https://forest.watch.impress.co.jp/docs/news/2012357.html",
+      "title": "forest.watch.impress.co.jp"
+    },
+    {
+      "url": "https://hub.turbo.net/run/nodejs/nodejs-24.1/releases",
+      "title": "Node.js's icon"
+    },
+    {
+      "url": "https://hub.turbo.net/run/nodejs/nodejs-24.4/releases",
+      "title": "Node.js's icon"
+    },
+    {
+      "url": "https://hub.turbo.net/run/nodejs/nodejs-24.3/releases",
+      "title": "Node.js's icon"
+    },
+    {
+      "url": "https://www.clever.cloud/developers/changelog/2025/05-07-node-24/",
+      "title": "05 07 node 24"
+    }
+  ]
+}
