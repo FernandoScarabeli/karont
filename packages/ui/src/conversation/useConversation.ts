@@ -186,7 +186,7 @@ export function useConversation(conversationId: string) {
     [],
   );
   const fetchOlderMessages = useCallback(
-    async (before: string, beforeInsert?: () => void): Promise<number | null> => {
+    async (before: string): Promise<number | null> => {
       const bridge = getBridge();
       if (!bridge) return null;
       try {
@@ -200,7 +200,6 @@ export function useConversation(conversationId: string) {
           result.messages,
           result.hasOlderMessages,
         );
-        if (page.newMessages.length > 0) beforeInsert?.();
         dispatch({
           type: "olderLoaded",
           messages: page.newMessages,

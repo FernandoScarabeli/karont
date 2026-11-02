@@ -7,6 +7,7 @@
   color: var(--k-color-text-secondary);
   font-size: var(--k-text-13);
   line-height: var(--k-leading-tight);
+  overflow-anchor: none;
 }
 
 .indicator[data-exiting="true"] {
