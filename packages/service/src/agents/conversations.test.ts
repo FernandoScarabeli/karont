@@ -917,7 +917,7 @@ test("Claude atualiza o uso de contexto depois de compactar", async () => {
     await harness.manager.compact(conversation.id);
     await waitForState(harness, conversation.id, "idle");
 
-    const afterCompact = { usedTokens: 17_000, windowTokens: 200_000 };
+    const afterCompact = { usedTokens: 6_642, windowTokens: 1_000_000 };
     assert.deepEqual(harness.manager.get(conversation.id)?.contextUsage, afterCompact);
     assert.ok(
       harness.events.some(

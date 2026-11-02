@@ -622,7 +622,7 @@ export class ClaudeAdapter implements AgentAdapter {
           : isRecord(value.compact_metadata)
             ? value.compact_metadata
             : undefined;
-        this.#compactBoundaryTokens = tokenCount(metadata?.postTokens);
+        this.#compactBoundaryTokens = tokenCount(metadata?.post_tokens ?? metadata?.postTokens);
       }
       if (value.subtype === "permission_denied") this.#emit({ kind: "state", state: "working" });
       return;
