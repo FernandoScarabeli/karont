@@ -6,9 +6,7 @@ import {
   isValidElement,
   memo,
   useEffect,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import Markdown from "react-markdown";
@@ -69,11 +67,10 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({
         return (
           <MarkdownBlock
             block={block.markdown}
-            done={done}
             key={block.start}
             latest={latest}
             metrics={metrics}
-            motion={latest ? motion : "none"}
+            motion={motion}
             start={block.start}
             highlightPlugin={highlightPlugin}
             useHighlight={useHighlight}
@@ -87,7 +84,6 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({
 const MarkdownBlock = memo(
   function MarkdownBlock({
     block,
-    done,
     latest,
     metrics,
     motion,
@@ -96,7 +92,6 @@ const MarkdownBlock = memo(
     useHighlight,
   }: {
     block: string;
-    done: boolean;
     latest: boolean;
     metrics: RenderMetrics;
     motion: Motion;
@@ -104,30 +99,18 @@ const MarkdownBlock = memo(
     highlightPlugin: HighlightPlugin | null;
     useHighlight: boolean;
   }) {
-    const previousTextLengthRef = useRef(0);
-    const currentTextLengthRef = useRef(0);
-    const previousCodeLineCountRef = useRef(0);
-    const currentCodeLineCountRef = useRef(0);
-
     if (latest) metrics.latestBlockRenders += 1;
-    const previousTextLength = previousTextLengthRef.current;
-    const previousCodeLineCount = previousCodeLineCountRef.current;
-    currentTextLengthRef.current = 0;
-    currentCodeLineCountRef.current = 0;
 
-    useLayoutEffect(() => {
-      previousTextLengthRef.current = currentTextLengthRef.current;
-      previousCodeLineCountRef.current = currentCodeLineCountRef.current;
-    });
-
-    const animated = latest && motion !== "none" && !done;
+    // Positions are rebuilt on every render of this block, in document order.
+    // Each word keeps the same key while it stays in the text, so React keeps
+    // its span mounted and its fade plays only once.
     const context: TextContext = {
       blockStart: start,
-      animated,
       motion,
-      previousLength: previousTextLength,
-      cursor: currentTextLengthRef,
+      cursor: { current: 0 },
+      lineCursor: { current: 0 },
     };
+    const animated = motion !== "none";
 
     const components = {
       p: ({ children, node: _node, ...props }: { children?: ReactNode; node?: unknown }) => (
@@ -157,9 +140,7 @@ const MarkdownBlock = memo(
       pre: ({ children }: { children?: ReactNode }) => {
         const code = getText(children);
         const isAnimatedCode = animated && !useHighlight;
-        const visibleCode = isAnimatedCode
-          ? renderCodeLines(code, start, previousCodeLineCount, currentCodeLineCountRef, motion)
-          : children;
+        const visibleCode = isAnimatedCode ? renderCodeLines(code, context) : children;
         return (
           <div className={conversationStyles.codeBlock}>
             <pre>{visibleCode}</pre>
@@ -180,7 +161,6 @@ const MarkdownBlock = memo(
   },
   (previous, next) =>
     previous.block === next.block &&
-    (previous.done === next.done || (!previous.latest && !next.latest)) &&
     previous.latest === next.latest &&
     previous.metrics === next.metrics &&
     previous.motion === next.motion &&
@@ -191,10 +171,9 @@ const MarkdownBlock = memo(
 
 type TextContext = {
   blockStart: number;
-  animated: boolean;
   motion: Motion;
-  previousLength: number;
   cursor: { current: number };
+  lineCursor: { current: number };
 };
 
 function wrapInlineChildren(children: ReactNode, context: TextContext): ReactNode {
@@ -203,8 +182,7 @@ function wrapInlineChildren(children: ReactNode, context: TextContext): ReactNod
       return splitIntoWords(child).map((segment) => {
         const position = context.cursor.current;
         context.cursor.current += segment.value.length;
-        const isNewWord = segment.kind === "word" && position >= context.previousLength;
-        if (!context.animated || !isNewWord) return segment.value;
+        if (segment.kind !== "word") return segment.value;
 
         return (
           <span
@@ -240,30 +218,17 @@ const blockElements = new Set([
   "ul",
 ]);
 
-function renderCodeLines(
-  code: string,
-  blockStart: number,
-  previousLineCount: number,
-  currentLineCount: { current: number },
-  motion: Motion,
-): ReactNode {
+function renderCodeLines(code: string, context: TextContext): ReactNode {
   const lines = code.split("\n");
   return (
     <code>
       {lines.map((line, lineIndex) => {
-        const stableLineIndex = currentLineCount.current;
-        currentLineCount.current += 1;
-        const lineKey = blockStart + stableLineIndex;
+        const lineKey = context.blockStart + context.lineCursor.current;
+        context.lineCursor.current += 1;
         return (
           <Fragment key={`line-${lineKey}`}>
             <span
-              className={
-                stableLineIndex >= previousLineCount
-                  ? motion === "blur"
-                    ? styles.lineBlur
-                    : styles.lineFade
-                  : undefined
-              }
+              className={context.motion === "blur" ? styles.lineBlur : styles.lineFade}
               data-stream-line-position={lineKey}
             >
               {line}

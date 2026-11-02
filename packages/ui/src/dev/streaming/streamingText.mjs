@@ -1,5 +1,16 @@
 const wordPattern = /\s+|[^\s]+/gu;
+const tokenPattern = /\S+\s*|\s+/gu;
 const markdownMarkerPattern = /(`+|\*\*|__|~~|\*|_)/gu;
+
+const BASE_WORDS_PER_SECOND = 18;
+const WORDS_PER_SECOND_PER_BACKLOG_WORD = 3;
+const MAX_WORDS_PER_SECOND = 120;
+// Safety valve: an open marker holds the text only for this many characters.
+// Backtick runs get a longer allowance because code spans can be long.
+const MARKER_HOLD_CHARS = 120;
+const CODE_HOLD_CHARS = 200;
+const DRAIN_MS = 350;
+const MIN_DRAIN_MS = 16;
 
 export function splitIntoWords(text) {
   return Array.from(text.matchAll(wordPattern), (match) => {
@@ -14,62 +25,98 @@ export function splitIntoWords(text) {
   });
 }
 
-export function getSafeRevealLength(text, currentLength, requestedLength, done = false) {
-  const start = Math.min(text.length, Math.max(0, currentLength));
-  if (done) return text.length;
+// Tokens are a word plus the whitespace after it. A cut is only allowed where
+// no markdown marker is left open, so a token never shows half of `code`,
+// **strong** or a fence. A bare word at the end of streamed text is not a token
+// yet: it may still grow. When done, every remaining character is a token.
+// `valve: true` ignores open-marker holds (used when the stream stalls).
+export function splitIntoTokens(text, done = false, { valve = false } = {}) {
+  const unsafeRanges = done || valve ? [] : getUnsafeRanges(text);
+  const tokens = [];
+  let tokenStart = 0;
 
-  let target = Math.min(text.length, Math.max(start, requestedLength));
-  if (target <= start) return start;
-
-  target = findWordBoundary(text, start, target);
-  if (target <= start) return start;
-
-  return findMarkdownBoundary(text, start, target);
-}
-
-function findWordBoundary(text, start, target) {
-  let boundary = target;
-  while (boundary > start && !isWordSeparator(text[boundary - 1] ?? "")) boundary -= 1;
-  return boundary;
-}
-
-function isWordSeparator(character) {
-  return /[\s.,!?;:()[\]{}<>*_`~]/u.test(character);
-}
-
-function findMarkdownBoundary(text, start, target) {
-  let safe = target;
-  const fencedRanges = getFencedRanges(text);
-
-  for (const range of fencedRanges) {
-    if (range.openStart < safe && safe < range.openEnd) safe = range.openStart;
-    if (range.closeStart !== null && range.closeStart < safe && safe < range.closeEnd) {
-      safe = range.closeStart;
-    }
+  for (const match of text.matchAll(tokenPattern)) {
+    const end = (match.index ?? 0) + match[0].length;
+    const endsWithSpace = /\s$/u.test(match[0]);
+    if (!endsWithSpace && !done) break;
+    if (unsafeRanges.some(([start, limit]) => start < end && end < limit)) continue;
+    tokens.push({ value: text.slice(tokenStart, end), start: tokenStart, end });
+    tokenStart = end;
   }
 
-  const markers = getInlineMarkers(text, fencedRanges);
-  const waiting = new Map();
-  const pairs = [];
+  return tokens;
+}
 
-  for (const marker of markers) {
+// Adaptive pace in words per second: it rises with the backlog so the reveal
+// never falls far behind the incoming text.
+export function getWordsPerSecond(backlogWords) {
+  const backlog = Math.max(0, backlogWords);
+  return Math.min(
+    MAX_WORDS_PER_SECOND,
+    BASE_WORDS_PER_SECOND + backlog * WORDS_PER_SECOND_PER_BACKLOG_WORD,
+  );
+}
+
+// Returns how many whole tokens to release in this frame. The fractional part
+// is carried to the next frame, so the reveal never steps back. After the
+// stream is done, the backlog drains linearly toward a deadline of drainMsLeft
+// (350 ms), so the tail finishes in about 400 ms.
+export function planWordRelease({
+  backlogWords,
+  elapsedMs,
+  done = false,
+  carryWords = 0,
+  drainMsLeft = DRAIN_MS,
+}) {
+  if (backlogWords <= 0) return { count: 0, carryWords: 0, drainMsLeft: DRAIN_MS };
+
+  const elapsed = Math.max(0, elapsedMs);
+  const rate = done
+    ? Math.max(
+        getWordsPerSecond(backlogWords),
+        (backlogWords * 1000) / Math.max(drainMsLeft, MIN_DRAIN_MS),
+      )
+    : getWordsPerSecond(backlogWords);
+  const accumulated = carryWords + (rate * elapsed) / 1000;
+  const count = Math.min(backlogWords, Math.floor(accumulated));
+
+  return {
+    count,
+    carryWords: count === backlogWords ? 0 : accumulated - count,
+    drainMsLeft: done ? Math.max(0, drainMsLeft - elapsed) : DRAIN_MS,
+  };
+}
+
+// Ranges [start, limit) where a cut at position p would split a marker pair.
+// A cut at p is unsafe when start < p < limit.
+function getUnsafeRanges(text) {
+  const fencedRanges = getFencedRanges(text);
+  const ranges = [];
+
+  for (const range of fencedRanges) {
+    ranges.push([range.openStart, range.openEnd]);
+    if (range.closeStart !== null) ranges.push([range.closeStart, range.closeEnd]);
+  }
+
+  const waiting = new Map();
+  for (const marker of getInlineMarkers(text, fencedRanges)) {
     const open = waiting.get(marker.value);
-    if (open) {
-      pairs.push({ open, close: marker });
+    if (open && marker.canClose) {
+      ranges.push([open.start, Math.min(marker.end, open.start + holdChars(open.value) + 1)]);
       waiting.delete(marker.value);
-    } else {
+    } else if (marker.canOpen) {
       waiting.set(marker.value, marker);
     }
   }
-
-  for (const { open, close } of pairs) {
-    if (open.start < safe && safe < close.end) safe = Math.min(safe, open.start);
-  }
   for (const open of waiting.values()) {
-    if (open.start < safe && safe >= open.end) safe = Math.min(safe, open.start);
+    ranges.push([open.start, open.start + holdChars(open.value) + 1]);
   }
 
-  return Math.max(start, safe);
+  return ranges;
+}
+
+function holdChars(markerValue) {
+  return markerValue.startsWith("`") ? CODE_HOLD_CHARS : MARKER_HOLD_CHARS;
 }
 
 function getFencedRanges(text) {
@@ -134,7 +181,25 @@ function getInlineMarkers(text, fencedRanges) {
       continue;
     }
     if (start > 0 && text[start - 1] === "\\") continue;
-    markers.push({ value: match[0], start, end });
+
+    const before = text[start - 1] ?? "";
+    const after = text[end] ?? "";
+    // `_` or `__` between letters or digits (nome_arquivo) is plain text.
+    if (/_/u.test(match[0][0] ?? "") && isWordCharacter(before) && isWordCharacter(after)) continue;
+    // A marker followed by whitespace cannot open; preceded by whitespace cannot close.
+    const canOpen = !isBlank(after);
+    const canClose = !isBlank(before);
+    if (!canOpen && !canClose) continue;
+
+    markers.push({ value: match[0], start, end, canOpen, canClose });
   }
   return markers;
+}
+
+function isWordCharacter(character) {
+  return /[\p{L}\p{N}]/u.test(character);
+}
+
+function isBlank(character) {
+  return character === "" || /\s/u.test(character);
 }
