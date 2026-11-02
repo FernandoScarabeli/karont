@@ -3,7 +3,12 @@ import { BridgeError } from "@karont/contract";
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { getBridge } from "../bridge/index.ts";
 import { t } from "../i18n/pt-BR.ts";
-import { cacheConversationSnapshot, getConversationSnapshot } from "./conversationCache.ts";
+import {
+  cacheActiveConversationSnapshot,
+  cacheConversationSnapshot,
+  getActiveConversationSnapshot,
+  getConversationSnapshot,
+} from "./conversationCache.ts";
 import {
   INITIAL_MESSAGE_WINDOW_SIZE,
   OLDER_MESSAGE_PAGE_SIZE,
@@ -57,8 +62,13 @@ const initialState: State = {
   responseFinishedId: null,
 };
 
-export function useConversation(conversationId: string) {
-  const [state, dispatch] = useReducer(reducer, conversationId, createInitialState);
+export function useConversation(conversationId: string, isActivePane = true) {
+  const [state, dispatch] = useReducer(
+    reducer,
+    { conversationId, preserveActiveSnapshot: isActivePane },
+    ({ conversationId: id, preserveActiveSnapshot }) =>
+      createInitialState(id, preserveActiveSnapshot),
+  );
 
   const messages = useMemo(
     () =>
@@ -76,12 +86,14 @@ export function useConversation(conversationId: string) {
 
   useEffect(() => {
     if (!state.conversation) return;
-    cacheConversationSnapshot({
+    const snapshot = {
       conversation: state.conversation,
       messages,
       hasOlderMessages: state.hasOlderMessages,
-    });
-  }, [messages, state.conversation, state.hasOlderMessages]);
+    };
+    cacheConversationSnapshot(snapshot);
+    if (isActivePane) cacheActiveConversationSnapshot(snapshot);
+  }, [isActivePane, messages, state.conversation, state.hasOlderMessages]);
 
   useEffect(() => {
     const bridge = getBridge();
@@ -266,8 +278,10 @@ export function useConversation(conversationId: string) {
   };
 }
 
-function createInitialState(conversationId: string): State {
-  const snapshot = getConversationSnapshot(conversationId);
+function createInitialState(conversationId: string, preserveActiveSnapshot: boolean): State {
+  const cachedSnapshot = getConversationSnapshot(conversationId);
+  const activeSnapshot = preserveActiveSnapshot ? getActiveConversationSnapshot() : undefined;
+  const snapshot = cachedSnapshot ?? activeSnapshot;
   if (!snapshot) return initialState;
   const messagesById: Record<string, ConversationMessage> = {};
   const messageIds: string[] = [];

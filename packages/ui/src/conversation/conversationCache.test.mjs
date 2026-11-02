@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   BoundedMemoryCache,
+  cacheActiveConversationSnapshot,
   cacheConversationSnapshot,
   cacheGitInfo,
   conversationCacheLimits,
+  getActiveConversationSnapshot,
   getCachedGitInfo,
   getConversationSnapshot,
   invalidateCachedGitInfo,
@@ -55,4 +57,25 @@ test("limita as mensagens mantidas em cada snapshot de conversa", () => {
   assert.equal(snapshot.messages.length, conversationCacheLimits.messagesPerConversation);
   assert.equal(snapshot.messages[0].id, "message-5");
   assert.equal(snapshot.hasOlderMessages, true);
+});
+
+test("preserva o snapshot ativo quando ele sai do cache limitado", () => {
+  const active = {
+    conversation: { id: "conversation-active-snapshot" },
+    messages: [{ id: "message-active-snapshot" }],
+    hasOlderMessages: false,
+  };
+  cacheConversationSnapshot(active);
+  cacheActiveConversationSnapshot(active);
+
+  for (let index = 0; index <= conversationCacheLimits.conversations; index += 1) {
+    cacheConversationSnapshot({
+      conversation: { id: `conversation-eviction-${index}` },
+      messages: [],
+      hasOlderMessages: false,
+    });
+  }
+
+  assert.equal(getConversationSnapshot(active.conversation.id), undefined);
+  assert.deepEqual(getActiveConversationSnapshot(), active);
 });

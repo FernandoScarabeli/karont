@@ -67,19 +67,33 @@ const agentModels = new BoundedMemoryCache<AgentModels["agent"], AgentModels>(
 const gitInfoByPath = new BoundedMemoryCache<string, CachedGitInfo>(
   conversationCacheLimits.folders,
 );
+let activeConversationSnapshot: ConversationSnapshot | undefined;
 
 export function getConversationSnapshot(id: string): ConversationSnapshot | undefined {
   return conversations.get(id);
 }
 
 export function cacheConversationSnapshot(snapshot: ConversationSnapshot): void {
+  conversations.set(snapshot.conversation.id, limitConversationSnapshot(snapshot));
+}
+
+function limitConversationSnapshot(snapshot: ConversationSnapshot): ConversationSnapshot {
   const maxMessages = conversationCacheLimits.messagesPerConversation;
   const messages = snapshot.messages.slice(-maxMessages);
-  conversations.set(snapshot.conversation.id, {
+  return {
     ...snapshot,
     messages,
     hasOlderMessages: snapshot.hasOlderMessages || messages.length < snapshot.messages.length,
-  });
+  };
+}
+
+export function cacheActiveConversationSnapshot(snapshot: ConversationSnapshot): void {
+  activeConversationSnapshot =
+    conversations.get(snapshot.conversation.id) ?? limitConversationSnapshot(snapshot);
+}
+
+export function getActiveConversationSnapshot(): ConversationSnapshot | undefined {
+  return activeConversationSnapshot;
 }
 
 export function getCachedAgentModels(agent: AgentModels["agent"]): AgentModels | undefined {

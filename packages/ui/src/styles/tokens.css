@@ -109,6 +109,9 @@
   --k-motion-fast-exit: 60ms;
   --k-motion-moderate-exit: 120ms;
   --k-motion-slow-exit: 160ms;
+  --k-motion-conversation-blur: 150ms;
+  --k-blur-conversation-radius: 5px;
+  --k-blur-conversation-opacity: 0.76;
   /* Molas em linear(): criticamente amortecida (moderate, 160 ms) e bounce 0,12 (slow). */
   --k-ease-spring-moderate: linear(
     0,
@@ -340,6 +343,7 @@
   :root {
     --k-motion-fast: 0ms;
     --k-motion-fast-exit: 0ms;
+    --k-motion-conversation-blur: 0ms;
     --k-ease-spring-moderate: var(--k-ease);
     --k-ease-spring-slow: var(--k-ease);
   }
