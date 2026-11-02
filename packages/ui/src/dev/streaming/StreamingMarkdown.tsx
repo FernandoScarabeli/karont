@@ -18,6 +18,15 @@ import { splitIntoWords } from "./streamingText.mjs";
 
 type HighlightPlugin = typeof import("rehype-highlight").default;
 type Motion = "none" | "fade" | "blur";
+export type CaretPhase = "off" | "streaming" | "idle" | "done";
+
+type HastNode = {
+  type: string;
+  value?: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+  children?: HastNode[];
+};
 
 export type RenderMetrics = { latestBlockRenders: number };
 
@@ -31,11 +40,13 @@ function loadHighlightPlugin(): Promise<HighlightPlugin | null> {
 }
 
 export const StreamingMarkdown = memo(function StreamingMarkdown({
+  caretPhase = "off",
   markdown,
   done,
   motion,
   metrics,
 }: {
+  caretPhase?: CaretPhase;
   markdown: string;
   done: boolean;
   motion: Motion;
@@ -59,7 +70,10 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({
   }, [hasHighlightableCode]);
 
   return (
-    <div className={`${conversationStyles.markdown} ${styles.markdownSurface}`}>
+    <div
+      className={`${conversationStyles.markdown} ${styles.markdownSurface}`}
+      data-caret={caretPhase}
+    >
       {blocks.map((block, index) => {
         const latest = index === blocks.length - 1;
         const useHighlight =
@@ -67,6 +81,7 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({
         return (
           <MarkdownBlock
             block={block.markdown}
+            caret={latest && caretPhase !== "off"}
             key={block.start}
             latest={latest}
             metrics={metrics}
@@ -84,6 +99,7 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({
 const MarkdownBlock = memo(
   function MarkdownBlock({
     block,
+    caret,
     latest,
     metrics,
     motion,
@@ -92,6 +108,7 @@ const MarkdownBlock = memo(
     useHighlight,
   }: {
     block: string;
+    caret: boolean;
     latest: boolean;
     metrics: RenderMetrics;
     motion: Motion;
@@ -152,7 +169,10 @@ const MarkdownBlock = memo(
     return (
       <Markdown
         components={components}
-        rehypePlugins={useHighlight && highlightPlugin ? [highlightPlugin] : []}
+        rehypePlugins={[
+          ...(useHighlight && highlightPlugin ? [highlightPlugin] : []),
+          ...(caret ? [rehypeCaret] : []),
+        ]}
         remarkPlugins={[remarkGfm]}
       >
         {block}
@@ -162,12 +182,48 @@ const MarkdownBlock = memo(
   (previous, next) =>
     previous.block === next.block &&
     previous.latest === next.latest &&
+    previous.caret === next.caret &&
     previous.metrics === next.metrics &&
     previous.motion === next.motion &&
     previous.start === next.start &&
     (!next.useHighlight || previous.highlightPlugin === next.highlightPlugin) &&
     previous.useHighlight === next.useHighlight,
 );
+
+const CARET_CLASS = styles.caret;
+
+// Appends the block caret inside the deepest element that holds the last
+// visible text, so it sits right after the last character on the same line.
+function rehypeCaret() {
+  return (tree: HastNode) => {
+    const host = findLastTextHost(tree);
+    if (!host) return;
+    host.children ??= [];
+    host.children.push({
+      type: "element",
+      tagName: "span",
+      properties: { className: [CARET_CLASS], ariaHidden: true },
+      children: [],
+    });
+  };
+}
+
+function findLastTextHost(node: HastNode): HastNode | null {
+  const children = node.children ?? [];
+  for (let index = children.length - 1; index >= 0; index -= 1) {
+    const child = children[index];
+    if (!child) continue;
+    if (child.type === "text") {
+      if ((child.value ?? "").trim() !== "") return node;
+      continue;
+    }
+    if (child.type === "element") {
+      const host = findLastTextHost(child);
+      if (host) return host;
+    }
+  }
+  return null;
+}
 
 type TextContext = {
   blockStart: number;

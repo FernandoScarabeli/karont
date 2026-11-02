@@ -4,6 +4,11 @@
   --streaming-motion-shift: 2px;
   --streaming-panel-min-height: 350px;
   --streaming-column-max-width: 760px;
+  --streaming-caret-width: 8px;
+  --streaming-caret-gap: 2px;
+  --streaming-caret-blink: 1s;
+  --streaming-caret-fade-delay: 1s;
+  --streaming-caret-fade: 1s;
   --streaming-content-max-width: 1440px;
   min-height: 100%;
   padding: var(--k-space-5) var(--k-space-6) var(--k-space-6);
@@ -337,5 +342,60 @@
     filter: none;
     opacity: 1;
     transform: none;
+  }
+}
+
+/* Block caret for the typewriter version. Solid while streaming, blinks when idle,
+   fades out one second after the stream is done. */
+.caret {
+  display: inline-block;
+  width: var(--streaming-caret-width);
+  height: 1.05em;
+  margin-left: var(--streaming-caret-gap);
+  vertical-align: text-bottom;
+  background: var(--k-color-text-primary);
+}
+
+[data-caret="idle"] .caret {
+  animation: streamingCaretBlink var(--streaming-caret-blink) step-end infinite;
+}
+
+[data-caret="done"] .caret {
+  animation: streamingCaretFade var(--streaming-caret-fade) ease var(--streaming-caret-fade-delay)
+    forwards;
+}
+
+@keyframes streamingCaretBlink {
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes streamingCaretFade {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-caret="idle"] .caret {
+    animation: none;
+  }
+
+  [data-caret="done"] .caret {
+    animation: none;
+    display: none;
   }
 }

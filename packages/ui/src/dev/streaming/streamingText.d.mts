@@ -33,3 +33,12 @@ export function splitIntoTokens(
 ): TextToken[];
 export function getWordsPerSecond(backlogWords: number): number;
 export function planWordRelease(input: WordReleaseInput): WordReleasePlan;
+export function getCharsPerSecond(backlogChars: number): number;
+export function planCharRelease(input: {
+  backlogChars: number;
+  elapsedMs: number;
+  done?: boolean;
+  carryChars?: number;
+  drainMsLeft?: number;
+}): { count: number; carryChars: number; drainMsLeft: number };
+export function getRevealCeiling(text: string, done?: boolean): number;
