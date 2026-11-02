@@ -177,6 +177,10 @@ export const methods = {
     }),
     result: z.strictObject({ conversations: z.array(conversationSchema) }),
   },
+  "conversation.count": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ count: z.number().int().nonnegative() }),
+  },
   "conversation.get": {
     params: z.strictObject({ id: z.string().min(1) }),
     result: z.strictObject({ conversation: conversationSchema, messages: z.array(messageSchema) }),
@@ -224,6 +228,10 @@ export const methods = {
   "conversation.delete": {
     params: z.strictObject({ id: z.string().min(1) }),
     result: z.strictObject({ deleted: z.boolean() }),
+  },
+  "conversation.deleteAll": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ deleted: z.number().int().nonnegative() }),
   },
   "conversation.rename": {
     params: z.strictObject({

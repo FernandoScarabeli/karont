@@ -14,11 +14,14 @@ import { validateAttachments } from "../attachments.ts";
 import { DeltaCoalescer } from "../coalescer.ts";
 import {
   addMessage,
+  countConversations,
   createConversation,
+  deleteAllConversations,
   deleteConversation,
   getAgentSession,
   getConversation,
   getSetting,
+  listConversationStates,
   listConversations,
   listMessages,
   markConversationSeen,
@@ -88,6 +91,8 @@ export class ConversationManager {
   #codexModelFetchedAt: string | undefined;
   #codexModelLoadPromise: Promise<void> | undefined;
   #closing = false;
+  #deletingAll = false;
+  readonly #agentOperations = new Set<Promise<unknown>>();
 
   constructor(options: ConversationManagerOptions) {
     this.#db = options.db;
@@ -116,7 +121,12 @@ export class ConversationManager {
   }
 
   create(input: NewConversation): Conversation {
+    this.#assertNotDeletingAll();
     return createConversation(this.#db, input);
+  }
+
+  count(): number {
+    return countConversations(this.#db);
   }
 
   async rename(id: string, title: string): Promise<Conversation> {
@@ -176,6 +186,16 @@ export class ConversationManager {
     plan?: boolean,
     attachments?: ConversationAttachment[],
   ): Promise<{ userMessage: ConversationMessage; agentMessage: ConversationMessage }> {
+    this.#assertNotDeletingAll();
+    return this.#trackAgentOperation(this.#send(id, text, plan, attachments));
+  }
+
+  async #send(
+    id: string,
+    text: string,
+    plan?: boolean,
+    attachments?: ConversationAttachment[],
+  ): Promise<{ userMessage: ConversationMessage; agentMessage: ConversationMessage }> {
     const validatedAttachments = validateAttachments(attachments);
     const conversation = this.#requireConversation(id);
     if (conversation.state === "working" || conversation.state === "waiting")
@@ -228,6 +248,11 @@ export class ConversationManager {
   }
 
   async retry(id: string, messageId?: string): Promise<ConversationMessage> {
+    this.#assertNotDeletingAll();
+    return this.#trackAgentOperation(this.#retry(id, messageId));
+  }
+
+  async #retry(id: string, messageId?: string): Promise<ConversationMessage> {
     const conversation = this.#requireConversation(id);
     if (conversation.state === "working" || conversation.state === "waiting")
       throw new Error("A conversa já está em andamento.");
@@ -269,6 +294,7 @@ export class ConversationManager {
   }
 
   async respond(id: string, partId: string, response: AdapterResponse): Promise<void> {
+    this.#assertNotDeletingAll();
     const pending = this.#pendingParts.get(partId);
     if (!pending || pending.conversationId !== id)
       throw new Error("A parte não está aguardando resposta nesta conversa.");
@@ -312,6 +338,7 @@ export class ConversationManager {
   }
 
   async remove(id: string): Promise<boolean> {
+    this.#assertNotDeletingAll();
     const active = this.#active.get(id);
     if (active) {
       if (active.idleTimer) clearTimeout(active.idleTimer);
@@ -319,6 +346,52 @@ export class ConversationManager {
       this.#active.delete(id);
     }
     return deleteConversation(this.#db, id);
+  }
+
+  async deleteAll(): Promise<number> {
+    this.#assertNotDeletingAll();
+    this.#deletingAll = true;
+    try {
+      await Promise.all(
+        [...this.#agentOperations].map((operation) => operation.catch(() => undefined)),
+      );
+
+      const conversations = listConversationStates(this.#db);
+      await Promise.all(
+        conversations
+          .filter(({ state }) => state === "working" || state === "waiting")
+          .map(({ id }) => this.stop(id)),
+      );
+
+      const active = [...this.#active.entries()];
+      for (const [, session] of active) {
+        if (session.idleTimer) clearTimeout(session.idleTimer);
+      }
+      await Promise.all(active.map(([, session]) => session.adapter.dispose()));
+      await Promise.all(active.map(([, session]) => session.eventQueue));
+      await Promise.all(
+        active.map(async ([, session]) => {
+          await this.#flushCoalescers(session);
+          this.#flushMessageSave(session);
+        }),
+      );
+      for (const [id] of active) this.#active.delete(id);
+
+      const deleted = deleteAllConversations(this.#db);
+      const deletedIds = new Set(conversations.map(({ id }) => id));
+      for (const id of deletedIds) this.#titleRequests.delete(id);
+      for (const [partId, pending] of this.#pendingParts) {
+        if (deletedIds.has(pending.conversationId)) this.#pendingParts.delete(partId);
+      }
+      if (deleted > 0) {
+        await this.#broadcast({ event: "conversation.deletedAll", payload: { deleted } }).catch(
+          () => undefined,
+        );
+      }
+      return deleted;
+    } finally {
+      this.#deletingAll = false;
+    }
   }
 
   async models(agent: "claude" | "codex"): Promise<{
@@ -812,6 +885,15 @@ export class ConversationManager {
     const conversation = getConversation(this.#db, id);
     if (!conversation) throw new Error("Conversa não encontrada.");
     return conversation;
+  }
+
+  #assertNotDeletingAll(): void {
+    if (this.#deletingAll) throw new Error("As conversas estão sendo apagadas.");
+  }
+
+  #trackAgentOperation<T>(operation: Promise<T>): Promise<T> {
+    this.#agentOperations.add(operation);
+    return operation.finally(() => this.#agentOperations.delete(operation));
   }
 
   #upsertPart(message: ConversationMessage, part: MessagePart): void {

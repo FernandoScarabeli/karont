@@ -113,6 +113,8 @@ export function createHandlers({
         };
       case "conversation.list":
         return { conversations: conversationManager.list(request.params) };
+      case "conversation.count":
+        return { count: conversationManager.count() };
       case "conversation.get": {
         const result = conversationManager.get(request.params.id);
         if (!result) throw new ServiceError("unavailable", "Conversa não encontrada.");
@@ -162,6 +164,13 @@ export function createHandlers({
       case "conversation.delete":
         return conversationManager
           .remove(request.params.id)
+          .then((deleted) => ({ deleted }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
+      case "conversation.deleteAll":
+        return conversationManager
+          .deleteAll()
           .then((deleted) => ({ deleted }))
           .catch((error: unknown) => {
             throw conversationError(error);

@@ -3,7 +3,13 @@ import { access, chmod, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "nod
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { type AnyEvent, type ParsedRequest, parseRequest } from "@karont/contract";
+import {
+  type AnyEvent,
+  type Conversation,
+  type ParsedRequest,
+  parseRequest,
+} from "@karont/contract";
+import type { AdapterFactory, AgentAdapter } from "./agents/adapter.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
 import { openDatabase, recordRecentFolder } from "./db.ts";
 import type { HandlerConnection } from "./handlers.ts";
@@ -194,6 +200,125 @@ test("conversation.markSeen limpa uma vez, persiste e não emite ao repetir", as
     assert.equal(events.length, 0);
   } finally {
     db.close();
+  }
+});
+
+test("conversation.deleteAll remove conversas e dados, para o agente e preserva terminais", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-delete-all-conversations-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  let interrupted = false;
+  let disposed = false;
+  const adapterFactory: AdapterFactory = (_conversation, emit) => {
+    const adapter: AgentAdapter = {
+      start: async () => undefined,
+      send: async () => emit({ kind: "state", state: "working" }),
+      respond: async () => undefined,
+      interrupt: async () => {
+        interrupted = true;
+        emit({ kind: "turn-end", status: "interrupted" });
+      },
+      dispose: async () => {
+        disposed = true;
+      },
+    };
+    return adapter;
+  };
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void events.push(event),
+    ptyFactory: () => new TestPty(),
+    adapterFactory,
+    env: { PATH: "", SHELL: "/bin/bash" },
+    homeDir: root,
+  });
+  context.after(async () => {
+    await handlers.closeAgents();
+    await handlers.closeTerminals();
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const create = async (title: string) => {
+    const result = (await handlers.handle(
+      request("conversation.create", { agent: "claude", cwd: root, title }),
+      connection([]),
+    )) as { conversation: Conversation };
+    return result.conversation;
+  };
+  const conversations = [
+    await create("Em andamento"),
+    await create("Arquivada"),
+    await create("Fixada"),
+  ];
+  await handlers.handle(
+    request("conversation.setArchived", { id: conversations[1]?.id, archived: true }),
+    connection([]),
+  );
+  await handlers.handle(
+    request("conversation.setPinned", { id: conversations[2]?.id, pinned: true }),
+    connection([]),
+  );
+  for (const conversation of conversations) {
+    db.prepare(
+      "INSERT INTO messages (id,conversation_id,author,status,parts,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+    ).run(
+      `message-${conversation.id}`,
+      conversation.id,
+      "user",
+      "done",
+      "[]",
+      conversation.createdAt,
+      conversation.updatedAt,
+    );
+    db.prepare(
+      "INSERT INTO agent_sessions (conversation_id,session_id,updated_at) VALUES (?,?,?)",
+    ).run(conversation.id, `session-${conversation.id}`, conversation.updatedAt);
+  }
+  const terminal = (await handlers.handle(
+    request("terminals.open", { cwd: root, cols: 80, rows: 24 }),
+    connection([]),
+  )) as { terminal: { id: string } };
+  await handlers.handle(
+    request("conversation.send", { id: conversations[0]?.id, text: "Trabalhe" }),
+    connection([]),
+  );
+
+  assert.deepEqual(await handlers.handle(request("conversation.count", {}), connection([])), {
+    count: conversations.length,
+  });
+  const result = await handlers.handle(request("conversation.deleteAll", {}), connection([]));
+
+  assert.deepEqual(result, { deleted: conversations.length });
+  assert.equal(interrupted, true);
+  assert.equal(disposed, true);
+  assert.equal(
+    (db.prepare("SELECT COUNT(*) AS count FROM conversations").get() as { count: number }).count,
+    0,
+  );
+  assert.equal(
+    (db.prepare("SELECT COUNT(*) AS count FROM messages").get() as { count: number }).count,
+    0,
+  );
+  assert.equal(
+    (db.prepare("SELECT COUNT(*) AS count FROM agent_sessions").get() as { count: number }).count,
+    0,
+  );
+  assert.deepEqual(
+    (
+      (await handlers.handle(request("terminals.list", {}), connection([]))) as {
+        terminals: { id: string }[];
+      }
+    ).terminals.map(({ id }) => id),
+    [terminal.terminal.id],
+  );
+  const deletedEvent = events.find((event) => event.event === "conversation.deletedAll");
+  assert.ok(deletedEvent);
+  if (deletedEvent?.event === "conversation.deletedAll") {
+    assert.deepEqual(deletedEvent.payload, { deleted: conversations.length });
   }
 });
 

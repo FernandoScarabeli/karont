@@ -1,9 +1,12 @@
 import { CircleAlert } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
+import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { TextField } from "../components/TextField/TextField.tsx";
+import { clearAllConversationsFromIndex } from "../conversation/useConversationIndex.ts";
 import { t } from "../i18n/pt-BR.ts";
+import { useNavigation } from "../navigation/NavigationContext.tsx";
 import styles from "./GeneralSection.module.css";
 
 const CLOSE_BEHAVIOR_SETTING = "app.closeBehavior";
@@ -273,6 +276,187 @@ export function GeneralSection() {
           <span>{saveError}</span>
         </p>
       ) : null}
+      <DataSection />
+    </section>
+  );
+}
+
+function DataSection() {
+  const bridge = useMemo(() => getBridge(), []);
+  const { closeAllConversationPanes } = useNavigation();
+  const [count, setCount] = useState<number | null>(null);
+  const [isLoadingCount, setIsLoadingCount] = useState(true);
+  const [countError, setCountError] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [announcement, setAnnouncement] = useState("");
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const countRef = useRef<number | null>(null);
+  const mountedRef = useRef(false);
+
+  const updateCount = useCallback((nextCount: number | null) => {
+    countRef.current = nextCount;
+    setCount(nextCount);
+  }, []);
+
+  const loadConversationCount = useCallback(async () => {
+    if (!bridge) {
+      updateCount(null);
+      setIsLoadingCount(false);
+      setCountError(t.settings.noBridge);
+      return null;
+    }
+    setIsLoadingCount(true);
+    setCountError("");
+    try {
+      const result = await bridge.request("conversation.count", {});
+      if (mountedRef.current) updateCount(result.count);
+      return result.count;
+    } catch (error) {
+      if (mountedRef.current) {
+        setCountError(errorMessage(error, t.settings.conversationCountLoadFailed));
+      }
+      return null;
+    } finally {
+      if (mountedRef.current) setIsLoadingCount(false);
+    }
+  }, [bridge, updateCount]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void loadConversationCount();
+    if (!bridge)
+      return () => {
+        mountedRef.current = false;
+      };
+    const unsubscribe = bridge.onEvent((event) => {
+      if (event.event === "conversation.deletedAll") updateCount(0);
+      else if (event.event === "conversation.stateChanged" && countRef.current === 0) {
+        void loadConversationCount();
+      }
+    });
+    return () => {
+      mountedRef.current = false;
+      unsubscribe();
+    };
+  }, [bridge, loadConversationCount, updateCount]);
+
+  useEffect(() => {
+    if (!announcement) return;
+    const timeout = window.setTimeout(() => setAnnouncement(""), 4_000);
+    return () => window.clearTimeout(timeout);
+  }, [announcement]);
+
+  async function openConfirmation() {
+    if (!bridge || isLoadingCount || isDeleting) return;
+    setDeleteError("");
+    setAnnouncement("");
+    const currentCount = await loadConversationCount();
+    if (currentCount && currentCount > 0) setIsDialogOpen(true);
+  }
+
+  async function deleteAllConversations() {
+    if (!bridge || isDeleting || count === null || count < 1) return;
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await bridge.request("conversation.deleteAll", {});
+      updateCount(0);
+      setIsDialogOpen(false);
+      setAnnouncement(t.settings.conversationsDeleted);
+      closeAllConversationPanes();
+      clearAllConversationsFromIndex();
+      window.requestAnimationFrame(() => headingRef.current?.focus());
+    } catch (error) {
+      setDeleteError(errorMessage(error, t.settings.deleteAllConversationsFailed));
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby="settings-data-title" className={styles.dataSection}>
+      <h2 className={styles.dataHeading} id="settings-data-title" ref={headingRef} tabIndex={-1}>
+        {t.settings.dataTitle}
+      </h2>
+      <div className={styles.dataRow}>
+        <span className={styles.dataLabel}>{t.settings.deleteAllConversations}</span>
+        <Button
+          disabled={!bridge || isLoadingCount || isDeleting || count === 0}
+          onClick={() => void openConfirmation()}
+          variant="danger"
+        >
+          {count === 0 && !isLoadingCount
+            ? t.settings.noConversations
+            : t.settings.deleteAllConversationsAction}
+        </Button>
+      </div>
+      <div className={styles.dataFeedback}>
+        {isLoadingCount ? (
+          <span className={styles.announcement} role="status">
+            {t.settings.loadingConversationCount}
+          </span>
+        ) : null}
+        {announcement ? (
+          <span className={styles.announcement} role="status">
+            {announcement}
+          </span>
+        ) : null}
+        {countError ? (
+          <div className={styles.errorState}>
+            <p className={styles.errorMessage} role="alert">
+              <CircleAlert aria-hidden="true" size={16} strokeWidth={1.8} />
+              <span>{countError}</span>
+            </p>
+            <Button onClick={() => void loadConversationCount()} size="sm" variant="secondary">
+              {t.settings.retry}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      <Dialog
+        description={t.settings.deleteAllConversationsDescription(count ?? 0)}
+        initialFocusRef={cancelButtonRef as RefObject<HTMLElement | null>}
+        onClose={() => {
+          if (isDeleting) return;
+          setIsDialogOpen(false);
+          setDeleteError("");
+        }}
+        open={isDialogOpen}
+        title={t.settings.deleteAllConversationsTitle}
+        footer={
+          <>
+            <Button
+              disabled={isDeleting}
+              onClick={() => {
+                setIsDialogOpen(false);
+                setDeleteError("");
+              }}
+              ref={cancelButtonRef}
+              variant="secondary"
+            >
+              {t.settings.deleteAllConversationsCancel}
+            </Button>
+            <Button
+              disabled={isDeleting}
+              onClick={() => void deleteAllConversations()}
+              variant="danger"
+            >
+              {isDeleting
+                ? t.settings.deletingConversations
+                : t.settings.deleteAllConversationsConfirm}
+            </Button>
+          </>
+        }
+      >
+        {deleteError ? (
+          <p className={styles.errorMessage} role="alert">
+            {deleteError}
+          </p>
+        ) : null}
+      </Dialog>
     </section>
   );
 }
