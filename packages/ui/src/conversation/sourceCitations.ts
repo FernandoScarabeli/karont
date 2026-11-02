@@ -45,6 +45,7 @@ const descriptiveLinkLabels = new Set([
   "noticia",
   "report",
   "read",
+  "relatorio",
   "saiba mais",
   "site",
   "source",
@@ -66,8 +67,8 @@ export function findCitationForLink(
     (candidate) => normalizeCitationUrl(candidate.url) === normalizedUrl,
   );
   const source = cleanCitationSource(matchedSource, url);
-  const site = sourceSiteName(url);
-  const domainLabel = isDomainLabel(label, url, site);
+  const site = citationSiteName(label, url);
+  const domainLabel = isDomainLabel(label, url, sourceSiteName(url));
   const trailingReference = isTrailingReference(markdown, endOffset);
   const shortMatchedReference =
     source !== undefined &&
@@ -224,4 +225,16 @@ function isDescriptiveLinkLabel(label: string): boolean {
     .toLowerCase()
     .replace(/[.!?]+$/u, "");
   return descriptiveLinkLabels.has(normalized) || /\s/u.test(normalized);
+}
+
+function citationSiteName(label: string, url: string): string {
+  const name = label.trim().replace(/\s+/gu, " ");
+  const normalized = name
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+  const isUrl = /^(?:https?:\/\/)?(?:www\.)?[^\s/]+\.[^\s/]+(?:\/.*)?$/iu.test(name);
+  if (!name || /^\d{1,4}$/u.test(name) || isUrl || descriptiveLinkLabels.has(normalized))
+    return sourceSiteName(url);
+  return name;
 }
