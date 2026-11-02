@@ -44,12 +44,7 @@ import {
 import { ConversationMessageList } from "./ConversationMessageList.tsx";
 import { type ResponseInput, TodosPart } from "./ConversationParts.tsx";
 import styles from "./ConversationView.module.css";
-import {
-  type CachedGitInfo,
-  cacheAgentModels,
-  getCachedAgentModels,
-  getCachedGitInfo,
-} from "./conversationCache.ts";
+import { cacheAgentModels, getCachedAgentModels, getCachedGitInfo } from "./conversationCache.ts";
 import { getConversationHistory } from "./conversationHistory.ts";
 import { formatFolderPath } from "./displayText.ts";
 import { FollowBottomContext } from "./followBottom.ts";
@@ -65,14 +60,14 @@ import {
   OLDER_MESSAGE_LOAD_ROOT_MARGIN_PX,
   olderMessageCursor,
 } from "./messageWindow.ts";
+import { findModelByIdOrAlias } from "./modelCatalog.ts";
 import {
   ConversationTransitionMachine,
   type ConversationTransitionStatus,
-  isComposerReadyForConversation,
   isConversationForTarget,
   useConversation,
 } from "./useConversation.ts";
-import { upsertConversation } from "./useConversationIndex.ts";
+import { getConversationSummary, upsertConversation } from "./useConversationIndex.ts";
 import { getFinalRunningActions } from "./workingLabel.ts";
 
 type ConversationOptionsPatch = {
@@ -82,14 +77,6 @@ type ConversationOptionsPatch = {
   fast?: Conversation["fast"];
   plan?: Conversation["plan"];
 };
-
-type ConversationTransitionSource = {
-  conversation: Conversation;
-  gitInfo: CachedGitInfo | null;
-  gitInfoLoading: boolean;
-};
-
-type TransitionSurface = "messages" | "composer" | "folder";
 
 export function ConversationView({
   id,
@@ -195,12 +182,9 @@ export function ConversationView({
   const previousConversationIdRef = useRef(id);
   const initiallyHadConversationRef = useRef(Boolean(conversation));
   const messageRegionRef = useRef<HTMLDivElement>(null);
-  const composerControlsRef = useRef<HTMLDivElement>(null);
-  const composerBelowRef = useRef<HTMLDivElement>(null);
-  const transitionSourceRef = useRef<ConversationTransitionSource | null>(null);
-  const transitionMachineRefs = useRef<
-    Partial<Record<TransitionSurface, ConversationTransitionMachine>>
-  >({});
+  const messageTransitionMachineRef = useRef<ConversationTransitionMachine | null>(null);
+  const conversationForTransitionRef = useRef(conversation);
+  conversationForTransitionRef.current = conversation;
   const messageListRef = useRef<HTMLDivElement>(null);
   const olderMessagesSentinelRef = useRef<HTMLDivElement>(null);
   const olderMessagesObserverRef = useRef<IntersectionObserver | null>(null);
@@ -229,11 +213,19 @@ export function ConversationView({
     setFollowState(state);
   }, []);
   activeConversationIdRef.current = id;
-  const agent = conversation?.agent;
+  const indexedConversation = getConversationSummary(id);
+  const targetConversation = isConversationForTarget(conversation, id)
+    ? conversation
+    : (indexedConversation ?? null);
+  const composerIsWorking = targetConversation?.state === "working";
+  const composerIsWaiting = targetConversation?.state === "waiting";
+  const agent = targetConversation?.agent;
   const currentModels =
     models?.agent === agent ? models : agent ? (getCachedAgentModels(agent) ?? null) : null;
   const visibleOptions = optimisticConversationIdRef.current === id ? optimisticOptions : {};
-  const visibleConversation = conversation ? { ...conversation, ...visibleOptions } : null;
+  const visibleConversation = targetConversation
+    ? { ...targetConversation, ...visibleOptions }
+    : null;
 
   useEffect(() => {
     if (!agent || !bridge) {
@@ -296,7 +288,9 @@ export function ConversationView({
   canLoadOlderMessagesRef.current = canLoadOlderMessages;
   const hasOlderMessagesRef = useRef(hasOlderMessages);
   hasOlderMessagesRef.current = hasOlderMessages;
-  const historyOpen = activePopover === "history";
+  const conversationChanged = previousConversationIdRef.current !== id;
+  const composerActivePopover = conversationChanged ? null : activePopover;
+  const historyOpen = composerActivePopover === "history";
   const historyEntries = useMemo(
     () => (historyOpen ? getConversationHistory(orderedMessages) : []),
     [historyOpen, orderedMessages],
@@ -517,97 +511,63 @@ export function ConversationView({
     Boolean(conversation?.id === id && bridge && !isWaiting && !isResponding && !isSending),
     id,
   );
-  const { info: gitInfo, loading: gitInfoLoading } = useGitInfo(conversation?.cwd, id);
-
-  if (!transitionSourceRef.current && conversation && conversation.id !== id) {
-    transitionSourceRef.current = {
-      conversation,
-      gitInfo: getCachedGitInfo(conversation.cwd) ?? gitInfo,
-      gitInfoLoading,
-    };
-  } else if (
-    transitionSourceRef.current &&
-    conversation?.id === transitionSourceRef.current.conversation.id
-  ) {
-    transitionSourceRef.current.gitInfo = getCachedGitInfo(conversation.cwd) ?? gitInfo;
-    transitionSourceRef.current.gitInfoLoading = gitInfoLoading;
-  }
-
+  const { info: gitInfo, loading: gitInfoLoading } = useGitInfo(targetConversation?.cwd, id);
   const isTargetConversationLoaded = isConversationForTarget(conversation, id);
-  const transitionSource = transitionSourceRef.current;
-  const composerDataReady = isComposerReadyForConversation(conversation, id, currentModels?.agent);
-  const folderDataReady = isTargetConversationLoaded && !gitInfoLoading;
-  const composerConversation =
-    transitionSource && !composerDataReady ? transitionSource.conversation : conversation;
-  const composerVisibleConversation = composerConversation
-    ? {
-        ...composerConversation,
-        ...(composerConversation.id === id ? visibleOptions : {}),
-      }
-    : null;
-  const composerModels = composerConversation
-    ? composerConversation.agent === agent
-      ? currentModels
-      : (getCachedAgentModels(composerConversation.agent) ?? null)
-    : null;
-  const folderConversation =
-    transitionSource && !folderDataReady ? transitionSource.conversation : conversation;
-  const folderGitInfo = transitionSource && !folderDataReady ? transitionSource.gitInfo : gitInfo;
-  const folderGitInfoLoading =
-    transitionSource && !folderDataReady ? transitionSource.gitInfoLoading : gitInfoLoading;
+  const composerConversation = targetConversation;
+  const composerVisibleConversation = visibleConversation;
+  const composerModels = currentModels;
+  const modelId = composerVisibleConversation?.model ?? null;
+  const modelIsListed = Boolean(modelId && findModelByIdOrAlias(composerModels, modelId));
+  const modelCapabilitiesUnknown = Boolean(
+    composerVisibleConversation && (!composerModels || (modelId && !modelIsListed)),
+  );
+  const composerModel = modelIsListed ? modelId : null;
+  const folderConversation = targetConversation;
+  const folderGitInfo =
+    gitInfo ?? (folderConversation ? getCachedGitInfo(folderConversation.cwd) : null);
+  const folderGitInfoLoading = folderConversation ? gitInfoLoading : false;
   useLayoutEffect(() => {
-    if (!transitionSource) return;
+    const currentConversation = conversationForTransitionRef.current;
+    if (!currentConversation || currentConversation.id === id) return;
 
-    const refs = {
-      messages: messageRegionRef,
-      composer: composerControlsRef,
-      folder: composerBelowRef,
-    };
-
-    const onStatusChange = (surface: TransitionSurface, status: ConversationTransitionStatus) => {
-      const element = refs[surface].current;
-      if (!element) return;
-      if (status === "waiting") {
-        element.inert = true;
-        element.setAttribute("aria-hidden", "true");
-        element.removeAttribute("data-conversation-blur");
-        return;
-      }
-      if (status === "done") {
-        element.removeAttribute("data-conversation-blur");
-        element.inert = false;
-        element.removeAttribute("aria-hidden");
-        return;
-      }
-      element.setAttribute("data-conversation-blur", status);
-    };
-
-    for (const surface of ["messages", "composer", "folder"] as const) {
-      if (!refs[surface].current) continue;
-      const machine = new ConversationTransitionMachine({
-        delayMs: MOTION_DELAY_MS.conversationBlur,
-        durationMs: MOTION_MS.conversationBlur,
-        setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
-        clearTimeout: (timer) => window.clearTimeout(timer),
-        prefersReducedMotion: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-        onStatusChange: (status) => onStatusChange(surface, status),
-      });
-      transitionMachineRefs.current[surface] = machine;
-      machine.start();
-    }
+    const machine = new ConversationTransitionMachine({
+      delayMs: MOTION_DELAY_MS.conversationBlur,
+      durationMs: MOTION_MS.conversationBlur,
+      setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
+      clearTimeout: (timer) => window.clearTimeout(timer),
+      prefersReducedMotion: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      onStatusChange: (status: ConversationTransitionStatus) => {
+        const element = messageRegionRef.current;
+        if (!element) return;
+        if (status === "waiting") {
+          element.inert = true;
+          element.setAttribute("aria-hidden", "true");
+          element.setAttribute("data-conversation-blur", status);
+          return;
+        }
+        if (status === "done") {
+          element.removeAttribute("data-conversation-blur");
+          element.inert = false;
+          element.removeAttribute("aria-hidden");
+          return;
+        }
+        element.setAttribute("data-conversation-blur", status);
+      },
+    });
+    messageTransitionMachineRef.current = machine;
+    machine.start();
 
     return () => {
-      for (const machine of Object.values(transitionMachineRefs.current)) machine?.dispose();
-      transitionMachineRefs.current = {};
+      machine.dispose();
+      if (messageTransitionMachineRef.current === machine) {
+        messageTransitionMachineRef.current = null;
+      }
     };
-  }, [transitionSource]);
+  }, [id]);
 
   useLayoutEffect(() => {
-    if (!transitionSource) return;
-    if (isTargetConversationLoaded) transitionMachineRefs.current.messages?.markReady();
-    if (composerDataReady) transitionMachineRefs.current.composer?.markReady();
-    if (folderDataReady) transitionMachineRefs.current.folder?.markReady();
-  }, [transitionSource, composerDataReady, folderDataReady, isTargetConversationLoaded]);
+    if (isTargetConversationLoaded) messageTransitionMachineRef.current?.markReady();
+  }, [isTargetConversationLoaded]);
 
   useEffect(() => {
     if (previousConversationIdRef.current === id) return;
@@ -1074,7 +1034,7 @@ export function ConversationView({
     }
   }
 
-  const title = conversation?.title ?? t.conversation.title;
+  const title = targetConversation?.title ?? t.conversation.title;
   const homeTodos = isTargetConversationLoaded && isWorking ? lastTodos : null;
   const folderPath = useMemo(
     () => (folderConversation ? formatFolderPath(folderConversation.cwd) : null),
@@ -1134,10 +1094,7 @@ export function ConversationView({
   const composerLeading = useMemo(
     () =>
       composerConversation ? (
-        <div
-          className={`${styles.composerControls} ${revealLoadedData ? styles.dataReveal : ""}`}
-          ref={composerControlsRef}
-        >
+        <div className={`${styles.composerControls} ${revealLoadedData ? styles.dataReveal : ""}`}>
           <AttachmentPicker disabled={!canAttachFiles} onFiles={composerAttachments.addFiles} />
           <Tooltip
             className={styles.agentTooltip}
@@ -1151,12 +1108,21 @@ export function ConversationView({
             </span>
           </Tooltip>
           <ComposerPreferences
-            activePopover={activePopover}
-            disabled={isWorking || isWaiting || isResponding || isSending || !bridge}
+            activePopover={composerActivePopover}
+            disabled={
+              composerIsWorking ||
+              composerIsWaiting ||
+              isResponding ||
+              isSending ||
+              !bridge ||
+              !isTargetConversationLoaded
+            }
             effort={composerVisibleConversation?.effort ?? ""}
+            effortFallback={composerVisibleConversation?.effort ?? ""}
             fastMode={composerVisibleConversation?.fast ?? false}
+            fastAvailabilityUnknown={modelCapabilitiesUnknown}
             mode={composerVisibleConversation?.mode ?? "edit"}
-            model={composerVisibleConversation?.model ?? null}
+            model={composerModel}
             models={composerModels}
             planMode={composerVisibleConversation?.plan ?? false}
             onActivePopoverChange={setActivePopover}
@@ -1171,7 +1137,6 @@ export function ConversationView({
         <ConversationLoadingControls />
       ),
     [
-      activePopover,
       bridge,
       canAttachFiles,
       changeEffort,
@@ -1180,17 +1145,20 @@ export function ConversationView({
       changeModel,
       changePlanMode,
       composerAttachments.addFiles,
+      composerActivePopover,
       composerConversation,
+      composerIsWaiting,
+      composerIsWorking,
       composerModels,
+      composerModel,
       composerVisibleConversation?.effort,
       composerVisibleConversation?.fast,
       composerVisibleConversation?.mode,
-      composerVisibleConversation?.model,
       composerVisibleConversation?.plan,
+      isTargetConversationLoaded,
       isResponding,
       isSending,
-      isWaiting,
-      isWorking,
+      modelCapabilitiesUnknown,
       revealLoadedData,
     ],
   );
@@ -1206,7 +1174,7 @@ export function ConversationView({
   );
   const composerBelow = useMemo(() => {
     return folderConversation ? (
-      <div className={styles.composerBelow} ref={composerBelowRef}>
+      <div className={styles.composerBelow}>
         <div className={styles.folderStrip}>
           <button
             aria-label={t.chat.folderCopy(folderConversation.cwd)}
@@ -1399,8 +1367,8 @@ export function ConversationView({
         <Composer
           ariaDescription={t.conversation.composerKeyboardDescription}
           below={composerBelow}
-          busy={isWorking}
-          disabled={isWaiting || isResponding || isSending}
+          busy={composerIsWorking}
+          disabled={composerIsWaiting || isResponding || isSending || !isTargetConversationLoaded}
           leading={composerLeading}
           trailing={
             conversation && userMessageCount >= 2 ? (
@@ -1426,14 +1394,15 @@ export function ConversationView({
           submitDisabled={
             !bridge ||
             !conversation ||
+            !isTargetConversationLoaded ||
             loading ||
             composerAttachments.isPreparing ||
             (!draft.trim() && composerAttachments.attachments.length === 0) ||
-            isWaiting ||
+            composerIsWaiting ||
             isSending
           }
-          submitLabel={isWorking ? t.chat.stop : t.chat.send}
-          submitTooltipLabel={isWorking ? t.chat.stop : t.chat.sendTooltip}
+          submitLabel={composerIsWorking ? t.chat.stop : t.chat.send}
+          submitTooltipLabel={composerIsWorking ? t.chat.stop : t.chat.sendTooltip}
           dragActive={composerAttachments.isDragging}
           dropMessage={t.chat.dropAttachments}
           value={draft}

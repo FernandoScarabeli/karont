@@ -73,6 +73,7 @@ export function modelDisplayName(models: AgentModels | null, modelId: string | n
 }
 
 const modes: ConversationMode[] = ["read-only", "edit", "full"];
+const fallbackEffortLevels: AgentEffort[] = ["low", "medium", "high", "xhigh", "max"];
 
 export function ComposerPreferences({
   models,
@@ -81,6 +82,8 @@ export function ComposerPreferences({
   mode,
   planMode,
   fastMode,
+  effortFallback = "",
+  fastAvailabilityUnknown = false,
   activePopover,
   onActivePopoverChange,
   disabled = false,
@@ -96,6 +99,8 @@ export function ComposerPreferences({
   mode: ConversationMode;
   planMode: boolean;
   fastMode: boolean;
+  effortFallback?: AgentEffort | "";
+  fastAvailabilityUnknown?: boolean;
   activePopover: ComposerPopoverName;
   onActivePopoverChange: (popover: ComposerPopoverName) => void;
   disabled?: boolean;
@@ -144,9 +149,15 @@ export function ComposerPreferences({
     });
   }
 
-  const efforts = effortsForModel(models, selectedModelId ?? "");
-  const selectedEffort = effort && efforts.includes(effort) ? effort : "";
-  const supportsFast = selectedModel?.supportsFast === true;
+  const listedEfforts = effortsForModel(models, selectedModelId ?? "");
+  const efforts = listedEfforts.length
+    ? listedEfforts
+    : !selectedModel && effortFallback
+      ? fallbackEffortLevels
+      : [];
+  const selectedEffort =
+    effort && efforts.includes(effort) ? effort : !selectedModel ? effortFallback : "";
+  const supportsFast = selectedModel?.supportsFast === true || (!selectedModel && fastMode);
   const fullAccess = mode === "full";
   const configAnchorRef =
     configAnchorName === "plan" && planMode
@@ -227,11 +238,13 @@ export function ComposerPreferences({
       {efforts.length > 0 ? (
         <EffortButton
           activePopover={activePopover !== null}
-          disabled={disabled}
+          disabled={disabled || !selectedModel}
           effort={selectedEffort}
           levels={efforts}
           onChange={onEffortChange}
         />
+      ) : fastAvailabilityUnknown ? (
+        <span aria-hidden="true" className={styles.effortPlaceholder} />
       ) : null}
       {supportsFast ? (
         <Tooltip
@@ -251,13 +264,18 @@ export function ComposerPreferences({
             className={[styles.iconTrigger, styles.fastTrigger].join(" ")}
             data-active={fastMode}
             data-composer-menu-trigger
-            disabled={disabled}
+            disabled={disabled || !selectedModel}
             onClick={toggleFastMode}
             type="button"
           >
             <Zap aria-hidden="true" size={16} strokeWidth={1.8} />
           </button>
         </Tooltip>
+      ) : fastAvailabilityUnknown ? (
+        <span
+          aria-hidden="true"
+          className={[styles.iconTrigger, styles.fastPlaceholder].join(" ")}
+        />
       ) : null}
       <div className={styles.configGroup}>
         <Tooltip label={t.chat.configTooltip} open={active("config")}>

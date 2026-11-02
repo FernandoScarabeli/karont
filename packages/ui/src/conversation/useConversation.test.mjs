@@ -180,6 +180,37 @@ test("se a conversa nova chega antes dos 80 ms, conclui sem aplicar blur", () =>
   assert.deepEqual(statuses, ["waiting", "done"]);
 });
 
+test("o atributo entra em blurring aos 80 ms quando os dados chegam aos 92 ms", () => {
+  const clock = new FakeClock();
+  let attribute = null;
+  const changes = [];
+  const transition = new ConversationTransitionMachine({
+    delayMs: 80,
+    durationMs: 150,
+    setTimeout: (callback, delayMs) => clock.setTimeout(callback, delayMs),
+    clearTimeout: (id) => clock.clearTimeout(id),
+    prefersReducedMotion: () => false,
+    onStatusChange: (status) => {
+      attribute = status === "done" ? null : status;
+      changes.push({ attribute, at: clock.now });
+    },
+  });
+
+  transition.start();
+  clock.tick(79);
+  assert.equal(
+    changes.some(({ attribute: value }) => value === "blurring"),
+    false,
+  );
+  clock.tick(1);
+  assert.deepEqual(changes.at(-1), { attribute: "blurring", at: 80 });
+  assert.equal(attribute, "blurring");
+
+  clock.tick(12);
+  transition.markReady();
+  assert.deepEqual(changes.at(-1), { attribute: "revealing", at: 92 });
+});
+
 test("reinicia os temporizadores após a limpeza do ciclo de efeitos", () => {
   const clock = new FakeClock();
   const firstStatuses = [];
