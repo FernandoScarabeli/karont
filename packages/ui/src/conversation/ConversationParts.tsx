@@ -26,11 +26,13 @@ import {
   Wrench,
   XCircle,
 } from "lucide-react";
-import type { ReactNode } from "react";
 import {
   type FormEvent,
+  Fragment,
   type KeyboardEvent,
   memo,
+  type ReactNode,
+  type UIEvent,
   useCallback,
   useEffect,
   useId,
@@ -58,6 +60,7 @@ import {
   summarizeActionDiff,
   summarizeActionGroup,
 } from "./actionSummary.ts";
+import { type AnsiOutputSegment, parseAnsiOutput } from "./ansiOutput.ts";
 import { formatAttachmentSize } from "./attachmentUtils.ts";
 import styles from "./ConversationParts.module.css";
 import { formatWorkDuration, splitFinalAnswer } from "./conversationDisplay.ts";
@@ -91,6 +94,45 @@ const messageTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
   minute: "2-digit",
   hourCycle: "h23",
 });
+const commandDurationFormatter = new Intl.NumberFormat("pt-BR", {
+  maximumFractionDigits: 1,
+});
+const ansiForegroundClasses = [
+  styles.ansiForeground0,
+  styles.ansiForeground1,
+  styles.ansiForeground2,
+  styles.ansiForeground3,
+  styles.ansiForeground4,
+  styles.ansiForeground5,
+  styles.ansiForeground6,
+  styles.ansiForeground7,
+  styles.ansiForeground8,
+  styles.ansiForeground9,
+  styles.ansiForeground10,
+  styles.ansiForeground11,
+  styles.ansiForeground12,
+  styles.ansiForeground13,
+  styles.ansiForeground14,
+  styles.ansiForeground15,
+] as const;
+const ansiBackgroundClasses = [
+  styles.ansiBackground0,
+  styles.ansiBackground1,
+  styles.ansiBackground2,
+  styles.ansiBackground3,
+  styles.ansiBackground4,
+  styles.ansiBackground5,
+  styles.ansiBackground6,
+  styles.ansiBackground7,
+  styles.ansiBackground8,
+  styles.ansiBackground9,
+  styles.ansiBackground10,
+  styles.ansiBackground11,
+  styles.ansiBackground12,
+  styles.ansiBackground13,
+  styles.ansiBackground14,
+  styles.ansiBackground15,
+] as const;
 
 function formatMessageDateTime(createdAt: string): string {
   const date = new Date(createdAt);
@@ -1174,27 +1216,16 @@ function ActionDetails({
   if (category === "command" || category === "test" || category === "list") {
     const command = actionCommand(action);
     const { output, exitCode } = commandOutput(action.output);
-    const resultLabel =
-      exitCode !== null
-        ? t.chat.commandExitCode(exitCode)
-        : action.state === "error"
-          ? t.chat.commandFailed
-          : action.state === "ok"
-            ? t.chat.commandCompleted
-            : action.state === "waiting"
-              ? t.chat.actionStates.waiting
-              : action.state === "running"
-                ? t.chat.actionStates.running
-                : "";
     return (
-      <div className={styles.actionDetails}>
-        <div className={styles.detailBlock}>
-          <div className={styles.commandHeader}>
-            <span className={styles.detailLabel}>{command}</span>
-            {resultLabel ? <span className={styles.exitCode}>{resultLabel}</span> : null}
-          </div>
-          {output ? <pre>{withTruncation(output, action.truncated)}</pre> : null}
-        </div>
+      <div className={`${styles.actionDetails} ${styles.commandDetails}`}>
+        <CommandPanel
+          command={command}
+          durationMs={action.durationMs}
+          exitCode={exitCode}
+          output={output}
+          state={action.state}
+          truncated={action.truncated}
+        />
       </div>
     );
   }
@@ -1215,6 +1246,161 @@ function ActionDetails({
       ) : null}
     </div>
   );
+}
+
+const CommandPanel = memo(function CommandPanel({
+  command,
+  durationMs,
+  exitCode,
+  output,
+  state,
+  truncated,
+}: {
+  command: string;
+  durationMs: number | null;
+  exitCode: string | null;
+  output: string;
+  state: "running" | "waiting" | "ok" | "error";
+  truncated: boolean;
+}) {
+  const scrollRef = useRef<HTMLElement>(null);
+  const followOutputRef = useRef(true);
+  const visibleOutput = withTruncation(output, truncated);
+  const parsedOutput = useMemo(() => parseAnsiOutput(visibleOutput), [visibleOutput]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a saída aciona a rolagem do mesmo container.
+  useEffect(() => {
+    const viewport = scrollRef.current;
+    if (state === "running" && followOutputRef.current && viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
+    }
+  }, [state, visibleOutput]);
+
+  const handleScroll = useCallback((event: UIEvent<HTMLElement>) => {
+    const viewport = event.currentTarget;
+    followOutputRef.current =
+      viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 16;
+  }, []);
+
+  const status =
+    state === "running"
+      ? { text: "Rodando", className: styles.commandStatusWorking }
+      : state === "ok"
+        ? {
+            text: `saída 0${durationMs === null ? "" : ` · ${formatCommandDuration(durationMs)}`}`,
+            className: styles.commandStatusMuted,
+          }
+        : state === "error"
+          ? {
+              text: exitCode === null ? "Falhou" : `saída ${exitCode}`,
+              className: styles.commandStatusError,
+            }
+          : { text: t.chat.actionStates.waiting, className: styles.commandStatusMuted };
+
+  return (
+    <section aria-label="Comando e saída" className={styles.terminalFrame}>
+      <div className={styles.terminalHeader}>
+        <SquareTerminal aria-hidden="true" className={styles.terminalHeaderIcon} size={14} />
+        <span aria-hidden="true" className={styles.commandPrompt}>
+          $
+        </span>
+        <span className={styles.commandName} title={command}>
+          {command}
+        </span>
+        <span className={`${styles.commandStatus} ${status.className}`}>
+          {state === "running" ? (
+            <LoaderCircle aria-hidden="true" className={styles.commandSpinner} size={12} />
+          ) : null}
+          {status.text}
+        </span>
+      </div>
+      <section
+        aria-label="Saída do comando"
+        className={`${scrollAreaStyles.scrollArea} ${styles.terminalOutputScroll}`}
+        onScroll={handleScroll}
+        ref={scrollRef}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: região rolável recebe foco para navegação por teclado.
+        tabIndex={0}
+      >
+        <pre className={styles.terminalOutput}>
+          {parsedOutput.hasSgr
+            ? renderAnsiSegments(parsedOutput.segments)
+            : renderPlainOutput(parsedOutput.segments.map((segment) => segment.text).join(""))}
+          {state === "running" ? (
+            <span aria-hidden="true" className={styles.terminalCursor}>
+              {" "}
+            </span>
+          ) : null}
+        </pre>
+      </section>
+    </section>
+  );
+});
+
+function renderAnsiSegments(segments: AnsiOutputSegment[]): ReactNode[] {
+  const occurrences = new Map<string, number>();
+  return segments.map((segment) => {
+    const signature = JSON.stringify([
+      segment.foreground,
+      segment.background,
+      segment.bold,
+      segment.dim,
+      segment.text,
+    ]);
+    const occurrence = occurrences.get(signature) ?? 0;
+    occurrences.set(signature, occurrence + 1);
+    return <AnsiSegment key={`${signature}:${occurrence}`} segment={segment} />;
+  });
+}
+
+function AnsiSegment({ segment }: { segment: AnsiOutputSegment }) {
+  const classes = [
+    segment.foreground === null ? "" : ansiForegroundClasses[segment.foreground],
+    segment.background === null ? "" : ansiBackgroundClasses[segment.background],
+    segment.bold ? styles.terminalAnsiBold : "",
+    segment.dim ? styles.terminalAnsiDim : "",
+  ].filter(Boolean);
+  return <span className={classes.join(" ")}>{segment.text}</span>;
+}
+
+function renderPlainOutput(value: string): ReactNode[] {
+  const lines = value.split("\n");
+  const occurrences = new Map<string, number>();
+  return lines.map((line, index) => {
+    const occurrence = occurrences.get(line) ?? 0;
+    occurrences.set(line, occurrence + 1);
+    const marker = line.match(/^([\u2714\u2713\u2716\u2717])(.*)$/u);
+    return (
+      <Fragment key={`${line}:${occurrence}`}>
+        {marker ? (
+          <>
+            <span
+              className={
+                marker[1] === "\u2714" || marker[1] === "\u2713"
+                  ? styles.terminalOutputSuccessMark
+                  : styles.terminalOutputErrorMark
+              }
+            >
+              {marker[1]}
+            </span>
+            {marker[2]}
+          </>
+        ) : (
+          line
+        )}
+        {index < lines.length - 1 ? "\n" : null}
+      </Fragment>
+    );
+  });
+}
+
+function formatCommandDuration(milliseconds: number): string {
+  if (milliseconds < 1_000) return `${milliseconds} ms`;
+  if (milliseconds < 60_000) return `${commandDurationFormatter.format(milliseconds / 1_000)} s`;
+  const totalSeconds = Math.round(milliseconds / 1_000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes} min ${seconds} s`;
 }
 
 const DiffFilePanel = memo(function DiffFilePanel({
