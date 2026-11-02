@@ -76,6 +76,10 @@ export const migrations: { version: number; up: string }[] = [
     ALTER TABLE conversations ADD COLUMN fork_pending INTEGER NOT NULL DEFAULT 0 CHECK (fork_pending IN (0, 1));
     ALTER TABLE messages ADD COLUMN agent_turn_id TEXT;`,
   },
+  {
+    version: 12,
+    up: "ALTER TABLE conversations ADD COLUMN fast INTEGER NOT NULL DEFAULT 0 CHECK (fast IN (0, 1));",
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -91,7 +95,13 @@ export type NewConversation = Pick<Conversation, "agent" | "title" | "cwd" | "mo
   Partial<
     Pick<
       Conversation,
-      "model" | "effort" | "plan" | "branchedFromId" | "branchedFromMessageId" | "branchContext"
+      | "model"
+      | "effort"
+      | "plan"
+      | "fast"
+      | "branchedFromId"
+      | "branchedFromMessageId"
+      | "branchContext"
     >
   >;
 
@@ -101,6 +111,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     id: randomUUID(),
     ...input,
     plan: input.plan ?? false,
+    fast: input.fast ?? false,
     pinnedAt: null,
     archivedAt: null,
     unreadAt: null,
@@ -109,7 +120,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     updatedAt: now,
   };
   db.prepare(
-    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at,branched_from_id,branched_from_message_id,branch_context_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,fast,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at,branched_from_id,branched_from_message_id,branch_context_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     conversation.id,
     conversation.agent,
@@ -119,6 +130,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     conversation.model ?? null,
     conversation.effort ?? null,
     conversation.plan ? 1 : 0,
+    conversation.fast ? 1 : 0,
     conversation.state,
     now,
     now,
@@ -182,13 +194,14 @@ export function listConversationStates(
 
 export function updateConversation(db: DatabaseSync, conversation: Conversation): void {
   db.prepare(
-    "UPDATE conversations SET title=?,mode=?,model=?,effort=?,plan=?,state=?,updated_at=?,pinned_at=?,archived_at=?,unread_at=? WHERE id=?",
+    "UPDATE conversations SET title=?,mode=?,model=?,effort=?,plan=?,fast=?,state=?,updated_at=?,pinned_at=?,archived_at=?,unread_at=? WHERE id=?",
   ).run(
     conversation.title,
     conversation.mode,
     conversation.model ?? null,
     conversation.effort ?? null,
     conversation.plan ? 1 : 0,
+    conversation.fast ? 1 : 0,
     conversation.state,
     conversation.updatedAt,
     conversation.pinnedAt,
@@ -394,6 +407,7 @@ type ConversationRow = {
   model: string | null;
   effort: Conversation["effort"] | null;
   plan: number;
+  fast: number;
   pinned_at: string | null;
   archived_at: string | null;
   unread_at: string | null;
@@ -427,6 +441,7 @@ function mapConversation(row: ConversationRow): Conversation {
     ...(row.model ? { model: row.model } : {}),
     ...(row.effort ? { effort: row.effort } : {}),
     plan: row.plan === 1,
+    fast: row.fast === 1,
     ...(row.branched_from_id ? { branchedFromId: row.branched_from_id } : {}),
     ...(row.branched_from_message_id
       ? { branchedFromMessageId: row.branched_from_message_id }

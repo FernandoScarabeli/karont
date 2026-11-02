@@ -85,6 +85,9 @@ export class CodexAdapter implements AgentAdapter {
   #nextRpcId = 1;
   #models: AdapterModelList = { models: [], efforts: [...EFFORTS] };
   #modelId = "";
+  #fastServiceTier: string | undefined;
+  #fast = false;
+  #threadStarting = false;
   #effort: Effort = "low";
   #turnOpen = false;
   #stopRequested = false;
@@ -116,18 +119,29 @@ export class CodexAdapter implements AgentAdapter {
     this.#models = parseModelList(catalog);
     const selected = selectModel(this.#models, catalog, conversation.model);
     this.#modelId = selected.id;
+    const selectedModel = this.#models.models.find((model) => model.id === this.#modelId);
+    this.#fastServiceTier = selectedModel?.fastServiceTier;
+    this.#fast = conversation.fast && Boolean(selectedModel?.supportsFast && this.#fastServiceTier);
     this.#effort = normalizeEffort(conversation.effort ?? selected.effort);
 
     if (resume) {
       await this.#request("thread/resume", { threadId: sessionId, cwd: conversation.cwd });
     } else {
       const { sandbox, approvalPolicy } = permissionSettings(conversation.mode);
-      const result = await this.#request("thread/start", {
-        cwd: conversation.cwd,
-        model: this.#modelId,
-        sandbox,
-        approvalPolicy,
-      });
+      this.#threadStarting = true;
+      let result: unknown;
+      try {
+        result = await this.#request("thread/start", {
+          cwd: conversation.cwd,
+          model: this.#modelId,
+          sandbox,
+          approvalPolicy,
+          ...(this.#fast && this.#fastServiceTier ? { serviceTier: this.#fastServiceTier } : {}),
+        });
+      } finally {
+        this.#threadStarting = false;
+      }
+      this.#reportFastTierConfirmation(result);
       const thread = isRecord(result) && isRecord(result.thread) ? result.thread : undefined;
       if (!thread || typeof thread.id !== "string")
         throw new AgentCliError("failed", "O Codex não devolveu o identificador da conversa.");
@@ -238,6 +252,11 @@ export class CodexAdapter implements AgentAdapter {
     }
     this.#approvedPlanPartId = undefined;
     await this.#startTurn(text, (plan ?? usesPlanMode(text)) ? "plan" : undefined, attachments);
+  }
+
+  setFastEnabled(enabled: boolean): void {
+    if (this.#conversation) this.#conversation.fast = enabled;
+    if (!enabled) this.#fast = false;
   }
 
   async respond(partId: string, response: AdapterResponse): Promise<void> {
@@ -408,6 +427,9 @@ export class CodexAdapter implements AgentAdapter {
       input,
       model: this.#modelId,
       effort: this.#effort,
+      ...(this.#fast && this.#fastServiceTier
+        ? { serviceTier: this.#fastServiceTier }
+        : { serviceTierForTurn: "default" }),
     };
     if (collaborationMode) {
       params.collaborationMode = {
@@ -422,6 +444,7 @@ export class CodexAdapter implements AgentAdapter {
     let result: unknown;
     try {
       result = await this.#request("turn/start", params);
+      this.#reportFastTierConfirmation(result);
     } catch (error) {
       this.#turnOpen = false;
       this.#turnCompleteResolve?.();
@@ -434,6 +457,17 @@ export class CodexAdapter implements AgentAdapter {
       this.#turnId = result.turn.id;
       this.#emit({ kind: "turn-id", turnId: this.#turnId });
     }
+  }
+
+  #reportFastTierConfirmation(value: unknown): void {
+    if (!this.#fast || !this.#fastServiceTier || !isRecord(value) || !("serviceTier" in value))
+      return;
+    const effective = value.serviceTier === this.#fastServiceTier ? "on" : "off";
+    this.#emit({
+      kind: "fast-effective",
+      fastEffective: effective,
+      ...(effective === "off" ? { fastUnavailableReason: "service_tier_not_applied" } : {}),
+    });
   }
 
   async #request(method: string, params: JsonRecord): Promise<unknown> {
@@ -583,6 +617,13 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   #handleNotification(method: string, params: JsonRecord): void {
+    if (method === "thread/settings/updated") {
+      const threadId = stringValue(params.threadId);
+      const matchesThread = this.#threadStarting || !threadId || threadId === this.#threadId;
+      const settings = isRecord(params.threadSettings) ? params.threadSettings : undefined;
+      if (matchesThread && settings) this.#reportFastTierConfirmation(settings);
+      return;
+    }
     if (method === "turn/started") {
       if (this.#subagentParentByThread.has(stringValue(params.threadId))) return;
       if (isRecord(params.turn) && typeof params.turn.id === "string") {
@@ -1162,12 +1203,15 @@ function parseModelList(value: unknown): AdapterModelList {
         ? (requestedDefault as Effort)
         : (supported[0] ?? EFFORTS[0]);
     const displayName = stringValue(model.displayName);
+    const fastServiceTier = getFastServiceTier(model);
     return [
       {
         id,
         name: displayName && !/^\[redigido\]$/i.test(displayName) ? displayName : id,
         efforts: supported.length ? supported : [...EFFORTS],
         defaultEffort,
+        supportsFast: fastServiceTier !== undefined,
+        ...(fastServiceTier ? { fastServiceTier } : {}),
       },
     ];
   });
@@ -1193,6 +1237,22 @@ function selectModel(
   const effort =
     stringValue(selectedRaw?.defaultReasoningEffort) || selected?.defaultEffort || "low";
   return { id: requested || selected?.id || "gpt-6.1-sol", effort };
+}
+
+function getFastServiceTier(model: JsonRecord): string | undefined {
+  if (Array.isArray(model.serviceTiers)) {
+    const fastTier = model.serviceTiers
+      .filter(isRecord)
+      .find(
+        (tier) =>
+          stringValue(tier.name).toLowerCase() === "fast" ||
+          stringValue(tier.id).toLowerCase() === "fast",
+      );
+    return fastTier ? stringValue(fastTier.id) || undefined : undefined;
+  }
+  return Array.isArray(model.additionalSpeedTiers) && model.additionalSpeedTiers.includes("fast")
+    ? "fast"
+    : undefined;
 }
 
 function normalizeEffort(value: string | undefined): Effort {

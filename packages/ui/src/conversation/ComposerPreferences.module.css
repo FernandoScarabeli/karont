@@ -32,6 +32,24 @@
   padding: 0;
 }
 
+.fastTrigger {
+  color: var(--k-color-text-muted);
+}
+
+.fastTrigger[data-active="true"] {
+  background: var(--k-color-bg-fast-active);
+  color: var(--k-color-primary);
+}
+
+.fastTrigger:hover:not(:disabled) {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
+.fastTrigger[data-active="true"]:hover:not(:disabled) {
+  color: var(--k-color-primary);
+}
+
 .effortControl {
   position: relative;
   display: inline-flex;

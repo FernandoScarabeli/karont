@@ -263,6 +263,20 @@
   background: var(--k-color-bg-raised);
 }
 
+.composerBelow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.fastUnavailable {
+  margin: 0;
+  padding-inline: var(--k-space-3);
+  color: var(--k-color-attention);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}
+
 .branchSlot {
   display: inline-flex;
   width: 40%;

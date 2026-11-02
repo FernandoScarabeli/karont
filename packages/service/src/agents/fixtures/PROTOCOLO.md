@@ -86,6 +86,12 @@ O processo é `codex app-server --stdio`, com JSON-RPC por linha. A conversa rea
 
 O gravador mantém a seleção de modelo mini/nano/spark se listado, depois o padrão (ou `KARONT_RECORDER_CODEX_MODEL`), e escolhe o menor esforço anunciado. O app-server não informa preços. O gravador não envia `serviceTier: "fast"`.
 
+### Confirmação do tier rápido
+
+O schema gerado do app-server 0.166 contém `serviceTier` na resposta de `thread/start` e `threadSettings.serviceTier` em `ThreadSettingsUpdatedNotification` (`thread/settings/updated`). A captura real em `codex/continuar.jsonl` registra essa notificação com `serviceTier: "default"` para uma conversa iniciada sem Fast. O adaptador compara confirmações explícitas com o tier anunciado pelo modelo (por exemplo, `priority`): igualdade confirma `on`; outro valor, inclusive `default` ou `null`, confirma `off`. Sem o campo de confirmação, o adaptador mantém o estado solicitado.
+
+Ainda não há captura real de uma inicialização que solicite `priority`; no sandbox, o `app-server` não iniciou para gravar esse caso. O fake de Codex usa o tier solicitado como confirmação por padrão e permite simular uma resposta `default` para cobrir a recusa.
+
 `ClientRequest.json` foi gerado com `--experimental`; essa versão do schema revela `turn/start.params.collaborationMode`, incluindo `mode: "plan"`. O gravador envia esse modo para pergunta, plano e tarefas.
 
 ### Aprovação, input e plano

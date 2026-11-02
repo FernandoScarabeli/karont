@@ -13,6 +13,9 @@ export const conversationSchema = z.strictObject({
   model: z.string().min(1).max(80).optional(),
   effort: reasoningEffortSchema.optional(),
   plan: z.boolean().optional(),
+  fast: z.boolean().default(false),
+  fastEffective: z.enum(["on", "off"]).optional(),
+  fastUnavailableReason: z.string().min(1).optional(),
   branchedFromId: z.string().min(1).optional(),
   branchedFromMessageId: z.string().min(1).optional(),
   branchContext: z.boolean().optional(),
@@ -145,6 +148,7 @@ export const conversationOptionsSchema = z.strictObject({
   model: z.string().min(1).max(80).nullable().optional(),
   effort: reasoningEffortSchema.nullable().optional(),
   plan: z.boolean().optional(),
+  fast: z.boolean().optional(),
 });
 export const conversationAttachmentSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -175,6 +179,7 @@ export const agentModelsSchema = z.strictObject({
       name: z.string(),
       efforts: z.array(reasoningEffortSchema).optional(),
       defaultEffort: reasoningEffortSchema.optional(),
+      supportsFast: z.boolean(),
     }),
   ),
   efforts: z.array(reasoningEffortSchema),

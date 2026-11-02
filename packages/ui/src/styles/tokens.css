@@ -47,6 +47,7 @@
   --k-color-scrollbar-thumb-hover: rgb(133 133 139 / 30%);
   --k-color-dialog-backdrop: rgb(0 0 0 / 72%);
   --k-color-drop-zone: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
+  --k-color-bg-fast-active: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
   --k-shadow-dialog: 0 var(--k-space-8) var(--k-space-10) rgb(0 0 0 / 32%);
 
   --k-font-sans: "Geist Sans", system-ui, sans-serif;
@@ -310,6 +311,7 @@
   --k-color-scrollbar-thumb-hover: rgb(100 101 106 / 30%);
   --k-color-dialog-backdrop: rgb(0 0 0 / 34%);
   --k-color-drop-zone: color-mix(in srgb, var(--k-color-primary) 10%, transparent);
+  --k-color-bg-fast-active: color-mix(in srgb, var(--k-color-primary) 8%, transparent);
   --k-shadow-dialog: 0 var(--k-space-8) var(--k-space-10) rgb(0 0 0 / 16%);
   --k-color-code-text: #2c2c30;
   --k-color-code-keyword: #6f3d89;

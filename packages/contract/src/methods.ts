@@ -165,6 +165,7 @@ export const methods = {
       model: z.string().min(1).max(80).optional(),
       effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
       plan: z.boolean().optional(),
+      fast: z.boolean().optional(),
     }),
     result: z.strictObject({ conversation: conversationSchema }),
   },
