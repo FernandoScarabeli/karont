@@ -116,7 +116,7 @@ Branch `m2-chat` (sem PR; o dono testa no preview antes de juntar na `main`). De
 
 ## Estado ao fim da sessão (2026-11-02) — LEIA ISTO PRIMEIRO
 - Branch `m2-chat`, tudo commitado e testado (unidade + E2E 4/4). **Sem PR ainda.** Preview: `npm run preview:web` (o serviço muda → reiniciar o preview).
-- **Em andamento ao fechar a sessão:** tarefa **F41** no Codex, worktree `~/karont-worktrees/m2-f41-raio-so-codex` (ref `-ref/`: `tarefa.md`, `resposta.md` quando terminar, `codex.log`). Objetivo: **raio só no Codex** (no Claude o ícone nem aparece; o modo rápido do Claude depende de "uso extra" na conta e na do dono vem `extra_usage_disabled`) e **nenhum aviso** de "modo rápido indisponível" (o dono não quer). Próximo orquestrador: conferir `resposta.md`, rodar typecheck/lint/testes/E2E, commitar e fazer merge na `m2-chat`. Se o Codex não terminou, retomar com `codex exec ... resume <SID>` (SID no `codex.log`).
+- **F41 concluída e na `m2-chat`:** raio (modo rápido) **só no Codex** — no Claude o ícone não aparece (o modo rápido do Claude depende de "uso extra" na conta; na do dono vem `extra_usage_disabled`); **nenhum aviso** de "indisponível" (o dono não quer); se o Codex confirmar que não aplicou, o raio só apaga. Nada rodando ao fechar a sessão.
 - B14 (reabrir o Claude ao ligar o raio) foi **cancelada** (perdeu sentido com a F41); a worktree `m2-b14-fast-reinicia` pode ser descartada.
 - **Próximo passo combinado:** PR da `m2-chat` para a `main` com o CI completo. **Push ainda não autorizado** — pedir o ok do dono antes.
 - Pendências pequenas: bundle inicial > 500 kB; aviso do PostCSS no build (`from`); 1 falha intermitente no E2E numa rodada (passou na seguinte) — observar; no Claude, ao terminar, o "Trabalhou por X" já vem ao vivo (F37).
