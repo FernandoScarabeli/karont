@@ -98,6 +98,7 @@ export class ClaudeAdapter implements AgentAdapter {
   #interruptTimer: ReturnType<typeof setTimeout> | undefined;
   #interruptResolve: (() => void) | undefined;
   #stderrErrorText = "";
+  #lineQueue: Promise<void> = Promise.resolve();
 
   constructor(emit: (event: AdapterEvent) => void, options: ClaudeAdapterOptions = {}) {
     this.#emit = emit;
@@ -167,7 +168,16 @@ export class ClaudeAdapter implements AgentAdapter {
     if (!stdout || !stderr || !stdin)
       throw new AgentCliError("failed", "A CLI não abriu os canais de comunicação esperados.");
     const lines = createInterface({ input: stdout, crlfDelay: Infinity });
-    lines.on("line", (line) => this.#handleLine(line));
+    lines.on("line", (line) => {
+      this.#lineQueue = this.#lineQueue
+        .then(() => this.#handleLine(line))
+        .catch(() =>
+          this.#completeTurn("error", {
+            type: "failed",
+            text: "Não foi possível processar uma ação da CLI Claude.",
+          }),
+        );
+    });
     stderr.setEncoding("utf8");
     stderr.on("data", (chunk: string) => {
       this.#stderrErrorText = `${this.#stderrErrorText}${chunk}`.slice(-8_192);
@@ -385,7 +395,7 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#child = undefined;
   }
 
-  #handleLine(line: string): void {
+  async #handleLine(line: string): Promise<void> {
     if (Buffer.byteLength(line, "utf8") > 4 * 1024 * 1024) {
       this.#completeTurn("error", {
         type: "failed",
@@ -464,7 +474,7 @@ export class ClaudeAdapter implements AgentAdapter {
       const content = Array.isArray(message?.content) ? message.content : [];
       for (const item of content) {
         if (!isRecord(item) || item.type !== "tool_use" || typeof item.name !== "string") continue;
-        this.#handleToolUse(
+        await this.#handleToolUse(
           item,
           typeof value.parent_tool_use_id === "string" ? value.parent_tool_use_id : undefined,
         );
@@ -508,7 +518,7 @@ export class ClaudeAdapter implements AgentAdapter {
     }
   }
 
-  #handleToolUse(item: Record<string, unknown>, parentToolUseId?: string): void {
+  async #handleToolUse(item: Record<string, unknown>, parentToolUseId?: string): Promise<void> {
     const name = item.name as string;
     const input = isRecord(item.input) ? item.input : {};
     const id = typeof item.id === "string" ? item.id : randomUUID();
@@ -555,7 +565,7 @@ export class ClaudeAdapter implements AgentAdapter {
     }
     const partId = randomUUID();
     const parentId = parentToolUseId ? this.#actions.get(parentToolUseId)?.partId : undefined;
-    const mapped = mapClaudeToolAction(name, input, parentId);
+    const mapped = await mapClaudeToolAction(name, input, parentId, this.#conversation?.cwd);
     const action: MessagePart = {
       id: partId,
       type: "action",
@@ -767,6 +777,11 @@ export class ClaudeAdapter implements AgentAdapter {
   #finishOnExit(error: Error, child: ChildProcess): void {
     if (this.#child !== child) return;
     this.#child = undefined;
+    if (this.#disposed) return;
+    void this.#lineQueue.then(() => this.#completeAfterExit(error));
+  }
+
+  #completeAfterExit(error: Error): void {
     if (this.#disposed) return;
     this.#rejectControlRequests(
       new AgentCliError("failed", "Claude Code encerrou antes de responder ao controle."),
