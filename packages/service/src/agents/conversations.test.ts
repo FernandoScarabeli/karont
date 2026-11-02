@@ -80,6 +80,7 @@ async function createHarness(
     exitAfterResult?: boolean;
     planDecision?: "approve" | "adjust";
     initializeGate?: { started: () => void; released: Promise<void> };
+    messageCreatedGate?: { started: () => void; released: Promise<void> };
     titleGenerator?: (
       agent: Conversation["agent"],
       userMessage: string,
@@ -116,6 +117,10 @@ async function createHarness(
     broadcast: async (event) => {
       events.push(event);
       for (const listener of listeners) listener(event);
+      if (event.event === "conversation.messageCreated" && fakeOptions.messageCreatedGate) {
+        fakeOptions.messageCreatedGate.started();
+        await fakeOptions.messageCreatedGate.released;
+      }
     },
     adapterFactory:
       fakeOptions.adapterFactory ??
@@ -1052,6 +1057,163 @@ test("retomada usa --resume; interrupção usa o protocolo e mantém mensagem in
       await harness.close();
     }
   });
+});
+
+test("falha ao abrir preserva renomeação, fixação e arquivamento concorrentes", async (t) => {
+  const runOpeningFailure = async (
+    mutate: (manager: ConversationManager, id: string) => Promise<void>,
+  ) => {
+    let announceOpening!: () => void;
+    let rejectOpening!: (error: Error) => void;
+    const openingStarted = new Promise<void>((resolve) => {
+      announceOpening = resolve;
+    });
+    const opening = new Promise<void>((_resolve, reject) => {
+      rejectOpening = reject;
+    });
+    const adapterFactory: AdapterFactory = () => ({
+      start: async () => {
+        announceOpening();
+        await opening;
+      },
+      send: async () => undefined,
+      respond: async () => undefined,
+      interrupt: async () => undefined,
+      dispose: async () => undefined,
+    });
+    const harness = await createHarness("texto", {}, { adapterFactory });
+    try {
+      const conversation = createConversation(harness.manager);
+      const sending = harness.manager.send(conversation.id, "Abra a conversa.");
+      await openingStarted;
+      await mutate(harness.manager, conversation.id);
+      rejectOpening(new Error("Falha de abertura simulada."));
+      await sending;
+
+      const current = harness.manager.get(conversation.id)?.conversation;
+      const stateEvents = harness.events.filter(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          event.payload.conversation.id === conversation.id,
+      );
+      const lastStateEvent = stateEvents.at(-1);
+      assert.equal(current?.state, "error");
+      assert.equal(lastStateEvent?.event, "conversation.stateChanged");
+      return { current, lastStateEvent };
+    } finally {
+      rejectOpening(new Error("Abertura encerrada pelo teste."));
+      await harness.close();
+    }
+  };
+
+  await t.test("mantém o novo título e a fixação", async () => {
+    const result = await runOpeningFailure(async (manager, id) => {
+      await manager.rename(id, "Título atualizado");
+      await manager.setPinned(id, true);
+    });
+    assert.equal(result.current?.title, "Título atualizado");
+    assert.ok(result.current?.pinnedAt);
+    if (result.lastStateEvent.event === "conversation.stateChanged") {
+      assert.equal(result.lastStateEvent.payload.conversation.title, "Título atualizado");
+      assert.ok(result.lastStateEvent.payload.conversation.pinnedAt);
+    }
+  });
+
+  await t.test("mantém o arquivamento", async () => {
+    const result = await runOpeningFailure(async (manager, id) => {
+      await manager.setArchived(id, true);
+    });
+    assert.ok(result.current?.archivedAt);
+    if (result.lastStateEvent.event === "conversation.stateChanged") {
+      assert.ok(result.lastStateEvent.payload.conversation.archivedAt);
+    }
+  });
+});
+
+test("início do turno preserva metadados alterados durante a emissão da mensagem", async () => {
+  let announceMessage!: () => void;
+  let releaseMessage!: () => void;
+  const messageCreated = new Promise<void>((resolve) => {
+    announceMessage = resolve;
+  });
+  const messageEmission = new Promise<void>((resolve) => {
+    releaseMessage = resolve;
+  });
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async () => emit({ kind: "turn-end", status: "done" }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    { adapterFactory, messageCreatedGate: { started: announceMessage, released: messageEmission } },
+  );
+  try {
+    const conversation = createConversation(harness.manager);
+    const sending = harness.manager.send(conversation.id, "Envie a mensagem.");
+    await messageCreated;
+    await harness.manager.rename(conversation.id, "Título durante envio");
+    await harness.manager.setPinned(conversation.id, true);
+    releaseMessage();
+    await sending;
+    await waitForState(harness, conversation.id, "idle");
+
+    const current = harness.manager.get(conversation.id)?.conversation;
+    assert.equal(current?.title, "Título durante envio");
+    assert.ok(current?.pinnedAt);
+  } finally {
+    releaseMessage();
+    await harness.close();
+  }
+});
+
+test("setOptions preserva metadados alterados durante descarte do agente", async () => {
+  let announceDisposal!: () => void;
+  let releaseDisposal!: () => void;
+  const disposalStarted = new Promise<void>((resolve) => {
+    announceDisposal = resolve;
+  });
+  const disposal = new Promise<void>((resolve) => {
+    releaseDisposal = resolve;
+  });
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async () => emit({ kind: "turn-end", status: "done" }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => {
+      announceDisposal();
+      await disposal;
+    },
+  });
+  const harness = await createHarness(
+    "texto",
+    { KARONT_AGENT_IDLE_MS: "60000" },
+    { adapterFactory },
+  );
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Conclua a primeira resposta.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const updatingOptions = harness.manager.setOptions(conversation.id, { mode: "read-only" });
+    await disposalStarted;
+    await harness.manager.rename(conversation.id, "Título durante opções");
+    await harness.manager.setPinned(conversation.id, true);
+    releaseDisposal();
+    await updatingOptions;
+
+    const current = harness.manager.get(conversation.id)?.conversation;
+    assert.equal(current?.mode, "read-only");
+    assert.equal(current?.title, "Título durante opções");
+    assert.ok(current?.pinnedAt);
+  } finally {
+    releaseDisposal();
+    await harness.close();
+  }
 });
 
 test("CLI ausente gera erro retryable e o reinício marca streaming como interrupted", async (t) => {

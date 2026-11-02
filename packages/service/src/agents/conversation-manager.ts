@@ -340,9 +340,10 @@ export class ConversationManager {
         payload: { conversationId: id, message: userMessage },
       });
     } catch (error) {
-      conversation.state = "idle";
-      conversation.updatedAt = this.#now();
-      updateConversation(this.#db, conversation);
+      const currentConversation = this.#requireConversation(id);
+      currentConversation.state = "idle";
+      currentConversation.updatedAt = this.#now();
+      updateConversation(this.#db, currentConversation);
       throw error;
     }
     const agentMessage = this.#newAgentMessage(id);
@@ -466,12 +467,24 @@ export class ConversationManager {
       fast?: boolean;
     },
   ): Promise<Conversation> {
-    const conversation = this.#requireConversation(id);
+    let conversation = this.#requireConversation(id);
     if (conversation.state === "working" || conversation.state === "waiting")
       throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
-    const selectedModelId = "model" in options ? options.model : conversation.model;
     const mustCheckFast = options.fast === true || (conversation.fast && "model" in options);
     if (mustCheckFast && conversation.agent === "codex") await this.#loadCodexModelsIfNeeded();
+    conversation = this.#requireConversation(id);
+    if (conversation.state === "working" || conversation.state === "waiting")
+      throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
+    const active = this.#active.get(id);
+    if (active) {
+      if (active.idleTimer) clearTimeout(active.idleTimer);
+      await active.adapter.dispose();
+      this.#active.delete(id);
+      conversation = this.#requireConversation(id);
+      if (conversation.state === "working" || conversation.state === "waiting")
+        throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
+    }
+    const selectedModelId = "model" in options ? options.model : conversation.model;
     const supportsFast = modelSupportsFast(
       this.#codexModelList,
       conversation.agent,
@@ -494,12 +507,6 @@ export class ConversationManager {
         agent: conversation.agent,
         model: selectedModelId ?? null,
       });
-    }
-    const active = this.#active.get(id);
-    if (active) {
-      if (active.idleTimer) clearTimeout(active.idleTimer);
-      await active.adapter.dispose();
-      this.#active.delete(id);
     }
     if (options.mode) conversation.mode = options.mode;
     if ("model" in options) {
@@ -692,6 +699,7 @@ export class ConversationManager {
     plan?: boolean,
     attachments: ConversationAttachment[] = [],
   ): Promise<void> {
+    conversation = this.#requireConversation(conversation.id);
     addMessage(this.#db, message);
     conversation.state = "working";
     conversation.updatedAt = this.#now();
@@ -1077,6 +1085,7 @@ export class ConversationManager {
       event: "conversation.partUpdated",
       payload: { conversationId: conversation.id, messageId: message.id, kind: "upsert", part },
     });
+    conversation = this.#requireConversation(conversation.id);
     conversation.state = message.status === "error" ? "error" : "idle";
     conversation.updatedAt = completedAt;
     if (message.status === "error") conversation.unreadAt = completedAt;
