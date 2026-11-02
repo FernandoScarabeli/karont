@@ -9,6 +9,7 @@ import {
   MAX_FRAME_BYTES,
   type MessagePart,
 } from "@karont/contract";
+import { validateFolder } from "../folders.ts";
 import type {
   AdapterEvent,
   AdapterFactory,
@@ -135,6 +136,10 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#forkSessionSourceId = this.#forkSessionPending ? sessionId : undefined;
     this.#stderrErrorType = undefined;
     this.#stderrErrorText = "";
+    const folder = await validateFolder(conversation.cwd);
+    if (!folder.exists || !folder.isDirectory) {
+      throw new AgentCliError("failed", `A pasta do projeto não existe mais: ${conversation.cwd}`);
+    }
     const command =
       this.#env.KARONT_CLAUDE_CLI ||
       (await resolveAgentCommand("claude", {

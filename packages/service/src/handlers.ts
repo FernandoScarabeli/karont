@@ -104,13 +104,28 @@ export function createHandlers({
         return agentRegistry.add(request.params);
       case "agents.remove":
         return agentRegistry.remove(request.params.id);
-      case "conversation.create":
+      case "conversation.create": {
+        const folder = await validateFolder(request.params.cwd);
+        if (!folder.exists) {
+          throw new ServiceError(
+            "invalid_request",
+            `A pasta do projeto não existe: ${folder.path}`,
+          );
+        }
+        if (!folder.isDirectory) {
+          throw new ServiceError(
+            "invalid_request",
+            `O caminho do projeto não é uma pasta: ${folder.path}`,
+          );
+        }
         return {
           conversation: conversationManager.create({
             ...request.params,
+            cwd: folder.path,
             title: request.params.title ?? "Nova conversa",
           }),
         };
+      }
       case "conversation.list":
         return { conversations: conversationManager.list(request.params) };
       case "conversation.count":

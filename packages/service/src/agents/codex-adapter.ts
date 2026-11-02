@@ -11,6 +11,7 @@ import {
   describeAgentError,
   type MessagePart,
 } from "@karont/contract";
+import { validateFolder } from "../folders.ts";
 import type {
   AdapterEvent,
   AdapterFactory,
@@ -380,6 +381,10 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   async #startServer(cwd: string): Promise<void> {
+    const folder = await validateFolder(cwd);
+    if (!folder.exists || !folder.isDirectory) {
+      throw new AgentCliError("failed", `A pasta do projeto não existe mais: ${cwd}`);
+    }
     const command =
       this.#env.KARONT_CODEX_CLI ||
       (await resolveAgentCommand("codex", {

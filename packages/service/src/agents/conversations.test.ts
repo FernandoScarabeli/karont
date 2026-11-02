@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -1549,4 +1549,42 @@ test("retry falha claramente se os bytes dos anexos não estão mais em memória
   } finally {
     await harness.close();
   }
+});
+
+test("Claude distingue pasta do projeto apagada de CLI ausente", async (context) => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "karont-pasta-apagada-"));
+  context.after(() => rm(cwd, { recursive: true, force: true }));
+  await rm(cwd, { recursive: true, force: true });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "missing-folder-claude",
+    agent: "claude",
+    title: "Pasta apagada",
+    cwd,
+    mode: "edit",
+    fast: false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  let spawnCount = 0;
+  const adapter = new ClaudeAdapter(() => undefined, {
+    env: { ...process.env, KARONT_DISABLE_AGENT_DETECTION: "1", KARONT_CLAUDE_CLI: "claude" },
+    spawn: () => {
+      spawnCount += 1;
+      throw Object.assign(new Error("spawn claude ENOENT"), { code: "ENOENT" });
+    },
+  });
+
+  await assert.rejects(
+    adapter.start(conversation, "session-id", false),
+    (error: unknown) =>
+      error instanceof AgentCliError &&
+      error.errorType === "failed" &&
+      error.message === `A pasta do projeto não existe mais: ${cwd}`,
+  );
+  assert.equal(spawnCount, 0);
 });

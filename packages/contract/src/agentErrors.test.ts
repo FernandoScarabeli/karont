@@ -30,6 +30,11 @@ test("procura o erro dentro de um envelope JSON", () => {
   });
 });
 
+test("preserva erro de pasta ausente mesmo se o caminho contém ENOENT", () => {
+  const message = "A pasta do projeto não existe mais: /tmp/ENOENT/projeto";
+  assert.deepEqual(describeAgentError(message, "claude"), { message });
+});
+
 test("mapeia limite, sobrecarga, conversa longa, login e conexão", () => {
   const cases = [
     [

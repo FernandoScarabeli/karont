@@ -6,6 +6,7 @@ import { PassThrough } from "node:stream";
 type FixtureLine = { direction: string; stream: string; line: string };
 type JsonRecord = Record<string, unknown>;
 type FakeProcessOptions = {
+  cwdOverride?: string;
   startAtResume?: boolean;
   withoutCommandTiming?: boolean;
   withoutCommandStart?: boolean;
@@ -60,7 +61,10 @@ class FakeCodexProcess extends EventEmitter {
     this.#records = readFileSync(fixturePath, "utf8")
       .split(/\r?\n/)
       .filter(Boolean)
-      .map((line) => JSON.parse(line) as FixtureLine);
+      .map((line) => JSON.parse(line) as FixtureLine)
+      .map((record) =>
+        options.cwdOverride ? overrideFixtureCwd(record, options.cwdOverride) : record,
+      );
     this.stdin.on("data", (chunk: Buffer) => this.#read(chunk.toString("utf8")));
   }
 
@@ -291,6 +295,16 @@ function matchesAdjustmentTurn(expected: unknown, actual: unknown): boolean {
     isRecord(actual.input[0]) &&
     typeof actual.input[0].text === "string"
   );
+}
+
+function overrideFixtureCwd(record: FixtureLine, cwd: string): FixtureLine {
+  if (record.direction !== "out" || record.stream !== "stdin") return record;
+  const message = parseFixture(record.line);
+  if (!isRecord(message.params) || typeof message.params.cwd !== "string") return record;
+  return {
+    ...record,
+    line: JSON.stringify({ ...message, params: { ...message.params, cwd } }),
+  };
 }
 
 function matchesTurnStart(expected: unknown, actual: unknown): boolean {
