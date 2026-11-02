@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import type {
   Conversation,
   ConversationAttachmentMetadata,
+  ConversationContextUsage,
   ConversationMessage,
   JsonValue,
   MessagePart,
@@ -80,6 +81,14 @@ export const migrations: { version: number; up: string }[] = [
     version: 12,
     up: "ALTER TABLE conversations ADD COLUMN fast INTEGER NOT NULL DEFAULT 0 CHECK (fast IN (0, 1));",
   },
+  {
+    version: 13,
+    up: `CREATE TABLE conversation_context_usage (
+      conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+      used_tokens INTEGER NOT NULL CHECK (used_tokens >= 0),
+      window_tokens INTEGER NOT NULL CHECK (window_tokens > 0)
+    ) STRICT;`,
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -150,6 +159,33 @@ export function getConversation(db: DatabaseSync, id: string): Conversation | nu
     | ConversationRow
     | undefined;
   return row ? mapConversation(row) : null;
+}
+
+export function listConversationContextUsage(
+  db: DatabaseSync,
+): [string, ConversationContextUsage][] {
+  const rows = db
+    .prepare("SELECT conversation_id, used_tokens, window_tokens FROM conversation_context_usage")
+    .all() as { conversation_id: string; used_tokens: number; window_tokens: number }[];
+  return rows.map((row) => [
+    row.conversation_id,
+    {
+      usedTokens: row.used_tokens,
+      windowTokens: row.window_tokens,
+    },
+  ]);
+}
+
+export function setConversationContextUsage(
+  db: DatabaseSync,
+  conversationId: string,
+  usage: ConversationContextUsage,
+): void {
+  db.prepare(
+    `INSERT INTO conversation_context_usage (conversation_id, used_tokens, window_tokens)
+    VALUES (?, ?, ?) ON CONFLICT(conversation_id) DO UPDATE SET
+      used_tokens=excluded.used_tokens, window_tokens=excluded.window_tokens`,
+  ).run(conversationId, usage.usedTokens, usage.windowTokens);
 }
 
 export function listConversations(

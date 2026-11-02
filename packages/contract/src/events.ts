@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { conversationSchema, messagePartSchema, messageSchema } from "./conversations.ts";
+import {
+  conversationContextUsageSchema,
+  conversationSchema,
+  messagePartSchema,
+  messageSchema,
+} from "./conversations.ts";
 import { recentFolderSchema, terminalInfoSchema } from "./methods.ts";
 
 export const events = {
@@ -64,6 +69,10 @@ export const events = {
       messageEndedAt: z.number().int().nonnegative().optional(),
     }),
   ]),
+  "conversation.contextUsage": z.strictObject({
+    conversationId: z.string().min(1),
+    ...conversationContextUsageSchema.shape,
+  }),
   "conversation.deletedAll": z.strictObject({ deleted: z.number().int().nonnegative() }),
   "conversation.removed": z.strictObject({ id: z.string().min(1) }),
 } as const satisfies Record<string, z.ZodType>;

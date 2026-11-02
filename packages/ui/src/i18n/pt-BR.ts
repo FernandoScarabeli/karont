@@ -184,6 +184,12 @@ export const t = {
     agentTooltip: (agent: string) => `Agente: ${agent}`,
     attachTooltip: "Anexar arquivos",
     configTooltip: "Opções",
+    contextTitle: "Contexto",
+    contextUsageTooltip: (percent: number, used: string, window: string) =>
+      `Contexto: ${percent}% · ${used} de ${window} tokens`,
+    contextUsageDetail: (used: string, window: string) => `${used} de ${window} tokens usados`,
+    compactContext: "Compactar",
+    compacting: "Compactando…",
     modelDefault: "Padrão",
     effort: "Esforço",
     fastMode: "Modo rápido",

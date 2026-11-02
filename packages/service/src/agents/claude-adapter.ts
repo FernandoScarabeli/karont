@@ -21,6 +21,7 @@ import type {
   AgentAdapter,
   AgentAdapterRegistration,
 } from "./adapter.ts";
+import { claudeContextUsage } from "./context-usage.ts";
 import { resolveAgentCommand } from "./detect.ts";
 import { makeMessageSource, mergeMessageSources } from "./source-metadata.ts";
 import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
@@ -115,6 +116,8 @@ export class ClaudeAdapter implements AgentAdapter {
     note?: string;
   }> = [];
   #lastPlan = "";
+  #lastAssistantUsage: unknown;
+  #lastAssistantModel: string | undefined;
   #turnOpen = false;
   #stopRequested = false;
   #disposed = false;
@@ -311,6 +314,8 @@ export class ClaudeAdapter implements AgentAdapter {
     await this.#ensurePermissionMode(plan ? "plan" : permissionModeFor(conversation));
     this.#turnOpen = true;
     this.#stopRequested = false;
+    this.#lastAssistantUsage = undefined;
+    this.#lastAssistantModel = undefined;
     this.#sources = [];
     this.#activeTextPartId = undefined;
     this.#activeThinkingPartId = undefined;
@@ -623,6 +628,10 @@ export class ClaudeAdapter implements AgentAdapter {
     }
     if (type === "assistant") {
       const message = value.message as Record<string, unknown> | undefined;
+      if (value.parent_tool_use_id == null) {
+        this.#lastAssistantUsage = isRecord(message?.usage) ? message.usage : undefined;
+        this.#lastAssistantModel = typeof message?.model === "string" ? message.model : undefined;
+      }
       const content = Array.isArray(message?.content) ? message.content : [];
       this.#addSources(extractClaudeAssistantSources(content));
       for (const item of content) {
@@ -647,6 +656,12 @@ export class ClaudeAdapter implements AgentAdapter {
       return;
     }
     if (type === "result") {
+      const usage = claudeContextUsage(
+        this.#lastAssistantUsage,
+        value.modelUsage,
+        this.#lastAssistantModel,
+      );
+      if (usage) this.#emit({ kind: "context-usage", ...usage });
       if (typeof value.session_id === "string" && value.session_id !== this.#forkSessionSourceId) {
         this.#sessionId = value.session_id;
         this.#resumeSession = true;
@@ -1065,6 +1080,7 @@ export function createClaudeAdapterRegistration(
     capabilities: {
       skills: true,
       compact: true,
+      contextUsage: true,
       fileMentions: true,
       fastMode: false,
       plan: true,

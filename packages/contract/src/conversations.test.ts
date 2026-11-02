@@ -83,8 +83,25 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
       conversation: { ...conversation, plan: true },
       messages: [],
       hasOlderMessages: false,
+      contextUsage: { usedTokens: 90_000, windowTokens: 200_000 },
     }).success,
     true,
+  );
+  assert.equal(
+    events["conversation.contextUsage"].safeParse({
+      conversationId: "c1",
+      usedTokens: 90_000,
+      windowTokens: 200_000,
+    }).success,
+    true,
+  );
+  assert.equal(
+    events["conversation.contextUsage"].safeParse({
+      conversationId: "c1",
+      usedTokens: -1,
+      windowTokens: 0,
+    }).success,
+    false,
   );
   assert.equal(methods["conversation.get"].params.safeParse({ id: "c1", limit: 40 }).success, true);
   assert.equal(

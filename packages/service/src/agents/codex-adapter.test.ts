@@ -679,6 +679,29 @@ test("Codex transmite texto, converte leitura em ação e carrega os modelos rea
   });
 });
 
+test("Codex publica e persiste o uso da última chamada informado pela thread", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, fixturePrompt("texto"));
+    await waitForState(harness, conversation.id, "idle");
+
+    const usage = { usedTokens: 90_000, windowTokens: 200_000 };
+    assert.ok(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.contextUsage" &&
+          event.payload.conversationId === conversation.id &&
+          event.payload.usedTokens === usage.usedTokens &&
+          event.payload.windowTokens === usage.windowTokens,
+      ),
+    );
+    assert.deepEqual(harness.manager.get(conversation.id)?.contextUsage, usage);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("agent.models carrega uma vez antes da primeira mensagem e reutiliza o cache persistido", async () => {
   const harness = await createHarness("texto");
   try {

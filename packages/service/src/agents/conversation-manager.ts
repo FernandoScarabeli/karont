@@ -8,6 +8,7 @@ import {
   type ComposerSkill,
   type Conversation,
   type ConversationAttachment,
+  type ConversationContextUsage,
   type ConversationMessage,
   describeAgentError,
   type MessagePart,
@@ -30,6 +31,7 @@ import {
   getConversation,
   getSetting,
   isBranchForkPending,
+  listConversationContextUsage,
   listConversationStates,
   listConversations,
   listMessages,
@@ -40,6 +42,7 @@ import {
   setAgentSession,
   setBranchContextPending,
   setBranchSession,
+  setConversationContextUsage,
   setConversationTitle,
   setMessageAgentTurnId,
   setSetting,
@@ -119,6 +122,7 @@ export class ConversationManager {
   readonly #now: () => string;
   readonly #titleGenerator: NonNullable<ConversationManagerOptions["titleGenerator"]>;
   readonly #active = new Map<string, ActiveConversation>();
+  readonly #contextUsage = new Map<string, ConversationContextUsage>();
   readonly #latestUserAttachments = new Map<
     string,
     { messageId: string; attachments: ConversationAttachment[]; sizeBytes: number }
@@ -143,6 +147,8 @@ export class ConversationManager {
 
   constructor(options: ConversationManagerOptions) {
     this.#db = options.db;
+    for (const [conversationId, usage] of listConversationContextUsage(this.#db))
+      this.#contextUsage.set(conversationId, usage);
     this.#broadcast = options.broadcast;
     this.#env = options.env ?? process.env;
     const claudeRegistration = createClaudeAdapterRegistration({ env: this.#env });
@@ -238,6 +244,7 @@ export class ConversationManager {
     conversation: Conversation;
     messages: ConversationMessage[];
     hasOlderMessages: boolean;
+    contextUsage?: ConversationContextUsage;
   } | null {
     const conversation = getConversation(this.#db, id);
     if (!conversation) return null;
@@ -258,6 +265,7 @@ export class ConversationManager {
       conversation: this.#ignoreClaudeFast(conversation),
       messages,
       hasOlderMessages: page.hasOlderMessages,
+      ...(this.#contextUsage.has(id) ? { contextUsage: this.#contextUsage.get(id) } : {}),
     };
   }
 
@@ -688,6 +696,7 @@ export class ConversationManager {
       }
       const deleted = deleteConversation(this.#db, id);
       if (deleted) {
+        this.#contextUsage.delete(id);
         await this.#broadcast({ event: "conversation.removed", payload: { id } }).catch(
           () => undefined,
         );
@@ -736,6 +745,7 @@ export class ConversationManager {
       const deleted = deleteAllConversations(this.#db);
       const deletedIds = new Set(conversations.map(({ id }) => id));
       for (const id of deletedIds) {
+        this.#contextUsage.delete(id);
         this.#titleRequests.delete(id);
         this.#latestUserAttachments.delete(id);
       }
@@ -1098,6 +1108,20 @@ export class ConversationManager {
     if (event.kind === "turn-id") {
       message.agentTurnId = event.turnId;
       setMessageAgentTurnId(this.#db, message.id, event.turnId);
+      return;
+    }
+    if (event.kind === "context-usage") {
+      if (!this.#requireAgentRegistration(active.agent).capabilities.contextUsage) return;
+      const usage: ConversationContextUsage = {
+        usedTokens: event.usedTokens,
+        windowTokens: event.windowTokens,
+      };
+      this.#contextUsage.set(conversationId, usage);
+      setConversationContextUsage(this.#db, conversationId, usage);
+      await this.#emit({
+        event: "conversation.contextUsage",
+        payload: { conversationId, ...usage },
+      });
       return;
     }
     if (event.kind === "sources") {
@@ -1536,7 +1560,9 @@ export class ConversationManager {
         ? event.payload.conversationId
         : event.event === "conversation.stateChanged"
           ? event.payload.conversation.id
-          : undefined;
+          : event.event === "conversation.contextUsage"
+            ? event.payload.conversationId
+            : undefined;
     if (
       conversationId &&
       (this.#deletingAll ||

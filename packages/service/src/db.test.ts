@@ -72,7 +72,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    12,
+    13,
   );
   assert.equal(
     (
@@ -103,6 +103,14 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   assert.ok(conversationColumns.has("branched_from_message_id"));
   assert.ok(conversationColumns.has("branch_context_pending"));
   assert.ok(conversationColumns.has("fast"));
+  assert.equal(
+    (
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+        .get("conversation_context_usage") as { name: string } | undefined
+    )?.name,
+    "conversation_context_usage",
+  );
   setSetting(db, "appearance.theme", { mode: "dark", enabled: true });
   assert.deepEqual(getSetting(db, "appearance.theme"), { mode: "dark", enabled: true });
   assert.equal((await stat(dbPath)).mode & 0o777, 0o600);
@@ -125,7 +133,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    12,
+    13,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();

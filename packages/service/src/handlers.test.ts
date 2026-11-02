@@ -74,6 +74,7 @@ test("ping, info e settings usam contrato e banco", async () => {
     capabilities: {
       skills: false,
       compact: false,
+      contextUsage: false,
       fileMentions: true,
       fastMode: false,
       plan: false,
@@ -129,6 +130,7 @@ test("ping, info e settings usam contrato e banco", async () => {
     capabilities: {
       skills: false,
       compact: false,
+      contextUsage: false,
       fileMentions: true,
       fastMode: false,
       plan: false,

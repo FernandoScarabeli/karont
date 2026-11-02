@@ -10,6 +10,7 @@ export const agentIdSchema = z
 export const agentCapabilitiesSchema = z.strictObject({
   skills: z.boolean(),
   compact: z.boolean(),
+  contextUsage: z.boolean(),
   fileMentions: z.boolean(),
   fastMode: z.boolean(),
   plan: z.boolean(),
@@ -17,6 +18,11 @@ export const agentCapabilitiesSchema = z.strictObject({
   maxSkillsPerMessage: z.number().int().min(1).max(8).optional(),
 });
 export type AgentCapabilities = z.infer<typeof agentCapabilitiesSchema>;
+export const conversationContextUsageSchema = z.strictObject({
+  usedTokens: z.number().int().nonnegative(),
+  windowTokens: z.number().int().positive(),
+});
+export type ConversationContextUsage = z.infer<typeof conversationContextUsageSchema>;
 export const conversationModeSchema = z.enum(["read-only", "edit", "full"]);
 export const reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh", "max"]);
 export const conversationStateSchema = z.enum(["idle", "working", "waiting", "error"]);

@@ -179,6 +179,7 @@ test("capacidades e skills vazias usam o registro do agente", async () => {
           capabilities: {
             skills: false,
             compact: false,
+            contextUsage: false,
             fileMentions: true,
             fastMode: false,
             plan: false,
@@ -193,6 +194,7 @@ test("capacidades e skills vazias usam o registro do agente", async () => {
       capabilities: {
         skills: false,
         compact: false,
+        contextUsage: false,
         fileMentions: true,
         fastMode: false,
         plan: false,
@@ -774,6 +776,84 @@ test("Claude transmite texto em deltas e converte leitura em ação", async () =
     assert.ok(
       message?.parts.some((part) => part.type === "text" && part.markdown.includes("README")),
     );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude publica e persiste o uso da última mensagem assistant", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Resuma o contexto.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const usage = { usedTokens: 90_000, windowTokens: 200_000 };
+    assert.ok(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.contextUsage" &&
+          event.payload.conversationId === conversation.id &&
+          event.payload.usedTokens === usage.usedTokens &&
+          event.payload.windowTokens === usage.windowTokens,
+      ),
+    );
+    assert.deepEqual(harness.manager.get(conversation.id)?.contextUsage, usage);
+
+    await harness.manager.close();
+    harness.manager = new ConversationManager({
+      db: harness.db,
+      env: { ...process.env, KARONT_DISABLE_AGENT_DETECTION: "1" },
+      broadcast: async () => undefined,
+    });
+    assert.deepEqual(harness.manager.get(conversation.id)?.contextUsage, usage);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("o manager não publica uso quando o adaptador não declara a capacidade", async () => {
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      agentRegistrations: {
+        claude: {
+          factory: () => {
+            throw new Error("O adaptador do teste usa a fábrica injetada.");
+          },
+          capabilities: {
+            skills: false,
+            compact: false,
+            contextUsage: false,
+            fileMentions: false,
+            fastMode: false,
+            plan: false,
+            fork: false,
+          },
+        },
+      },
+      adapterFactory: (_conversation, emit) => ({
+        start: async () => undefined,
+        send: async () => {
+          emit({ kind: "context-usage", usedTokens: 90_000, windowTokens: 200_000 });
+          emit({ kind: "turn-end", status: "done" });
+        },
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      }),
+    },
+  );
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Responda.");
+    await waitForState(harness, conversation.id, "idle");
+    assert.equal(
+      harness.events.some((event) => event.event === "conversation.contextUsage"),
+      false,
+    );
+    assert.equal(harness.manager.get(conversation.id)?.contextUsage, undefined);
   } finally {
     await harness.close();
   }

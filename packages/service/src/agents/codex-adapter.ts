@@ -25,6 +25,7 @@ import type {
   CodexBranchPoint,
 } from "./adapter.ts";
 import { AgentCliError } from "./claude-adapter.ts";
+import { codexContextUsage } from "./context-usage.ts";
 import { resolveAgentCommand } from "./detect.ts";
 import { makeMessageSource, mergeMessageSources } from "./source-metadata.ts";
 import { mapCodexSpecialAction, truncateUtf8 } from "./tool-actions.ts";
@@ -706,6 +707,19 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   #handleNotification(method: string, params: JsonRecord): void {
+    if (method === "thread/tokenUsage/updated") {
+      const threadId = stringValue(params.threadId);
+      if (
+        !threadId ||
+        (!this.#threadStarting && threadId !== this.#threadId) ||
+        this.#subagentParentByThread.has(threadId)
+      ) {
+        return;
+      }
+      const usage = codexContextUsage(params.tokenUsage);
+      if (usage) this.#emit({ kind: "context-usage", ...usage });
+      return;
+    }
     if (method === "skills/changed") {
       this.#skillsLoaded = false;
       return;
@@ -1300,6 +1314,7 @@ export function createCodexAdapterRegistration(
     capabilities: {
       skills: true,
       compact: true,
+      contextUsage: true,
       fileMentions: true,
       fastMode: true,
       plan: true,
