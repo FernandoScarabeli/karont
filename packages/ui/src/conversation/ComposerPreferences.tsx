@@ -490,7 +490,7 @@ function EffortButton({
 
   return (
     <span className={styles.effortControl} data-popover-open={activePopover}>
-      <Tooltip label={tooltipLabel} open={activePopover !== null} visible={timedTooltip}>
+      <Tooltip label={tooltipLabel} open={activePopover} visible={timedTooltip}>
         <button
           aria-description={t.chat.effortChangeDescription}
           aria-label={effortLabel}
