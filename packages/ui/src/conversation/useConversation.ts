@@ -80,7 +80,7 @@ type ConversationTransitionMachineOptions = {
 
 export class ConversationTransitionMachine {
   private readonly options: ConversationTransitionMachineOptions;
-  private status: ConversationTransitionStatus = "waiting";
+  private status: ConversationTransitionStatus | null = null;
   private timer: number | null = null;
   private ready = false;
   private started = false;
@@ -93,14 +93,15 @@ export class ConversationTransitionMachine {
   start(): void {
     if (this.started || this.disposed) return;
     this.started = true;
-    this.options.onStatusChange("waiting");
+    this.setStatus("waiting");
     this.timer = this.options.setTimeout(() => {
       this.timer = null;
       if (this.status !== "waiting" || this.disposed) return;
-      if (this.ready || this.options.prefersReducedMotion()) {
+      if (this.ready) {
         this.complete();
         return;
       }
+      if (this.options.prefersReducedMotion()) return;
 
       this.setStatus("blurring");
       this.timer = this.options.setTimeout(() => {
