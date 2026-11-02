@@ -102,6 +102,95 @@ test("get inclui o texto em andamento antes do próximo salvamento", async () =>
   }
 });
 
+test("sources durante um flush em andamento preserva o delta salvo", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-sources-flush-race-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  let announceTextPart!: () => void;
+  let releaseTextPart!: () => void;
+  let announceSources!: () => void;
+  let announceDelta!: () => void;
+  let releaseSend!: () => void;
+  let emitAdapterEvent!: (event: AdapterEvent) => void;
+  const textPartEmitted = new Promise<void>((resolve) => {
+    announceTextPart = resolve;
+  });
+  const continueTextPart = new Promise<void>((resolve) => {
+    releaseTextPart = resolve;
+  });
+  const sourcesEmitted = new Promise<void>((resolve) => {
+    announceSources = resolve;
+  });
+  const deltaEmitted = new Promise<void>((resolve) => {
+    announceDelta = resolve;
+  });
+  const continueSend = new Promise<void>((resolve) => {
+    releaseSend = resolve;
+  });
+  const manager = new ConversationManager({
+    db,
+    env: { ...process.env, KARONT_MESSAGE_SAVE_DEBOUNCE_MS: "1000" },
+    broadcast: async (event) => {
+      if (event.event !== "conversation.partUpdated") return;
+      if (event.payload.kind === "delta") {
+        announceDelta();
+        return;
+      }
+      if (event.payload.kind !== "upsert" || event.payload.part.type !== "text") return;
+      if (event.payload.part.sources) announceSources();
+      else {
+        announceTextPart();
+        await continueTextPart;
+      }
+    },
+    adapterFactory: (_conversation, emit) => {
+      emitAdapterEvent = emit;
+      return {
+        start: async () => undefined,
+        send: async () => {
+          emit({ kind: "text-delta", partType: "text", partId: "answer", delta: "salvo" });
+          await continueSend;
+          emit({ kind: "turn-end", status: "done" });
+        },
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      };
+    },
+    titleGenerator: async () => null,
+  });
+  const conversation = manager.create({
+    agent: "claude",
+    title: "Corrida de fontes",
+    cwd: root,
+    mode: "edit",
+  });
+
+  try {
+    const sending = manager.send(conversation.id, "Responda.");
+    await textPartEmitted;
+    emitAdapterEvent({
+      kind: "sources",
+      sources: [{ url: "https://example.com/artigo", title: "Artigo" }],
+    });
+    await sourcesEmitted;
+    releaseTextPart();
+    await deltaEmitted;
+    releaseSend();
+    const { agentMessage } = await sending;
+    await waitForState(manager, conversation.id, "idle");
+
+    const savedMessage = getMessage(db, agentMessage.id);
+    const savedText = savedMessage?.parts.find((part) => part.type === "text");
+    assert.equal(savedText?.type === "text" ? savedText.markdown : undefined, "salvo");
+    assert.equal(savedText?.type === "text" ? savedText.sources?.[0]?.title : undefined, "Artigo");
+  } finally {
+    releaseTextPart();
+    releaseSend();
+    await manager.close();
+    db.close();
+  }
+});
+
 test("parar durante a inicialização não envia a mensagem", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "karont-stop-opening-"));
   const db = openDatabase(path.join(root, "karont.db"));

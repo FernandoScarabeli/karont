@@ -1174,13 +1174,12 @@ export class ConversationManager {
             .find((part): part is Extract<MessagePart, { type: "text" }> => part.type === "text");
       if (textPart) {
         active.sourcePartId = textPart.id;
-        const updatedPart = { ...textPart, sources: event.sources };
-        this.#upsertPart(message, updatedPart);
+        textPart.sources = event.sources;
         message.updatedAt = this.#now();
         this.#flushMessageSave(active, message);
         await this.#emit({
           event: "conversation.partUpdated",
-          payload: { conversationId, messageId: message.id, kind: "upsert", part: updatedPart },
+          payload: { conversationId, messageId: message.id, kind: "upsert", part: textPart },
         });
       }
       return;
