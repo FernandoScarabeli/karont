@@ -1,16 +1,19 @@
 import type { ConversationMessage } from "@karont/contract";
 import { History } from "lucide-react";
 import {
-  type KeyboardEvent,
   memo,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
   useCallback,
+  useEffect,
   useId,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
-import { ComposerPopover } from "../components/ComposerPopover/ComposerPopover.tsx";
+import { createPortal } from "react-dom";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
+import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
 import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./ConversationHistory.module.css";
@@ -18,22 +21,24 @@ import type { ConversationHistoryEntry } from "./conversationHistory.ts";
 
 export const ConversationHistory = memo(function ConversationHistory({
   entries,
-  messageCount,
   open,
   onOpenChange,
   onSelectMessage,
+  popupContainerRef,
 }: {
   entries: ConversationHistoryEntry[];
-  messageCount: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectMessage: (messageId: string) => void;
+  popupContainerRef: RefObject<HTMLElement | null>;
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef(new Map<string, HTMLDivElement>());
   const optionRefCallbacks = useRef(new Map<string, (element: HTMLDivElement | null) => void>());
   const popoverId = useId();
   const [activeIndex, setActiveIndex] = useState(0);
+  const [hasItemsAbove, setHasItemsAbove] = useState(false);
   const activeMessageId = entries[activeIndex]?.message.id;
 
   function optionRefFor(messageId: string) {
@@ -50,8 +55,16 @@ export const ConversationHistory = memo(function ConversationHistory({
 
   const focusActiveOption = useCallback(() => {
     const option = optionRefs.current.get(activeMessageId ?? "");
-    option?.focus({ preventScroll: true });
-    option?.scrollIntoView({ block: "nearest" });
+    const list = listRef.current;
+    if (!option || !list) return;
+    option.focus({ preventScroll: true });
+    const optionTop = option.offsetTop;
+    const optionBottom = optionTop + option.offsetHeight;
+    if (optionTop < list.scrollTop) list.scrollTop = optionTop;
+    else if (optionBottom > list.scrollTop + list.clientHeight) {
+      list.scrollTop = optionBottom - list.clientHeight;
+    }
+    setHasItemsAbove(list.scrollTop > 0);
   }, [activeMessageId]);
 
   useLayoutEffect(() => {
@@ -61,10 +74,13 @@ export const ConversationHistory = memo(function ConversationHistory({
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
-      if (nextOpen) setActiveIndex(Math.max(messageCount - 1, 0));
+      if (nextOpen) {
+        setActiveIndex(Math.max(entries.length - 1, 0));
+        setHasItemsAbove(false);
+      }
       onOpenChange(nextOpen);
     },
-    [messageCount, onOpenChange],
+    [entries.length, onOpenChange],
   );
 
   const selectMessage = useCallback(
@@ -76,8 +92,32 @@ export const ConversationHistory = memo(function ConversationHistory({
     [onOpenChange, onSelectMessage],
   );
 
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (listRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      onOpenChange(false);
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onOpenChange(false);
+      buttonRef.current?.focus({ preventScroll: true });
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [onOpenChange, open]);
+
   const handleOptionKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>, index: number) => {
+    (event: ReactKeyboardEvent<HTMLDivElement>, index: number) => {
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         event.preventDefault();
         const direction = event.key === "ArrowUp" ? -1 : 1;
@@ -111,36 +151,37 @@ export const ConversationHistory = memo(function ConversationHistory({
           ref={buttonRef}
         />
       </Tooltip>
-      {open ? (
-        <ComposerPopover
-          anchorRef={buttonRef}
-          className={styles.popover}
-          id={popoverId}
-          initialFocus={() =>
-            optionRefs.current.get(entries[activeIndex]?.message.id ?? "") ?? null
-          }
-          label={t.conversationHistory.listAccessibleName}
-          onClose={() => onOpenChange(false)}
-          open={open}
-          restoreFocusOnOutside={false}
-          role="listbox"
-        >
-          {entries.map(({ message, preview }, index) => (
-            <HistoryOption
-              active={index === activeIndex}
-              index={index}
-              key={message.id}
-              message={message}
-              messageLabel={t.conversationHistory.messageLabel(preview)}
-              onSelectMessage={selectMessage}
-              onKeyDown={handleOptionKeyDown}
-              setActiveIndex={setActiveIndex}
-              setOptionRef={optionRefFor(message.id)}
-              preview={preview}
-            />
-          ))}
-        </ComposerPopover>
-      ) : null}
+      {open && popupContainerRef.current
+        ? createPortal(
+            <div
+              aria-label={t.conversationHistory.listAccessibleName}
+              aria-multiselectable="false"
+              className={`${styles.popover} ${scrollAreaStyles.scrollArea}`}
+              data-has-items-above={hasItemsAbove}
+              id={popoverId}
+              ref={listRef}
+              role="listbox"
+              onScroll={(event) => setHasItemsAbove(event.currentTarget.scrollTop > 0)}
+              tabIndex={-1}
+            >
+              {entries.map(({ message, preview }, index) => (
+                <HistoryOption
+                  active={index === activeIndex}
+                  index={index}
+                  key={message.id}
+                  message={message}
+                  messageLabel={t.conversationHistory.messageLabel(preview)}
+                  onSelectMessage={selectMessage}
+                  onKeyDown={handleOptionKeyDown}
+                  setActiveIndex={setActiveIndex}
+                  setOptionRef={optionRefFor(message.id)}
+                  preview={preview}
+                />
+              ))}
+            </div>,
+            popupContainerRef.current,
+          )
+        : null}
     </>
   );
 });
@@ -160,7 +201,7 @@ const HistoryOption = memo(function HistoryOption({
   index: number;
   message: ConversationMessage;
   messageLabel: string;
-  onKeyDown: (event: KeyboardEvent<HTMLDivElement>, index: number) => void;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>, index: number) => void;
   onSelectMessage: (message: ConversationMessage) => void;
   preview: string;
   setActiveIndex: (index: number) => void;

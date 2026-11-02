@@ -159,6 +159,7 @@ export function ConversationView({
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const previousConversationIdRef = useRef(id);
   const initiallyHadConversationRef = useRef(Boolean(conversation));
+  const messageRegionRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const composerSectionRef = useRef<HTMLElement>(null);
@@ -1044,7 +1045,7 @@ export function ConversationView({
         {headerActions}
       </header>
 
-      <div className={styles.messageRegion} data-history-open={historyOpen}>
+      <div className={styles.messageRegion} data-history-open={historyOpen} ref={messageRegionRef}>
         <FollowBottomContext value={pinToBottom}>
           <section
             aria-label={t.chat.messageList}
@@ -1175,10 +1176,10 @@ export function ConversationView({
             conversation && userMessageCount >= 2 ? (
               <ConversationHistory
                 entries={historyEntries}
-                messageCount={userMessageCount}
                 onOpenChange={setHistoryOpen}
                 onSelectMessage={navigateToHistoryMessage}
                 open={historyOpen}
+                popupContainerRef={messageRegionRef}
               />
             ) : undefined
           }
