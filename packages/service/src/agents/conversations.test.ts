@@ -7,16 +7,17 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import type { AnyEvent, Conversation, MessagePart } from "@karont/contract";
+import type { AnyEvent, Conversation, ConversationMessage, MessagePart } from "@karont/contract";
 import {
   addMessage,
   createConversation as createConversationRecord,
+  getAgentSession,
   getMessage,
   openDatabase,
   setAgentSession,
   setSetting,
 } from "../db.ts";
-import type { AdapterModelList } from "./adapter.ts";
+import type { AdapterFactory, AdapterModelList } from "./adapter.ts";
 import { AgentCliError, ClaudeAdapter } from "./claude-adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
 import { createFakeClaudeSpawn, type FakeClaudeSpawn } from "./testing/fake-claude-process.ts";
@@ -78,6 +79,7 @@ async function createHarness(
       options?: Pick<TitleGeneratorOptions, "codexModel" | "codexEffort">,
     ) => Promise<string | null>;
     codexModelCache?: AdapterModelList;
+    adapterFactory?: AdapterFactory;
   } = {},
 ): Promise<Harness> {
   const root = await mkdtemp(path.join(os.tmpdir(), "karont-conversations-"));
@@ -107,14 +109,16 @@ async function createHarness(
       events.push(event);
       for (const listener of listeners) listener(event);
     },
-    adapterFactory: (_conversation, emit) =>
-      new ClaudeAdapter(emit, {
-        env,
-        spawn: (command, args, options) => {
-          spawnArgs.push(args);
-          return fakeSpawn(command, args, options);
-        },
-      }),
+    adapterFactory:
+      fakeOptions.adapterFactory ??
+      ((_conversation, emit) =>
+        new ClaudeAdapter(emit, {
+          env,
+          spawn: (command, args, options) => {
+            spawnArgs.push(args);
+            return fakeSpawn(command, args, options);
+          },
+        })),
     ...(fakeOptions.titleGenerator ? { titleGenerator: fakeOptions.titleGenerator } : {}),
   });
   return {
@@ -207,6 +211,170 @@ function latestAgent(harness: Harness, id: string) {
     .reverse()
     .find((message) => message.author === "agent");
 }
+
+function addTranscriptMessages(
+  db: ReturnType<typeof openDatabase>,
+  conversationId: string,
+  entries: Array<{
+    id: string;
+    author: "user" | "agent";
+    text: string;
+    agentTurnId?: string;
+  }>,
+): void {
+  for (const [index, entry] of entries.entries()) {
+    const timestamp = new Date(Date.UTC(2026, 10, 1, 10, index)).toISOString();
+    const message: ConversationMessage = {
+      id: entry.id,
+      conversationId,
+      author: entry.author,
+      status: "done",
+      parts: [{ id: `part-${entry.id}`, type: "text", markdown: entry.text }],
+      ...(entry.agentTurnId ? { agentTurnId: entry.agentTurnId } : {}),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    addMessage(db, message);
+  }
+}
+
+test("ramifica a última resposta Claude com --resume e --fork-session", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const source = harness.manager.create({
+      agent: "claude",
+      title: "Conversa original",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      model: "haiku",
+      effort: "low",
+      plan: true,
+    });
+    setAgentSession(harness.db, source.id, "claude-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "source-user-1", author: "user", text: "Pergunta original" },
+      { id: "source-agent-1", author: "agent", text: "Resposta original" },
+    ]);
+    const originalBefore = harness.manager.get(source.id);
+
+    const branch = await harness.manager.branch(source.id, "source-agent-1");
+    assert.equal(branch.title, "Conversa original · ramo");
+    assert.equal(branch.agent, source.agent);
+    assert.equal(branch.cwd, source.cwd);
+    assert.equal(branch.mode, source.mode);
+    assert.equal(branch.model, source.model);
+    assert.equal(branch.effort, source.effort);
+    assert.equal(branch.plan, source.plan);
+    assert.equal(branch.branchedFromId, source.id);
+    assert.equal(branch.branchedFromMessageId, "source-agent-1");
+    assert.equal(branch.branchContext, undefined);
+    assert.equal(getAgentSession(harness.db, branch.id), "claude-source-session");
+    assert.notEqual(harness.manager.get(branch.id)?.messages[0]?.id, "source-user-1");
+
+    await harness.manager.send(branch.id, "Continue a partir daqui.");
+    await waitForState(harness, branch.id, "idle");
+    const args = harness.spawnArgs.at(-1) ?? [];
+    const resumeIndex = args.indexOf("--resume");
+    assert.ok(resumeIndex >= 0);
+    assert.equal(args[resumeIndex + 1], "claude-source-session");
+    assert.ok(args.includes("--fork-session"));
+    assert.equal(getAgentSession(harness.db, source.id), "claude-source-session");
+    assert.equal(harness.manager.get(source.id)?.messages.length, originalBefore?.messages.length);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("ramifica resposta antiga copiando só até ela e envia o histórico como contexto", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const source = createConversation(harness.manager);
+    setAgentSession(harness.db, source.id, "claude-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "source-user-1", author: "user", text: "Primeira pergunta" },
+      { id: "source-agent-1", author: "agent", text: "Resposta antiga" },
+      { id: "source-user-2", author: "user", text: "Pergunta mais nova" },
+      { id: "source-agent-2", author: "agent", text: "Resposta mais nova" },
+    ]);
+    const originalBefore = harness.manager.get(source.id);
+
+    const branch = await harness.manager.branch(source.id, "source-agent-1");
+    const copied = harness.manager.get(branch.id)?.messages ?? [];
+    assert.equal(branch.branchContext, true);
+    assert.equal(branch.branchedFromMessageId, "source-agent-1");
+    assert.equal(getAgentSession(harness.db, branch.id), null);
+    assert.deepEqual(
+      copied.map((message) => message.parts.find((part) => part.type === "text")),
+      ["Primeira pergunta", "Resposta antiga"].map((markdown, index) => ({
+        id: copied[index]?.parts[0]?.id,
+        type: "text",
+        markdown,
+      })),
+    );
+    assert.notEqual(copied[0]?.id, "source-user-1");
+    assert.equal(harness.manager.get(source.id)?.messages.length, 4);
+
+    await harness.manager.send(branch.id, "Nova pergunta no ramo.");
+    await waitForState(harness, branch.id, "idle");
+    const prompt = JSON.stringify(
+      harness.claudeFake.messages.find((message) => message.type === "user"),
+    );
+    assert.match(prompt, /Resposta antiga/u);
+    assert.doesNotMatch(prompt, /Resposta mais nova/u);
+    assert.match(prompt, /Nova pergunta no ramo\./u);
+    assert.equal(harness.manager.get(source.id)?.messages.length, originalBefore?.messages.length);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("ramifica turno Codex usando o fork do adaptador e mantém o id da resposta", async () => {
+  const forkCalls: Array<{ sourceSessionId: string; branchPoint: unknown }> = [];
+  const adapterFactory: AdapterFactory = () => ({
+    start: async () => undefined,
+    send: async () => undefined,
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+    forkThread: async (_conversation, sourceSessionId, branchPoint) => {
+      forkCalls.push({ sourceSessionId, branchPoint });
+      return "codex-forked-session";
+    },
+  });
+  const harness = await createHarness("texto", {}, { adapterFactory });
+  try {
+    const source = harness.manager.create({
+      agent: "codex",
+      title: "Conversa Codex",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      model: "gpt-test",
+      effort: "high",
+    });
+    setAgentSession(harness.db, source.id, "codex-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "codex-user-1", author: "user", text: "Pergunta Codex" },
+      {
+        id: "codex-agent-1",
+        author: "agent",
+        text: "Resposta Codex",
+        agentTurnId: "codex-turn-1",
+      },
+    ]);
+
+    const branch = await harness.manager.branch(source.id, "codex-agent-1");
+    assert.deepEqual(forkCalls, [
+      { sourceSessionId: "codex-source-session", branchPoint: { lastTurnId: "codex-turn-1" } },
+    ]);
+    assert.equal(getAgentSession(harness.db, branch.id), "codex-forked-session");
+    assert.equal(branch.branchContext, undefined);
+    assert.equal(branch.model, source.model);
+    assert.equal(branch.effort, source.effort);
+    assert.equal(harness.manager.get(branch.id)?.messages.length, 2);
+  } finally {
+    await harness.close();
+  }
+});
 
 test("Claude transmite texto em deltas e converte leitura em ação", async () => {
   const harness = await createHarness("leitura");

@@ -17,6 +17,7 @@ import { Composer } from "../components/Composer/Composer.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
 import { t } from "../i18n/pt-BR.ts";
+import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { MOTION_MS } from "../styles/motion.ts";
 import {
   AttachmentChips,
@@ -77,6 +78,7 @@ export function ConversationView({
   };
 }) {
   const bridge = getBridge();
+  const { openConversationBeside } = useNavigation();
   const {
     conversation,
     messages,
@@ -222,6 +224,9 @@ export function ConversationView({
   const orderedMessages = messages;
   const visibleMessages = orderedMessages.slice(-visibleMessageCount);
   const latestMessage = visibleMessages.at(-1);
+  const latestAgentMessageId = orderedMessages.findLast(
+    (message) => message.author === "agent",
+  )?.id;
   const streamingAgentMessage =
     latestMessage?.author === "agent" && latestMessage.status === "streaming"
       ? latestMessage
@@ -564,6 +569,26 @@ export function ConversationView({
       }
     },
     [addMessage, bridge, conversation, id],
+  );
+
+  const branchMessage = useCallback(
+    async (messageId: string) => {
+      if (!bridge || !conversation || isWorking || isWaiting || isSending) return;
+      setInteractionError("");
+      try {
+        const result = await bridge.request("conversation.branch", { id, messageId });
+        upsertConversation(result.conversation);
+        if (!openConversationBeside(result.conversation.id))
+          setInteractionError(t.chat.branchOpenFailed);
+      } catch (branchError) {
+        setInteractionError(
+          branchError instanceof BridgeError && branchError.message
+            ? branchError.message
+            : t.chat.branchFailed,
+        );
+      }
+    },
+    [bridge, conversation, id, isSending, isWaiting, isWorking, openConversationBeside],
   );
 
   const saveOptions = useCallback(
@@ -920,6 +945,11 @@ export function ConversationView({
               {error}
             </p>
           ) : null}
+          {conversation?.branchContext ? (
+            <p className={styles.branchContextNotice} role="note">
+              {t.chat.branchContextNotice}
+            </p>
+          ) : null}
           {!loading && !error && messages.length === 0 ? (
             <div className={styles.empty}>
               <MessageSquareText aria-hidden="true" size={22} />
@@ -951,6 +981,15 @@ export function ConversationView({
               onEdit={editMessage}
               onRespond={respond}
               onRetry={retry}
+              onBranch={branchMessage}
+              canRetry={
+                !isWorking &&
+                !isWaiting &&
+                !isSending &&
+                message.author === "agent" &&
+                message.id === latestAgentMessageId
+              }
+              canBranch={!isWorking && !isWaiting && !isSending}
               onWorkingIndicatorExit={
                 message.author === "agent" &&
                 message.id === latestMessage?.id &&

@@ -108,6 +108,14 @@
   overflow-anchor: none;
 }
 
+.branchContextNotice {
+  width: min(100%, var(--k-chat-content-max-width));
+  margin: 0 auto var(--k-space-3);
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}
+
 .bottomSentinel {
   min-height: var(--k-border-width);
   flex: 0 0 var(--k-border-width);

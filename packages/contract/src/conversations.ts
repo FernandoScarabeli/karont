@@ -13,6 +13,9 @@ export const conversationSchema = z.strictObject({
   model: z.string().min(1).max(80).optional(),
   effort: reasoningEffortSchema.optional(),
   plan: z.boolean().optional(),
+  branchedFromId: z.string().min(1).optional(),
+  branchedFromMessageId: z.string().min(1).optional(),
+  branchContext: z.boolean().optional(),
   pinnedAt: z.iso.datetime({ offset: true }).nullable(),
   archivedAt: z.iso.datetime({ offset: true }).nullable(),
   unreadAt: z.iso.datetime({ offset: true }).nullable(),
@@ -131,6 +134,7 @@ export const messageSchema = z.strictObject({
   attachments: z.array(conversationAttachmentMetadataSchema).max(8).optional(),
   startedAt: z.number().int().nonnegative().optional(),
   endedAt: z.number().int().nonnegative().optional(),
+  agentTurnId: z.string().min(1).optional(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
 });

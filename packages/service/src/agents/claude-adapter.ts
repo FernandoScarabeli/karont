@@ -9,7 +9,13 @@ import {
   MAX_FRAME_BYTES,
   type MessagePart,
 } from "@karont/contract";
-import type { AdapterEvent, AdapterFactory, AdapterResponse, AgentAdapter } from "./adapter.ts";
+import type {
+  AdapterEvent,
+  AdapterFactory,
+  AdapterResponse,
+  AdapterStartOptions,
+  AgentAdapter,
+} from "./adapter.ts";
 import { resolveAgentCommand } from "./detect.ts";
 import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
 
@@ -77,6 +83,7 @@ export class ClaudeAdapter implements AgentAdapter {
   #conversation: Conversation | undefined;
   #sessionId = "";
   #resumeSession = false;
+  #forkSessionPending = false;
   #permissionMode = "";
   #nextControlRequestId = 0;
   #initResolve: (() => void) | undefined;
@@ -115,6 +122,7 @@ export class ClaudeAdapter implements AgentAdapter {
     sessionId: string,
     resume: boolean,
     plan = false,
+    options: AdapterStartOptions = {},
   ): Promise<void> {
     if (this.#child && this.#child.exitCode === null && this.#child.signalCode === null) return;
     this.#child = undefined;
@@ -122,6 +130,7 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#conversation = conversation;
     this.#sessionId = sessionId;
     this.#resumeSession = resume;
+    this.#forkSessionPending = resume && options.forkSession === true;
     this.#stderrErrorType = undefined;
     this.#stderrErrorText = "";
     const command =
@@ -154,6 +163,7 @@ export class ClaudeAdapter implements AgentAdapter {
     if (conversation.model) args.push("--model", conversation.model);
     if (conversation.effort) args.push("--effort", conversation.effort);
     args.push(resume ? "--resume" : "--session-id", sessionId);
+    if (this.#forkSessionPending) args.push("--fork-session");
     try {
       this.#child = this.#spawn(command, args, {
         cwd: conversation.cwd,
@@ -220,7 +230,7 @@ export class ClaudeAdapter implements AgentAdapter {
       this.#initReject = undefined;
     }
     this.#resumeSession = true;
-    this.#emit({ kind: "session", sessionId });
+    this.#emit({ kind: "session", sessionId: this.#sessionId });
   }
 
   async send(
@@ -231,7 +241,9 @@ export class ClaudeAdapter implements AgentAdapter {
     if (!this.#child || this.#child.exitCode !== null || this.#child.signalCode !== null) {
       if (!this.#conversation || !this.#sessionId)
         throw new AgentCliError("failed", "A CLI não está ativa.");
-      await this.start(this.#conversation, this.#sessionId, this.#resumeSession, plan);
+      await this.start(this.#conversation, this.#sessionId, this.#resumeSession, plan, {
+        forkSession: this.#forkSessionPending,
+      });
     }
     const conversation = this.#conversation;
     if (!conversation) throw new AgentCliError("failed", "A conversa Claude não foi iniciada.");
@@ -437,6 +449,7 @@ export class ClaudeAdapter implements AgentAdapter {
       if (value.subtype === "init" && typeof value.session_id === "string") {
         this.#sessionId = value.session_id;
         this.#resumeSession = true;
+        this.#forkSessionPending = false;
         this.#emit({ kind: "session", sessionId: value.session_id });
       }
       if (value.subtype === "api_error" || value.subtype === "error") {

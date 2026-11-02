@@ -27,7 +27,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    10,
+    11,
   );
   assert.equal(
     (
@@ -45,6 +45,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   assert.ok(messageColumns.has("started_at_ms"));
   assert.ok(messageColumns.has("ended_at_ms"));
   assert.ok(messageColumns.has("attachments_json"));
+  assert.ok(messageColumns.has("agent_turn_id"));
   const conversationColumns = new Set(
     (db.prepare("PRAGMA table_info(conversations)").all() as { name: string }[]).map(
       (column) => column.name,
@@ -53,6 +54,9 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   assert.ok(conversationColumns.has("pinned_at"));
   assert.ok(conversationColumns.has("archived_at"));
   assert.ok(conversationColumns.has("unread_at"));
+  assert.ok(conversationColumns.has("branched_from_id"));
+  assert.ok(conversationColumns.has("branched_from_message_id"));
+  assert.ok(conversationColumns.has("branch_context_pending"));
   setSetting(db, "appearance.theme", { mode: "dark", enabled: true });
   assert.deepEqual(getSetting(db, "appearance.theme"), { mode: "dark", enabled: true });
   assert.equal((await stat(dbPath)).mode & 0o777, 0o600);
@@ -75,7 +79,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    10,
+    11,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();

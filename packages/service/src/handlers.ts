@@ -161,6 +161,13 @@ export function createHandlers({
           .catch((error: unknown) => {
             throw conversationError(error);
           });
+      case "conversation.branch":
+        return conversationManager
+          .branch(request.params.id, request.params.messageId)
+          .then((conversation) => ({ conversation }))
+          .catch((error: unknown) => {
+            throw conversationError(error);
+          });
       case "conversation.delete":
         return conversationManager
           .remove(request.params.id)

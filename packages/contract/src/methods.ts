@@ -225,6 +225,10 @@ export const methods = {
     params: z.strictObject({ id: z.string().min(1), messageId: z.string().min(1).optional() }),
     result: z.strictObject({ agentMessage: messageSchema }),
   },
+  "conversation.branch": {
+    params: z.strictObject({ id: z.string().min(1), messageId: z.string().min(1) }),
+    result: z.strictObject({ conversation: conversationSchema }),
+  },
   "conversation.delete": {
     params: z.strictObject({ id: z.string().min(1) }),
     result: z.strictObject({ deleted: z.boolean() }),
