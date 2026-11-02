@@ -312,8 +312,10 @@ function matchesTurnStart(expected: unknown, actual: unknown): boolean {
   const { input: expectedInput, ...expectedParams } = expected;
   const { input: actualInput, ...actualParams } = actual;
   delete expectedParams.sandbox;
+  delete expectedParams.sandboxPolicy;
   delete expectedParams.approvalPolicy;
   delete actualParams.sandbox;
+  delete actualParams.sandboxPolicy;
   delete actualParams.approvalPolicy;
   if (!("serviceTier" in expectedParams)) delete actualParams.serviceTier;
   if (!("serviceTierForTurn" in expectedParams)) delete actualParams.serviceTierForTurn;

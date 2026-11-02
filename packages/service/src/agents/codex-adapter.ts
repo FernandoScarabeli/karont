@@ -440,7 +440,7 @@ export class CodexAdapter implements AgentAdapter {
       input,
       model: this.#modelId,
       effort: this.#effort,
-      sandbox,
+      sandboxPolicy: codexSandboxPolicy(sandbox),
       approvalPolicy,
       ...(this.#fast && this.#fastServiceTier
         ? { serviceTier: this.#fastServiceTier }
@@ -1191,6 +1191,14 @@ function permissionSettings(mode: Conversation["mode"]): {
   if (mode === "read-only") return { sandbox: "read-only", approvalPolicy: "never" };
   if (mode === "full") return { sandbox: "danger-full-access", approvalPolicy: "never" };
   return { sandbox: "workspace-write", approvalPolicy: "untrusted" };
+}
+
+function codexSandboxPolicy(sandbox: "read-only" | "workspace-write" | "danger-full-access"): {
+  type: "readOnly" | "workspaceWrite" | "dangerFullAccess";
+} {
+  if (sandbox === "read-only") return { type: "readOnly" };
+  if (sandbox === "danger-full-access") return { type: "dangerFullAccess" };
+  return { type: "workspaceWrite" };
 }
 
 function parseModelList(value: unknown): AdapterModelList {

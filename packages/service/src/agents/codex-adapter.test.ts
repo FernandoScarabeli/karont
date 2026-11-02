@@ -805,10 +805,10 @@ test("deixa a duração nula quando não há início ou duração informados", a
 });
 
 test("modos Codex usam as políticas reais do app-server", async (t) => {
-  for (const [mode, sandbox, approvalPolicy] of [
-    ["read-only", "read-only", "never"],
-    ["edit", "workspace-write", "untrusted"],
-    ["full", "danger-full-access", "never"],
+  for (const [mode, sandbox, sandboxPolicy, approvalPolicy] of [
+    ["read-only", "read-only", { type: "readOnly" }, "never"],
+    ["edit", "workspace-write", { type: "workspaceWrite" }, "untrusted"],
+    ["full", "danger-full-access", { type: "dangerFullAccess" }, "never"],
   ] as const) {
     await t.test(mode, async () => {
       const harness = await createHarness("texto", { mode });
@@ -827,6 +827,13 @@ test("modos Codex usam as políticas reais do app-server", async (t) => {
           (threadStart?.params as Record<string, unknown> | undefined)?.approvalPolicy,
           approvalPolicy,
         );
+        const turnStart = harness.fakes[0]?.messages[0]?.find(
+          (message) => message.method === "turn/start",
+        );
+        const turnParams = requestParams(turnStart);
+        assert.equal(turnParams.sandbox, undefined);
+        assert.deepEqual(turnParams.sandboxPolicy, sandboxPolicy);
+        assert.equal(turnParams.approvalPolicy, approvalPolicy);
       } finally {
         await harness.close();
       }
@@ -842,7 +849,8 @@ test("Codex aplica o modo atualizado ao retomar uma conversa", async () => {
     const initialTurn = requestParams(
       harness.fakes[0]?.messages[0]?.find((message) => message.method === "turn/start"),
     );
-    assert.equal(initialTurn.sandbox, "read-only");
+    assert.equal(initialTurn.sandbox, undefined);
+    assert.deepEqual(initialTurn.sandboxPolicy, { type: "readOnly" });
     assert.equal(initialTurn.approvalPolicy, "never");
     await waitForState(harness, conversation.id, "idle");
 
@@ -863,7 +871,8 @@ test("Codex aplica o modo atualizado ao retomar uma conversa", async () => {
     const turnStart = requestParams(
       resumedRequests.find((message) => message.method === "turn/start"),
     );
-    assert.equal(turnStart.sandbox, "workspace-write");
+    assert.equal(turnStart.sandbox, undefined);
+    assert.deepEqual(turnStart.sandboxPolicy, { type: "workspaceWrite" });
     assert.equal(turnStart.approvalPolicy, "untrusted");
   } finally {
     await harness.close();
