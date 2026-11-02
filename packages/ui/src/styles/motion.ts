@@ -5,11 +5,6 @@ export const MOTION_MS = {
   fast: 80,
   moderate: 160,
   slow: 240,
-  conversationBlur: 150,
-} as const;
-
-export const MOTION_DELAY_MS = {
-  conversationBlur: 80,
 } as const;
 
 export const MOTION_EXIT_MS = {

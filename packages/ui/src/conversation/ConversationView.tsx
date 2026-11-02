@@ -18,7 +18,7 @@ import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
-import { MOTION_DELAY_MS, MOTION_MS } from "../styles/motion.ts";
+import { MOTION_MS } from "../styles/motion.ts";
 import {
   AttachmentChips,
   AttachmentPicker,
@@ -44,12 +44,7 @@ import {
 import { ConversationMessageList } from "./ConversationMessageList.tsx";
 import { type ResponseInput, TodosPart } from "./ConversationParts.tsx";
 import styles from "./ConversationView.module.css";
-import {
-  type CachedGitInfo,
-  cacheAgentModels,
-  getCachedAgentModels,
-  getCachedGitInfo,
-} from "./conversationCache.ts";
+import { cacheAgentModels, getCachedAgentModels } from "./conversationCache.ts";
 import { getConversationHistory } from "./conversationHistory.ts";
 import { formatFolderPath } from "./displayText.ts";
 import { FollowBottomContext } from "./followBottom.ts";
@@ -76,15 +71,6 @@ type ConversationOptionsPatch = {
   fast?: Conversation["fast"];
   plan?: Conversation["plan"];
 };
-
-type ConversationTransitionSource = {
-  conversation: Conversation;
-  gitInfo: CachedGitInfo | null;
-  gitInfoLoading: boolean;
-};
-
-type TransitionSurface = "messages" | "composer" | "folder";
-type TransitionStatus = "waiting" | "blurring" | "blurred" | "revealing" | "done";
 
 export function ConversationView({
   id,
@@ -118,8 +104,7 @@ export function ConversationView({
     updateConversation,
     fetchOlderMessages,
     fetchAllOlderMessages,
-  } = useConversation(id, isActivePane);
-  const isTargetLoading = loading && conversation?.id !== id;
+  } = useConversation(id);
   const markSeenInFlight = useRef(false);
   const [draft, setDraft] = useState("");
   const [models, setModels] = useState<AgentModels | null>(null);
@@ -142,7 +127,7 @@ export function ConversationView({
     present: false,
   }));
   const [showSlowLoading, setShowSlowLoading] = useState(
-    () => isTargetLoading && Date.now() - openedAt >= 300,
+    () => !conversation && loading && Date.now() - openedAt >= 300,
   );
   const [revealLoadedData, setRevealLoadedData] = useState(false);
 
@@ -150,7 +135,6 @@ export function ConversationView({
     if (
       !bridge ||
       document.visibilityState !== "visible" ||
-      conversation?.id !== id ||
       !conversation?.unreadAt ||
       markSeenInFlight.current
     ) {
@@ -167,7 +151,7 @@ export function ConversationView({
     } finally {
       markSeenInFlight.current = false;
     }
-  }, [bridge, conversation?.id, conversation?.unreadAt, id, updateConversation]);
+  }, [bridge, conversation?.unreadAt, id, updateConversation]);
 
   useEffect(() => {
     void markSeen();
@@ -190,17 +174,6 @@ export function ConversationView({
   const previousConversationIdRef = useRef(id);
   const initiallyHadConversationRef = useRef(Boolean(conversation));
   const messageRegionRef = useRef<HTMLDivElement>(null);
-  const composerControlsRef = useRef<HTMLDivElement>(null);
-  const composerBelowRef = useRef<HTMLDivElement>(null);
-  const transitionSourceRef = useRef<ConversationTransitionSource | null>(null);
-  const transitionInitializedRef = useRef(false);
-  const transitionStatusRef = useRef<Partial<Record<TransitionSurface, TransitionStatus>>>({});
-  const transitionTimerRefs = useRef<Partial<Record<TransitionSurface, number>>>({});
-  const transitionReadinessRef = useRef<Record<TransitionSurface, boolean>>({
-    messages: false,
-    composer: false,
-    folder: false,
-  });
   const messageListRef = useRef<HTMLDivElement>(null);
   const olderMessagesSentinelRef = useRef<HTMLDivElement>(null);
   const olderMessagesObserverRef = useRef<IntersectionObserver | null>(null);
@@ -234,6 +207,7 @@ export function ConversationView({
     models?.agent === agent ? models : agent ? (getCachedAgentModels(agent) ?? null) : null;
   const visibleOptions = optimisticConversationIdRef.current === id ? optimisticOptions : {};
   const visibleConversation = conversation ? { ...conversation, ...visibleOptions } : null;
+  const planMode = visibleConversation?.plan ?? false;
 
   useEffect(() => {
     if (!agent || !bridge) {
@@ -258,7 +232,7 @@ export function ConversationView({
   }, [agent, bridge]);
 
   useEffect(() => {
-    if (!loading || conversation?.id === id) {
+    if (!loading || conversation) {
       setShowSlowLoading(false);
       return;
     }
@@ -269,7 +243,7 @@ export function ConversationView({
     }
     const timer = window.setTimeout(() => setShowSlowLoading(true), remaining);
     return () => window.clearTimeout(timer);
-  }, [conversation?.id, id, loading, openedAt]);
+  }, [conversation, loading, openedAt]);
 
   useLayoutEffect(() => {
     if (!conversation || initiallyHadConversationRef.current) return;
@@ -514,146 +488,10 @@ export function ConversationView({
     });
   }, [id, isWaiting, workingActive]);
   const composerAttachments = useComposerAttachments(
-    Boolean(conversation?.id === id && bridge && !isWaiting && !isResponding && !isSending),
+    Boolean(conversation && bridge && !isWaiting && !isResponding && !isSending),
     id,
   );
   const { info: gitInfo, loading: gitInfoLoading } = useGitInfo(conversation?.cwd, id);
-
-  if (!transitionSourceRef.current && conversation && conversation.id !== id) {
-    transitionSourceRef.current = {
-      conversation,
-      gitInfo: getCachedGitInfo(conversation.cwd) ?? gitInfo,
-      gitInfoLoading,
-    };
-  } else if (
-    transitionSourceRef.current &&
-    conversation?.id === transitionSourceRef.current.conversation.id
-  ) {
-    transitionSourceRef.current.gitInfo = getCachedGitInfo(conversation.cwd) ?? gitInfo;
-    transitionSourceRef.current.gitInfoLoading = gitInfoLoading;
-  }
-
-  const isTargetConversationLoaded = conversation?.id === id;
-  const transitionSource = transitionSourceRef.current;
-  const composerDataReady = Boolean(
-    isTargetConversationLoaded && (!agent || currentModels?.agent === agent),
-  );
-  const folderDataReady = isTargetConversationLoaded && !gitInfoLoading;
-  const composerConversation =
-    transitionSource && !composerDataReady ? transitionSource.conversation : conversation;
-  const composerVisibleConversation = composerConversation
-    ? {
-        ...composerConversation,
-        ...(composerConversation.id === id ? visibleOptions : {}),
-      }
-    : null;
-  const composerModels = composerConversation
-    ? composerConversation.agent === agent
-      ? currentModels
-      : (getCachedAgentModels(composerConversation.agent) ?? null)
-    : null;
-  const folderConversation =
-    transitionSource && !folderDataReady ? transitionSource.conversation : conversation;
-  const folderGitInfo = transitionSource && !folderDataReady ? transitionSource.gitInfo : gitInfo;
-  const folderGitInfoLoading =
-    transitionSource && !folderDataReady ? transitionSource.gitInfoLoading : gitInfoLoading;
-  transitionReadinessRef.current = {
-    messages: isTargetConversationLoaded,
-    composer: composerDataReady,
-    folder: folderDataReady,
-  };
-
-  useLayoutEffect(() => {
-    if (!transitionSource) return;
-
-    const refs = {
-      messages: messageRegionRef,
-      composer: composerControlsRef,
-      folder: composerBelowRef,
-    };
-
-    const finish = (surface: TransitionSurface) => {
-      const element = refs[surface].current;
-      const status = transitionStatusRef.current[surface];
-      if (!element || !status || status === "done" || status === "revealing") return;
-      const timer = transitionTimerRefs.current[surface];
-      if (timer !== undefined) window.clearTimeout(timer);
-      delete transitionTimerRefs.current[surface];
-
-      if (status === "waiting" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        element.removeAttribute("data-conversation-blur");
-        element.inert = false;
-        element.removeAttribute("aria-hidden");
-        transitionStatusRef.current[surface] = "done";
-        return;
-      }
-
-      element.setAttribute("data-conversation-blur", "revealing");
-      transitionStatusRef.current[surface] = "revealing";
-      transitionTimerRefs.current[surface] = window.setTimeout(() => {
-        element.removeAttribute("data-conversation-blur");
-        element.inert = false;
-        element.removeAttribute("aria-hidden");
-        transitionStatusRef.current[surface] = "done";
-        delete transitionTimerRefs.current[surface];
-      }, MOTION_MS.conversationBlur);
-    };
-
-    if (!transitionInitializedRef.current) {
-      transitionInitializedRef.current = true;
-      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-      for (const surface of ["messages", "composer", "folder"] as const) {
-        const element = refs[surface].current;
-        if (!element) continue;
-        element.inert = true;
-        element.setAttribute("aria-hidden", "true");
-        transitionStatusRef.current[surface] = "waiting";
-
-        if (reducedMotion) continue;
-        transitionTimerRefs.current[surface] = window.setTimeout(() => {
-          if (transitionStatusRef.current[surface] !== "waiting") return;
-          if (transitionReadinessRef.current[surface]) {
-            finish(surface);
-            return;
-          }
-          if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-            finish(surface);
-            return;
-          }
-
-          element.setAttribute("data-conversation-blur", "blurring");
-          transitionStatusRef.current[surface] = "blurring";
-          transitionTimerRefs.current[surface] = window.setTimeout(() => {
-            if (transitionStatusRef.current[surface] !== "blurring") return;
-            element.setAttribute("data-conversation-blur", "blurred");
-            transitionStatusRef.current[surface] = "blurred";
-            delete transitionTimerRefs.current[surface];
-          }, MOTION_MS.conversationBlur);
-        }, MOTION_DELAY_MS.conversationBlur);
-      }
-    }
-
-    for (const surface of ["messages", "composer", "folder"] as const) {
-      const ready =
-        surface === "messages"
-          ? isTargetConversationLoaded
-          : surface === "composer"
-            ? composerDataReady
-            : folderDataReady;
-      if (ready) finish(surface);
-    }
-  }, [transitionSource, composerDataReady, folderDataReady, isTargetConversationLoaded]);
-
-  useEffect(
-    () => () => {
-      for (const timer of Object.values(transitionTimerRefs.current)) {
-        if (timer !== undefined) window.clearTimeout(timer);
-      }
-    },
-    [],
-  );
-
   useEffect(() => {
     if (previousConversationIdRef.current === id) return;
     previousConversationIdRef.current = id;
@@ -1071,10 +909,10 @@ export function ConversationView({
   );
 
   const copyFolderPath = useCallback(async () => {
-    if (!folderConversation) return;
-    await copyText(folderConversation.cwd);
+    if (!conversation) return;
+    await copyText(conversation.cwd);
     setAnnouncement(t.chat.folderCopied);
-  }, [copyText, folderConversation]);
+  }, [conversation, copyText]);
 
   function beginTitleRename() {
     if (!conversation || isSavingTitle || isRenamingTitle) return;
@@ -1120,13 +958,13 @@ export function ConversationView({
   }
 
   const title = conversation?.title ?? t.conversation.title;
-  const homeTodos = isTargetConversationLoaded && isWorking ? lastTodos : null;
+  const homeTodos = isWorking ? lastTodos : null;
   const folderPath = useMemo(
-    () => (folderConversation ? formatFolderPath(folderConversation.cwd) : null),
-    [folderConversation],
+    () => (conversation ? formatFolderPath(conversation.cwd) : null),
+    [conversation],
   );
   const canAttachFiles = Boolean(
-    conversation?.id === id && bridge && !isWaiting && !isResponding && !isSending,
+    conversation && bridge && !isWaiting && !isResponding && !isSending,
   );
   const changeEffort = useCallback(
     (value: AgentEffort | "") => {
@@ -1178,32 +1016,27 @@ export function ConversationView({
   );
   const composerLeading = useMemo(
     () =>
-      composerConversation ? (
-        <div
-          className={`${styles.composerControls} ${revealLoadedData ? styles.dataReveal : ""}`}
-          ref={composerControlsRef}
-        >
+      conversation ? (
+        <div className={`${styles.composerControls} ${revealLoadedData ? styles.dataReveal : ""}`}>
           <AttachmentPicker disabled={!canAttachFiles} onFiles={composerAttachments.addFiles} />
           <Tooltip
             className={styles.agentTooltip}
-            label={t.chat.agentTooltip(agentDisplayName(composerConversation.agent))}
+            label={t.chat.agentTooltip(agentDisplayName(conversation.agent))}
           >
             <span className={styles.agentTag}>
-              <AgentIcon agentId={composerConversation.agent} />
-              <span className={styles.agentName}>
-                {agentDisplayName(composerConversation.agent)}
-              </span>
+              <AgentIcon agentId={conversation.agent} />
+              <span className={styles.agentName}>{agentDisplayName(conversation.agent)}</span>
             </span>
           </Tooltip>
           <ComposerPreferences
             activePopover={activePopover}
             disabled={isWorking || isWaiting || isResponding || isSending || !bridge}
-            effort={composerVisibleConversation?.effort ?? ""}
-            fastMode={composerVisibleConversation?.fast ?? false}
-            mode={composerVisibleConversation?.mode ?? "edit"}
-            model={composerVisibleConversation?.model ?? null}
-            models={composerModels}
-            planMode={composerVisibleConversation?.plan ?? false}
+            effort={visibleConversation?.effort ?? ""}
+            fastMode={visibleConversation?.fast ?? false}
+            mode={visibleConversation?.mode ?? "edit"}
+            model={visibleConversation?.model ?? null}
+            models={currentModels}
+            planMode={planMode}
             onActivePopoverChange={setActivePopover}
             onEffortChange={changeEffort}
             onFastModeChange={changeFastMode}
@@ -1216,8 +1049,8 @@ export function ConversationView({
         <ConversationLoadingControls />
       ),
     [
-      activePopover,
       bridge,
+      activePopover,
       canAttachFiles,
       changeEffort,
       changeFastMode,
@@ -1225,17 +1058,17 @@ export function ConversationView({
       changeModel,
       changePlanMode,
       composerAttachments.addFiles,
-      composerConversation,
-      composerModels,
-      composerVisibleConversation?.effort,
-      composerVisibleConversation?.fast,
-      composerVisibleConversation?.mode,
-      composerVisibleConversation?.model,
-      composerVisibleConversation?.plan,
+      conversation,
       isResponding,
       isSending,
       isWaiting,
       isWorking,
+      currentModels,
+      planMode,
+      visibleConversation?.effort,
+      visibleConversation?.fast,
+      visibleConversation?.mode,
+      visibleConversation?.model,
       revealLoadedData,
     ],
   );
@@ -1250,14 +1083,14 @@ export function ConversationView({
     [composerAttachments.attachments, composerAttachments.remove, isSending],
   );
   const composerBelow = useMemo(() => {
-    return folderConversation ? (
-      <div className={styles.composerBelow} ref={composerBelowRef}>
+    return conversation ? (
+      <div className={styles.composerBelow}>
         <div className={styles.folderStrip}>
           <button
-            aria-label={t.chat.folderCopy(folderConversation.cwd)}
+            aria-label={t.chat.folderCopy(conversation.cwd)}
             className={styles.folderButton}
             onClick={() => void copyFolderPath()}
-            title={t.chat.folderCopy(folderConversation.cwd)}
+            title={t.chat.folderCopy(conversation.cwd)}
             type="button"
           >
             <Folder aria-hidden="true" size={15} />
@@ -1269,11 +1102,11 @@ export function ConversationView({
             </span>
           </button>
           <span className={styles.branchSlot}>
-            {folderGitInfo ? (
+            {gitInfo ? (
               <span className={revealLoadedData ? styles.dataReveal : undefined}>
-                <GitBranchLabel info={folderGitInfo} />
+                <GitBranchLabel info={gitInfo} />
               </span>
-            ) : folderGitInfoLoading ? (
+            ) : gitInfoLoading ? (
               <ConversationBranchPlaceholder />
             ) : null}
           </span>
@@ -1282,14 +1115,7 @@ export function ConversationView({
     ) : (
       <ConversationLoadingStrip />
     );
-  }, [
-    copyFolderPath,
-    folderConversation,
-    folderGitInfo,
-    folderGitInfoLoading,
-    folderPath,
-    revealLoadedData,
-  ]);
+  }, [conversation, copyFolderPath, folderPath, gitInfo, gitInfoLoading, revealLoadedData]);
   const composerStop = useCallback(() => void stopAgent(), [stopAgent]);
   const composerSubmit = useCallback(
     () =>
@@ -1405,7 +1231,7 @@ export function ConversationView({
             onWorkingIndicatorExit={completeWorkingIndicatorExit}
             revealLoadedData={revealLoadedData}
             shouldShowWorkingIndicator={shouldShowWorkingIndicator}
-            showSlowLoading={showSlowLoading && !conversation}
+            showSlowLoading={showSlowLoading}
             totalMessageCount={orderedMessages.length}
             workingIndicatorProps={workingIndicatorProps}
           />
@@ -1485,11 +1311,7 @@ export function ConversationView({
         />
       </section>
       <div aria-live="polite" className={styles.srOnly} role="status">
-        {isTargetLoading && showSlowLoading
-          ? t.chat.loading
-          : liveText
-            ? t.chat.contentAnnounced(liveText)
-            : announcement}
+        {liveText ? t.chat.contentAnnounced(liveText) : announcement}
       </div>
     </section>
   );
