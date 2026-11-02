@@ -12,13 +12,33 @@
   max-width: var(--k-composer-select-max-width);
 }
 
-.modelName,
-.modelOption {
+.modelName {
   display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.modelOption {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+}
+
+.modelOptionName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelDefault {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-11);
 }
 
 .modelName {

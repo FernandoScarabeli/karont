@@ -22,8 +22,10 @@ export type AdapterModelList = {
   models: {
     id: string;
     name: string;
+    aliases?: string[];
+    isDefault?: boolean;
     efforts: NonNullable<Conversation["effort"]>[];
-    defaultEffort: NonNullable<Conversation["effort"]>;
+    defaultEffort?: NonNullable<Conversation["effort"]>;
     supportsFast: boolean;
     fastServiceTier?: string;
   }[];

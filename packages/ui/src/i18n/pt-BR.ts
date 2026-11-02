@@ -183,6 +183,7 @@ export const t = {
     agentTooltip: (agent: string) => `Agente: ${agent}`,
     attachTooltip: "Anexar arquivos",
     configTooltip: "Opções",
+    modelDefault: "Padrão",
     effort: "Esforço",
     fastMode: "Modo rápido",
     fastModeEnabled: "Modo rápido ligado",

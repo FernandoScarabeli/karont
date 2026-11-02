@@ -6,6 +6,7 @@ import { PassThrough } from "node:stream";
 type FixtureLine = { direction: string; stream: string; line: string };
 type JsonRecord = Record<string, unknown>;
 type FakeProcessOptions = {
+  cwdOverride?: string;
   startAtResume?: boolean;
   withoutCommandTiming?: boolean;
   withoutCommandStart?: boolean;
@@ -60,7 +61,10 @@ class FakeCodexProcess extends EventEmitter {
     this.#records = readFileSync(fixturePath, "utf8")
       .split(/\r?\n/)
       .filter(Boolean)
-      .map((line) => JSON.parse(line) as FixtureLine);
+      .map((line) => JSON.parse(line) as FixtureLine)
+      .map((record) =>
+        options.cwdOverride ? overrideFixtureCwd(record, options.cwdOverride) : record,
+      );
     this.stdin.on("data", (chunk: Buffer) => this.#read(chunk.toString("utf8")));
   }
 
@@ -122,7 +126,9 @@ class FakeCodexProcess extends EventEmitter {
               )
             : expected.method === "thread/start"
               ? deepEqual(omitPolicy(expected.params), omitPolicy(value.params))
-              : deepEqual(expected.params ?? {}, value.params ?? {});
+              : expected.method === "thread/resume"
+                ? deepEqual(omitAccessPolicy(expected.params), omitAccessPolicy(value.params))
+                : deepEqual(expected.params ?? {}, value.params ?? {});
     if (!paramsMatch) {
       this.#fail(`Parâmetros de ${String(value.method)} não correspondem à fixture.`);
       return;
@@ -291,10 +297,26 @@ function matchesAdjustmentTurn(expected: unknown, actual: unknown): boolean {
   );
 }
 
+function overrideFixtureCwd(record: FixtureLine, cwd: string): FixtureLine {
+  if (record.direction !== "out" || record.stream !== "stdin") return record;
+  const message = parseFixture(record.line);
+  if (!isRecord(message.params) || typeof message.params.cwd !== "string") return record;
+  return {
+    ...record,
+    line: JSON.stringify({ ...message, params: { ...message.params, cwd } }),
+  };
+}
+
 function matchesTurnStart(expected: unknown, actual: unknown): boolean {
   if (!isRecord(expected) || !isRecord(actual)) return false;
   const { input: expectedInput, ...expectedParams } = expected;
   const { input: actualInput, ...actualParams } = actual;
+  delete expectedParams.sandbox;
+  delete expectedParams.sandboxPolicy;
+  delete expectedParams.approvalPolicy;
+  delete actualParams.sandbox;
+  delete actualParams.sandboxPolicy;
+  delete actualParams.approvalPolicy;
   if (!("serviceTier" in expectedParams)) delete actualParams.serviceTier;
   if (!("serviceTierForTurn" in expectedParams)) delete actualParams.serviceTierForTurn;
   if (!Array.isArray(expectedInput) || !Array.isArray(actualInput) || actualInput.length < 1)
@@ -331,5 +353,11 @@ function omitPolicy(value: unknown): unknown {
     serviceTier: _serviceTier,
     ...params
   } = value;
+  return params;
+}
+
+function omitAccessPolicy(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const { sandbox: _sandbox, approvalPolicy: _approvalPolicy, ...params } = value;
   return params;
 }

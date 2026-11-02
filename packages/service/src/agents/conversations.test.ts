@@ -1,29 +1,40 @@
 import assert from "node:assert/strict";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdtemp } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import type { AnyEvent, Conversation, ConversationMessage, MessagePart } from "@karont/contract";
+import type {
+  AnyEvent,
+  Conversation,
+  ConversationAttachment,
+  ConversationMessage,
+  MessagePart,
+} from "@karont/contract";
 import {
   addMessage,
   createConversation as createConversationRecord,
   getAgentSession,
   getMessage,
+  isBranchForkPending,
   openDatabase,
   setAgentSession,
   setSetting,
 } from "../db.ts";
 import type { AdapterFactory, AdapterModelList } from "./adapter.ts";
-import { AgentCliError, ClaudeAdapter } from "./claude-adapter.ts";
+import { AgentCliError, ClaudeAdapter, createClaudeModelLoader } from "./claude-adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
 import { createFakeClaudeSpawn, type FakeClaudeSpawn } from "./testing/fake-claude-process.ts";
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
 const fixtureDir = new URL("./fixtures/claude/", import.meta.url);
+const modelFixture = JSON.parse(
+  readFileSync(fileURLToPath(new URL("modelos.json", fixtureDir)), "utf8"),
+) as Record<string, unknown>[];
 
 type Harness = {
   manager: ConversationManager;
@@ -72,6 +83,9 @@ async function createHarness(
   fakeOptions: {
     exitAfterResult?: boolean;
     planDecision?: "approve" | "adjust";
+    initializeGate?: { started: () => void; released: Promise<void> };
+    largeImageBytes?: number;
+    messageCreatedGate?: { started: () => void; released: Promise<void> };
     titleGenerator?: (
       agent: Conversation["agent"],
       userMessage: string,
@@ -79,6 +93,7 @@ async function createHarness(
       options?: Pick<TitleGeneratorOptions, "codexModel" | "codexEffort">,
     ) => Promise<string | null>;
     codexModelCache?: AdapterModelList;
+    claudeModelLoader?: (cwd: string) => Promise<AdapterModelList>;
     adapterFactory?: AdapterFactory;
   } = {},
 ): Promise<Harness> {
@@ -101,24 +116,33 @@ async function createHarness(
     KARONT_DISABLE_AGENT_DETECTION: "1",
     KARONT_CLAUDE_CLI: "claude",
   };
-  const fakeSpawn = createFakeClaudeSpawn(fixturePath, fakeOptions);
+  const fakeSpawn = createFakeClaudeSpawn(fixturePath, {
+    ...fakeOptions,
+    initializeModels: modelFixture,
+  });
+  const spawn = (command: string, args: string[], options: SpawnOptions) => {
+    spawnArgs.push(args);
+    return fakeSpawn(command, args, options);
+  };
   const manager = new ConversationManager({
     db,
     env,
     broadcast: async (event) => {
       events.push(event);
       for (const listener of listeners) listener(event);
+      if (event.event === "conversation.messageCreated" && fakeOptions.messageCreatedGate) {
+        fakeOptions.messageCreatedGate.started();
+        await fakeOptions.messageCreatedGate.released;
+      }
     },
     adapterFactory:
       fakeOptions.adapterFactory ??
       ((_conversation, emit) =>
         new ClaudeAdapter(emit, {
           env,
-          spawn: (command, args, options) => {
-            spawnArgs.push(args);
-            return fakeSpawn(command, args, options);
-          },
+          spawn,
         })),
+    claudeModelLoader: fakeOptions.claudeModelLoader ?? createClaudeModelLoader({ env, spawn }),
     ...(fakeOptions.titleGenerator ? { titleGenerator: fakeOptions.titleGenerator } : {}),
   });
   return {
@@ -238,6 +262,213 @@ function addTranscriptMessages(
   }
 }
 
+test("remover durante a abertura ignora a falha tardia e avisa a interface", async () => {
+  let announceStart!: () => void;
+  let rejectOpening!: (error: Error) => void;
+  let announceDisposal!: () => void;
+  let releaseDisposal!: () => void;
+  let disposeCalls = 0;
+  const started = new Promise<void>((resolve) => {
+    announceStart = resolve;
+  });
+  const disposalStarted = new Promise<void>((resolve) => {
+    announceDisposal = resolve;
+  });
+  const disposalGate = new Promise<void>((resolve) => {
+    releaseDisposal = resolve;
+  });
+  const opening = new Promise<void>((_resolve, reject) => {
+    rejectOpening = reject;
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: (_conversation, _emit) => {
+        return {
+          start: async () => {
+            announceStart();
+            await opening;
+          },
+          send: async () => undefined,
+          respond: async () => undefined,
+          interrupt: async () => undefined,
+          dispose: async () => {
+            disposeCalls += 1;
+            if (disposeCalls === 1) {
+              announceDisposal();
+              await disposalGate;
+            }
+          },
+        };
+      },
+    },
+  );
+  const conversation = createConversation(harness.manager);
+  const sending = harness.manager.send(conversation.id, "Falhe durante a abertura.");
+
+  try {
+    await started;
+    const removing = harness.manager.remove(conversation.id);
+    await disposalStarted;
+    rejectOpening(new Error("A abertura falhou depois da remoção."));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          "messageStatus" in event.payload &&
+          event.payload.conversation.id === conversation.id &&
+          event.payload.messageStatus === "error",
+      ),
+      false,
+      "a falha de abertura não pode publicar estado de uma conversa em remoção",
+    );
+
+    releaseDisposal();
+    const [deleted] = await Promise.all([removing, sending]);
+    assert.equal(deleted, true);
+    assert.ok(
+      harness.events.some(
+        (event) => event.event === "conversation.removed" && event.payload.id === conversation.id,
+      ),
+    );
+  } finally {
+    releaseDisposal();
+    await harness.close();
+  }
+});
+
+test("apagar todas invalida falhas tardias durante a abertura", async () => {
+  let announceStart!: () => void;
+  let rejectOpening!: (error: Error) => void;
+  let disposed = false;
+  const started = new Promise<void>((resolve) => {
+    announceStart = resolve;
+  });
+  const opening = new Promise<void>((_resolve, reject) => {
+    rejectOpening = reject;
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: () => ({
+        start: async () => {
+          announceStart();
+          await opening;
+        },
+        send: async () => undefined,
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => {
+          disposed = true;
+        },
+      }),
+    },
+  );
+  const conversation = createConversation(harness.manager);
+  const sending = harness.manager.send(conversation.id, "Falhe durante o apagamento.");
+
+  try {
+    await started;
+    const deleting = harness.manager.deleteAll();
+    rejectOpening(new Error("A abertura falhou durante o apagamento."));
+    const [deleted] = await Promise.all([deleting, sending]);
+
+    assert.equal(deleted, 1);
+    assert.equal(disposed, true);
+    assert.equal(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          "messageStatus" in event.payload &&
+          event.payload.conversation.id === conversation.id &&
+          event.payload.messageStatus === "error",
+      ),
+      false,
+    );
+    assert.ok(harness.events.some((event) => event.event === "conversation.deletedAll"));
+  } finally {
+    await harness.close();
+  }
+});
+
+test("remover limpa partes pendentes e o temporizador de deltas", async () => {
+  let announcePermission!: () => void;
+  const permissionPublished = new Promise<void>((resolve) => {
+    announcePermission = resolve;
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: (_conversation, emit) => ({
+        start: async () => undefined,
+        send: async () => {
+          emit({
+            kind: "part",
+            part: {
+              id: "permissao-pendente",
+              type: "permission",
+              tool: "Bash",
+              summary: "Executar comando",
+              options: ["allow", "always", "deny"],
+              state: "pending",
+            },
+          });
+          emit({
+            kind: "text-delta",
+            partType: "text",
+            partId: "texto-pendente",
+            delta: "rascunho",
+          });
+        },
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      }),
+    },
+  );
+  const conversation = createConversation(harness.manager);
+  harness.subscribe((event) => {
+    if (
+      event.event === "conversation.partUpdated" &&
+      event.payload.kind === "upsert" &&
+      event.payload.part.id === "permissao-pendente"
+    )
+      announcePermission();
+  });
+
+  try {
+    await harness.manager.send(conversation.id, "Gere uma resposta.");
+    await permissionPublished;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await harness.manager.remove(conversation.id);
+
+    await assert.rejects(
+      harness.manager.respond(conversation.id, "permissao-pendente", {
+        responseType: "permission",
+        decision: "allow",
+      }),
+      /A parte não está aguardando resposta/,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    assert.equal(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.partUpdated" &&
+          event.payload.conversationId === conversation.id &&
+          event.payload.kind === "delta",
+      ),
+      false,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
 test("ramifica a última resposta Claude com --resume e --fork-session", async () => {
   const harness = await createHarness("texto");
   try {
@@ -280,6 +511,62 @@ test("ramifica a última resposta Claude com --resume e --fork-session", async (
     assert.ok(args.includes("--fork-session"));
     assert.equal(getAgentSession(harness.db, source.id), "claude-source-session");
     assert.equal(harness.manager.get(source.id)?.messages.length, originalBefore?.messages.length);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("mantém o fork Claude pendente se o primeiro turno não informa um novo system/init", async () => {
+  const harness = await createHarness("branch-fork-no-init", {}, { exitAfterResult: true });
+  try {
+    const source = harness.manager.create({
+      agent: "claude",
+      title: "Conversa original",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    setAgentSession(harness.db, source.id, "claude-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "source-user-1", author: "user", text: "Pergunta original" },
+      { id: "source-agent-1", author: "agent", text: "Resposta original" },
+    ]);
+
+    const branch = await harness.manager.branch(source.id, "source-agent-1");
+    await harness.manager.send(branch.id, "Primeiro turno do ramo.");
+    await waitForState(harness, branch.id, "idle");
+
+    assert.equal(isBranchForkPending(harness.db, branch.id), true);
+
+    await harness.manager.send(branch.id, "Retome o ramo.");
+    await waitForState(harness, branch.id, "idle");
+    const args = harness.spawnArgs.at(-1) ?? [];
+    assert.ok(args.includes("--fork-session"));
+  } finally {
+    await harness.close();
+  }
+});
+
+test("conclui o fork Claude quando system/init informa uma sessão nova", async () => {
+  const harness = await createHarness("branch-fork");
+  try {
+    const source = harness.manager.create({
+      agent: "claude",
+      title: "Conversa original",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    setAgentSession(harness.db, source.id, "claude-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "source-user-1", author: "user", text: "Pergunta original" },
+      { id: "source-agent-1", author: "agent", text: "Resposta original" },
+    ]);
+
+    const branch = await harness.manager.branch(source.id, "source-agent-1");
+    await harness.manager.send(branch.id, "Primeiro turno do ramo.");
+    await waitForState(harness, branch.id, "idle");
+
+    assert.equal(getAgentSession(harness.db, branch.id), "claude-forked-session");
+    assert.equal(isBranchForkPending(harness.db, branch.id), false);
   } finally {
     await harness.close();
   }
@@ -415,6 +702,31 @@ test("Claude transmite texto em deltas e converte leitura em ação", async () =
     assert.ok(
       message?.parts.some((part) => part.type === "text" && part.markdown.includes("README")),
     );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude conclui leitura com imagem grande sem guardar o base64", async () => {
+  const harness = await createHarness(
+    "leitura",
+    {},
+    { largeImageBytes: 3_500_001, titleGenerator: async () => null },
+  );
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Leia a imagem.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const message = latestAgent(harness, conversation.id);
+    const action = message?.parts.find(
+      (part): part is Extract<MessagePart, { type: "action" }> =>
+        part.type === "action" && part.actionType === "read",
+    );
+    assert.equal(message?.status, "done");
+    assert.equal(action?.state, "ok");
+    assert.equal(action?.output, "imagem, 3418 kB");
+    assert.equal(action?.output.includes("AAAA"), false);
   } finally {
     await harness.close();
   }
@@ -953,6 +1265,198 @@ test("retomada usa --resume; interrupção usa o protocolo e mantém mensagem in
       await harness.close();
     }
   });
+  await t.test("parar durante a abertura não envia a mensagem à CLI", async () => {
+    let announceOpening!: () => void;
+    let releaseOpening!: () => void;
+    const opening = new Promise<void>((resolve) => {
+      releaseOpening = resolve;
+    });
+    const openingStarted = new Promise<void>((resolve) => {
+      announceOpening = resolve;
+    });
+    const harness = await createHarness(
+      "texto",
+      {},
+      {
+        initializeGate: { started: announceOpening, released: opening },
+      },
+    );
+    try {
+      const conversation = createConversation(harness.manager);
+      const sending = harness.manager.send(conversation.id, "Não envie depois de parar.");
+      await openingStarted;
+      assert.equal(await harness.manager.stop(conversation.id), true);
+      assert.equal(harness.manager.get(conversation.id)?.conversation.state, "idle");
+      assert.equal(latestAgent(harness, conversation.id)?.status, "interrupted");
+
+      releaseOpening();
+      await sending;
+      assert.equal(
+        harness.claudeFake.messages.some((message) => message.type === "user"),
+        false,
+      );
+    } finally {
+      releaseOpening();
+      await harness.close();
+    }
+  });
+});
+
+test("falha ao abrir preserva renomeação, fixação e arquivamento concorrentes", async (t) => {
+  const runOpeningFailure = async (
+    mutate: (manager: ConversationManager, id: string) => Promise<void>,
+  ) => {
+    let announceOpening!: () => void;
+    let rejectOpening!: (error: Error) => void;
+    const openingStarted = new Promise<void>((resolve) => {
+      announceOpening = resolve;
+    });
+    const opening = new Promise<void>((_resolve, reject) => {
+      rejectOpening = reject;
+    });
+    const adapterFactory: AdapterFactory = () => ({
+      start: async () => {
+        announceOpening();
+        await opening;
+      },
+      send: async () => undefined,
+      respond: async () => undefined,
+      interrupt: async () => undefined,
+      dispose: async () => undefined,
+    });
+    const harness = await createHarness("texto", {}, { adapterFactory });
+    try {
+      const conversation = createConversation(harness.manager);
+      const sending = harness.manager.send(conversation.id, "Abra a conversa.");
+      await openingStarted;
+      await mutate(harness.manager, conversation.id);
+      rejectOpening(new Error("Falha de abertura simulada."));
+      await sending;
+
+      const current = harness.manager.get(conversation.id)?.conversation;
+      const stateEvents = harness.events.filter(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          event.payload.conversation.id === conversation.id,
+      );
+      const lastStateEvent = stateEvents.at(-1);
+      assert.equal(current?.state, "error");
+      assert.equal(lastStateEvent?.event, "conversation.stateChanged");
+      return { current, lastStateEvent };
+    } finally {
+      rejectOpening(new Error("Abertura encerrada pelo teste."));
+      await harness.close();
+    }
+  };
+
+  await t.test("mantém o novo título e a fixação", async () => {
+    const result = await runOpeningFailure(async (manager, id) => {
+      await manager.rename(id, "Título atualizado");
+      await manager.setPinned(id, true);
+    });
+    assert.equal(result.current?.title, "Título atualizado");
+    assert.ok(result.current?.pinnedAt);
+    if (result.lastStateEvent.event === "conversation.stateChanged") {
+      assert.equal(result.lastStateEvent.payload.conversation.title, "Título atualizado");
+      assert.ok(result.lastStateEvent.payload.conversation.pinnedAt);
+    }
+  });
+
+  await t.test("mantém o arquivamento", async () => {
+    const result = await runOpeningFailure(async (manager, id) => {
+      await manager.setArchived(id, true);
+    });
+    assert.ok(result.current?.archivedAt);
+    if (result.lastStateEvent.event === "conversation.stateChanged") {
+      assert.ok(result.lastStateEvent.payload.conversation.archivedAt);
+    }
+  });
+});
+
+test("início do turno preserva metadados alterados durante a emissão da mensagem", async () => {
+  let announceMessage!: () => void;
+  let releaseMessage!: () => void;
+  const messageCreated = new Promise<void>((resolve) => {
+    announceMessage = resolve;
+  });
+  const messageEmission = new Promise<void>((resolve) => {
+    releaseMessage = resolve;
+  });
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async () => emit({ kind: "turn-end", status: "done" }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    { adapterFactory, messageCreatedGate: { started: announceMessage, released: messageEmission } },
+  );
+  try {
+    const conversation = createConversation(harness.manager);
+    const sending = harness.manager.send(conversation.id, "Envie a mensagem.");
+    await messageCreated;
+    await harness.manager.rename(conversation.id, "Título durante envio");
+    await harness.manager.setPinned(conversation.id, true);
+    releaseMessage();
+    await sending;
+    await waitForState(harness, conversation.id, "idle");
+
+    const current = harness.manager.get(conversation.id)?.conversation;
+    assert.equal(current?.title, "Título durante envio");
+    assert.ok(current?.pinnedAt);
+  } finally {
+    releaseMessage();
+    await harness.close();
+  }
+});
+
+test("setOptions preserva metadados alterados durante descarte do agente", async () => {
+  let announceDisposal!: () => void;
+  let releaseDisposal!: () => void;
+  const disposalStarted = new Promise<void>((resolve) => {
+    announceDisposal = resolve;
+  });
+  const disposal = new Promise<void>((resolve) => {
+    releaseDisposal = resolve;
+  });
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async () => emit({ kind: "turn-end", status: "done" }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => {
+      announceDisposal();
+      await disposal;
+    },
+  });
+  const harness = await createHarness(
+    "texto",
+    { KARONT_AGENT_IDLE_MS: "60000" },
+    { adapterFactory },
+  );
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Conclua a primeira resposta.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const updatingOptions = harness.manager.setOptions(conversation.id, { mode: "read-only" });
+    await disposalStarted;
+    await harness.manager.rename(conversation.id, "Título durante opções");
+    await harness.manager.setPinned(conversation.id, true);
+    releaseDisposal();
+    await updatingOptions;
+
+    const current = harness.manager.get(conversation.id)?.conversation;
+    assert.equal(current?.mode, "read-only");
+    assert.equal(current?.title, "Título durante opções");
+    assert.ok(current?.pinnedAt);
+  } finally {
+    releaseDisposal();
+    await harness.close();
+  }
 });
 
 test("CLI ausente gera erro retryable e o reinício marca streaming como interrupted", async (t) => {
@@ -1139,6 +1643,96 @@ test("o serviço ignora modo rápido nas conversas Claude, inclusive as antigas"
   }
 });
 
+test("agent.models lê o initialize uma vez, elimina o alias do padrão e respeita capacidades", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const first = await harness.manager.models("claude");
+    const second = await harness.manager.models("claude");
+    const defaultModel = first.models.find((model) => model.isDefault);
+    const legacyHaiku = first.models.find((model) => model.id === "claude-haiku-4-5-20251001");
+
+    assert.equal(first.models.length, 12);
+    assert.equal(defaultModel?.id, "default");
+    assert.equal(defaultModel?.name, "Opus 5.5");
+    assert.deepEqual(defaultModel?.aliases, ["opus"]);
+    assert.equal(
+      first.models.some((model) => model.id === "opus"),
+      false,
+    );
+    assert.deepEqual(defaultModel?.efforts, ["low", "medium", "high", "xhigh", "max"]);
+    assert.deepEqual(legacyHaiku?.efforts, []);
+    assert.equal(
+      first.models.every((model) => model.supportsFast === false),
+      true,
+    );
+    assert.deepEqual(second, first);
+    assert.equal(
+      harness.claudeFake.messages.filter(
+        (message) =>
+          message.type === "control_request" &&
+          (message.request as { subtype?: string } | undefined)?.subtype === "initialize",
+      ).length,
+      1,
+    );
+    assert.equal(
+      harness.claudeFake.messages.some((message) => message.type === "user"),
+      false,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("agent.models reaproveita o initialize do adaptador Claude ativo", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Leia a mensagem.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const models = await harness.manager.models("claude");
+    assert.equal(models.models.find((model) => model.isDefault)?.id, "default");
+    assert.equal(harness.spawnArgs.length, 1);
+    assert.equal(
+      harness.claudeFake.messages.filter(
+        (message) =>
+          message.type === "control_request" &&
+          (message.request as { subtype?: string } | undefined)?.subtype === "initialize",
+      ).length,
+      1,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("agent.models usa a lista fixa quando a consulta independente falha e não repete a tentativa", async () => {
+  let attempts = 0;
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      claudeModelLoader: async () => {
+        attempts += 1;
+        throw new Error("Claude Code indisponível.");
+      },
+    },
+  );
+  try {
+    const first = await harness.manager.models("claude");
+    const second = await harness.manager.models("claude");
+    assert.deepEqual(
+      first.models.map(({ id }) => id),
+      ["opus", "sonnet", "haiku"],
+    );
+    assert.equal(first.models.find((model) => model.id === "opus")?.isDefault, true);
+    assert.deepEqual(second, first);
+    assert.equal(attempts, 1);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("Claude recebe anexos em blocos e a mensagem salva apenas metadados", async () => {
   const harness = await createHarness("texto");
   try {
@@ -1188,4 +1782,142 @@ test("Claude recebe anexos em blocos e a mensagem salva apenas metadados", async
   } finally {
     await harness.close();
   }
+});
+
+test("retry reenvia os bytes dos anexos da mensagem original", async () => {
+  const receivedAttachments: ConversationAttachment[][] = [];
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async (_text, _plan, attachments = []) => {
+      receivedAttachments.push(structuredClone(attachments));
+      emit({ kind: "turn-end", status: "done" });
+    },
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness("texto", {}, { adapterFactory });
+  try {
+    const conversation = createConversation(harness.manager);
+    const imageData = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    const attachments: ConversationAttachment[] = [
+      { name: "notas.txt", mimeType: "text/plain", kind: "text", data: "Trecho de referência." },
+      { name: "pixel.png", mimeType: "image/png", kind: "image", data: imageData },
+    ];
+
+    await harness.manager.send(conversation.id, "Leia a imagem.", false, attachments);
+    await waitForState(harness, conversation.id, "idle");
+    const agentMessage = harness.manager
+      .get(conversation.id)
+      ?.messages.find((message) => message.author === "agent");
+    assert.ok(agentMessage);
+    await harness.manager.retry(conversation.id, agentMessage.id);
+    await waitForState(harness, conversation.id, "idle");
+
+    assert.deepEqual(receivedAttachments, [attachments, attachments]);
+    const raw = harness.db
+      .prepare(
+        "SELECT attachments_json FROM messages WHERE conversation_id = ? AND author = 'user'",
+      )
+      .get(conversation.id) as { attachments_json: string };
+    assert.equal(raw.attachments_json.includes(imageData), false);
+    assert.equal(raw.attachments_json.includes("Trecho de referência."), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("retry falha claramente se os bytes dos anexos não estão mais em memória", async () => {
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: (_conversation, emit) => ({
+        start: async () => undefined,
+        send: async () => emit({ kind: "turn-end", status: "done" }),
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      }),
+    },
+  );
+  let retrySendCount = 0;
+  try {
+    const conversation = createConversation(harness.manager);
+    const imageData = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    await harness.manager.send(conversation.id, "Leia a imagem.", false, [
+      { name: "pixel.png", mimeType: "image/png", kind: "image", data: imageData },
+    ]);
+    await waitForState(harness, conversation.id, "idle");
+    const agentMessage = harness.manager
+      .get(conversation.id)
+      ?.messages.find((message) => message.author === "agent");
+    assert.ok(agentMessage);
+    await harness.manager.close();
+
+    const restartedManager = new ConversationManager({
+      db: harness.db,
+      broadcast: async (event) => {
+        harness.events.push(event);
+      },
+      adapterFactory: () => ({
+        start: async () => undefined,
+        send: async () => {
+          retrySendCount += 1;
+        },
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      }),
+    });
+    try {
+      await assert.rejects(
+        restartedManager.retry(conversation.id, agentMessage.id),
+        /bytes dos anexos não estão mais disponíveis/u,
+      );
+      assert.equal(retrySendCount, 0);
+    } finally {
+      await restartedManager.close();
+    }
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude distingue pasta do projeto apagada de CLI ausente", async (context) => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "karont-pasta-apagada-"));
+  context.after(() => rm(cwd, { recursive: true, force: true }));
+  await rm(cwd, { recursive: true, force: true });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "missing-folder-claude",
+    agent: "claude",
+    title: "Pasta apagada",
+    cwd,
+    mode: "edit",
+    fast: false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  let spawnCount = 0;
+  const adapter = new ClaudeAdapter(() => undefined, {
+    env: { ...process.env, KARONT_DISABLE_AGENT_DETECTION: "1", KARONT_CLAUDE_CLI: "claude" },
+    spawn: () => {
+      spawnCount += 1;
+      throw Object.assign(new Error("spawn claude ENOENT"), { code: "ENOENT" });
+    },
+  });
+
+  await assert.rejects(
+    adapter.start(conversation, "session-id", false),
+    (error: unknown) =>
+      error instanceof AgentCliError &&
+      error.errorType === "failed" &&
+      error.message === `A pasta do projeto não existe mais: ${cwd}`,
+  );
+  assert.equal(spawnCount, 0);
 });

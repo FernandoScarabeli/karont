@@ -15,12 +15,14 @@ export function truncateUtf8(
   if (Buffer.byteLength(value, "utf8") <= maxBytes) return { text: value, truncated: false };
   const markerBytes = Buffer.byteLength(TRUNCATION_MARKER, "utf8");
   const budget = Math.max(0, maxBytes - markerBytes);
-  let text = "";
-  for (const character of value) {
-    if (Buffer.byteLength(text, "utf8") + Buffer.byteLength(character, "utf8") > budget) break;
-    text += character;
+  const bytes = Buffer.from(value, "utf8");
+  let end = Math.min(bytes.length, Math.floor(budget));
+  while (end > 0 && end < bytes.length) {
+    const nextByte = bytes[end];
+    if (nextByte === undefined || (nextByte & 0b1100_0000) !== 0b1000_0000) break;
+    end--;
   }
-  return { text: text + TRUNCATION_MARKER, truncated: true };
+  return { text: bytes.subarray(0, end).toString("utf8") + TRUNCATION_MARKER, truncated: true };
 }
 
 export function serializeFileChanges(

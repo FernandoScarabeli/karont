@@ -66,6 +66,97 @@ test("a mensagem é gravada com debounce no streaming e imediatamente ao conclui
   }
 });
 
+test("get inclui o texto em andamento antes do próximo salvamento", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-live-message-get-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  let announceDelta!: () => void;
+  const firstDelta = new Promise<void>((resolve) => {
+    announceDelta = resolve;
+  });
+  const manager = new ConversationManager({
+    db,
+    env: { ...process.env, KARONT_MESSAGE_SAVE_DEBOUNCE_MS: "1000" },
+    broadcast: async (event) => {
+      if (event.event === "conversation.partUpdated" && event.payload.kind === "delta")
+        announceDelta();
+    },
+    adapterFactory: (_conversation, emit) => new LifecycleTestAdapter(emit, () => undefined),
+  });
+  const conversation = manager.create({
+    agent: "claude",
+    title: "Resposta em andamento",
+    cwd: root,
+    mode: "edit",
+  });
+
+  try {
+    const sending = manager.send(conversation.id, "Responda.");
+    await firstDelta;
+    const message = manager.get(conversation.id)?.messages.at(-1);
+    assert.ok(message?.parts.some((part) => part.type === "text" && part.markdown === "rascunho"));
+    await manager.stop(conversation.id);
+    await sending;
+  } finally {
+    await manager.close();
+    db.close();
+  }
+});
+
+test("parar durante a inicialização não envia a mensagem", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-stop-opening-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  let announceStart!: () => void;
+  let releaseStart!: () => void;
+  const startBegan = new Promise<void>((resolve) => {
+    announceStart = resolve;
+  });
+  const opening = new Promise<void>((resolve) => {
+    releaseStart = resolve;
+  });
+  let sends = 0;
+  const manager = new ConversationManager({
+    db,
+    env: { ...process.env, KARONT_DISABLE_AGENT_DETECTION: "1" },
+    broadcast: async () => undefined,
+    adapterFactory: (_conversation, emit) => ({
+      start: async () => {
+        announceStart();
+        await opening;
+      },
+      send: async () => {
+        sends += 1;
+        emit({ kind: "turn-end", status: "done" });
+      },
+      respond: async () => undefined,
+      interrupt: async () => undefined,
+      dispose: async () => undefined,
+    }),
+  });
+  const conversation = manager.create({
+    agent: "claude",
+    title: "Abertura lenta",
+    cwd: os.tmpdir(),
+    mode: "edit",
+  });
+
+  try {
+    const sending = manager.send(conversation.id, "Não envie depois de parar.");
+    await startBegan;
+    assert.equal(await manager.stop(conversation.id), true);
+    releaseStart();
+    await sending;
+
+    const snapshot = manager.get(conversation.id);
+    assert.equal(sends, 0);
+    assert.equal(snapshot?.conversation.state, "idle");
+    assert.equal(snapshot?.messages.at(-1)?.status, "interrupted");
+  } finally {
+    releaseStart();
+    await manager.close();
+    db.close();
+  }
+});
+
 test("parar e encerrar o serviço gravam o texto pendente imediatamente", async (t) => {
   await t.test("parar", async () => {
     const harness = await createLifecycleHarness();

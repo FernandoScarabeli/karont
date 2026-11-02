@@ -145,6 +145,49 @@ test("conversation.rename persiste o título e emite conversation.stateChanged",
   db.close();
 });
 
+test("conversation.create rejeita pasta que não existe ou não é diretório", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-create-conversation-folder-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    env: { PATH: "" },
+    homeDir: root,
+  });
+
+  try {
+    const missingPath = path.join(root, "apagada");
+    await assert.rejects(
+      handlers.handle(
+        request("conversation.create", { agent: "claude", cwd: missingPath }),
+        connection([]),
+      ),
+      (error: unknown) =>
+        error instanceof ServiceError &&
+        error.code === "invalid_request" &&
+        error.message === `A pasta do projeto não existe: ${missingPath}`,
+    );
+
+    const filePath = path.join(root, "arquivo.txt");
+    await writeFile(filePath, "conteúdo");
+    await assert.rejects(
+      handlers.handle(
+        request("conversation.create", { agent: "claude", cwd: filePath }),
+        connection([]),
+      ),
+      (error: unknown) =>
+        error instanceof ServiceError &&
+        error.code === "invalid_request" &&
+        error.message === `O caminho do projeto não é uma pasta: ${filePath}`,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("conversation.markSeen limpa uma vez, persiste e não emite ao repetir", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ks-conversation-mark-seen-"));
   const db = openDatabase(path.join(root, "karont.db"));

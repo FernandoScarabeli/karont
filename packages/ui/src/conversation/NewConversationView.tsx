@@ -36,6 +36,7 @@ import {
   modelSettingKey,
 } from "./ComposerPreferences.tsx";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
+import { resolveModelId } from "./modelCatalog.ts";
 import styles from "./NewConversationView.module.css";
 import { TextType } from "./TextType.tsx";
 import { upsertConversation } from "./useConversationIndex.ts";
@@ -251,9 +252,7 @@ export function NewConversationView({
         typeof storedModelResult.value.value === "string"
           ? storedModelResult.value.value
           : "";
-      const initialModel = result.models.some((option) => option.id === storedModel)
-        ? storedModel
-        : (result.models[0]?.id ?? "");
+      const initialModel = resolveModelId(result, storedModel);
       setModel(initialModel);
       const knownEffort =
         storedEffortResult.status === "fulfilled" &&

@@ -1,7 +1,6 @@
 import { type ChildProcess, spawn as nodeSpawn, type SpawnOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
-import { createInterface } from "node:readline";
 import {
   type Conversation,
   type ConversationAttachment,
@@ -9,9 +8,11 @@ import {
   MAX_FRAME_BYTES,
   type MessagePart,
 } from "@karont/contract";
+import { validateFolder } from "../folders.ts";
 import type {
   AdapterEvent,
   AdapterFactory,
+  AdapterModelList,
   AdapterResponse,
   AdapterStartOptions,
   AgentAdapter,
@@ -20,7 +21,9 @@ import { resolveAgentCommand } from "./detect.ts";
 import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
 
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
+const MAX_STDOUT_LINE_BYTES = 32 * 1024 * 1024;
 const CONTROL_REQUEST_TIMEOUT_MS = 10_000;
+const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 const READ_ONLY_ALLOWED_TOOLS = new Set([
   "Read",
   "Glob",
@@ -78,12 +81,14 @@ export class ClaudeAdapter implements AgentAdapter {
   >();
   readonly #taskIds = new Map<string, string>();
   readonly #parts = new Map<string, MessagePart>();
+  #models: AdapterModelList = { models: [], efforts: [] };
   readonly #controlRequests = new Map<string, ControlRequest>();
   #child: ChildProcess | undefined;
   #conversation: Conversation | undefined;
   #sessionId = "";
   #resumeSession = false;
   #forkSessionPending = false;
+  #forkSessionSourceId: string | undefined;
   #permissionMode = "";
   #nextControlRequestId = 0;
   #initResolve: (() => void) | undefined;
@@ -108,6 +113,10 @@ export class ClaudeAdapter implements AgentAdapter {
   #interruptResolve: (() => void) | undefined;
   #stderrErrorText = "";
   #lineQueue: Promise<void> = Promise.resolve();
+  #stdoutLineChunks: Buffer[] = [];
+  #stdoutLineBytes = 0;
+  #stdoutLineOverflow = false;
+  #stdoutEnd: Promise<void> = Promise.resolve();
 
   constructor(emit: (event: AdapterEvent) => void, options: ClaudeAdapterOptions = {}) {
     this.#emit = emit;
@@ -131,8 +140,16 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#sessionId = sessionId;
     this.#resumeSession = resume;
     this.#forkSessionPending = resume && options.forkSession === true;
+    this.#forkSessionSourceId = this.#forkSessionPending ? sessionId : undefined;
     this.#stderrErrorType = undefined;
     this.#stderrErrorText = "";
+    this.#stdoutLineChunks = [];
+    this.#stdoutLineBytes = 0;
+    this.#stdoutLineOverflow = false;
+    const folder = await validateFolder(conversation.cwd);
+    if (!folder.exists || !folder.isDirectory) {
+      throw new AgentCliError("failed", `A pasta do projeto não existe mais: ${conversation.cwd}`);
+    }
     const command =
       this.#env.KARONT_CLAUDE_CLI ||
       (await resolveAgentCommand("claude", {
@@ -179,16 +196,30 @@ export class ClaudeAdapter implements AgentAdapter {
     const stdin = child.stdin;
     if (!stdout || !stderr || !stdin)
       throw new AgentCliError("failed", "A CLI não abriu os canais de comunicação esperados.");
-    const lines = createInterface({ input: stdout, crlfDelay: Infinity });
-    lines.on("line", (line) => {
-      this.#lineQueue = this.#lineQueue
-        .then(() => this.#handleLine(line))
-        .catch(() =>
-          this.#completeTurn("error", {
-            type: "failed",
-            text: "Não foi possível processar uma ação da CLI Claude.",
-          }),
-        );
+    let resolveStdoutEnd!: () => void;
+    this.#stdoutEnd = new Promise<void>((resolve) => {
+      resolveStdoutEnd = resolve;
+    });
+    let stdoutEnded = false;
+    const finishStdout = () => {
+      if (stdoutEnded) return;
+      stdoutEnded = true;
+      this.#flushStdoutLine();
+      resolveStdoutEnd();
+    };
+    stdout.on("data", (chunk: Buffer | string) => {
+      const previousQueue = this.#lineQueue;
+      this.#readStdout(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8"));
+      if (this.#lineQueue !== previousQueue) {
+        stdout.pause();
+        const queuedLines = this.#lineQueue;
+        void queuedLines.then(() => stdout.resume());
+      }
+    });
+    stdout.once("end", finishStdout);
+    stdout.once("close", () => {
+      if (stdout.readableLength === 0) finishStdout();
+      else stdout.resume();
     });
     stderr.setEncoding("utf8");
     stderr.on("data", (chunk: string) => {
@@ -230,7 +261,7 @@ export class ClaudeAdapter implements AgentAdapter {
       this.#initReject = undefined;
     }
     this.#resumeSession = true;
-    this.#emit({ kind: "session", sessionId: this.#sessionId });
+    if (!this.#forkSessionPending) this.#emit({ kind: "session", sessionId: this.#sessionId });
   }
 
   async send(
@@ -272,6 +303,18 @@ export class ClaudeAdapter implements AgentAdapter {
         ]
       : text;
     await this.#write({ type: "user", message: { role: "user", content } });
+  }
+
+  async getModels(): Promise<AdapterModelList> {
+    if (this.#conversation?.agent !== "claude") return { models: [], efforts: [] };
+    return {
+      models: this.#models.models.map((model) => ({
+        ...model,
+        ...(model.aliases ? { aliases: [...model.aliases] } : {}),
+        efforts: [...model.efforts],
+      })),
+      efforts: [...this.#models.efforts],
+    };
   }
 
   async respond(partId: string, response: AdapterResponse): Promise<void> {
@@ -389,6 +432,7 @@ export class ClaudeAdapter implements AgentAdapter {
 
   async dispose(): Promise<void> {
     this.#disposed = true;
+    this.#initReject?.(new AgentCliError("failed", "A CLI Claude foi encerrada."));
     this.#rejectControlRequests(new AgentCliError("failed", "A CLI Claude foi encerrada."));
     if (this.#interruptTimer) clearTimeout(this.#interruptTimer);
     this.#interruptTimer = undefined;
@@ -409,15 +453,62 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#child = undefined;
   }
 
-  async #handleLine(line: string): Promise<void> {
-    if (Buffer.byteLength(line, "utf8") > 4 * 1024 * 1024) {
+  #readStdout(chunk: Buffer): void {
+    if (this.#stdoutLineOverflow) return;
+    let offset = 0;
+    while (offset < chunk.length) {
+      const newline = chunk.indexOf(0x0a, offset);
+      const end = newline < 0 ? chunk.length : newline;
+      if (!this.#appendStdoutLineChunk(chunk.subarray(offset, end))) return;
+      if (newline < 0) return;
+      this.#queueLine(this.#takeStdoutLine());
+      offset = newline + 1;
+    }
+  }
+
+  #appendStdoutLineChunk(chunk: Buffer): boolean {
+    if (this.#stdoutLineBytes + chunk.byteLength > MAX_STDOUT_LINE_BYTES) {
+      this.#stdoutLineChunks = [];
+      this.#stdoutLineBytes = 0;
+      this.#stdoutLineOverflow = true;
       this.#completeTurn("error", {
         type: "failed",
-        text: "A CLI enviou um evento acima do limite de 4 MiB.",
+        text: "A CLI enviou um evento acima do limite de 32 MiB.",
       });
       this.#child?.kill("SIGTERM");
-      return;
+      return false;
     }
+    if (chunk.length > 0) {
+      this.#stdoutLineChunks.push(chunk);
+      this.#stdoutLineBytes += chunk.byteLength;
+    }
+    return true;
+  }
+
+  #takeStdoutLine(): string {
+    const line = Buffer.concat(this.#stdoutLineChunks, this.#stdoutLineBytes).toString("utf8");
+    this.#stdoutLineChunks = [];
+    this.#stdoutLineBytes = 0;
+    return line.endsWith("\r") ? line.slice(0, -1) : line;
+  }
+
+  #flushStdoutLine(): void {
+    if (this.#stdoutLineOverflow || this.#stdoutLineBytes === 0) return;
+    this.#queueLine(this.#takeStdoutLine());
+  }
+
+  #queueLine(line: string): void {
+    this.#lineQueue = this.#lineQueue
+      .then(() => this.#handleLine(line))
+      .catch(() =>
+        this.#completeTurn("error", {
+          type: "failed",
+          text: "Não foi possível processar uma ação da CLI Claude.",
+        }),
+      );
+  }
+
+  async #handleLine(line: string): Promise<void> {
     let value: Record<string, unknown>;
     try {
       value = JSON.parse(line) as Record<string, unknown>;
@@ -427,9 +518,11 @@ export class ClaudeAdapter implements AgentAdapter {
     const type = value.type;
     if (type === "control_response") {
       const control = value.response as Record<string, unknown> | undefined;
-      if (control?.request_id === "karont-initialize" && control.subtype === "success")
+      if (control?.request_id === "karont-initialize" && control.subtype === "success") {
+        const response = control.response as Record<string, unknown> | undefined;
+        if (Array.isArray(response?.models)) this.#models = mapClaudeModels(response.models);
         this.#initResolve?.();
-      else if (typeof control?.request_id === "string") {
+      } else if (typeof control?.request_id === "string") {
         const pending = this.#controlRequests.get(control.request_id);
         if (!pending) return;
         this.#controlRequests.delete(control.request_id);
@@ -447,10 +540,12 @@ export class ClaudeAdapter implements AgentAdapter {
     }
     if (type === "system") {
       if (value.subtype === "init" && typeof value.session_id === "string") {
-        this.#sessionId = value.session_id;
-        this.#resumeSession = true;
-        this.#forkSessionPending = false;
-        this.#emit({ kind: "session", sessionId: value.session_id });
+        if (!this.#forkSessionSourceId || value.session_id !== this.#forkSessionSourceId) {
+          this.#sessionId = value.session_id;
+          this.#resumeSession = true;
+          this.#forkSessionPending = false;
+          this.#emit({ kind: "session", sessionId: value.session_id });
+        }
       }
       if (value.subtype === "api_error" || value.subtype === "error") {
         const detail =
@@ -509,7 +604,11 @@ export class ClaudeAdapter implements AgentAdapter {
       return;
     }
     if (type === "result") {
-      if (typeof value.session_id === "string") {
+      if (
+        typeof value.session_id === "string" &&
+        !this.#forkSessionPending &&
+        value.session_id !== this.#forkSessionSourceId
+      ) {
         this.#sessionId = value.session_id;
         this.#resumeSession = true;
         this.#emit({ kind: "session", sessionId: value.session_id });
@@ -798,7 +897,8 @@ export class ClaudeAdapter implements AgentAdapter {
     if (this.#child !== child) return;
     this.#child = undefined;
     if (this.#disposed) return;
-    void this.#lineQueue.then(() => this.#completeAfterExit(error));
+    const stdoutEnd = this.#stdoutEnd;
+    void stdoutEnd.then(() => this.#lineQueue).then(() => this.#completeAfterExit(error));
   }
 
   #completeAfterExit(error: Error): void {
@@ -906,6 +1006,106 @@ export const createClaudeAdapterFactory =
   (_conversation, emit) =>
     new ClaudeAdapter(emit, options);
 
+export function createClaudeModelLoader(
+  options: ClaudeAdapterOptions = {},
+): (cwd: string) => Promise<AdapterModelList> {
+  return async (cwd) => {
+    const now = new Date().toISOString();
+    const conversation: Conversation = {
+      id: randomUUID(),
+      agent: "claude",
+      title: "Lista de modelos",
+      cwd,
+      mode: "edit",
+      fast: false,
+      pinnedAt: null,
+      archivedAt: null,
+      unreadAt: null,
+      state: "idle",
+      createdAt: now,
+      updatedAt: now,
+    };
+    const adapter = new ClaudeAdapter(() => undefined, options);
+    try {
+      await adapter.start(conversation, randomUUID(), false);
+      const modelList = await adapter.getModels();
+      if (modelList.models.length === 0)
+        throw new Error("Claude Code não devolveu a lista de modelos.");
+      return modelList;
+    } finally {
+      await adapter.dispose();
+    }
+  };
+}
+
+function mapClaudeModels(rawModels: unknown[]): AdapterModelList {
+  const groups = new Map<string, Array<Record<string, unknown> & { value: string }>>();
+  for (const raw of rawModels) {
+    if (!isRecord(raw) || typeof raw.value !== "string" || raw.value.length === 0) continue;
+    const resolvedModel =
+      typeof raw.resolvedModel === "string" && raw.resolvedModel.length > 0
+        ? raw.resolvedModel
+        : raw.value;
+    const group = groups.get(resolvedModel) ?? [];
+    group.push(raw as Record<string, unknown> & { value: string });
+    groups.set(resolvedModel, group);
+  }
+
+  const models: AdapterModelList["models"] = [];
+  for (const [resolvedModel, group] of groups) {
+    const defaultEntry = group.find((entry) => entry.value === "default");
+    const selected = defaultEntry ?? group[0];
+    if (!selected) continue;
+    const capability =
+      (defaultEntry?.supportsEffort === true ? defaultEntry : undefined) ??
+      group.find((entry) => entry.supportsEffort === true);
+    const efforts =
+      capability && Array.isArray(capability.supportedEffortLevels)
+        ? [...new Set(capability.supportedEffortLevels)].filter(
+            (effort): effort is (typeof CLAUDE_EFFORTS)[number] =>
+              typeof effort === "string" &&
+              CLAUDE_EFFORTS.includes(effort as (typeof CLAUDE_EFFORTS)[number]),
+          )
+        : [];
+    const aliasNames = group.filter((entry) => entry !== selected);
+    const resolvedName = aliasNames.find((entry) => entry.displayName)?.displayName;
+    const name = defaultEntry
+      ? (typeof resolvedName === "string"
+          ? resolvedName
+          : modelNameFromResolvedModel(resolvedModel)
+        )
+          .replace(/\s*\(recommended\)\s*/i, "")
+          .trim()
+      : typeof selected.displayName === "string" && selected.displayName.length > 0
+        ? selected.displayName
+        : modelNameFromResolvedModel(resolvedModel);
+    models.push({
+      id: selected.value,
+      name,
+      ...(aliasNames.length ? { aliases: aliasNames.map((entry) => entry.value) } : {}),
+      ...(defaultEntry ? { isDefault: true } : {}),
+      efforts,
+      ...(efforts[0] ? { defaultEffort: efforts.includes("medium") ? "medium" : efforts[0] } : {}),
+      supportsFast: false,
+    });
+  }
+
+  models.sort((left, right) => Number(right.isDefault === true) - Number(left.isDefault === true));
+  const efforts = [...new Set(models.flatMap((model) => model.efforts))];
+  return {
+    models,
+    efforts,
+  };
+}
+
+function modelNameFromResolvedModel(modelId: string): string {
+  const readable = modelId
+    .replace(/^claude-/i, "")
+    .replace(/(\d)-(?=\d)/g, "$1.")
+    .replaceAll("-", " ");
+  return readable.replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+}
+
 function permissionModeFor(conversation: Conversation): string {
   return conversation.mode === "read-only"
     ? "dontAsk"
@@ -946,10 +1146,19 @@ function contentToText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return content == null ? "" : JSON.stringify(content);
   return content
-    .map((item) =>
-      isRecord(item) && typeof item.text === "string" ? item.text : JSON.stringify(item),
-    )
+    .map((item) => {
+      if (isRecord(item) && item.type === "image") return summarizeImage(item);
+      return isRecord(item) && typeof item.text === "string" ? item.text : JSON.stringify(item);
+    })
     .join("\n");
+}
+function summarizeImage(item: Record<string, unknown>): string {
+  const source = isRecord(item.source) ? item.source : undefined;
+  if (typeof source?.data !== "string") return "imagem";
+  const data = source.data;
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  const bytes = Math.max(0, Math.floor((data.length * 3) / 4) - padding);
+  return `imagem, ${Math.ceil(bytes / 1024)} kB`;
 }
 function summarizeInput(input: Record<string, unknown>): string {
   const raw = [

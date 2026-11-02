@@ -11,6 +11,7 @@ import {
   describeAgentError,
   type MessagePart,
 } from "@karont/contract";
+import { validateFolder } from "../folders.ts";
 import type {
   AdapterEvent,
   AdapterFactory,
@@ -124,10 +125,15 @@ export class CodexAdapter implements AgentAdapter {
     this.#fast = conversation.fast && Boolean(selectedModel?.supportsFast && this.#fastServiceTier);
     this.#effort = normalizeEffort(conversation.effort ?? selected.effort);
 
+    const { sandbox, approvalPolicy } = permissionSettings(conversation.mode);
     if (resume) {
-      await this.#request("thread/resume", { threadId: sessionId, cwd: conversation.cwd });
+      await this.#request("thread/resume", {
+        threadId: sessionId,
+        cwd: conversation.cwd,
+        sandbox,
+        approvalPolicy,
+      });
     } else {
-      const { sandbox, approvalPolicy } = permissionSettings(conversation.mode);
       this.#threadStarting = true;
       let result: unknown;
       try {
@@ -375,6 +381,10 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   async #startServer(cwd: string): Promise<void> {
+    const folder = await validateFolder(cwd);
+    if (!folder.exists || !folder.isDirectory) {
+      throw new AgentCliError("failed", `A pasta do projeto não existe mais: ${cwd}`);
+    }
     const command =
       this.#env.KARONT_CODEX_CLI ||
       (await resolveAgentCommand("codex", {
@@ -414,7 +424,10 @@ export class CodexAdapter implements AgentAdapter {
     collaborationMode?: "default" | "plan",
     attachments: ConversationAttachment[] = [],
   ): Promise<void> {
-    if (!this.#threadId) throw new AgentCliError("failed", "A conversa Codex não foi iniciada.");
+    const conversation = this.#conversation;
+    if (!conversation || !this.#threadId)
+      throw new AgentCliError("failed", "A conversa Codex não foi iniciada.");
+    const { sandbox, approvalPolicy } = permissionSettings(conversation.mode);
     const input = await this.#prepareInput(text, attachments);
     this.#turnOpen = true;
     this.#stopRequested = false;
@@ -427,6 +440,8 @@ export class CodexAdapter implements AgentAdapter {
       input,
       model: this.#modelId,
       effort: this.#effort,
+      sandboxPolicy: codexSandboxPolicy(sandbox),
+      approvalPolicy,
       ...(this.#fast && this.#fastServiceTier
         ? { serviceTier: this.#fastServiceTier }
         : { serviceTierForTurn: "default" }),
@@ -1176,6 +1191,14 @@ function permissionSettings(mode: Conversation["mode"]): {
   if (mode === "read-only") return { sandbox: "read-only", approvalPolicy: "never" };
   if (mode === "full") return { sandbox: "danger-full-access", approvalPolicy: "never" };
   return { sandbox: "workspace-write", approvalPolicy: "untrusted" };
+}
+
+function codexSandboxPolicy(sandbox: "read-only" | "workspace-write" | "danger-full-access"): {
+  type: "readOnly" | "workspaceWrite" | "dangerFullAccess";
+} {
+  if (sandbox === "read-only") return { type: "readOnly" };
+  if (sandbox === "danger-full-access") return { type: "dangerFullAccess" };
+  return { type: "workspaceWrite" };
 }
 
 function parseModelList(value: unknown): AdapterModelList {

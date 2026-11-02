@@ -46,11 +46,16 @@ import type {
   AdapterResponse,
   AgentAdapter,
 } from "./adapter.ts";
-import { AgentCliError, createClaudeAdapterFactory } from "./claude-adapter.ts";
+import {
+  AgentCliError,
+  createClaudeAdapterFactory,
+  createClaudeModelLoader,
+} from "./claude-adapter.ts";
 import { createCodexAdapterFactory, createCodexModelLoader } from "./codex-adapter.ts";
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
 const CODEX_MODELS_SETTING = "agent.codex.models";
+const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 const BRANCH_CONTEXT_LIMIT = 24_000;
 
 type ActiveConversation = {
@@ -60,10 +65,15 @@ type ActiveConversation = {
   startPromise: Promise<void>;
   idleTimer?: ReturnType<typeof setTimeout>;
   messageSaveTimer?: ReturnType<typeof setTimeout>;
+  disposePromise?: Promise<void>;
   messageToSave?: ConversationMessage;
   currentMessage?: ConversationMessage;
+  stopRequested: boolean;
+  removed: boolean;
+  turnStarted: boolean;
   coalescers: Map<string, DeltaCoalescer>;
   deltaTimes: Map<string, { startedAt: number; endedAt: number }>;
+  pendingPartIds: Set<string>;
   eventQueue: Promise<void>;
 };
 
@@ -73,6 +83,7 @@ export type ConversationManagerOptions = {
   env?: NodeJS.ProcessEnv;
   adapterFactory?: AdapterFactory;
   codexModelLoader?: (cwd: string) => Promise<AdapterModelList>;
+  claudeModelLoader?: (cwd: string) => Promise<AdapterModelList>;
   now?: () => string;
   titleGenerator?: (
     agent: Conversation["agent"],
@@ -88,9 +99,14 @@ export class ConversationManager {
   readonly #env: NodeJS.ProcessEnv;
   readonly #factory: AdapterFactory;
   readonly #codexModelLoader: (cwd: string) => Promise<AdapterModelList>;
+  readonly #claudeModelLoader: (cwd: string) => Promise<AdapterModelList>;
   readonly #now: () => string;
   readonly #titleGenerator: NonNullable<ConversationManagerOptions["titleGenerator"]>;
   readonly #active = new Map<string, ActiveConversation>();
+  readonly #latestUserAttachments = new Map<
+    string,
+    { messageId: string; attachments: ConversationAttachment[] }
+  >();
   readonly #pendingParts = new Map<string, { conversationId: string; messageId: string }>();
   readonly #titleRequests = new Map<string, { userMessage: string; attempted: boolean }>();
   #codexModelList: AdapterModelList = {
@@ -99,6 +115,10 @@ export class ConversationManager {
   };
   #codexModelFetchedAt: string | undefined;
   #codexModelLoadPromise: Promise<void> | undefined;
+  #claudeModelList = legacyClaudeModelList();
+  #claudeModelFetchedAt: string | undefined;
+  #claudeModelLoadPromise: Promise<void> | undefined;
+  #claudeModelLoadAttempted = false;
   #closing = false;
   #deletingAll = false;
   readonly #agentOperations = new Set<Promise<unknown>>();
@@ -110,6 +130,8 @@ export class ConversationManager {
     const claudeFactory = createClaudeAdapterFactory({ env: this.#env });
     const codexFactory = createCodexAdapterFactory({ env: this.#env });
     this.#codexModelLoader = options.codexModelLoader ?? createCodexModelLoader({ env: this.#env });
+    this.#claudeModelLoader =
+      options.claudeModelLoader ?? createClaudeModelLoader({ env: this.#env });
     this.#factory =
       options.adapterFactory ??
       ((conversation, emit) =>
@@ -189,12 +211,14 @@ export class ConversationManager {
 
   get(id: string): { conversation: Conversation; messages: ConversationMessage[] } | null {
     const conversation = getConversation(this.#db, id);
-    return conversation
-      ? {
-          conversation: this.#ignoreClaudeFast(conversation),
-          messages: listMessages(this.#db, id),
-        }
-      : null;
+    if (!conversation) return null;
+    const messages = listMessages(this.#db, id);
+    const currentMessage = this.#active.get(id)?.currentMessage;
+    if (currentMessage) {
+      const index = messages.findIndex((message) => message.id === currentMessage.id);
+      if (index >= 0) messages[index] = structuredClone(currentMessage);
+    }
+    return { conversation: this.#ignoreClaudeFast(conversation), messages };
   }
 
   async branch(id: string, messageId: string): Promise<Conversation> {
@@ -315,6 +339,14 @@ export class ConversationManager {
       updatedAt: now,
     };
     addMessage(this.#db, userMessage);
+    if (validatedAttachments.data.length) {
+      this.#latestUserAttachments.set(id, {
+        messageId: userMessage.id,
+        attachments: validatedAttachments.data.map((attachment) => ({ ...attachment })),
+      });
+    } else {
+      this.#latestUserAttachments.delete(id);
+    }
     conversation.state = "working";
     conversation.updatedAt = this.#now();
     updateConversation(this.#db, conversation);
@@ -324,9 +356,10 @@ export class ConversationManager {
         payload: { conversationId: id, message: userMessage },
       });
     } catch (error) {
-      conversation.state = "idle";
-      conversation.updatedAt = this.#now();
-      updateConversation(this.#db, conversation);
+      const currentConversation = this.#requireConversation(id);
+      currentConversation.state = "idle";
+      currentConversation.updatedAt = this.#now();
+      updateConversation(this.#db, currentConversation);
       throw error;
     }
     const agentMessage = this.#newAgentMessage(id);
@@ -375,12 +408,25 @@ export class ConversationManager {
       .find((message) => message.author === "user");
     const textPart = user?.parts.find((part) => part.type === "text");
     const text = textPart?.type === "text" ? textPart.markdown : "";
-    if (!text) throw new Error("A mensagem original não está disponível para nova tentativa.");
+    if (!user || !text)
+      throw new Error("A mensagem original não está disponível para nova tentativa.");
+    let attachments: ConversationAttachment[] = [];
+    if (user.attachments?.length) {
+      const cachedAttachments = this.#latestUserAttachments.get(id);
+      if (cachedAttachments?.messageId !== user.id) {
+        throw new Error(
+          "Os bytes dos anexos não estão mais disponíveis. Anexe os arquivos novamente e envie uma nova mensagem.",
+        );
+      }
+      attachments = cachedAttachments.attachments;
+    }
     const agentMessage = this.#newAgentMessage(id);
     await this.#startTurn(
       conversation,
       agentMessage,
       withBranchContext(text, getBranchContextPending(this.#db, id)),
+      undefined,
+      attachments,
     );
     return agentMessage;
   }
@@ -388,6 +434,29 @@ export class ConversationManager {
   async stop(id: string): Promise<boolean> {
     const active = this.#active.get(id);
     if (!active?.currentMessage) return false;
+    if (!active.turnStarted) {
+      active.stopRequested = true;
+      const pendingPlan = active.currentMessage.parts.find(
+        (part) => part.type === "plan" && part.state === "pending",
+      );
+      if (pendingPlan?.type === "plan") {
+        await this.#handleAdapterEvent(id, {
+          kind: "part",
+          part: { ...pendingPlan, state: "rejected" },
+        });
+      }
+      await this.#flushCoalescers(active);
+      this.#flushMessageSave(active);
+      await this.#handleAdapterEvent(id, {
+        kind: "turn-end",
+        status: "interrupted",
+        error: { type: "interrupted", text: "Resposta interrompida pelo usuário." },
+      });
+      if (active.idleTimer) clearTimeout(active.idleTimer);
+      await this.#disposeAdapter(active);
+      if (this.#active.get(id) === active) this.#active.delete(id);
+      return true;
+    }
     await this.#flushCoalescers(active);
     this.#flushMessageSave(active);
     await active.adapter.interrupt();
@@ -414,12 +483,24 @@ export class ConversationManager {
       fast?: boolean;
     },
   ): Promise<Conversation> {
-    const conversation = this.#requireConversation(id);
+    let conversation = this.#requireConversation(id);
     if (conversation.state === "working" || conversation.state === "waiting")
       throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
-    const selectedModelId = "model" in options ? options.model : conversation.model;
     const mustCheckFast = options.fast === true || (conversation.fast && "model" in options);
     if (mustCheckFast && conversation.agent === "codex") await this.#loadCodexModelsIfNeeded();
+    conversation = this.#requireConversation(id);
+    if (conversation.state === "working" || conversation.state === "waiting")
+      throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
+    const active = this.#active.get(id);
+    if (active) {
+      if (active.idleTimer) clearTimeout(active.idleTimer);
+      await this.#disposeAdapter(active);
+      this.#active.delete(id);
+      conversation = this.#requireConversation(id);
+      if (conversation.state === "working" || conversation.state === "waiting")
+        throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
+    }
+    const selectedModelId = "model" in options ? options.model : conversation.model;
     const supportsFast = modelSupportsFast(
       this.#codexModelList,
       conversation.agent,
@@ -443,12 +524,6 @@ export class ConversationManager {
         model: selectedModelId ?? null,
       });
     }
-    const active = this.#active.get(id);
-    if (active) {
-      if (active.idleTimer) clearTimeout(active.idleTimer);
-      await active.adapter.dispose();
-      this.#active.delete(id);
-    }
     if (options.mode) conversation.mode = options.mode;
     if ("model" in options) {
       if (options.model === null) delete conversation.model;
@@ -469,17 +544,34 @@ export class ConversationManager {
     this.#assertNotDeletingAll();
     const active = this.#active.get(id);
     if (active) {
-      if (active.idleTimer) clearTimeout(active.idleTimer);
-      await active.adapter.dispose();
-      this.#active.delete(id);
+      this.#markRemoved(id, active);
+      await this.#flushCoalescers(active);
+      await this.#disposeAdapter(active);
+      await active.eventQueue;
+      if (this.#active.get(id) === active) this.#active.delete(id);
+    } else {
+      this.#titleRequests.delete(id);
+      this.#latestUserAttachments.delete(id);
     }
-    return deleteConversation(this.#db, id);
+    const deleted = deleteConversation(this.#db, id);
+    if (deleted) {
+      await this.#broadcast({ event: "conversation.removed", payload: { id } }).catch(
+        () => undefined,
+      );
+    }
+    return deleted;
   }
 
   async deleteAll(): Promise<number> {
     this.#assertNotDeletingAll();
     this.#deletingAll = true;
     try {
+      const activeBeforeDeleteAll = [...this.#active.entries()];
+      for (const { id } of listConversationStates(this.#db)) {
+        const active = this.#active.get(id);
+        if (active) this.#markRemoved(id, active, true);
+      }
+      await Promise.all(activeBeforeDeleteAll.map(([, session]) => this.#flushCoalescers(session)));
       await Promise.all(
         [...this.#agentOperations].map((operation) => operation.catch(() => undefined)),
       );
@@ -492,26 +584,24 @@ export class ConversationManager {
       );
 
       const active = [...this.#active.entries()];
-      for (const [, session] of active) {
-        if (session.idleTimer) clearTimeout(session.idleTimer);
+      for (const [id, session] of active) {
+        this.#markRemoved(id, session);
       }
-      await Promise.all(active.map(([, session]) => session.adapter.dispose()));
-      await Promise.all(active.map(([, session]) => session.eventQueue));
+      this.#pendingParts.clear();
       await Promise.all(
         active.map(async ([, session]) => {
           await this.#flushCoalescers(session);
-          this.#flushMessageSave(session);
+          await this.#disposeAdapter(session);
         }),
       );
+      await Promise.all(active.map(([, session]) => session.eventQueue));
       for (const [id] of active) this.#active.delete(id);
 
       const deleted = deleteAllConversations(this.#db);
       const deletedIds = new Set(conversations.map(({ id }) => id));
       for (const id of deletedIds) {
         this.#titleRequests.delete(id);
-      }
-      for (const [partId, pending] of this.#pendingParts) {
-        if (deletedIds.has(pending.conversationId)) this.#pendingParts.delete(partId);
+        this.#latestUserAttachments.delete(id);
       }
       if (deleted > 0) {
         await this.#broadcast({ event: "conversation.deletedAll", payload: { deleted } }).catch(
@@ -529,6 +619,8 @@ export class ConversationManager {
     models: {
       id: string;
       name: string;
+      aliases?: string[];
+      isDefault?: boolean;
       efforts?: NonNullable<Conversation["effort"]>[];
       defaultEffort?: NonNullable<Conversation["effort"]>;
       supportsFast: boolean;
@@ -536,7 +628,6 @@ export class ConversationManager {
     efforts: ("low" | "medium" | "high" | "xhigh" | "max")[];
     fetchedAt?: string;
   }> {
-    const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
     if (agent === "codex") {
       await this.#loadCodexModelsIfNeeded();
       return {
@@ -554,15 +645,59 @@ export class ConversationManager {
         ...(this.#codexModelFetchedAt ? { fetchedAt: this.#codexModelFetchedAt } : {}),
       };
     }
+    await this.#loadClaudeModelsIfNeeded();
     return {
       agent,
-      models: [
-        { id: "opus", name: "Opus", supportsFast: false },
-        { id: "sonnet", name: "Sonnet", supportsFast: false },
-        { id: "haiku", name: "Haiku", supportsFast: false },
-      ],
-      efforts: [...efforts],
+      models: this.#claudeModelList.models.map(
+        ({ id, name, aliases, isDefault, efforts, defaultEffort }) => ({
+          id,
+          name,
+          ...(aliases ? { aliases: [...aliases] } : {}),
+          ...(isDefault ? { isDefault: true } : {}),
+          efforts: [...efforts],
+          ...(defaultEffort ? { defaultEffort } : {}),
+          supportsFast: false,
+        }),
+      ),
+      efforts: [...this.#claudeModelList.efforts],
+      ...(this.#claudeModelFetchedAt ? { fetchedAt: this.#claudeModelFetchedAt } : {}),
     };
+  }
+
+  async #loadClaudeModelsIfNeeded(): Promise<void> {
+    if (this.#claudeModelLoadAttempted) return;
+    if (this.#claudeModelLoadPromise) return this.#claudeModelLoadPromise;
+    const loading = (async () => {
+      try {
+        const active = [...this.#active.values()].find((entry) => entry.agent === "claude");
+        let modelList: AdapterModelList | undefined;
+        if (active) {
+          await active.startPromise;
+          modelList = await active.adapter.getModels?.();
+        } else {
+          modelList = await this.#claudeModelLoader(os.homedir());
+        }
+        if (modelList?.models.length) {
+          this.#cacheClaudeModelList(modelList);
+        }
+      } catch {
+        // Keep the legacy list if Claude is unavailable or initialization fails.
+      } finally {
+        this.#claudeModelLoadAttempted = true;
+      }
+    })();
+    this.#claudeModelLoadPromise = loading;
+    try {
+      await loading;
+    } finally {
+      if (this.#claudeModelLoadPromise === loading) this.#claudeModelLoadPromise = undefined;
+    }
+  }
+
+  #cacheClaudeModelList(modelList: AdapterModelList): void {
+    this.#claudeModelList = modelList;
+    this.#claudeModelFetchedAt = this.#now();
+    this.#claudeModelLoadAttempted = true;
   }
 
   async #loadCodexModelsIfNeeded(): Promise<void> {
@@ -576,7 +711,7 @@ export class ConversationManager {
           await active.startPromise;
           modelList = await active.adapter.getModels?.();
         }
-        modelList ??= await this.#codexModelLoader(os.homedir());
+        if (!modelList?.models.length) modelList = await this.#codexModelLoader(os.homedir());
         this.#cacheCodexModelList(modelList);
       } catch {
         // Keep returning the most recent list if Codex is unavailable.
@@ -600,7 +735,7 @@ export class ConversationManager {
           id,
           name,
           efforts,
-          defaultEffort,
+          ...(defaultEffort ? { defaultEffort } : {}),
           supportsFast,
         })),
         efforts: modelList.efforts,
@@ -617,7 +752,7 @@ export class ConversationManager {
     await Promise.all(
       adapters.map(async (active) => {
         if (active.idleTimer) clearTimeout(active.idleTimer);
-        await active.adapter.dispose();
+        await this.#disposeAdapter(active);
       }),
     );
     await Promise.all(adapters.map((active) => active.eventQueue));
@@ -628,6 +763,7 @@ export class ConversationManager {
       }),
     );
     this.#active.clear();
+    this.#latestUserAttachments.clear();
   }
 
   async #startTurn(
@@ -637,6 +773,7 @@ export class ConversationManager {
     plan?: boolean,
     attachments: ConversationAttachment[] = [],
   ): Promise<void> {
+    conversation = this.#requireConversation(conversation.id);
     addMessage(this.#db, message);
     conversation.state = "working";
     conversation.updatedAt = this.#now();
@@ -646,6 +783,7 @@ export class ConversationManager {
       payload: { conversationId: conversation.id, message },
     });
     await this.#stateEvent(conversation);
+    if (this.#deletingAll || !getConversation(this.#db, conversation.id)) return;
 
     // Ponto único para aplicar o limite/fila de agentes quando a configuração da M3 existir.
     let active = this.#active.get(conversation.id);
@@ -654,6 +792,7 @@ export class ConversationManager {
       const sessionId = previousSession ?? randomUUID();
       let activeRef: ActiveConversation;
       const adapter = this.#factory(conversation, (event) => {
+        if (activeRef.removed || this.#deletingAll) return;
         activeRef.eventQueue = activeRef.eventQueue
           .then(() => this.#handleAdapterEvent(conversation.id, event))
           .catch(() => undefined);
@@ -665,8 +804,12 @@ export class ConversationManager {
         startPromise: Promise.resolve(),
         coalescers: new Map(),
         deltaTimes: new Map(),
+        pendingPartIds: new Set(),
         currentMessage: message,
         eventQueue: Promise.resolve(),
+        stopRequested: false,
+        removed: false,
+        turnStarted: false,
       };
       active = activeRef;
       this.#active.set(conversation.id, activeRef);
@@ -676,17 +819,23 @@ export class ConversationManager {
         })
         .then(async () => {
           await activeRef.eventQueue;
+          if (activeRef.removed || this.#deletingAll) return;
+          if (conversation.agent === "claude") {
+            const modelList = await adapter.getModels?.();
+            if (modelList?.models.length) this.#cacheClaudeModelList(modelList);
+            return;
+          }
           if (conversation.agent !== "codex") return;
           const modelList = await adapter.getModels?.();
-          if (modelList) this.#cacheCodexModelList(modelList);
+          if (modelList?.models.length) this.#cacheCodexModelList(modelList);
         })
         .catch(async (error: unknown) => {
-          if (!this.#closing) {
+          if (!this.#closing && !activeRef.stopRequested && !activeRef.removed) {
             const kind = error instanceof AgentCliError ? error.errorType : "failed";
             const detail = error instanceof Error ? error.message : String(error);
             await this.#finishWithError(conversation, message, kind, detail);
           }
-          await adapter.dispose();
+          if (!activeRef.stopRequested) await this.#disposeAdapter(activeRef);
           if (this.#active.get(conversation.id) === activeRef) this.#active.delete(conversation.id);
           throw error;
         });
@@ -699,9 +848,11 @@ export class ConversationManager {
     active.currentMessage = message;
     try {
       await active.startPromise;
+      if (active.stopRequested || active.removed) return;
+      active.turnStarted = true;
       await active.adapter.send(text, plan, attachments);
     } catch (error) {
-      if (message.status === "streaming" && !this.#closing) {
+      if (message.status === "streaming" && !this.#closing && !active.removed) {
         const kind = error instanceof AgentCliError ? error.errorType : "failed";
         await this.#finishWithError(
           conversation,
@@ -716,7 +867,7 @@ export class ConversationManager {
   async #handleAdapterEvent(conversationId: string, event: AdapterEvent): Promise<void> {
     const active = this.#active.get(conversationId);
     const message = active?.currentMessage;
-    if (!active || !message) return;
+    if (!active || active.removed || this.#deletingAll || !message) return;
     if (event.kind === "session") {
       active.sessionId = event.sessionId;
       setAgentSession(this.#db, conversationId, event.sessionId);
@@ -742,6 +893,7 @@ export class ConversationManager {
     }
     if (event.kind === "state") {
       const conversation = this.#requireConversation(conversationId);
+      if (event.state === "working") active.turnStarted = true;
       if (event.state === "working" && message.status !== "streaming") {
         message.status = "streaming";
         message.updatedAt = this.#now();
@@ -758,9 +910,13 @@ export class ConversationManager {
       const part = this.#timestampPart(message, event.part);
       this.#upsertPart(message, part);
       if (part.type === "permission" || part.type === "question" || part.type === "plan") {
-        if (part.state === "pending")
+        if (part.state === "pending") {
           this.#pendingParts.set(part.id, { conversationId, messageId: message.id });
-        else this.#pendingParts.delete(part.id);
+          active.pendingPartIds.add(part.id);
+        } else {
+          this.#pendingParts.delete(part.id);
+          active.pendingPartIds.delete(part.id);
+        }
       }
       message.updatedAt = this.#now();
       this.#flushMessageSave(active, message);
@@ -782,6 +938,7 @@ export class ConversationManager {
       if (!coalescer) {
         coalescer = new DeltaCoalescer(
           async (delta) => {
+            if (active.removed) return;
             let part = message.parts.find((item) => item.id === event.partId);
             if (!part) {
               const times = active.deltaTimes.get(event.partId);
@@ -817,6 +974,12 @@ export class ConversationManager {
             else if (part.type === "thinking") part.text += delta;
             message.updatedAt = this.#now();
             this.#scheduleMessageSave(active, message);
+            const startOffset =
+              part.type === "text"
+                ? part.markdown.length - delta.length
+                : part.type === "thinking"
+                  ? part.text.length - delta.length
+                  : 0;
             await this.#emit({
               event: "conversation.partUpdated",
               payload: {
@@ -824,6 +987,7 @@ export class ConversationManager {
                 messageId: message.id,
                 kind: "delta",
                 partId: event.partId,
+                startOffset,
                 delta,
                 startedAt: part.startedAt,
                 endedAt: part.endedAt,
@@ -840,6 +1004,7 @@ export class ConversationManager {
     if (event.kind === "turn-end") {
       await this.#flushCoalescers(active);
       active.deltaTimes.clear();
+      active.turnStarted = false;
       if (event.status === "done") completeBranchContext(this.#db, conversationId);
       const endedAt = this.#epochNow();
       const completedAt = this.#now();
@@ -870,8 +1035,8 @@ export class ConversationManager {
         message.parts.some((part) => part.type === "plan" && part.state === "pending");
       if (!pendingPlan) {
         active.currentMessage = undefined;
-        for (const [partId, pending] of this.#pendingParts)
-          if (pending.messageId === message.id) this.#pendingParts.delete(partId);
+        for (const partId of active.pendingPartIds) this.#pendingParts.delete(partId);
+        active.pendingPartIds.clear();
       }
       const conversation = this.#requireConversation(conversationId);
       conversation.state = event.status === "error" ? "error" : pendingPlan ? "waiting" : "idle";
@@ -893,7 +1058,8 @@ export class ConversationManager {
         ? Math.min(configured, 24 * 60 * 60 * 1_000)
         : 10 * 60 * 1_000;
     active.idleTimer = setTimeout(() => {
-      if (this.#active.get(conversationId) !== active || active.currentMessage) return;
+      if (active.removed || this.#active.get(conversationId) !== active || active.currentMessage)
+        return;
       this.#active.delete(conversationId);
       void active.adapter.dispose();
     }, idleMs);
@@ -920,7 +1086,13 @@ export class ConversationManager {
         : undefined;
     void this.#titleGenerator(conversation.agent, userMessage, response, titleOptions)
       .then(async (title) => {
-        if (!title) return;
+        if (
+          !title ||
+          this.#deletingAll ||
+          this.#active.get(conversation.id)?.removed ||
+          !getConversation(this.#db, conversation.id)
+        )
+          return;
         const updated = setConversationTitle(this.#db, conversation.id, title, this.#now(), false);
         if (updated) await this.#stateEvent(updated);
       })
@@ -934,7 +1106,32 @@ export class ConversationManager {
     active.coalescers.clear();
   }
 
+  #markRemoved(
+    conversationId: string,
+    active: ActiveConversation,
+    preserveCurrentMessage = false,
+  ): void {
+    active.removed = true;
+    if (active.idleTimer) clearTimeout(active.idleTimer);
+    active.idleTimer = undefined;
+    if (active.messageSaveTimer) clearTimeout(active.messageSaveTimer);
+    active.messageSaveTimer = undefined;
+    active.messageToSave = undefined;
+    if (!preserveCurrentMessage) active.currentMessage = undefined;
+    active.deltaTimes.clear();
+    for (const partId of active.pendingPartIds) this.#pendingParts.delete(partId);
+    active.pendingPartIds.clear();
+    this.#titleRequests.delete(conversationId);
+    this.#latestUserAttachments.delete(conversationId);
+  }
+
+  async #disposeAdapter(active: ActiveConversation): Promise<void> {
+    active.disposePromise ??= active.adapter.dispose();
+    await active.disposePromise;
+  }
+
   #scheduleMessageSave(active: ActiveConversation, message: ConversationMessage): void {
+    if (active.removed) return;
     active.messageToSave = message;
     if (active.messageSaveTimer) return;
     const configured = Number(this.#env.KARONT_MESSAGE_SAVE_DEBOUNCE_MS ?? 1_000);
@@ -947,6 +1144,10 @@ export class ConversationManager {
   #flushMessageSave(active: ActiveConversation, message?: ConversationMessage): void {
     if (active.messageSaveTimer) clearTimeout(active.messageSaveTimer);
     active.messageSaveTimer = undefined;
+    if (active.removed) {
+      active.messageToSave = undefined;
+      return;
+    }
     const pending = active.messageToSave;
     active.messageToSave = undefined;
     if (pending) saveMessage(this.#db, pending);
@@ -985,6 +1186,8 @@ export class ConversationManager {
     text: string,
   ): Promise<void> {
     if (message.status !== "streaming") return;
+    if (this.#active.get(conversation.id)?.removed || !getConversation(this.#db, conversation.id))
+      return;
     const endedAt = this.#epochNow();
     const description = describeAgentError(text, conversation.agent);
     const part: MessagePart = {
@@ -1009,6 +1212,7 @@ export class ConversationManager {
       event: "conversation.partUpdated",
       payload: { conversationId: conversation.id, messageId: message.id, kind: "upsert", part },
     });
+    conversation = this.#requireConversation(conversation.id);
     conversation.state = message.status === "error" ? "error" : "idle";
     conversation.updatedAt = completedAt;
     if (message.status === "error") conversation.unreadAt = completedAt;
@@ -1079,6 +1283,19 @@ export class ConversationManager {
   }
 
   async #emit(event: AnyEvent): Promise<void> {
+    const conversationId =
+      event.event === "conversation.messageCreated" || event.event === "conversation.partUpdated"
+        ? event.payload.conversationId
+        : event.event === "conversation.stateChanged"
+          ? event.payload.conversation.id
+          : undefined;
+    if (
+      conversationId &&
+      (this.#deletingAll ||
+        this.#active.get(conversationId)?.removed ||
+        !getConversation(this.#db, conversationId))
+    )
+      return;
     await this.#broadcast(event);
   }
 }
@@ -1121,6 +1338,37 @@ function modelSupportsFast(
     typeof modelId === "string" &&
     modelList.models.some((model) => model.id === modelId && model.supportsFast)
   );
+}
+
+function legacyClaudeModelList(): AdapterModelList {
+  const efforts = [...CLAUDE_EFFORTS];
+  return {
+    models: [
+      {
+        id: "opus",
+        name: "Opus",
+        isDefault: true,
+        efforts: [...efforts],
+        defaultEffort: "medium",
+        supportsFast: false,
+      },
+      {
+        id: "sonnet",
+        name: "Sonnet",
+        efforts: [...efforts],
+        defaultEffort: "medium",
+        supportsFast: false,
+      },
+      {
+        id: "haiku",
+        name: "Haiku",
+        efforts: [...efforts],
+        defaultEffort: "medium",
+        supportsFast: false,
+      },
+    ],
+    efforts,
+  };
 }
 
 function readCodexModelCache(

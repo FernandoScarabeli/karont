@@ -7,6 +7,9 @@ type FixtureLine = { direction: string; stream: string; line: string };
 type FakeClaudeOptions = {
   exitAfterResult?: boolean;
   planDecision?: "approve" | "adjust";
+  initializeGate?: { started: () => void; released: Promise<void> };
+  largeImageBytes?: number;
+  initializeModels?: Record<string, unknown>[];
 };
 
 export type FakeClaudeSpawn = ((
@@ -105,7 +108,18 @@ class FakeClaudeProcess extends EventEmitter {
     this.#messages.push(value);
     if (value.type === "control_request") {
       const request = value.request as Record<string, unknown> | undefined;
-      if (request?.subtype === "initialize" || request?.subtype === "interrupt") {
+      if (request?.subtype === "initialize") {
+        this.#consumeHost("control_request", request.subtype);
+        const gate = this.#options.initializeGate;
+        if (gate) {
+          gate.started();
+          void gate.released.then(() => {
+            if (this.exitCode === null && this.signalCode === null) this.#pump();
+          });
+        } else this.#pump();
+        return;
+      }
+      if (request?.subtype === "interrupt") {
         this.#consumeHost("control_request", request.subtype);
         this.#pump();
         return;
@@ -192,7 +206,7 @@ class FakeClaudeProcess extends EventEmitter {
       this.#cursor += 1;
       if (record.direction === "stderr") this.stderr.write(`${record.line}\n`);
       else if (record.direction === "in" && record.stream === "stdout")
-        this.stdout.write(`${record.line}\n`);
+        this.stdout.write(`${this.#outputLine(record.line)}\n`);
     }
     const hasResult = this.#records.some(
       (record) =>
@@ -207,6 +221,47 @@ class FakeClaudeProcess extends EventEmitter {
   #fail(message: string): void {
     this.stderr.write(`fake claude: ${message}\n`);
     this.#finish(2, null);
+  }
+
+  #outputLine(line: string): string {
+    const value = JSON.parse(line) as {
+      type?: string;
+      response?: {
+        request_id?: string;
+        response?: { models?: unknown };
+      };
+      message?: { content?: unknown };
+    };
+    if (
+      value.type === "control_response" &&
+      value.response?.request_id === "karont-initialize" &&
+      this.#options.initializeModels &&
+      value.response.response
+    ) {
+      value.response.response.models = this.#options.initializeModels;
+    }
+    const imageBytes = this.#options.largeImageBytes;
+    if (
+      imageBytes !== undefined &&
+      value.type === "user" &&
+      Array.isArray(value.message?.content)
+    ) {
+      const data = "A".repeat(Math.ceil(imageBytes / 3) * 4);
+      const content = value.message.content.map((item) => {
+        if (typeof item !== "object" || item === null || !("type" in item)) return item;
+        const result = item as { type?: unknown; tool_use_id?: unknown };
+        return result.type === "tool_result"
+          ? {
+              ...result,
+              content: [
+                { type: "image", source: { type: "base64", media_type: "image/png", data } },
+              ],
+            }
+          : item;
+      });
+      value.message = { ...value.message, content };
+    }
+    return JSON.stringify(value);
   }
 
   #finish(code: number | null, signal: NodeJS.Signals | null): void {

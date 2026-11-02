@@ -31,6 +31,10 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
     parseEvent({ type: "event", event: "conversation.deletedAll", payload: { deleted: 2 } }).ok,
     true,
   );
+  assert.equal(
+    parseEvent({ type: "event", event: "conversation.removed", payload: { id: "c1" } }).ok,
+    true,
+  );
   const creation = methods["conversation.create"].params.safeParse({
     agent: "claude",
     cwd: "/tmp",
@@ -112,7 +116,16 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
   assert.equal(
     methods["agent.models"].result.safeParse({
       agent: "claude",
-      models: [{ id: "haiku", name: "Haiku", supportsFast: false }],
+      models: [
+        {
+          id: "default",
+          name: "Opus 5.5",
+          aliases: ["opus"],
+          isDefault: true,
+          efforts: ["low", "medium", "high", "xhigh", "max"],
+          supportsFast: false,
+        },
+      ],
       efforts: ["low", "medium", "high", "xhigh", "max"],
     }).success,
     true,
@@ -255,6 +268,7 @@ test("eventos de texto levam só o delta; eventos de método e parte passam pela
       messageId: "m1",
       kind: "delta",
       partId: "text1",
+      startOffset: 0,
       delta: "novo trecho",
       startedAt: 1_798_000_000_000,
       endedAt: 1_798_000_000_010,

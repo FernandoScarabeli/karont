@@ -20,6 +20,7 @@ import { useRegisterFluidHoverItem } from "../components/FluidHover/FluidHover.t
 import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./ComposerPreferences.module.css";
+import { defaultModel, findModelByIdOrAlias, resolveModelId } from "./modelCatalog.ts";
 
 type AgentModelsResult = ResultOf<"agent.models">;
 export type AgentEffort = AgentModelsResult["efforts"][number];
@@ -45,7 +46,7 @@ export function fastSettingKey(agent: AgentModels["agent"]): string {
 
 export function effortsForModel(models: AgentModels | null, modelId: string): AgentEffort[] {
   if (!modelId) return [];
-  const modelEfforts = models?.models.find((option) => option.id === modelId)?.efforts;
+  const modelEfforts = findModelByIdOrAlias(models, modelId)?.efforts;
   return modelEfforts ?? models?.efforts ?? [];
 }
 
@@ -59,15 +60,16 @@ export function initialEffortForModel(
   if (preferredEffort && supported.includes(preferredEffort as AgentEffort)) {
     return preferredEffort as AgentEffort;
   }
-  const modelDefault = models?.models.find((option) => option.id === modelId)?.defaultEffort;
-  if (modelDefault && supported.includes(modelDefault)) return modelDefault;
+  const listedModel = findModelByIdOrAlias(models, modelId);
+  const listedDefault = listedModel?.defaultEffort;
+  if (listedDefault && supported.includes(listedDefault)) return listedDefault;
   if (supported.includes("medium")) return "medium";
   return supported[0] ?? "";
 }
 
 export function modelDisplayName(models: AgentModels | null, modelId: string | null): string {
   if (!modelId) return t.chat.model;
-  return models?.models.find((option) => option.id === modelId)?.name ?? modelId;
+  return findModelByIdOrAlias(models, modelId)?.name ?? defaultModel(models)?.name ?? modelId;
 }
 
 const modes: ConversationMode[] = ["read-only", "edit", "full"];
@@ -116,15 +118,28 @@ export function ComposerPreferences({
   const configPopoverId = useId();
   const configContentId = useId();
   const planDescriptionId = useId();
+<<<<<<< HEAD
   const modelName = modelDisplayName(models, model);
   const modelTooltipLabel = model ? t.chat.modelTooltip(modelName) : t.chat.model;
+=======
+  const selectedModelId = model ? resolveModelId(models, model) || model : null;
+  const selectedModel = selectedModelId ? findModelByIdOrAlias(models, selectedModelId) : undefined;
+  const modelName = modelDisplayName(models, selectedModelId);
+>>>>>>> m2-b15-revisao
   const modelOptions: ComposerMenuOption[] = (models?.models ?? []).map((option) => ({
     id: option.id,
-    content: <span className={styles.modelOption}>{option.name}</span>,
-    selected: option.id === model,
+    content: (
+      <span className={styles.modelOption}>
+        <span className={styles.modelOptionName}>{option.name}</span>
+        {option.isDefault ? (
+          <span className={styles.modelDefault}>{t.chat.modelDefault}</span>
+        ) : null}
+      </span>
+    ),
+    selected: option.id === selectedModelId,
     onSelect: () => onModelChange(option.id),
   }));
-  if (model && !modelOptions.some((option) => option.id === model)) {
+  if (model && !selectedModelId && !modelOptions.some((option) => option.id === model)) {
     modelOptions.unshift({
       id: model,
       content: <span className={styles.modelOption}>{model}</span>,
@@ -133,9 +148,9 @@ export function ComposerPreferences({
     });
   }
 
-  const efforts = effortsForModel(models, model ?? "");
+  const efforts = effortsForModel(models, selectedModelId ?? "");
   const selectedEffort = effort && efforts.includes(effort) ? effort : "";
-  const supportsFast = models?.models.find((option) => option.id === model)?.supportsFast === true;
+  const supportsFast = selectedModel?.supportsFast === true;
   const fullAccess = mode === "full";
   const configAnchorRef =
     configAnchorName === "plan" && planMode

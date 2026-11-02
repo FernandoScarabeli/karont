@@ -2,8 +2,34 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { test } from "node:test";
-import { mapClaudeToolAction, mapCodexSpecialAction } from "./tool-actions.ts";
+import { mapClaudeToolAction, mapCodexSpecialAction, truncateUtf8 } from "./tool-actions.ts";
+
+test("truncateUtf8 preserva o resultado curto e termina em menos de 20 ms para 200 kB", () => {
+  const marker = "\n… [truncado]";
+  const markerBytes = Buffer.byteLength(marker, "utf8");
+  const smallMaxBytes = Buffer.byteLength("olá", "utf8") + 1 + markerBytes;
+  assert.deepEqual(truncateUtf8("olá🙂fim".repeat(10), smallMaxBytes), {
+    text: `olá${marker}`,
+    truncated: true,
+  });
+  assert.deepEqual(truncateUtf8("texto curto", 100), {
+    text: "texto curto",
+    truncated: false,
+  });
+
+  const inputs = ["a".repeat(200_000), "é🙂".repeat(33_334)];
+  for (const input of inputs) {
+    const startedAt = performance.now();
+    const result = truncateUtf8(input, 150_000);
+    const elapsedMs = performance.now() - startedAt;
+    assert.equal(result.truncated, true);
+    assert.equal(input.startsWith(result.text.slice(0, -marker.length)), true);
+    assert.ok(Buffer.byteLength(result.text, "utf8") <= 150_000);
+    assert.ok(elapsedMs < 20, `truncateUtf8 levou ${elapsedMs.toFixed(1)} ms`);
+  }
+});
 
 test("Claude 2.1.x nomeia o subagente como Agent e mostra o tipo antes do prompt", async () => {
   const agent = await mapClaudeToolAction("Agent", {

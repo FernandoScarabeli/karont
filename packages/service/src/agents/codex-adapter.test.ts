@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { lstat, mkdtemp } from "node:fs/promises";
+import { lstat, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -16,6 +16,7 @@ import {
   setSetting,
 } from "../db.ts";
 import type { AdapterModelList } from "./adapter.ts";
+import { AgentCliError } from "./claude-adapter.ts";
 import { CodexAdapter, unwrapCodexShellCommand } from "./codex-adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
 import { createFakeCodexSpawn, type FakeCodexSpawn } from "./testing/fake-codex-process.ts";
@@ -79,6 +80,7 @@ async function createHarness(
           if (options.fakeError)
             throw Object.assign(new Error(`spawn ${command} ENOENT`), { code: "ENOENT" });
           const fake = createFakeCodexSpawn(fixturePath, {
+            cwdOverride: os.tmpdir(),
             startAtResume:
               scenario === "continuar" && (options.resumeExisting === true || fakes.length > 0),
             withoutCommandTiming: options.withoutCommandTiming,
@@ -95,7 +97,7 @@ async function createHarness(
     codexModelLoader: async (cwd) => {
       if (options.fakeError)
         throw Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" });
-      const fake = createFakeCodexSpawn(fixturePath);
+      const fake = createFakeCodexSpawn(fixturePath, { cwdOverride: os.tmpdir() });
       fakes.push(fake);
       return new CodexAdapter(() => undefined, {
         env,
@@ -127,7 +129,7 @@ function createConversation(
   return manager.create({
     agent: "codex",
     title: "Conversa de teste",
-    cwd: "/home/user/projeto",
+    cwd: os.tmpdir(),
     mode,
   });
 }
@@ -230,7 +232,9 @@ test("thread/fork ramifica o Codex no turno selecionado", async () => {
     KARONT_DISABLE_AGENT_DETECTION: "1",
     KARONT_CODEX_CLI: "codex",
   };
-  const fake = createFakeCodexSpawn(fileURLToPath(new URL("branch-fork.jsonl", fixtureDir)));
+  const fake = createFakeCodexSpawn(fileURLToPath(new URL("branch-fork.jsonl", fixtureDir)), {
+    cwdOverride: os.tmpdir(),
+  });
   const adapter = new CodexAdapter(() => undefined, {
     env,
     homeDir: os.tmpdir(),
@@ -241,7 +245,7 @@ test("thread/fork ramifica o Codex no turno selecionado", async () => {
     id: "branch-test",
     agent: "codex",
     title: "Conversa de teste",
-    cwd: "/tmp/karont-branch",
+    cwd: os.tmpdir(),
     mode: "read-only",
     model: "gpt-test",
     fast: false,
@@ -261,11 +265,49 @@ test("thread/fork ramifica o Codex no turno selecionado", async () => {
   assert.deepEqual(request?.params, {
     threadId: "codex-source-thread",
     lastTurnId: "codex-turn-selected",
-    cwd: "/tmp/karont-branch",
+    cwd: os.tmpdir(),
     model: "gpt-test",
     sandbox: "read-only",
     approvalPolicy: "never",
   });
+});
+
+test("Codex distingue pasta do projeto apagada de CLI ausente", async (context) => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "karont-pasta-apagada-"));
+  context.after(() => rm(cwd, { recursive: true, force: true }));
+  await rm(cwd, { recursive: true, force: true });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "missing-folder-codex",
+    agent: "codex",
+    title: "Pasta apagada",
+    cwd,
+    mode: "read-only",
+    fast: false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  let spawnCount = 0;
+  const adapter = new CodexAdapter(() => undefined, {
+    env: { ...process.env, KARONT_DISABLE_AGENT_DETECTION: "1", KARONT_CODEX_CLI: "codex" },
+    spawn: () => {
+      spawnCount += 1;
+      throw Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" });
+    },
+  });
+
+  await assert.rejects(
+    adapter.start(conversation, "session-id", false),
+    (error: unknown) =>
+      error instanceof AgentCliError &&
+      error.errorType === "failed" &&
+      error.message === `A pasta do projeto não existe mais: ${cwd}`,
+  );
+  assert.equal(spawnCount, 0);
 });
 
 test("thread/turns/list recupera o turno selecionado em histórico antigo", async () => {
@@ -274,7 +316,10 @@ test("thread/turns/list recupera o turno selecionado em histórico antigo", asyn
     KARONT_DISABLE_AGENT_DETECTION: "1",
     KARONT_CODEX_CLI: "codex",
   };
-  const fake = createFakeCodexSpawn(fileURLToPath(new URL("branch-fork-legacy.jsonl", fixtureDir)));
+  const fake = createFakeCodexSpawn(
+    fileURLToPath(new URL("branch-fork-legacy.jsonl", fixtureDir)),
+    { cwdOverride: os.tmpdir() },
+  );
   const adapter = new CodexAdapter(() => undefined, {
     env,
     homeDir: os.tmpdir(),
@@ -285,7 +330,7 @@ test("thread/turns/list recupera o turno selecionado em histórico antigo", asyn
     id: "branch-test-legacy",
     agent: "codex",
     title: "Conversa de teste",
-    cwd: "/tmp/karont-branch",
+    cwd: os.tmpdir(),
     mode: "read-only",
     model: "gpt-test",
     fast: false,
@@ -314,7 +359,7 @@ test("thread/turns/list recupera o turno selecionado em histórico antigo", asyn
   assert.deepEqual(forkRequest?.params, {
     threadId: "codex-source-thread",
     lastTurnId: "codex-turn-selected",
-    cwd: "/tmp/karont-branch",
+    cwd: os.tmpdir(),
     model: "gpt-test",
     sandbox: "read-only",
     approvalPolicy: "never",
@@ -760,10 +805,10 @@ test("deixa a duração nula quando não há início ou duração informados", a
 });
 
 test("modos Codex usam as políticas reais do app-server", async (t) => {
-  for (const [mode, sandbox, approvalPolicy] of [
-    ["read-only", "read-only", "never"],
-    ["edit", "workspace-write", "untrusted"],
-    ["full", "danger-full-access", "never"],
+  for (const [mode, sandbox, sandboxPolicy, approvalPolicy] of [
+    ["read-only", "read-only", { type: "readOnly" }, "never"],
+    ["edit", "workspace-write", { type: "workspaceWrite" }, "untrusted"],
+    ["full", "danger-full-access", { type: "dangerFullAccess" }, "never"],
   ] as const) {
     await t.test(mode, async () => {
       const harness = await createHarness("texto", { mode });
@@ -782,10 +827,55 @@ test("modos Codex usam as políticas reais do app-server", async (t) => {
           (threadStart?.params as Record<string, unknown> | undefined)?.approvalPolicy,
           approvalPolicy,
         );
+        const turnStart = harness.fakes[0]?.messages[0]?.find(
+          (message) => message.method === "turn/start",
+        );
+        const turnParams = requestParams(turnStart);
+        assert.equal(turnParams.sandbox, undefined);
+        assert.deepEqual(turnParams.sandboxPolicy, sandboxPolicy);
+        assert.equal(turnParams.approvalPolicy, approvalPolicy);
       } finally {
         await harness.close();
       }
     });
+  }
+});
+
+test("Codex aplica o modo atualizado ao retomar uma conversa", async () => {
+  const harness = await createHarness("continuar");
+  try {
+    const conversation = createConversation(harness.manager, "read-only");
+    await harness.manager.send(conversation.id, fixturePrompt("continuar"));
+    const initialTurn = requestParams(
+      harness.fakes[0]?.messages[0]?.find((message) => message.method === "turn/start"),
+    );
+    assert.equal(initialTurn.sandbox, undefined);
+    assert.deepEqual(initialTurn.sandboxPolicy, { type: "readOnly" });
+    assert.equal(initialTurn.approvalPolicy, "never");
+    await waitForState(harness, conversation.id, "idle");
+
+    await harness.manager.setOptions(conversation.id, { mode: "edit" });
+    await harness.manager.send(conversation.id, fixturePrompt("continuar", -1));
+    await waitForState(harness, conversation.id, "idle");
+
+    const resumedRequests = harness.fakes[1]?.messages[0] ?? [];
+    assert.deepEqual(
+      requestParams(resumedRequests.find((message) => message.method === "thread/resume")),
+      {
+        threadId: "00000000-0000-4000-8000-000000000002",
+        cwd: os.tmpdir(),
+        sandbox: "workspace-write",
+        approvalPolicy: "untrusted",
+      },
+    );
+    const turnStart = requestParams(
+      resumedRequests.find((message) => message.method === "turn/start"),
+    );
+    assert.equal(turnStart.sandbox, undefined);
+    assert.deepEqual(turnStart.sandboxPolicy, { type: "workspaceWrite" });
+    assert.equal(turnStart.approvalPolicy, "untrusted");
+  } finally {
+    await harness.close();
   }
 });
 
@@ -997,11 +1087,40 @@ test("pergunta, plano aprovado e atualização da lista de tarefas", async (t) =
   });
 });
 
+test("parar descarta o plano pendente e libera a conversa", async () => {
+  const harness = await createHarness("plano");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, fixturePrompt("plano"), true);
+    const plan = await waitForPart(
+      harness,
+      conversation.id,
+      (part) => part.type === "plan" && part.state === "pending",
+    );
+    await waitForState(harness, conversation.id, "waiting");
+
+    assert.equal(await harness.manager.stop(conversation.id), true);
+
+    const stopped = harness.manager.get(conversation.id);
+    assert.equal(stopped?.conversation.state, "idle");
+    assert.equal(latestAgent(harness, conversation.id)?.status, "interrupted");
+    const finalPlan = latestAgent(harness, conversation.id)?.parts.find(
+      (part) => part.id === plan.id,
+    );
+    assert.equal(finalPlan?.type === "plan" ? finalPlan.state : undefined, "rejected");
+    await assert.doesNotReject(() =>
+      harness.manager.send(conversation.id, fixturePrompt("plano"), true),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
 test("retoma thread, interrompe turno e trata CLI ausente", async (t) => {
   await t.test("retomar thread", async () => {
     const harness = await createHarness("continuar", { resumeExisting: true });
     try {
-      const conversation = createConversation(harness.manager);
+      const conversation = createConversation(harness.manager, "edit");
       setAgentSession(harness.db, conversation.id, "00000000-0000-4000-8000-000000000002");
       await harness.manager.send(conversation.id, fixturePrompt("continuar", -1));
       await waitForState(harness, conversation.id, "idle");
@@ -1095,7 +1214,7 @@ test("o serviço recupera mensagens streaming após reinício", async () => {
   const conversation = createConversationRecord(db, {
     agent: "codex",
     title: "Interrompida",
-    cwd: "/home/user/projeto",
+    cwd: os.tmpdir(),
     mode: "read-only",
   });
   const message = {

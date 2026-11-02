@@ -22,7 +22,8 @@ export function describeAgentError(raw: string, agent?: AgentErrorAgent): AgentE
     .filter(Boolean)
     .join(" ");
   const name = agentName(agent);
-  const friendlyMessage = knownErrorMessage(detectionText, name);
+  const folderMissing = /^A pasta do projeto não existe mais:/i.test(detectionText);
+  const friendlyMessage = folderMissing ? undefined : knownErrorMessage(detectionText, name);
   const message = friendlyMessage ?? truncateFirstLine(internalMessage || normalizedSource);
   const details = normalizedSource ? limitUtf8(source, MAX_DETAILS_BYTES) : undefined;
 
