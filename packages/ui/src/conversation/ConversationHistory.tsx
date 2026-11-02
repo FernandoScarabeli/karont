@@ -33,6 +33,7 @@ export const ConversationHistory = memo(function ConversationHistory({
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const initialSelectionPendingRef = useRef(false);
   const optionRefs = useRef(new Map<string, HTMLDivElement>());
   const optionRefCallbacks = useRef(new Map<string, (element: HTMLDivElement | null) => void>());
   const popoverId = useId();
@@ -70,19 +71,31 @@ export const ConversationHistory = memo(function ConversationHistory({
   }, [open]);
 
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open) {
+      initialSelectionPendingRef.current = false;
+      return;
+    }
+    if (initialSelectionPendingRef.current) {
+      if (entries.length === 0) return;
+      const lastIndex = entries.length - 1;
+      if (activeIndex !== lastIndex) {
+        setActiveIndex(lastIndex);
+        return;
+      }
+      initialSelectionPendingRef.current = false;
+    }
     focusActiveOption();
-  }, [focusActiveOption, open]);
+  }, [activeIndex, entries.length, focusActiveOption, open]);
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) {
-        setActiveIndex(Math.max(entries.length - 1, 0));
+        initialSelectionPendingRef.current = true;
         setHasItemsAbove(false);
       }
       onOpenChange(nextOpen);
     },
-    [entries.length, onOpenChange],
+    [onOpenChange],
   );
 
   const selectMessage = useCallback(
