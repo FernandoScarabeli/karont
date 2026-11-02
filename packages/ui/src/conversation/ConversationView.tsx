@@ -36,6 +36,7 @@ import {
   fastSettingKey,
   modelSettingKey,
 } from "./ComposerPreferences.tsx";
+import { ConversationHistory } from "./ConversationHistory.tsx";
 import {
   ConversationBranchPlaceholder,
   ConversationLoadingControls,
@@ -44,6 +45,7 @@ import {
 import { MessageRow, type ResponseInput, TodosPart } from "./ConversationParts.tsx";
 import styles from "./ConversationView.module.css";
 import { cacheAgentModels, getCachedAgentModels } from "./conversationCache.ts";
+import { getConversationHistory } from "./conversationHistory.ts";
 import { formatFolderPath } from "./displayText.ts";
 import { FollowBottomContext } from "./followBottom.ts";
 import { FollowScroller } from "./followScroll.ts";
@@ -99,6 +101,8 @@ export function ConversationView({
   const [optimisticOptions, setOptimisticOptions] = useState<ConversationOptionsPatch>({});
   const [interactionError, setInteractionError] = useState("");
   const [announcement, setAnnouncement] = useState("");
+  const [pendingHistoryMessageId, setPendingHistoryMessageId] = useState<string | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(100);
   const [isResponding, setIsResponding] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
@@ -160,6 +164,7 @@ export function ConversationView({
   const composerSectionRef = useRef<HTMLElement>(null);
   const titleHeadingRef = useRef<HTMLHeadingElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const historyHighlightTimerRef = useRef<number | null>(null);
   const followScrollerRef = useRef<FollowScroller | null>(null);
   const followRef = useRef<FollowState>("following");
   const previousScrollHeight = useRef(0);
@@ -225,7 +230,18 @@ export function ConversationView({
   }, [conversation]);
 
   const orderedMessages = messages;
+  const orderedMessagesRef = useRef(orderedMessages);
+  orderedMessagesRef.current = orderedMessages;
   const visibleMessages = orderedMessages.slice(-visibleMessageCount);
+  const userMessageCount = orderedMessages.reduce(
+    (count, message) => count + Number(message.author === "user"),
+    0,
+  );
+  const historyOpen = activePopover === "history";
+  const historyEntries = useMemo(
+    () => (historyOpen ? getConversationHistory(orderedMessages) : []),
+    [historyOpen, orderedMessages],
+  );
   const latestMessage = visibleMessages.at(-1);
   const latestAgentMessageId = orderedMessages.findLast(
     (message) => message.author === "agent",
@@ -249,6 +265,62 @@ export function ConversationView({
           ? `${latestPart.state}:${latestPart.durationMs ?? ""}`
           : (latestPart?.id ?? "");
   const scrollVersion = `${latestMessage?.id ?? "empty"}:${latestPart?.id ?? ""}:${latestPartContent}:${visibleMessages.length}:${conversation?.state ?? "idle"}`;
+  const setHistoryOpen = useCallback((open: boolean) => {
+    setActivePopover(open ? "history" : null);
+  }, []);
+  const navigateToHistoryMessage = useCallback((messageId: string) => {
+    const currentMessages = orderedMessagesRef.current;
+    const messageIndex = currentMessages.findIndex((message) => message.id === messageId);
+    if (messageIndex < 0) return;
+
+    followRef.current = "free";
+    followScrollerRef.current?.stop();
+    setPendingHistoryMessageId(messageId);
+    setVisibleMessageCount((count) => Math.max(count, currentMessages.length - messageIndex));
+  }, []);
+  useLayoutEffect(() => {
+    if (!pendingHistoryMessageId) return;
+    const list = messageListRef.current;
+    if (!list) return;
+    const target = Array.from(
+      list.querySelectorAll<HTMLElement>(":scope > article[data-message-id]"),
+    ).find((element) => element.dataset.messageId === pendingHistoryMessageId);
+    if (!target) return;
+
+    setPendingHistoryMessageId(null);
+    setHighlightedMessageId(pendingHistoryMessageId);
+    if (historyHighlightTimerRef.current !== null) {
+      window.clearTimeout(historyHighlightTimerRef.current);
+    }
+    historyHighlightTimerRef.current = window.setTimeout(() => {
+      setHighlightedMessageId(null);
+      historyHighlightTimerRef.current = null;
+    }, 1200);
+
+    const listRect = list.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const paddingTop = Number.parseFloat(window.getComputedStyle(list).paddingTop) || 0;
+    const previousNavigationSpace =
+      Number.parseFloat(list.style.getPropertyValue("--history-navigation-space")) || 0;
+    const targetScrollTop = Math.max(
+      0,
+      list.scrollTop + targetRect.top - listRect.top - paddingTop,
+    );
+    const contentEnd = list.scrollHeight - list.clientHeight - previousNavigationSpace;
+    const navigationSpace = Math.max(0, targetScrollTop - contentEnd);
+    list.style.setProperty("--history-navigation-space", `${navigationSpace}px`);
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    list.scrollTo({ behavior: reducedMotion ? "auto" : "smooth", top: targetScrollTop });
+  }, [pendingHistoryMessageId]);
+
+  useEffect(
+    () => () => {
+      if (historyHighlightTimerRef.current !== null) {
+        window.clearTimeout(historyHighlightTimerRef.current);
+      }
+    },
+    [],
+  );
   const isWorking = conversation?.state === "working";
   const isWaiting = conversation?.state === "waiting";
   const workingActive = isWorking || isStopping;
@@ -298,6 +370,13 @@ export function ConversationView({
     setIsSending(false);
     setDraft("");
     setInteractionError("");
+    setPendingHistoryMessageId(null);
+    setHighlightedMessageId(null);
+    if (historyHighlightTimerRef.current !== null) {
+      window.clearTimeout(historyHighlightTimerRef.current);
+      historyHighlightTimerRef.current = null;
+    }
+    messageListRef.current?.style.removeProperty("--history-navigation-space");
     setActivePopover(null);
   }, [id]);
 
@@ -463,6 +542,7 @@ export function ConversationView({
       )
         return;
       const conversationId = id;
+      messageListRef.current?.style.removeProperty("--history-navigation-space");
       followRef.current = nextFollowState(followRef.current, { type: "newMessage" });
       const sendRevision = ++sendRevisionRef.current;
       sendPendingRef.current = true;
@@ -964,94 +1044,98 @@ export function ConversationView({
         {headerActions}
       </header>
 
-      <FollowBottomContext value={pinToBottom}>
-        <section
-          aria-label={t.chat.messageList}
-          className={`${styles.messageList} ${scrollAreaStyles.scrollArea}`}
-          data-reveal={revealLoadedData ? "true" : undefined}
-          ref={messageListRef}
-        >
-          {loading && !conversation && showSlowLoading ? (
-            <p className={styles.loading}>{t.chat.loading}</p>
-          ) : null}
-          {error ? (
-            <p className={styles.error} role="alert">
-              <TriangleAlert aria-hidden="true" size={16} />
-              {error}
-            </p>
-          ) : null}
-          {conversation?.branchContext ? (
-            <p className={styles.branchContextNotice} role="note">
-              {t.chat.branchContextNotice}
-            </p>
-          ) : null}
-          {!loading && !error && messages.length === 0 ? (
-            <div className={styles.empty}>
-              <MessageSquareText aria-hidden="true" size={22} />
-              <p>{t.chat.emptyTitle(conversation ? agentDisplayName(conversation.agent) : "")}</p>
-              <span>{t.conversation.promptPlaceholder}</span>
-            </div>
-          ) : null}
-          {orderedMessages.length > visibleMessages.length ? (
-            <button
-              className={styles.olderMessages}
-              onClick={() => {
-                previousScrollHeight.current = messageListRef.current?.scrollHeight ?? 0;
-                restoreAfterOlder.current = true;
-                setVisibleMessageCount((count) => count + 100);
-              }}
-              type="button"
-            >
-              {t.chat.showOlderMessages}
-            </button>
-          ) : null}
-          {visibleMessages.map((message) => (
-            <MessageRow
-              key={message.id}
-              message={message}
-              agent={conversation?.agent}
-              cwd={conversation?.cwd ?? ""}
-              onAnnounce={announce}
-              onCopy={copyText}
-              onEdit={editMessage}
-              onRespond={respond}
-              onRetry={retry}
-              onBranch={branchMessage}
-              canRetry={
-                !isWorking &&
-                !isWaiting &&
-                !isSending &&
-                message.author === "agent" &&
-                message.id === latestAgentMessageId
-              }
-              canBranch={!isWorking && !isWaiting && !isSending}
-              onWorkingIndicatorExit={
-                message.author === "agent" &&
-                message.id === latestMessage?.id &&
-                shouldShowWorkingIndicator
-                  ? completeWorkingIndicatorExit
-                  : undefined
-              }
-              workingIndicator={
-                message.author === "agent" &&
-                message.id === latestMessage?.id &&
-                shouldShowWorkingIndicator
-                  ? workingIndicatorProps
-                  : undefined
-              }
-            />
-          ))}
-          {latestMessage?.author !== "agent" && shouldShowWorkingIndicator ? (
-            <div className={styles.workingFallback}>
-              <WorkingIndicator
-                {...workingIndicatorProps}
-                onExitComplete={completeWorkingIndicatorExit}
+      <div className={styles.messageRegion} data-history-open={historyOpen}>
+        <FollowBottomContext value={pinToBottom}>
+          <section
+            aria-label={t.chat.messageList}
+            className={`${styles.messageList} ${scrollAreaStyles.scrollArea}`}
+            data-reveal={revealLoadedData ? "true" : undefined}
+            ref={messageListRef}
+          >
+            {loading && !conversation && showSlowLoading ? (
+              <p className={styles.loading}>{t.chat.loading}</p>
+            ) : null}
+            {error ? (
+              <p className={styles.error} role="alert">
+                <TriangleAlert aria-hidden="true" size={16} />
+                {error}
+              </p>
+            ) : null}
+            {conversation?.branchContext ? (
+              <p className={styles.branchContextNotice} role="note">
+                {t.chat.branchContextNotice}
+              </p>
+            ) : null}
+            {!loading && !error && messages.length === 0 ? (
+              <div className={styles.empty}>
+                <MessageSquareText aria-hidden="true" size={22} />
+                <p>{t.chat.emptyTitle(conversation ? agentDisplayName(conversation.agent) : "")}</p>
+                <span>{t.conversation.promptPlaceholder}</span>
+              </div>
+            ) : null}
+            {orderedMessages.length > visibleMessages.length ? (
+              <button
+                className={styles.olderMessages}
+                onClick={() => {
+                  previousScrollHeight.current = messageListRef.current?.scrollHeight ?? 0;
+                  restoreAfterOlder.current = true;
+                  setVisibleMessageCount((count) => count + 100);
+                }}
+                type="button"
+              >
+                {t.chat.showOlderMessages}
+              </button>
+            ) : null}
+            {visibleMessages.map((message) => (
+              <MessageRow
+                key={message.id}
+                message={message}
+                historyHighlighted={highlightedMessageId === message.id}
+                agent={conversation?.agent}
+                cwd={conversation?.cwd ?? ""}
+                onAnnounce={announce}
+                onCopy={copyText}
+                onEdit={editMessage}
+                onRespond={respond}
+                onRetry={retry}
+                onBranch={branchMessage}
+                canRetry={
+                  !isWorking &&
+                  !isWaiting &&
+                  !isSending &&
+                  message.author === "agent" &&
+                  message.id === latestAgentMessageId
+                }
+                canBranch={!isWorking && !isWaiting && !isSending}
+                onWorkingIndicatorExit={
+                  message.author === "agent" &&
+                  message.id === latestMessage?.id &&
+                  shouldShowWorkingIndicator
+                    ? completeWorkingIndicatorExit
+                    : undefined
+                }
+                workingIndicator={
+                  message.author === "agent" &&
+                  message.id === latestMessage?.id &&
+                  shouldShowWorkingIndicator
+                    ? workingIndicatorProps
+                    : undefined
+                }
               />
-            </div>
-          ) : null}
-          <div aria-hidden="true" className={styles.bottomSentinel} ref={bottomSentinelRef} />
-        </section>
-      </FollowBottomContext>
+            ))}
+            {latestMessage?.author !== "agent" && shouldShowWorkingIndicator ? (
+              <div className={styles.workingFallback}>
+                <WorkingIndicator
+                  {...workingIndicatorProps}
+                  onExitComplete={completeWorkingIndicatorExit}
+                />
+              </div>
+            ) : null}
+            <div aria-hidden="true" className={styles.bottomSentinel} ref={bottomSentinelRef} />
+          </section>
+        </FollowBottomContext>
+        {historyOpen ? <div aria-hidden="true" className={styles.historyBackdrop} /> : null}
+      </div>
 
       <section
         aria-label={t.chat.messageComposer}
@@ -1087,6 +1171,17 @@ export function ConversationView({
           busy={isWorking}
           disabled={isWaiting || isResponding || isSending}
           leading={composerLeading}
+          trailing={
+            conversation && userMessageCount >= 2 ? (
+              <ConversationHistory
+                entries={historyEntries}
+                messageCount={userMessageCount}
+                onOpenChange={setHistoryOpen}
+                onSelectMessage={navigateToHistoryMessage}
+                open={historyOpen}
+              />
+            ) : undefined
+          }
           attachments={composerAttachmentsNode}
           onChange={setDraft}
           onDragEnter={composerAttachments.onDragEnter}

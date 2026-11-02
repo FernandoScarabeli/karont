@@ -29,7 +29,7 @@ export type AgentModels = {
   models: Array<AgentModelsResult["models"][number] & { efforts?: AgentEffort[] }>;
   efforts?: AgentEffort[];
 };
-export type ComposerPopoverName = "agent" | "model" | "config" | null;
+export type ComposerPopoverName = "agent" | "model" | "config" | "history" | null;
 type ConversationMode = NonNullable<Conversation["mode"]>;
 
 export function modelSettingKey(agent: AgentModels["agent"]): string {

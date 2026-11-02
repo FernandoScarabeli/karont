@@ -83,6 +83,34 @@
   margin-block-end: 0;
 }
 
+.message[data-history-highlighted="true"] .userBubble {
+  position: relative;
+  isolation: isolate;
+}
+
+.message[data-history-highlighted="true"] .userBubble::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--k-color-bg-control);
+  content: "";
+  filter: brightness(1.3);
+  opacity: 0;
+  pointer-events: none;
+  animation: historyMessageHighlight var(--k-duration-highlight) var(--k-ease) both;
+}
+
+@keyframes historyMessageHighlight {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
 .messageActions {
   display: flex;
   min-height: var(--k-control-height-sm);
@@ -1964,6 +1992,11 @@
 @media (prefers-reduced-motion: reduce) {
   .partHighlight {
     animation-duration: var(--k-motion-fast);
+  }
+
+  .message[data-history-highlighted="true"] .userBubble::before {
+    animation: none;
+    opacity: 1;
   }
 }
 
