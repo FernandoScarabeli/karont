@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getCharsPerSecond,
+  getRevealCeiling,
   getWordsPerSecond,
+  planCharRelease,
   planWordRelease,
   splitIntoTokens,
   splitIntoWords,
@@ -189,4 +192,62 @@ test("negrito e código normais nunca são cortados no meio do marcador", () => 
     "e ",
     "fim. ",
   ]);
+});
+
+test("máquina de escrever: ritmo de caracteres começa perto de 220/s e sobe com o atraso", () => {
+  assert.equal(getCharsPerSecond(0), 220);
+  assert.ok(getCharsPerSecond(100) > getCharsPerSecond(10));
+  assert.equal(getCharsPerSecond(100000), 1200);
+});
+
+test("máquina de escrever: libera caracteres e guarda a fração", () => {
+  const plan = planCharRelease({ backlogChars: 50, elapsedMs: 100 });
+  assert.equal(plan.count, 29);
+  assert.ok(plan.carryChars > 0 && plan.carryChars < 1);
+  assert.deepEqual(planCharRelease({ backlogChars: 0, elapsedMs: 100 }).count, 0);
+});
+
+test("máquina de escrever: sem atraso sobrando, a fila chega a zero em um segundo", () => {
+  let backlog = 40;
+  let carry = 0;
+  let released = 0;
+  for (let frame = 0; frame < 63; frame += 1) {
+    const plan = planCharRelease({ backlogChars: backlog, elapsedMs: 16, carryChars: carry });
+    backlog -= plan.count;
+    released += plan.count;
+    carry = plan.carryChars;
+  }
+  assert.ok(released > 0);
+  assert.ok(backlog >= 0);
+});
+
+test("máquina de escrever: ao terminar, drena em até 400 ms", () => {
+  let backlog = 800;
+  let elapsed = 0;
+  let carry = 0;
+  let drainMsLeft = 350;
+  while (backlog > 0 && elapsed < 2000) {
+    const plan = planCharRelease({
+      backlogChars: backlog,
+      elapsedMs: 16,
+      done: true,
+      carryChars: carry,
+      drainMsLeft,
+    });
+    backlog -= plan.count;
+    carry = plan.carryChars;
+    drainMsLeft = plan.drainMsLeft;
+    elapsed += 16;
+  }
+  assert.equal(backlog, 0);
+  assert.ok(elapsed <= 400 + 16, `levou ${elapsed} ms`);
+});
+
+test("cerca de abertura não aparece parcial enquanto a linha não termina", () => {
+  assert.equal(getRevealCeiling("Texto\n```ts", false), 6);
+  assert.equal(getRevealCeiling("Texto\n``", false), 6);
+  assert.equal(getRevealCeiling("Texto\n```ts\n", false), 12);
+  assert.equal(getRevealCeiling("Texto\n```ts", true), 11);
+  assert.equal(getRevealCeiling("Texto com `código` aqui", false), 23);
+  assert.equal(getRevealCeiling("linha\n~~~", false), 6);
 });

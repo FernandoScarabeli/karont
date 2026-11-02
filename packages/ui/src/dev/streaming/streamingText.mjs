@@ -11,6 +11,9 @@ const MARKER_HOLD_CHARS = 120;
 const CODE_HOLD_CHARS = 200;
 const DRAIN_MS = 350;
 const MIN_DRAIN_MS = 16;
+const BASE_CHARS_PER_SECOND = 220;
+const CHARS_PER_SECOND_PER_BACKLOG_CHAR = 1.5;
+const MAX_CHARS_PER_SECOND = 1200;
 
 export function splitIntoWords(text) {
   return Array.from(text.matchAll(wordPattern), (match) => {
@@ -68,23 +71,74 @@ export function planWordRelease({
   carryWords = 0,
   drainMsLeft = DRAIN_MS,
 }) {
-  if (backlogWords <= 0) return { count: 0, carryWords: 0, drainMsLeft: DRAIN_MS };
+  const plan = planRelease({
+    backlog: backlogWords,
+    elapsedMs,
+    done,
+    carry: carryWords,
+    drainMsLeft,
+    ratePerSecond: getWordsPerSecond(backlogWords),
+  });
+  return { count: plan.count, carryWords: plan.carry, drainMsLeft: plan.drainMsLeft };
+}
+
+// Adaptive pace for the typewriter: base ~220 chars/s, rising with the backlog
+// so the reveal never lags more than about a second.
+export function getCharsPerSecond(backlogChars) {
+  return Math.min(
+    MAX_CHARS_PER_SECOND,
+    BASE_CHARS_PER_SECOND + Math.max(0, backlogChars) * CHARS_PER_SECOND_PER_BACKLOG_CHAR,
+  );
+}
+
+export function planCharRelease({
+  backlogChars,
+  elapsedMs,
+  done = false,
+  carryChars = 0,
+  drainMsLeft = DRAIN_MS,
+}) {
+  const plan = planRelease({
+    backlog: backlogChars,
+    elapsedMs,
+    done,
+    carry: carryChars,
+    drainMsLeft,
+    ratePerSecond: getCharsPerSecond(backlogChars),
+  });
+  return { count: plan.count, carryChars: plan.carry, drainMsLeft: plan.drainMsLeft };
+}
+
+// Shared release core: linear drain toward a deadline once done, otherwise a
+// rate-based release with the fractional part carried to the next frame.
+function planRelease({ backlog, elapsedMs, done, carry, drainMsLeft, ratePerSecond }) {
+  if (backlog <= 0) return { count: 0, carry: 0, drainMsLeft: DRAIN_MS };
 
   const elapsed = Math.max(0, elapsedMs);
   const rate = done
-    ? Math.max(
-        getWordsPerSecond(backlogWords),
-        (backlogWords * 1000) / Math.max(drainMsLeft, MIN_DRAIN_MS),
-      )
-    : getWordsPerSecond(backlogWords);
-  const accumulated = carryWords + (rate * elapsed) / 1000;
-  const count = Math.min(backlogWords, Math.floor(accumulated));
+    ? Math.max(ratePerSecond, (backlog * 1000) / Math.max(drainMsLeft, MIN_DRAIN_MS))
+    : ratePerSecond;
+  const accumulated = carry + (rate * elapsed) / 1000;
+  const count = Math.min(backlog, Math.floor(accumulated));
 
   return {
     count,
-    carryWords: count === backlogWords ? 0 : accumulated - count,
+    carry: count === backlog ? 0 : accumulated - count,
     drainMsLeft: done ? Math.max(0, drainMsLeft - elapsed) : DRAIN_MS,
   };
+}
+
+// Highest text length the typewriter may reveal. While streaming, a fence
+// opening line (```lang or ~~~) is held back until its newline arrives, so the
+// caret never sits inside the opener.
+export function getRevealCeiling(text, done = false) {
+  if (done) return text.length;
+  const lineStart = text.lastIndexOf("\n") + 1;
+  const tail = text.slice(lineStart);
+  if (/^ {0,3}(?:`{1,2}|~{1,2})$/u.test(tail) || /^ {0,3}(?:`{3,}|~{3,})/u.test(tail)) {
+    return lineStart;
+  }
+  return text.length;
 }
 
 // Ranges [start, limit) where a cut at position p would split a marker pair.

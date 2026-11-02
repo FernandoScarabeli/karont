@@ -3,12 +3,13 @@ import type { KeyboardEvent } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../../components/Button/Button.tsx";
 import styles from "./StreamingDemo.module.css";
-import { type RenderMetrics, StreamingMarkdown } from "./StreamingMarkdown.tsx";
+import { type CaretPhase, type RenderMetrics, StreamingMarkdown } from "./StreamingMarkdown.tsx";
 import { sampleMarkdown } from "./sampleMarkdown.ts";
 import { useSmoothText } from "./useSmoothText.ts";
+import { useTypewriterText } from "./useTypewriterText.ts";
 
 type Speed = "normal" | "fast";
-type Version = "A" | "B" | "C" | "D";
+type Version = "A" | "B" | "C" | "D" | "E";
 type FrameSample = { frameId: number; frameStartedAt: number };
 
 const numberFormatter = new Intl.NumberFormat("pt-BR");
@@ -21,8 +22,13 @@ const versions: { id: Version; title: string; detail: string }[] = [
   },
   { id: "C", title: "Ritmo + fade", detail: "Palavras novas entram com fade; código por linha." },
   { id: "D", title: "Ritmo + desfoque", detail: "Fade e desfoque leve no texto que chega." },
+  {
+    id: "E",
+    title: "Máquina de escrever",
+    detail: "Caractere por caractere, sem fade; cursor de bloco no fim do texto.",
+  },
 ];
-const defaultVersion: Version = "C";
+const defaultVersion: Version = "E";
 
 export function StreamingDemo() {
   const [runId, setRunId] = useState(0);
@@ -220,6 +226,18 @@ function VersionColumn({
     );
   }
 
+  if (version === "E") {
+    return (
+      <TypewriterVersionColumn
+        done={done}
+        incomingText={incomingText}
+        title={title}
+        totalLength={totalLength}
+        version={version}
+      />
+    );
+  }
+
   return (
     <SmoothVersionColumn
       done={done}
@@ -245,7 +263,7 @@ function SmoothVersionColumn({
   incomingText: string;
   title: string;
   totalLength: number;
-  version: Exclude<Version, "A">;
+  version: Exclude<Version, "A" | "E">;
 }) {
   const revealed = useSmoothText(incomingText, { done });
   const motion = useReducedMotion();
@@ -265,7 +283,40 @@ function SmoothVersionColumn({
   );
 }
 
+function TypewriterVersionColumn({
+  done,
+  incomingText,
+  title,
+  totalLength,
+  version,
+}: {
+  done: boolean;
+  incomingText: string;
+  title: string;
+  totalLength: number;
+  version: Extract<Version, "E">;
+}) {
+  const revealed = useTypewriterText(incomingText, { done });
+  const caughtUp = revealed.text.length === incomingText.length;
+  // Solid while streaming; blinks while idle; fades out after done.
+  const caretPhase: CaretPhase = !caughtUp ? "streaming" : done ? "done" : "idle";
+
+  return (
+    <VersionPanel
+      caretPhase={caretPhase}
+      done={done}
+      frame={revealed}
+      incomingLength={incomingText.length}
+      title={title}
+      totalLength={totalLength}
+      version={version}
+      visibleText={revealed.text}
+    />
+  );
+}
+
 function VersionPanel({
+  caretPhase = "off",
   done,
   frame,
   incomingLength,
@@ -275,6 +326,7 @@ function VersionPanel({
   version,
   visibleText,
 }: {
+  caretPhase?: CaretPhase;
   done: boolean;
   frame?: FrameSample;
   incomingLength: number;
@@ -326,6 +378,7 @@ function VersionPanel({
       </header>
       <div className={styles.markdownViewport}>
         <StreamingMarkdown
+          caretPhase={caretPhase}
           done={done && visibleText.length === totalLength}
           markdown={visibleText}
           metrics={renderMetrics.current}
