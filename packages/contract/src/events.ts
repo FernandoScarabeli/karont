@@ -59,6 +59,8 @@ export const events = {
       conversation: conversationSchema,
       messageId: z.string(),
       messageStatus: z.enum(["streaming", "done", "interrupted", "error"]),
+      messageStartedAt: z.number().int().nonnegative().optional(),
+      messageEndedAt: z.number().int().nonnegative().optional(),
     }),
   ]),
   "conversation.deletedAll": z.strictObject({ deleted: z.number().int().nonnegative() }),
