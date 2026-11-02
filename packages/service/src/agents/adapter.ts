@@ -23,6 +23,8 @@ export type AdapterModelList = {
     name: string;
     efforts: NonNullable<Conversation["effort"]>[];
     defaultEffort: NonNullable<Conversation["effort"]>;
+    supportsFast: boolean;
+    fastServiceTier?: string;
   }[];
   efforts: NonNullable<Conversation["effort"]>[];
 };

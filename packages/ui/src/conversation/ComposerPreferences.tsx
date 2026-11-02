@@ -1,5 +1,5 @@
 import type { Conversation, ResultOf } from "@karont/contract";
-import { ListTodo, SlidersHorizontal, TriangleAlert } from "lucide-react";
+import { ListTodo, SlidersHorizontal, TriangleAlert, Zap } from "lucide-react";
 import {
   type ComponentPropsWithoutRef,
   type KeyboardEvent,
@@ -38,6 +38,10 @@ export function effortSettingKey(agent: AgentModels["agent"]): string {
   return `composer.${agent}.effort`;
 }
 
+export function fastSettingKey(agent: AgentModels["agent"]): string {
+  return `composer.${agent}.fast`;
+}
+
 export function effortsForModel(models: AgentModels | null, modelId: string): AgentEffort[] {
   if (!modelId) return [];
   const modelEfforts = models?.models.find((option) => option.id === modelId)?.efforts;
@@ -73,6 +77,7 @@ export function ComposerPreferences({
   effort,
   mode,
   planMode,
+  fastMode,
   activePopover,
   onActivePopoverChange,
   disabled = false,
@@ -80,12 +85,14 @@ export function ComposerPreferences({
   onEffortChange,
   onModeChange,
   onPlanModeChange,
+  onFastModeChange,
 }: {
   models: AgentModels | null;
   model: string | null;
   effort: AgentEffort | "";
   mode: ConversationMode;
   planMode: boolean;
+  fastMode: boolean;
   activePopover: ComposerPopoverName;
   onActivePopoverChange: (popover: ComposerPopoverName) => void;
   disabled?: boolean;
@@ -93,6 +100,7 @@ export function ComposerPreferences({
   onEffortChange: (value: AgentEffort | "") => void;
   onModeChange: (value: ConversationMode) => void;
   onPlanModeChange: (value: boolean) => void;
+  onFastModeChange: (value: boolean) => void;
 }) {
   const [confirmFull, setConfirmFull] = useState(false);
   const [configAnchorName, setConfigAnchorName] = useState<"config" | "plan" | "full">("config");
@@ -122,6 +130,7 @@ export function ComposerPreferences({
 
   const efforts = effortsForModel(models, model ?? "");
   const selectedEffort = effort && efforts.includes(effort) ? effort : "";
+  const supportsFast = models?.models.find((option) => option.id === model)?.supportsFast === true;
   const fullAccess = mode === "full";
   const configAnchorRef =
     configAnchorName === "plan" && planMode
@@ -184,6 +193,21 @@ export function ComposerPreferences({
           levels={efforts}
           onChange={onEffortChange}
         />
+      ) : null}
+      {supportsFast ? (
+        <button
+          aria-label={fastMode ? t.chat.fastModeEnabled : t.chat.fastMode}
+          aria-pressed={fastMode}
+          className={[styles.iconTrigger, styles.fastTrigger].join(" ")}
+          data-active={fastMode}
+          data-composer-menu-trigger
+          disabled={disabled}
+          onClick={() => onFastModeChange(!fastMode)}
+          title={fastMode ? t.chat.fastModeEnabled : t.chat.fastMode}
+          type="button"
+        >
+          <Zap aria-hidden="true" size={16} strokeWidth={1.8} />
+        </button>
       ) : null}
       <div className={styles.configGroup}>
         <button

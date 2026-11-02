@@ -162,6 +162,8 @@ export class ClaudeAdapter implements AgentAdapter {
       args.push(plan ? "--allow-dangerously-skip-permissions" : "--dangerously-skip-permissions");
     if (conversation.model) args.push("--model", conversation.model);
     if (conversation.effort) args.push("--effort", conversation.effort);
+    if (conversation.fast && claudeModelSupportsFast(conversation.model))
+      args.push("--settings", JSON.stringify({ fastMode: true }));
     args.push(resume ? "--resume" : "--session-id", sessionId);
     if (this.#forkSessionPending) args.push("--fork-session");
     try {
@@ -899,6 +901,10 @@ export class ClaudeAdapter implements AgentAdapter {
       this.#controlRequests.delete(requestId);
     }
   }
+}
+
+export function claudeModelSupportsFast(modelId: string | null | undefined): boolean {
+  return modelId === "opus";
 }
 
 export const createClaudeAdapterFactory =

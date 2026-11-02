@@ -180,6 +180,8 @@ export const t = {
     composerOptions: "Opções da conversa",
     model: "Modelo",
     effort: "Esforço",
+    fastMode: "Modo rápido",
+    fastModeEnabled: "Modo rápido ligado",
     effortAccessibleName: (value: string) => `Esforço: ${value}`,
     effortChangeDescription: "Clique para mudar o nível",
     efforts: {

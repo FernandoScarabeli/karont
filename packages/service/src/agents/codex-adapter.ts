@@ -85,6 +85,8 @@ export class CodexAdapter implements AgentAdapter {
   #nextRpcId = 1;
   #models: AdapterModelList = { models: [], efforts: [...EFFORTS] };
   #modelId = "";
+  #fastServiceTier: string | undefined;
+  #fast = false;
   #effort: Effort = "low";
   #turnOpen = false;
   #stopRequested = false;
@@ -116,6 +118,9 @@ export class CodexAdapter implements AgentAdapter {
     this.#models = parseModelList(catalog);
     const selected = selectModel(this.#models, catalog, conversation.model);
     this.#modelId = selected.id;
+    const selectedModel = this.#models.models.find((model) => model.id === this.#modelId);
+    this.#fastServiceTier = selectedModel?.fastServiceTier;
+    this.#fast = conversation.fast && Boolean(selectedModel?.supportsFast && this.#fastServiceTier);
     this.#effort = normalizeEffort(conversation.effort ?? selected.effort);
 
     if (resume) {
@@ -127,6 +132,7 @@ export class CodexAdapter implements AgentAdapter {
         model: this.#modelId,
         sandbox,
         approvalPolicy,
+        ...(this.#fast && this.#fastServiceTier ? { serviceTier: this.#fastServiceTier } : {}),
       });
       const thread = isRecord(result) && isRecord(result.thread) ? result.thread : undefined;
       if (!thread || typeof thread.id !== "string")
@@ -408,6 +414,9 @@ export class CodexAdapter implements AgentAdapter {
       input,
       model: this.#modelId,
       effort: this.#effort,
+      ...(this.#fast && this.#fastServiceTier
+        ? { serviceTier: this.#fastServiceTier }
+        : { serviceTierForTurn: "default" }),
     };
     if (collaborationMode) {
       params.collaborationMode = {
@@ -1162,12 +1171,15 @@ function parseModelList(value: unknown): AdapterModelList {
         ? (requestedDefault as Effort)
         : (supported[0] ?? EFFORTS[0]);
     const displayName = stringValue(model.displayName);
+    const fastServiceTier = getFastServiceTier(model);
     return [
       {
         id,
         name: displayName && !/^\[redigido\]$/i.test(displayName) ? displayName : id,
         efforts: supported.length ? supported : [...EFFORTS],
         defaultEffort,
+        supportsFast: fastServiceTier !== undefined,
+        ...(fastServiceTier ? { fastServiceTier } : {}),
       },
     ];
   });
@@ -1193,6 +1205,22 @@ function selectModel(
   const effort =
     stringValue(selectedRaw?.defaultReasoningEffort) || selected?.defaultEffort || "low";
   return { id: requested || selected?.id || "gpt-6.1-sol", effort };
+}
+
+function getFastServiceTier(model: JsonRecord): string | undefined {
+  if (Array.isArray(model.serviceTiers)) {
+    const fastTier = model.serviceTiers
+      .filter(isRecord)
+      .find(
+        (tier) =>
+          stringValue(tier.name).toLowerCase() === "fast" ||
+          stringValue(tier.id).toLowerCase() === "fast",
+      );
+    return fastTier ? stringValue(fastTier.id) || undefined : undefined;
+  }
+  return Array.isArray(model.additionalSpeedTiers) && model.additionalSpeedTiers.includes("fast")
+    ? "fast"
+    : undefined;
 }
 
 function normalizeEffort(value: string | undefined): Effort {

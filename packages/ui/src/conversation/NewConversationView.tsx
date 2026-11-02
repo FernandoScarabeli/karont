@@ -31,6 +31,7 @@ import {
   type ComposerPopoverName,
   ComposerPreferences,
   effortSettingKey,
+  fastSettingKey,
   initialEffortForModel,
   modelSettingKey,
 } from "./ComposerPreferences.tsx";
@@ -78,6 +79,7 @@ export function NewConversationView({
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState<AgentEffort | "">("");
   const [preferredEffort, setPreferredEffort] = useState<AgentEffort | "">("");
+  const [fastMode, setFastMode] = useState(false);
   const [planMode, setPlanMode] = useState(false);
   const [greetingName, setGreetingName] = useState<string | null>(null);
   const [openingGreeting] = useState(() => ({
@@ -95,7 +97,7 @@ export function NewConversationView({
   }, []);
 
   const saveSetting = useCallback(
-    (key: string, value: string, failureMessage: string) => {
+    (key: string, value: string | boolean, failureMessage: string) => {
       if (!bridge) return;
       void bridge.request("settings.set", { key, value }).catch(() => {
         setError(failureMessage);
@@ -223,6 +225,7 @@ export function NewConversationView({
       setModel("");
       setEffort("");
       setPreferredEffort("");
+      setFastMode(false);
       return;
     }
     const agentId = selectedAgentId;
@@ -230,11 +233,13 @@ export function NewConversationView({
     setModels(null);
     setModel("");
     setEffort("");
+    setFastMode(false);
     void Promise.allSettled([
       bridge.request("agent.models", { agent: agentId }),
       bridge.request("settings.get", { key: modelSettingKey(agentId) }),
       bridge.request("settings.get", { key: effortSettingKey(agentId) }),
-    ]).then(([modelsResult, storedModelResult, storedEffortResult]) => {
+      bridge.request("settings.get", { key: fastSettingKey(agentId) }),
+    ]).then(([modelsResult, storedModelResult, storedEffortResult, storedFastResult]) => {
       if (!mounted) return;
       const result: AgentModels =
         modelsResult.status === "fulfilled"
@@ -263,11 +268,19 @@ export function NewConversationView({
           : "";
       setPreferredEffort(knownEffort);
       setEffort(initialEffortForModel(result, initialModel, knownEffort));
+      const storedFast =
+        storedFastResult.status === "fulfilled" && storedFastResult.value.value === true;
+      const initialFast =
+        storedFast &&
+        result.models.find((option) => option.id === initialModel)?.supportsFast === true;
+      setFastMode(initialFast);
+      if (storedFast && !initialFast)
+        saveSetting(fastSettingKey(agentId), false, t.conversation.settingsSaveFailed);
     });
     return () => {
       mounted = false;
     };
-  }, [bridge, selectedAgentId]);
+  }, [bridge, saveSetting, selectedAgentId]);
 
   function chooseAgent(option: AgentChoice) {
     choiceTouchedRef.current = true;
@@ -283,6 +296,16 @@ export function NewConversationView({
     setModel(value);
     setEffort(initialEffortForModel(currentModels, value, preferredEffort));
     saveSetting(modelSettingKey(selectedAgentId), value, t.conversation.settingsSaveFailed);
+    if (currentModels?.models.find((option) => option.id === value)?.supportsFast !== true) {
+      setFastMode(false);
+      saveSetting(fastSettingKey(selectedAgentId), false, t.conversation.settingsSaveFailed);
+    }
+  }
+
+  function chooseFastMode(value: boolean) {
+    if (!selectedAgentId) return;
+    setFastMode(value);
+    saveSetting(fastSettingKey(selectedAgentId), value, t.conversation.settingsSaveFailed);
   }
 
   function chooseEffort(value: AgentEffort | "") {
@@ -447,6 +470,10 @@ export function NewConversationView({
         ...(modelListAvailable && currentModel ? { model: currentModel } : {}),
         ...(effort ? { effort } : {}),
         plan: planMode,
+        fast: Boolean(
+          fastMode &&
+            currentModels?.models.find((option) => option.id === currentModel)?.supportsFast,
+        ),
       });
       created = result.conversation;
       upsertConversation(created);
@@ -535,6 +562,7 @@ export function NewConversationView({
                 <ComposerPreferences
                   activePopover={activePopover}
                   effort={currentEffort}
+                  fastMode={fastMode}
                   mode={mode}
                   model={currentModel}
                   models={currentModels}
@@ -542,6 +570,7 @@ export function NewConversationView({
                   disabled={isOpening}
                   onActivePopoverChange={setActivePopover}
                   onEffortChange={chooseEffort}
+                  onFastModeChange={chooseFastMode}
                   onModeChange={setMode}
                   onModelChange={chooseModel}
                   onPlanModeChange={setPlanMode}

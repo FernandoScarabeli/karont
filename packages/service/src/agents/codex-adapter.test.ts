@@ -13,7 +13,9 @@ import {
   getSetting,
   openDatabase,
   setAgentSession,
+  setSetting,
 } from "../db.ts";
+import type { AdapterModelList } from "./adapter.ts";
 import { CodexAdapter, unwrapCodexShellCommand } from "./codex-adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
 import { createFakeCodexSpawn, type FakeCodexSpawn } from "./testing/fake-codex-process.ts";
@@ -40,6 +42,7 @@ async function createHarness(
     withoutCommandTiming?: boolean;
     withoutCommandStart?: boolean;
     planDecision?: "approve" | "adjust";
+    codexModelCache?: AdapterModelList;
   } = {},
 ): Promise<Harness> {
   const root = await mkdtemp(path.join(os.tmpdir(), "karont-codex-"));
@@ -54,6 +57,13 @@ async function createHarness(
     ...(options.idleMs === undefined ? {} : { KARONT_AGENT_IDLE_MS: String(options.idleMs) }),
   };
   const fixturePath = fileURLToPath(new URL(`${scenario}.jsonl`, fixtureDir));
+  if (options.codexModelCache) {
+    setSetting(db, "agent.codex.models", {
+      agent: "codex",
+      ...options.codexModelCache,
+      fetchedAt: new Date().toISOString(),
+    });
+  }
   const manager = new ConversationManager({
     db,
     env,
@@ -202,6 +212,14 @@ function latestAgent(harness: Harness, id: string) {
     .find((message) => message.author === "agent");
 }
 
+function requestParams(request: { params?: unknown } | undefined): Record<string, unknown> {
+  return typeof request?.params === "object" &&
+    request.params !== null &&
+    !Array.isArray(request.params)
+    ? (request.params as Record<string, unknown>)
+    : {};
+}
+
 test("thread/fork ramifica o Codex no turno selecionado", async () => {
   const env = {
     ...process.env,
@@ -222,6 +240,7 @@ test("thread/fork ramifica o Codex no turno selecionado", async () => {
     cwd: "/tmp/karont-branch",
     mode: "read-only",
     model: "gpt-test",
+    fast: false,
     pinnedAt: null,
     archivedAt: null,
     unreadAt: null,
@@ -265,6 +284,7 @@ test("thread/turns/list recupera o turno selecionado em histórico antigo", asyn
     cwd: "/tmp/karont-branch",
     mode: "read-only",
     model: "gpt-test",
+    fast: false,
     pinnedAt: null,
     archivedAt: null,
     unreadAt: null,
@@ -481,10 +501,13 @@ test("Codex transmite texto, converte leitura em ação e carrega os modelos rea
       const models = await harness.manager.models("codex");
       assert.equal(models.models.length, 8);
       assert.ok(models.models.some((model) => model.id === "gpt-6.1-sol"));
+      assert.equal(models.models.find((model) => model.id === "gpt-6-luna")?.supportsFast, true);
       assert.deepEqual(models.efforts, ["low", "medium", "high", "xhigh", "max"]);
       const hostRequests = harness.fakes[0]?.messages[0] ?? [];
       assert.equal(hostRequests.filter((request) => request.method === "model/list").length, 1);
-      assert.equal(JSON.stringify(hostRequests).includes("serviceTier"), false);
+      const turnStart = hostRequests.find((request) => request.method === "turn/start");
+      assert.equal(requestParams(turnStart).serviceTier, undefined);
+      assert.equal(requestParams(turnStart).serviceTierForTurn, "default");
     } finally {
       await harness.close();
     }
@@ -560,6 +583,79 @@ test("agent.models carrega uma vez antes da primeira mensagem e reutiliza o cach
   } finally {
     await harness.close();
   }
+});
+
+test("Codex só recebe a faixa rápida quando o modelo a anuncia", async (t) => {
+  const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
+  const modelCache = (supportsFast: boolean): AdapterModelList => ({
+    models: [
+      {
+        id: "gpt-6.1-sol",
+        name: "GPT-6.1 Sol",
+        efforts: [...efforts],
+        defaultEffort: "low",
+        supportsFast,
+      },
+    ],
+    efforts: [...efforts],
+  });
+
+  await t.test("ligado", async () => {
+    const harness = await createHarness("texto", { codexModelCache: modelCache(true) });
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.setOptions(conversation.id, { model: "gpt-6.1-sol" });
+      await harness.manager.setOptions(conversation.id, { fast: true });
+      await harness.manager.send(conversation.id, fixturePrompt("texto"));
+      await waitForState(harness, conversation.id, "idle");
+
+      const requests = harness.fakes[0]?.messages[0] ?? [];
+      const threadStart = requests.find((request) => request.method === "thread/start");
+      const turnStart = requests.find((request) => request.method === "turn/start");
+      assert.equal(requestParams(threadStart).serviceTier, "priority");
+      assert.equal(requestParams(turnStart).serviceTier, "priority");
+      assert.equal(requestParams(turnStart).serviceTierForTurn, undefined);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("modelo sem suporte", async () => {
+    const harness = await createHarness("texto", { codexModelCache: modelCache(false) });
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.setOptions(conversation.id, { model: "gpt-6.1-sol" });
+      const result = await harness.manager.setOptions(conversation.id, { fast: true });
+      assert.equal(result.fast, false);
+      await harness.manager.send(conversation.id, fixturePrompt("texto"));
+      await waitForState(harness, conversation.id, "idle");
+
+      const requests = harness.fakes[0]?.messages[0] ?? [];
+      const threadStart = requests.find((request) => request.method === "thread/start");
+      const turnStart = requests.find((request) => request.method === "turn/start");
+      assert.equal(requestParams(threadStart).serviceTier, undefined);
+      assert.equal(requestParams(turnStart).serviceTier, undefined);
+      assert.equal(requestParams(turnStart).serviceTierForTurn, "default");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("desligado", async () => {
+    const harness = await createHarness("texto");
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, fixturePrompt("texto"));
+      await waitForState(harness, conversation.id, "idle");
+
+      const requests = harness.fakes[0]?.messages[0] ?? [];
+      const turnStart = requests.find((request) => request.method === "turn/start");
+      assert.equal(requestParams(turnStart).serviceTier, undefined);
+      assert.equal(requestParams(turnStart).serviceTierForTurn, "default");
+    } finally {
+      await harness.close();
+    }
+  });
 });
 
 test("remove wrappers bash, sh e zsh com aspas simples ou duplas", () => {

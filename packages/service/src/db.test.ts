@@ -27,7 +27,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    11,
+    12,
   );
   assert.equal(
     (
@@ -57,6 +57,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   assert.ok(conversationColumns.has("branched_from_id"));
   assert.ok(conversationColumns.has("branched_from_message_id"));
   assert.ok(conversationColumns.has("branch_context_pending"));
+  assert.ok(conversationColumns.has("fast"));
   setSetting(db, "appearance.theme", { mode: "dark", enabled: true });
   assert.deepEqual(getSetting(db, "appearance.theme"), { mode: "dark", enabled: true });
   assert.equal((await stat(dbPath)).mode & 0o777, 0o600);
@@ -79,7 +80,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    11,
+    12,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();
@@ -135,6 +136,7 @@ test("migra conversas antigas sem perder preferências existentes nem mensagens"
       model: conversation?.model,
       effort: conversation?.effort,
       plan: conversation?.plan,
+      fast: conversation?.fast,
       pinnedAt: conversation?.pinnedAt,
       archivedAt: conversation?.archivedAt,
       unreadAt: conversation?.unreadAt,
@@ -147,6 +149,7 @@ test("migra conversas antigas sem perder preferências existentes nem mensagens"
       model: "haiku",
       effort: "low",
       plan: false,
+      fast: false,
       pinnedAt: null,
       archivedAt: null,
       unreadAt: null,
@@ -166,6 +169,7 @@ test("migra conversas antigas sem perder preferências existentes nem mensagens"
     cwd: "/tmp",
     mode: "edit",
     plan: true,
+    fast: true,
   });
   const defaulted = createConversation(db, {
     agent: "claude",
@@ -174,7 +178,9 @@ test("migra conversas antigas sem perder preferências existentes nem mensagens"
     mode: "edit",
   });
   assert.equal(getConversation(db, planned.id)?.plan, true);
+  assert.equal(getConversation(db, planned.id)?.fast, true);
   assert.equal(defaulted.plan, false);
+  assert.equal(defaulted.fast, false);
   const untitled = createConversation(db, {
     agent: "claude",
     title: "Nova conversa",

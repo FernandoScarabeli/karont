@@ -638,24 +638,28 @@ test("Codex escolhe um modelo econômico disponível com esforço mínimo para o
             name: "Codex Standard",
             efforts: ["low", "medium"],
             defaultEffort: "medium",
+            supportsFast: false,
           },
           {
             id: "codex-small",
             name: "Codex Small",
             efforts: ["low"],
             defaultEffort: "low",
+            supportsFast: false,
           },
           {
             id: "codex-mini-available",
             name: "Codex Mini",
             efforts: ["low", "high"],
             defaultEffort: "low",
+            supportsFast: false,
           },
           {
             id: "codex-nano-available",
             name: "Codex Nano",
             efforts: ["low"],
             defaultEffort: "low",
+            supportsFast: false,
           },
         ],
         efforts: ["low", "medium", "high"],
@@ -1101,6 +1105,56 @@ test("send aceita uma substituição explícita de Planejar sem mudar a preferê
 test("ClaudeAdapter preserva nome do executável no erro de binário ausente", () => {
   const error = new AgentCliError("cli-not-found", "Claude Code não encontrado.");
   assert.equal(error.errorType, "cli-not-found");
+});
+
+test("Claude anuncia e configura modo rápido só para Opus", async (t) => {
+  await t.test("Opus inicia com fastMode explícito via --settings", async () => {
+    const harness = await createHarness("texto");
+    try {
+      const conversation = harness.manager.create({
+        agent: "claude",
+        title: "Fast mode Claude",
+        cwd: os.tmpdir(),
+        mode: "edit",
+        model: "opus",
+        fast: true,
+      });
+      assert.equal(conversation.fast, true);
+
+      const models = await harness.manager.models("claude");
+      assert.equal(models.models.find((model) => model.id === "opus")?.supportsFast, true);
+      assert.equal(models.models.find((model) => model.id === "sonnet")?.supportsFast, false);
+
+      await harness.manager.send(conversation.id, "Responda ao pedido.");
+      await waitForState(harness, conversation.id, "idle");
+      const args = harness.spawnArgs[0] ?? [];
+      const settingsIndex = args.indexOf("--settings");
+      assert.ok(settingsIndex >= 0);
+      assert.deepEqual(JSON.parse(args[settingsIndex + 1] ?? "{}"), { fastMode: true });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("Sonnet rejeita fastMode", async () => {
+    const harness = await createHarness("texto");
+    try {
+      const conversation = harness.manager.create({
+        agent: "claude",
+        title: "Sem fast mode",
+        cwd: os.tmpdir(),
+        mode: "edit",
+        model: "sonnet",
+        fast: true,
+      });
+      assert.equal(conversation.fast, false);
+      await harness.manager.send(conversation.id, "Responda ao pedido.");
+      await waitForState(harness, conversation.id, "idle");
+      assert.equal(harness.spawnArgs[0]?.includes("--settings"), false);
+    } finally {
+      await harness.close();
+    }
+  });
 });
 
 test("Claude recebe anexos em blocos e a mensagem salva apenas metadados", async () => {

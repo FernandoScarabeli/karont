@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { messagePartSchema } from "./conversations.ts";
+import { conversationSchema, messagePartSchema } from "./conversations.ts";
 import { events } from "./events.ts";
 import { methods } from "./methods.ts";
 import { parseEvent, parseRequest } from "./validate.ts";
@@ -60,7 +60,7 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
   assert.equal(
     methods["conversation.setOptions"].params.safeParse({
       id: "c1",
-      options: { mode: "full", model: null, effort: "max", plan: true },
+      options: { mode: "full", model: null, effort: "max", plan: true, fast: true },
     }).success,
     true,
   );
@@ -69,6 +69,7 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
       agent: "claude",
       cwd: "/tmp",
       plan: true,
+      fast: true,
     }).success,
     true,
   );
@@ -79,6 +80,9 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
     }).success,
     true,
   );
+  const parsedConversation = conversationSchema.safeParse(conversation);
+  assert.equal(parsedConversation.success, true);
+  if (parsedConversation.success) assert.equal(parsedConversation.data.fast, false);
   assert.equal(
     methods["conversation.setOptions"].params.safeParse({
       id: "c1",
@@ -107,7 +111,7 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
   assert.equal(
     methods["agent.models"].result.safeParse({
       agent: "claude",
-      models: [{ id: "haiku", name: "Haiku" }],
+      models: [{ id: "haiku", name: "Haiku", supportsFast: false }],
       efforts: ["low", "medium", "high", "xhigh", "max"],
     }).success,
     true,
@@ -121,6 +125,7 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
           name: "gpt-6.1-sol",
           efforts: ["low", "medium", "high"],
           defaultEffort: "medium",
+          supportsFast: true,
         },
       ],
       efforts: ["low", "medium", "high"],

@@ -46,7 +46,11 @@ import type {
   AdapterResponse,
   AgentAdapter,
 } from "./adapter.ts";
-import { AgentCliError, createClaudeAdapterFactory } from "./claude-adapter.ts";
+import {
+  AgentCliError,
+  claudeModelSupportsFast,
+  createClaudeAdapterFactory,
+} from "./claude-adapter.ts";
 import { createCodexAdapterFactory, createCodexModelLoader } from "./codex-adapter.ts";
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
@@ -130,6 +134,13 @@ export class ConversationManager {
 
   create(input: NewConversation): Conversation {
     this.#assertNotDeletingAll();
+    if (input.fast && !modelSupportsFast(this.#codexModelList, input.agent, input.model)) {
+      console.warn("Modo rápido ignorado: o agente ou modelo selecionado não anuncia suporte.", {
+        agent: input.agent,
+        model: input.model ?? null,
+      });
+      return createConversation(this.#db, { ...input, fast: false });
+    }
     return createConversation(this.#db, input);
   }
 
@@ -238,6 +249,7 @@ export class ConversationManager {
       ...(source.model ? { model: source.model } : {}),
       ...(source.effort ? { effort: source.effort } : {}),
       plan: source.plan,
+      fast: source.fast,
       branchedFromId: source.id,
       branchedFromMessageId: selected.id,
       ...(branchContext ? { branchContext: true } : {}),
@@ -393,11 +405,38 @@ export class ConversationManager {
       model?: string | null;
       effort?: NonNullable<Conversation["effort"]> | null;
       plan?: boolean;
+      fast?: boolean;
     },
   ): Promise<Conversation> {
     const conversation = this.#requireConversation(id);
     if (conversation.state === "working" || conversation.state === "waiting")
       throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
+    const selectedModelId = "model" in options ? options.model : conversation.model;
+    const mustCheckFast = options.fast === true || (conversation.fast && "model" in options);
+    if (mustCheckFast && conversation.agent === "codex") await this.#loadCodexModelsIfNeeded();
+    const supportsFast = modelSupportsFast(
+      this.#codexModelList,
+      conversation.agent,
+      selectedModelId,
+    );
+    if (options.fast === true) {
+      if (supportsFast) conversation.fast = true;
+      else {
+        conversation.fast = false;
+        console.warn("Modo rápido ignorado: o agente ou modelo selecionado não anuncia suporte.", {
+          agent: conversation.agent,
+          model: selectedModelId ?? null,
+        });
+      }
+    } else if (options.fast === false) {
+      conversation.fast = false;
+    } else if ("model" in options && conversation.fast && !supportsFast) {
+      conversation.fast = false;
+      console.warn("Modo rápido desligado após selecionar um modelo sem suporte.", {
+        agent: conversation.agent,
+        model: selectedModelId ?? null,
+      });
+    }
     const active = this.#active.get(id);
     if (active) {
       if (active.idleTimer) clearTimeout(active.idleTimer);
@@ -484,6 +523,7 @@ export class ConversationManager {
       name: string;
       efforts?: NonNullable<Conversation["effort"]>[];
       defaultEffort?: NonNullable<Conversation["effort"]>;
+      supportsFast: boolean;
     }[];
     efforts: ("low" | "medium" | "high" | "xhigh" | "max")[];
     fetchedAt?: string;
@@ -493,12 +533,15 @@ export class ConversationManager {
       await this.#loadCodexModelsIfNeeded();
       return {
         agent,
-        models: this.#codexModelList.models.map(({ id, name, efforts, defaultEffort }) => ({
-          id,
-          name,
-          efforts: [...efforts],
-          defaultEffort,
-        })),
+        models: this.#codexModelList.models.map(
+          ({ id, name, efforts, defaultEffort, supportsFast }) => ({
+            id,
+            name,
+            efforts: [...efforts],
+            defaultEffort,
+            supportsFast,
+          }),
+        ),
         efforts: [...this.#codexModelList.efforts],
         ...(this.#codexModelFetchedAt ? { fetchedAt: this.#codexModelFetchedAt } : {}),
       };
@@ -506,9 +549,9 @@ export class ConversationManager {
     return {
       agent,
       models: [
-        { id: "opus", name: "Opus" },
-        { id: "sonnet", name: "Sonnet" },
-        { id: "haiku", name: "Haiku" },
+        { id: "opus", name: "Opus", supportsFast: true },
+        { id: "sonnet", name: "Sonnet", supportsFast: false },
+        { id: "haiku", name: "Haiku", supportsFast: false },
       ],
       efforts: [...efforts],
     };
@@ -545,11 +588,12 @@ export class ConversationManager {
     try {
       setSetting(this.#db, CODEX_MODELS_SETTING, {
         agent: "codex",
-        models: modelList.models.map(({ id, name, efforts, defaultEffort }) => ({
+        models: modelList.models.map(({ id, name, efforts, defaultEffort, supportsFast }) => ({
           id,
           name,
           efforts,
           defaultEffort,
+          supportsFast,
         })),
         efforts: modelList.efforts,
         fetchedAt: this.#codexModelFetchedAt,
@@ -1039,6 +1083,19 @@ function cheapestListedModel(
   return modelList.models[0];
 }
 
+function modelSupportsFast(
+  modelList: AdapterModelList,
+  agent: Conversation["agent"],
+  modelId: string | null | undefined,
+): boolean {
+  if (agent === "claude") return claudeModelSupportsFast(modelId);
+  return (
+    agent === "codex" &&
+    typeof modelId === "string" &&
+    modelList.models.some((model) => model.id === modelId && model.supportsFast)
+  );
+}
+
 function readCodexModelCache(
   value: unknown,
 ): { modelList: AdapterModelList; fetchedAt: string } | null {
@@ -1053,6 +1110,7 @@ function readCodexModelCache(
           name: model.name,
           efforts: [...efforts],
           defaultEffort: model.defaultEffort ?? efforts[0] ?? "low",
+          supportsFast: model.supportsFast,
         };
       }),
       efforts: [...parsed.data.efforts],

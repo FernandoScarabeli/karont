@@ -267,6 +267,8 @@ function matchesTurnStart(expected: unknown, actual: unknown): boolean {
   if (!isRecord(expected) || !isRecord(actual)) return false;
   const { input: expectedInput, ...expectedParams } = expected;
   const { input: actualInput, ...actualParams } = actual;
+  if (!("serviceTier" in expectedParams)) delete actualParams.serviceTier;
+  if (!("serviceTierForTurn" in expectedParams)) delete actualParams.serviceTierForTurn;
   if (!Array.isArray(expectedInput) || !Array.isArray(actualInput) || actualInput.length < 1)
     return false;
   if (!deepEqual(expectedParams, actualParams) || !deepEqual(expectedInput[0], actualInput[0]))
@@ -295,6 +297,11 @@ function deepEqual(left: unknown, right: unknown): boolean {
 
 function omitPolicy(value: unknown): unknown {
   if (!isRecord(value)) return value;
-  const { sandbox: _sandbox, approvalPolicy: _approvalPolicy, ...params } = value;
+  const {
+    sandbox: _sandbox,
+    approvalPolicy: _approvalPolicy,
+    serviceTier: _serviceTier,
+    ...params
+  } = value;
   return params;
 }

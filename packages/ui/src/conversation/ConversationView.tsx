@@ -32,6 +32,7 @@ import {
   ComposerPreferences,
   effortSettingKey,
   effortsForModel,
+  fastSettingKey,
   modelSettingKey,
 } from "./ComposerPreferences.tsx";
 import {
@@ -56,6 +57,7 @@ type ConversationOptionsPatch = {
   mode?: Conversation["mode"];
   model?: Conversation["model"] | null;
   effort?: Conversation["effort"] | null;
+  fast?: Conversation["fast"];
   plan?: Conversation["plan"];
 };
 
@@ -594,7 +596,9 @@ export function ConversationView({
   const saveOptions = useCallback(
     (
       options: ConversationOptionsPatch,
-      rememberedSetting?: { key: string; value: string },
+      rememberedSetting?:
+        | { key: string; value: string | boolean }
+        | { key: string; value: string | boolean }[],
     ): Promise<void> => {
       if (!bridge || !conversation) return Promise.resolve();
 
@@ -619,9 +623,14 @@ export function ConversationView({
           }
           upsertConversation(result.conversation);
 
-          if (rememberedSetting) {
+          const rememberedSettings = Array.isArray(rememberedSetting)
+            ? rememberedSetting
+            : rememberedSetting
+              ? [rememberedSetting]
+              : [];
+          if (rememberedSettings.length > 0) {
             failureMessage = t.chat.settingsSaveFailed;
-            await bridge.request("settings.set", rememberedSetting);
+            for (const setting of rememberedSettings) await bridge.request("settings.set", setting);
           }
 
           if (
@@ -732,17 +741,33 @@ export function ConversationView({
   const changeModel = useCallback(
     (value: string) => {
       const supportedEfforts = effortsForModel(currentModels, value);
+      const supportsFast =
+        currentModels?.models.find((option) => option.id === value)?.supportsFast === true;
       const currentEffort = visibleConversation?.effort;
       const clearEffort = currentEffort && !supportedEfforts.includes(currentEffort);
       void saveOptions(
         {
           model: value || null,
           ...(clearEffort ? { effort: null } : {}),
+          ...(!supportsFast ? { fast: false } : {}),
         },
-        conversation ? { key: modelSettingKey(conversation.agent), value } : undefined,
+        conversation
+          ? [
+              { key: modelSettingKey(conversation.agent), value },
+              ...(!supportsFast ? [{ key: fastSettingKey(conversation.agent), value: false }] : []),
+            ]
+          : undefined,
       );
     },
     [conversation, currentModels, saveOptions, visibleConversation?.effort],
+  );
+  const changeFastMode = useCallback(
+    (value: boolean) =>
+      void saveOptions(
+        { fast: value },
+        conversation ? { key: fastSettingKey(conversation.agent), value } : undefined,
+      ),
+    [conversation, saveOptions],
   );
   const changePlanMode = useCallback(
     (value: boolean) => void saveOptions({ plan: value }),
@@ -761,12 +786,14 @@ export function ConversationView({
             activePopover={activePopover}
             disabled={isWorking || isWaiting || isResponding || isSending || !bridge}
             effort={visibleConversation?.effort ?? ""}
+            fastMode={visibleConversation?.fast ?? false}
             mode={visibleConversation?.mode ?? "edit"}
             model={visibleConversation?.model ?? null}
             models={currentModels}
             planMode={planMode}
             onActivePopoverChange={setActivePopover}
             onEffortChange={changeEffort}
+            onFastModeChange={changeFastMode}
             onModeChange={changeMode}
             onModelChange={changeModel}
             onPlanModeChange={changePlanMode}
@@ -780,6 +807,7 @@ export function ConversationView({
       activePopover,
       canAttachFiles,
       changeEffort,
+      changeFastMode,
       changeMode,
       changeModel,
       changePlanMode,
@@ -792,6 +820,7 @@ export function ConversationView({
       currentModels,
       planMode,
       visibleConversation?.effort,
+      visibleConversation?.fast,
       visibleConversation?.mode,
       visibleConversation?.model,
       revealLoadedData,
