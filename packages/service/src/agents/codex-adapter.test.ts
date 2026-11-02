@@ -202,6 +202,101 @@ function latestAgent(harness: Harness, id: string) {
     .find((message) => message.author === "agent");
 }
 
+test("thread/fork ramifica o Codex no turno selecionado", async () => {
+  const env = {
+    ...process.env,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CODEX_CLI: "codex",
+  };
+  const fake = createFakeCodexSpawn(fileURLToPath(new URL("branch-fork.jsonl", fixtureDir)));
+  const adapter = new CodexAdapter(() => undefined, {
+    env,
+    homeDir: os.tmpdir(),
+    spawn: (command, args, options) => fake(command, args, options),
+  });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "branch-test",
+    agent: "codex",
+    title: "Conversa de teste",
+    cwd: "/tmp/karont-branch",
+    mode: "read-only",
+    model: "gpt-test",
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  const sessionId = await adapter.forkThread(conversation, "codex-source-thread", {
+    lastTurnId: "codex-turn-selected",
+  });
+  assert.equal(sessionId, "codex-forked-thread");
+  const request = fake.messages[0]?.find((message) => message.method === "thread/fork");
+  assert.deepEqual(request?.params, {
+    threadId: "codex-source-thread",
+    lastTurnId: "codex-turn-selected",
+    cwd: "/tmp/karont-branch",
+    model: "gpt-test",
+    sandbox: "read-only",
+    approvalPolicy: "never",
+  });
+});
+
+test("thread/turns/list recupera o turno selecionado em histórico antigo", async () => {
+  const env = {
+    ...process.env,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CODEX_CLI: "codex",
+  };
+  const fake = createFakeCodexSpawn(fileURLToPath(new URL("branch-fork-legacy.jsonl", fixtureDir)));
+  const adapter = new CodexAdapter(() => undefined, {
+    env,
+    homeDir: os.tmpdir(),
+    spawn: (command, args, options) => fake(command, args, options),
+  });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "branch-test-legacy",
+    agent: "codex",
+    title: "Conversa de teste",
+    cwd: "/tmp/karont-branch",
+    mode: "read-only",
+    model: "gpt-test",
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  const sessionId = await adapter.forkThread(conversation, "codex-source-thread", {
+    turnIndex: 1,
+    expectedTurnCount: 2,
+  });
+  assert.equal(sessionId, "codex-forked-thread");
+  const messages = fake.messages[0] ?? [];
+  const turnsRequest = messages.find((message) => message.method === "thread/turns/list");
+  assert.deepEqual(turnsRequest?.params, {
+    threadId: "codex-source-thread",
+    sortDirection: "asc",
+    limit: 200,
+    itemsView: "notLoaded",
+  });
+  const forkRequest = messages.find((message) => message.method === "thread/fork");
+  assert.deepEqual(forkRequest?.params, {
+    threadId: "codex-source-thread",
+    lastTurnId: "codex-turn-selected",
+    cwd: "/tmp/karont-branch",
+    model: "gpt-test",
+    sandbox: "read-only",
+    approvalPolicy: "never",
+  });
+});
+
 test("mapeia fileChange, MCP, subagente e imagem dos fixtures Codex", () => {
   const records = readFileSync(new URL("acoes-especiais.jsonl", fixtureDir), "utf8")
     .split(/\r?\n/)

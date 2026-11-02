@@ -17,6 +17,7 @@ import type {
   AdapterModelList,
   AdapterResponse,
   AgentAdapter,
+  CodexBranchPoint,
 } from "./adapter.ts";
 import { AgentCliError } from "./claude-adapter.ts";
 import { resolveAgentCommand } from "./detect.ts";
@@ -128,6 +129,83 @@ export class CodexAdapter implements AgentAdapter {
       this.#threadId = thread.id;
     }
     this.#emit({ kind: "session", sessionId: this.#threadId });
+  }
+
+  async forkThread(
+    conversation: Conversation,
+    sourceSessionId: string,
+    branchPoint: CodexBranchPoint,
+  ): Promise<string> {
+    this.#conversation = conversation;
+    await this.#startServer(conversation.cwd);
+    try {
+      const { sandbox, approvalPolicy } = permissionSettings(conversation.mode);
+      const lastTurnId =
+        "lastTurnId" in branchPoint
+          ? branchPoint.lastTurnId
+          : await this.#legacyTurnId(sourceSessionId, branchPoint);
+      const result = await this.#request("thread/fork", {
+        threadId: sourceSessionId,
+        lastTurnId,
+        cwd: conversation.cwd,
+        model: conversation.model ?? null,
+        sandbox,
+        approvalPolicy,
+      });
+      const thread = isRecord(result) && isRecord(result.thread) ? result.thread : undefined;
+      if (!thread || typeof thread.id !== "string")
+        throw new AgentCliError("failed", "O Codex não devolveu a conversa ramificada.");
+      return thread.id;
+    } finally {
+      await this.dispose();
+    }
+  }
+
+  async #legacyTurnId(
+    sourceSessionId: string,
+    branchPoint: Extract<CodexBranchPoint, { turnIndex: number }>,
+  ): Promise<string> {
+    if (
+      !Number.isInteger(branchPoint.turnIndex) ||
+      branchPoint.turnIndex < 0 ||
+      !Number.isInteger(branchPoint.expectedTurnCount) ||
+      branchPoint.expectedTurnCount <= branchPoint.turnIndex
+    )
+      throw new AgentCliError("failed", "Não foi possível identificar o turno salvo do Codex.");
+
+    const turns: string[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 100; page += 1) {
+      const result = await this.#request("thread/turns/list", {
+        threadId: sourceSessionId,
+        sortDirection: "asc",
+        limit: 200,
+        itemsView: "notLoaded",
+        ...(cursor ? { cursor } : {}),
+      });
+      if (!isRecord(result) || !Array.isArray(result.data))
+        throw new AgentCliError("failed", "O Codex não devolveu a lista de turnos.");
+      for (const turn of result.data) {
+        if (!isRecord(turn) || typeof turn.id !== "string")
+          throw new AgentCliError("failed", "O Codex devolveu um turno sem identificador.");
+        turns.push(turn.id);
+      }
+      if (turns.length > branchPoint.expectedTurnCount)
+        throw new AgentCliError(
+          "failed",
+          "O histórico do Codex não corresponde às mensagens salvas.",
+        );
+      if (typeof result.nextCursor !== "string" || !result.nextCursor) break;
+      cursor = result.nextCursor;
+    }
+
+    const turnId = turns[branchPoint.turnIndex];
+    if (turns.length !== branchPoint.expectedTurnCount || !turnId)
+      throw new AgentCliError(
+        "failed",
+        "O histórico do Codex não corresponde às mensagens salvas.",
+      );
+    return turnId;
   }
 
   async loadModelCatalog(cwd: string): Promise<AdapterModelList> {
@@ -347,8 +425,10 @@ export class CodexAdapter implements AgentAdapter {
       await this.#attachmentCleanup;
       throw error;
     }
-    if (isRecord(result) && isRecord(result.turn) && typeof result.turn.id === "string")
+    if (isRecord(result) && isRecord(result.turn) && typeof result.turn.id === "string") {
       this.#turnId = result.turn.id;
+      this.#emit({ kind: "turn-id", turnId: this.#turnId });
+    }
   }
 
   async #request(method: string, params: JsonRecord): Promise<unknown> {
@@ -499,8 +579,10 @@ export class CodexAdapter implements AgentAdapter {
 
   #handleNotification(method: string, params: JsonRecord): void {
     if (method === "turn/started") {
-      if (isRecord(params.turn) && typeof params.turn.id === "string")
+      if (isRecord(params.turn) && typeof params.turn.id === "string") {
         this.#turnId = params.turn.id;
+        this.#emit({ kind: "turn-id", turnId: this.#turnId });
+      }
       this.#emit({ kind: "state", state: "working" });
       return;
     }

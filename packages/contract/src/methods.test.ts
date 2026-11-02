@@ -31,6 +31,15 @@ test("todos os métodos aceitam parâmetros válidos", () => {
     true,
   );
   assert.equal(
+    methods["conversation.branch"].params.safeParse({ id: "c1", messageId: "m1" }).success,
+    true,
+  );
+  assert.equal(
+    methods["conversation.branch"].params.safeParse({ id: "c1", messageId: "m1", extra: true })
+      .success,
+    false,
+  );
+  assert.equal(
     methods["folders.gitInfo"].result.safeParse({ branch: "feature/anexos", detached: false })
       .success,
     true,

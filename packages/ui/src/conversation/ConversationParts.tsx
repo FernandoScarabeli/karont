@@ -12,6 +12,7 @@ import {
   Copy,
   FileCode2,
   FileText,
+  GitBranch,
   Globe2,
   HelpCircle,
   Image as ImageIcon,
@@ -21,6 +22,7 @@ import {
   Pencil,
   Play,
   Plug,
+  RotateCcw,
   Search,
   SquareTerminal,
   Wrench,
@@ -185,6 +187,9 @@ export const MessageRow = memo(function MessageRow({
   onEdit,
   onRespond,
   onRetry,
+  onBranch,
+  canRetry,
+  canBranch,
   onAnnounce,
   cwd,
   agent,
@@ -198,6 +203,9 @@ export const MessageRow = memo(function MessageRow({
   onEdit: (text: string) => void;
   onRespond: OnRespond;
   onRetry: (messageId: string) => void;
+  onBranch: (messageId: string) => void;
+  canRetry: boolean;
+  canBranch: boolean;
   onAnnounce: (text: string) => void;
   cwd: string;
   workingIndicator?: {
@@ -222,6 +230,14 @@ export const MessageRow = memo(function MessageRow({
         .map((part) => part.markdown)
         .join("\n")
     : "";
+  const answerText = isUserMessage
+    ? ""
+    : message.status === "done"
+      ? splitFinalAnswer(responseParts(message.parts))
+          .finalAnswer.map((part) => part.markdown)
+          .join("\n")
+          .trim()
+      : "";
   const visibleParts = message.parts.slice(-visiblePartCount);
   const typewriterPartId =
     message.author === "agent" ? findLastTextPartId(visibleParts) : undefined;
@@ -230,9 +246,6 @@ export const MessageRow = memo(function MessageRow({
     (message.status === "streaming" || (message.status === "done" && typewriterPending));
   const handleTypewriterSettled = useCallback(() => setTypewriterPending(false), []);
   const hasTimeline = message.author === "agent" && message.parts.length > 0;
-  const hasRetryableError =
-    message.author === "agent" &&
-    message.parts.some((part) => part.type === "error" && part.retryable);
   const attachmentOccurrences = new Map<string, number>();
 
   const navigateToPart = useCallback(
@@ -340,7 +353,6 @@ export const MessageRow = memo(function MessageRow({
                   onRespond,
                   onAnnounce,
                   onCopyCode,
-                  onRetry,
                   cwd,
                   agent,
                 },
@@ -367,7 +379,6 @@ export const MessageRow = memo(function MessageRow({
                   onAnnounce,
                   onCopyCode,
                   cwd,
-                  onRetry,
                   agent,
                   typewriterLive && typewriterPartId
                     ? { partId: typewriterPartId, onSettled: handleTypewriterSettled }
@@ -387,37 +398,70 @@ export const MessageRow = memo(function MessageRow({
             <div className={styles.messageActions}>
               {message.author === "user" && text.trim() ? (
                 <>
-                  <button className={styles.textAction} onClick={() => onCopy(text)} type="button">
-                    <Copy aria-hidden="true" size={14} />
-                    {t.chat.copy}
+                  <button
+                    aria-label={t.chat.copy}
+                    className={styles.textAction}
+                    onClick={() => onCopy(text)}
+                    title={t.chat.copy}
+                    type="button"
+                  >
+                    <Copy aria-hidden="true" size={16} />
                   </button>
-                  <button className={styles.textAction} onClick={() => onEdit(text)} type="button">
-                    <Pencil aria-hidden="true" size={14} />
-                    {t.chat.edit}
+                  <button
+                    aria-label={t.chat.edit}
+                    className={styles.textAction}
+                    onClick={() => onEdit(text)}
+                    title={t.chat.edit}
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" size={16} />
                   </button>
                 </>
               ) : null}
-              {hasRetryableError ? (
+              {!isUserMessage && answerText ? (
                 <button
+                  aria-label={t.chat.copyAnswer}
                   className={styles.textAction}
-                  disabled={message.status === "streaming"}
-                  onClick={() => onRetry(message.id)}
+                  onClick={() => onCopy(answerText)}
+                  title={t.chat.copyAnswer}
                   type="button"
                 >
-                  <Play aria-hidden="true" size={14} />
-                  {t.chat.retry}
+                  <Copy aria-hidden="true" size={16} />
+                </button>
+              ) : null}
+              {!isUserMessage && canRetry && message.status !== "streaming" ? (
+                <button
+                  aria-label={t.chat.retry}
+                  className={styles.textAction}
+                  onClick={() => onRetry(message.id)}
+                  title={t.chat.retry}
+                  type="button"
+                >
+                  <RotateCcw aria-hidden="true" size={16} />
+                </button>
+              ) : null}
+              {!isUserMessage && canBranch && message.status === "done" ? (
+                <button
+                  aria-label={t.chat.createBranch}
+                  className={styles.textAction}
+                  onClick={() => onBranch(message.id)}
+                  title={t.chat.createBranch}
+                  type="button"
+                >
+                  <GitBranch aria-hidden="true" size={16} />
                 </button>
               ) : null}
               {hasTimeline ? (
                 <button
                   aria-controls={timelineId}
+                  aria-label={t.chat.timeline}
                   aria-expanded={showTimeline}
                   className={styles.timelineToggle}
                   onClick={() => setShowTimeline((value) => !value)}
+                  title={t.chat.timeline}
                   type="button"
                 >
-                  <Clock3 aria-hidden="true" size={14} />
-                  {t.chat.timeline}
+                  <Clock3 aria-hidden="true" size={16} />
                 </button>
               ) : null}
             </div>
@@ -445,7 +489,6 @@ function renderParts(
   onAnnounce: (text: string) => void,
   onCopyCode: ((code: string) => void) | undefined,
   cwd: string,
-  onRetry: (messageId: string) => void,
   agent?: AgentErrorAgent,
   typewriter?: { partId: string; onSettled: () => void },
 ) {
@@ -545,7 +588,6 @@ function renderParts(
         messageId={messageId}
         onAnnounce={onAnnounce}
         onCopyCode={onCopyCode}
-        onRetry={onRetry}
         onRespond={onRespond}
         part={part}
         cwd={cwd}
@@ -577,19 +619,8 @@ function isAlwaysVisiblePart(part: MessagePart): boolean {
   );
 }
 
-function renderCompletedMessage(
-  message: ConversationMessage,
-  options: {
-    onRespond: OnRespond;
-    onAnnounce: (text: string) => void;
-    onCopyCode?: (code: string) => void;
-    onRetry: (messageId: string) => void;
-    cwd: string;
-    agent?: AgentErrorAgent;
-  },
-  visiblePartCount: number,
-) {
-  const pendingParts = message.parts.filter(isAlwaysVisiblePart);
+function responseParts(parts: readonly MessagePart[]): MessagePart[] {
+  const pendingParts = parts.filter(isAlwaysVisiblePart);
   const pendingPermissionCommands = pendingParts.flatMap((part) => {
     if (part.type !== "permission") return [];
     const permission = part as typeof part & { command?: string };
@@ -598,7 +629,8 @@ function renderCompletedMessage(
   });
   const hasQuestionCard = pendingParts.some((part) => part.type === "question");
   const hasPlanCard = pendingParts.some((part) => part.type === "plan");
-  const responseParts = message.parts.filter(
+
+  return parts.filter(
     (part) =>
       !isAlwaysVisiblePart(part) &&
       !(
@@ -607,7 +639,21 @@ function renderCompletedMessage(
           duplicatesPendingCard(part, hasQuestionCard, hasPlanCard))
       ),
   );
-  const { history, finalAnswer } = splitFinalAnswer(responseParts);
+}
+
+function renderCompletedMessage(
+  message: ConversationMessage,
+  options: {
+    onRespond: OnRespond;
+    onAnnounce: (text: string) => void;
+    onCopyCode?: (code: string) => void;
+    cwd: string;
+    agent?: AgentErrorAgent;
+  },
+  visiblePartCount: number,
+) {
+  const pendingParts = message.parts.filter(isAlwaysVisiblePart);
+  const { history, finalAnswer } = splitFinalAnswer(responseParts(message.parts));
   const visiblePartIds = new Set(message.parts.slice(-visiblePartCount).map((part) => part.id));
   const historyParts = history.filter((part) => visiblePartIds.has(part.id));
   const durationMs =
@@ -632,7 +678,6 @@ function renderCompletedMessage(
               options.onAnnounce,
               options.onCopyCode,
               options.cwd,
-              options.onRetry,
               options.agent,
             )}
           </div>
@@ -645,7 +690,6 @@ function renderCompletedMessage(
           messageId={message.id}
           onAnnounce={options.onAnnounce}
           onCopyCode={options.onCopyCode}
-          onRetry={options.onRetry}
           onRespond={options.onRespond}
           part={part}
           cwd={options.cwd}
@@ -659,7 +703,6 @@ function renderCompletedMessage(
           messageId={message.id}
           onAnnounce={options.onAnnounce}
           onCopyCode={options.onCopyCode}
-          onRetry={options.onRetry}
           onRespond={options.onRespond}
           part={part}
           cwd={options.cwd}
@@ -678,7 +721,6 @@ const PartItem = memo(
     onRespond,
     onAnnounce,
     onCopyCode,
-    onRetry,
     cwd,
     agent,
     typewriterSettled,
@@ -689,7 +731,6 @@ const PartItem = memo(
     onRespond: OnRespond;
     onAnnounce: (text: string) => void;
     onCopyCode: ((code: string) => void) | undefined;
-    onRetry: (messageId: string) => void;
     cwd: string;
     agent?: AgentErrorAgent;
     typewriterSettled?: () => void;
@@ -730,7 +771,7 @@ const PartItem = memo(
         content = <TodosDisclosure part={part} />;
         break;
       case "error":
-        content = <ErrorPart agent={agent} messageId={messageId} onRetry={onRetry} part={part} />;
+        content = <ErrorPart agent={agent} part={part} />;
         break;
       case "action":
         return null;
@@ -748,7 +789,6 @@ const PartItem = memo(
     previous.onRespond === next.onRespond &&
     previous.onAnnounce === next.onAnnounce &&
     previous.onCopyCode === next.onCopyCode &&
-    previous.onRetry === next.onRetry &&
     previous.cwd === next.cwd &&
     previous.agent === next.agent &&
     previous.typewriterSettled === next.typewriterSettled,
@@ -2175,13 +2215,9 @@ export const TodosPart = memo(function TodosPart({
 const ErrorPart = memo(function ErrorPart({
   part,
   agent,
-  messageId,
-  onRetry,
 }: {
   part: Extract<MessagePart, { type: "error" }>;
   agent?: AgentErrorAgent;
-  messageId: string;
-  onRetry: (messageId: string) => void;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const detailsId = useId();
@@ -2193,14 +2229,8 @@ const ErrorPart = memo(function ErrorPart({
         <AlertTriangle aria-hidden="true" size={16} />
         {description.message}
       </p>
-      <div className={styles.errorActions}>
-        {part.retryable ? (
-          <button className={styles.errorAction} onClick={() => onRetry(messageId)} type="button">
-            <Play aria-hidden="true" size={14} />
-            {t.chat.retry}
-          </button>
-        ) : null}
-        {details ? (
+      {details ? (
+        <div className={styles.errorActions}>
           <button
             aria-controls={detailsId}
             aria-expanded={detailsOpen}
@@ -2210,8 +2240,8 @@ const ErrorPart = memo(function ErrorPart({
           >
             {detailsOpen ? t.chat.hideDetails : t.chat.showDetails}
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       {details ? (
         <pre className={styles.errorDetailsText} hidden={!detailsOpen} id={detailsId}>
           {details}

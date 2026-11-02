@@ -2,6 +2,7 @@ import type { Conversation, ConversationAttachment, MessagePart } from "@karont/
 
 export type AdapterEvent =
   | { kind: "part"; part: MessagePart }
+  | { kind: "turn-id"; turnId: string }
   | { kind: "text-delta"; partType: "text" | "thinking"; partId: string; delta: string }
   | { kind: "state"; state: "working" | "waiting" }
   | {
@@ -26,13 +27,27 @@ export type AdapterModelList = {
   efforts: NonNullable<Conversation["effort"]>[];
 };
 
+export type AdapterStartOptions = {
+  forkSession?: boolean;
+};
+
+export type CodexBranchPoint =
+  | { lastTurnId: string }
+  | { turnIndex: number; expectedTurnCount: number };
+
 export interface AgentAdapter {
   start(
     conversation: Conversation,
     sessionId: string,
     resume: boolean,
     plan?: boolean,
+    options?: AdapterStartOptions,
   ): Promise<void>;
+  forkThread?(
+    conversation: Conversation,
+    sourceSessionId: string,
+    branchPoint: CodexBranchPoint,
+  ): Promise<string>;
   send(text: string, plan?: boolean, attachments?: ConversationAttachment[]): Promise<void>;
   respond(partId: string, response: AdapterResponse): Promise<void>;
   interrupt(): Promise<void>;

@@ -67,6 +67,15 @@ export const migrations: { version: number; up: string }[] = [
     version: 10,
     up: "ALTER TABLE conversations ADD COLUMN unread_at TEXT;",
   },
+  {
+    version: 11,
+    up: `ALTER TABLE conversations ADD COLUMN branched_from_id TEXT;
+    ALTER TABLE conversations ADD COLUMN branched_from_message_id TEXT;
+    ALTER TABLE conversations ADD COLUMN branch_context_enabled INTEGER NOT NULL DEFAULT 0 CHECK (branch_context_enabled IN (0, 1));
+    ALTER TABLE conversations ADD COLUMN branch_context_pending TEXT;
+    ALTER TABLE conversations ADD COLUMN fork_pending INTEGER NOT NULL DEFAULT 0 CHECK (fork_pending IN (0, 1));
+    ALTER TABLE messages ADD COLUMN agent_turn_id TEXT;`,
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -79,7 +88,12 @@ export type CustomAgentRecord = {
 };
 
 export type NewConversation = Pick<Conversation, "agent" | "title" | "cwd" | "mode"> &
-  Partial<Pick<Conversation, "model" | "effort" | "plan">>;
+  Partial<
+    Pick<
+      Conversation,
+      "model" | "effort" | "plan" | "branchedFromId" | "branchedFromMessageId" | "branchContext"
+    >
+  >;
 
 export function createConversation(db: DatabaseSync, input: NewConversation): Conversation {
   const now = new Date().toISOString();
@@ -95,7 +109,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     updatedAt: now,
   };
   db.prepare(
-    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at,branched_from_id,branched_from_message_id,branch_context_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     conversation.id,
     conversation.agent,
@@ -112,6 +126,9 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     conversation.pinnedAt,
     conversation.archivedAt,
     conversation.unreadAt,
+    conversation.branchedFromId ?? null,
+    conversation.branchedFromMessageId ?? null,
+    conversation.branchContext ? 1 : 0,
   );
   return conversation;
 }
@@ -214,7 +231,7 @@ export function setConversationTitle(
 
 export function addMessage(db: DatabaseSync, message: ConversationMessage): void {
   db.prepare(
-    "INSERT INTO messages (id,conversation_id,author,status,parts,attachments_json,created_at,updated_at,started_at_ms,ended_at_ms) VALUES (?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO messages (id,conversation_id,author,status,parts,attachments_json,created_at,updated_at,started_at_ms,ended_at_ms,agent_turn_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     message.id,
     message.conversationId,
@@ -226,12 +243,13 @@ export function addMessage(db: DatabaseSync, message: ConversationMessage): void
     message.updatedAt,
     message.startedAt ?? null,
     message.endedAt ?? null,
+    message.agentTurnId ?? null,
   );
 }
 
 export function saveMessage(db: DatabaseSync, message: ConversationMessage): void {
   db.prepare(
-    "UPDATE messages SET status=?,parts=?,attachments_json=?,updated_at=?,started_at_ms=?,ended_at_ms=? WHERE id=?",
+    "UPDATE messages SET status=?,parts=?,attachments_json=?,updated_at=?,started_at_ms=?,ended_at_ms=?,agent_turn_id=? WHERE id=?",
   ).run(
     message.status,
     JSON.stringify(message.parts),
@@ -239,6 +257,7 @@ export function saveMessage(db: DatabaseSync, message: ConversationMessage): voi
     message.updatedAt,
     message.startedAt ?? null,
     message.endedAt ?? null,
+    message.agentTurnId ?? null,
     message.id,
   );
 }
@@ -287,6 +306,60 @@ export function setAgentSession(db: DatabaseSync, conversationId: string, sessio
   ).run(conversationId, sessionId, new Date().toISOString());
 }
 
+export function getBranchContextPending(db: DatabaseSync, conversationId: string): string | null {
+  const row = db
+    .prepare("SELECT branch_context_pending FROM conversations WHERE id=?")
+    .get(conversationId) as { branch_context_pending: string | null } | undefined;
+  return row?.branch_context_pending ?? null;
+}
+
+export function completeBranchContext(db: DatabaseSync, conversationId: string): void {
+  db.prepare("UPDATE conversations SET branch_context_pending=NULL WHERE id=?").run(conversationId);
+}
+
+export function setBranchContextPending(
+  db: DatabaseSync,
+  conversationId: string,
+  context: string,
+): void {
+  db.prepare("UPDATE conversations SET branch_context_pending=? WHERE id=?").run(
+    context,
+    conversationId,
+  );
+}
+
+export function isBranchForkPending(db: DatabaseSync, conversationId: string): boolean {
+  const row = db.prepare("SELECT fork_pending FROM conversations WHERE id=?").get(conversationId) as
+    | { fork_pending: number }
+    | undefined;
+  return row?.fork_pending === 1;
+}
+
+export function completeBranchFork(db: DatabaseSync, conversationId: string): void {
+  db.prepare("UPDATE conversations SET fork_pending=0 WHERE id=?").run(conversationId);
+}
+
+export function setBranchSession(
+  db: DatabaseSync,
+  conversationId: string,
+  sessionId: string,
+  forkPending: boolean,
+): void {
+  setAgentSession(db, conversationId, sessionId);
+  db.prepare("UPDATE conversations SET fork_pending=? WHERE id=?").run(
+    forkPending ? 1 : 0,
+    conversationId,
+  );
+}
+
+export function setMessageAgentTurnId(
+  db: DatabaseSync,
+  messageId: string,
+  agentTurnId: string,
+): void {
+  db.prepare("UPDATE messages SET agent_turn_id=? WHERE id=?").run(agentTurnId, messageId);
+}
+
 export function recoverInterruptedMessages(db: DatabaseSync): void {
   const rows = db.prepare("SELECT * FROM messages WHERE status='streaming'").all() as MessageRow[];
   const now = new Date().toISOString();
@@ -324,6 +397,9 @@ type ConversationRow = {
   pinned_at: string | null;
   archived_at: string | null;
   unread_at: string | null;
+  branched_from_id: string | null;
+  branched_from_message_id: string | null;
+  branch_context_enabled: number;
   state: Conversation["state"];
   created_at: string;
   updated_at: string;
@@ -337,6 +413,7 @@ type MessageRow = {
   attachments_json: string | null;
   started_at_ms: number | null;
   ended_at_ms: number | null;
+  agent_turn_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -350,6 +427,11 @@ function mapConversation(row: ConversationRow): Conversation {
     ...(row.model ? { model: row.model } : {}),
     ...(row.effort ? { effort: row.effort } : {}),
     plan: row.plan === 1,
+    ...(row.branched_from_id ? { branchedFromId: row.branched_from_id } : {}),
+    ...(row.branched_from_message_id
+      ? { branchedFromMessageId: row.branched_from_message_id }
+      : {}),
+    ...(row.branch_context_enabled === 1 ? { branchContext: true } : {}),
     pinnedAt: row.pinned_at,
     archivedAt: row.archived_at,
     unreadAt: row.unread_at,
@@ -370,6 +452,7 @@ function mapMessage(row: MessageRow): ConversationMessage {
       : {}),
     ...(row.started_at_ms !== null ? { startedAt: row.started_at_ms } : {}),
     ...(row.ended_at_ms !== null ? { endedAt: row.ended_at_ms } : {}),
+    ...(row.agent_turn_id ? { agentTurnId: row.agent_turn_id } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
