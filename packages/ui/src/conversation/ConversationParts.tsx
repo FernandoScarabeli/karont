@@ -83,12 +83,46 @@ type HighlightPlugin = typeof import("rehype-highlight").default;
 // Fases do cursor de bloco: sólido enquanto chega, piscando parado, sumindo após done.
 type CaretPhase = "streaming" | "idle" | "done";
 let highlightPluginPromise: Promise<HighlightPlugin | null> | null = null;
+const highlightActivationQueue: Array<(plugin: HighlightPlugin | null) => void> = [];
+let highlightActivationScheduled = false;
 
 function loadHighlightPlugin(): Promise<HighlightPlugin | null> {
   highlightPluginPromise ??= import("rehype-highlight")
     .then(({ default: rehypeHighlight }) => rehypeHighlight)
     .catch(() => null);
   return highlightPluginPromise;
+}
+
+function scheduleHighlightActivation(
+  activate: (plugin: HighlightPlugin | null) => void,
+): () => void {
+  let active = true;
+  highlightActivationQueue.push((plugin) => {
+    if (active) activate(plugin);
+  });
+  scheduleNextHighlightActivation();
+  return () => {
+    active = false;
+  };
+}
+
+function scheduleNextHighlightActivation(): void {
+  if (highlightActivationScheduled || highlightActivationQueue.length === 0) return;
+  highlightActivationScheduled = true;
+  const activateNext = () => {
+    highlightActivationScheduled = false;
+    const activate = highlightActivationQueue.shift();
+    if (!activate) return;
+    void loadHighlightPlugin().then((plugin) => {
+      activate(plugin);
+      scheduleNextHighlightActivation();
+    });
+  };
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(activateNext, { timeout: 1000 });
+  } else {
+    window.setTimeout(activateNext, 150);
+  }
 }
 
 // Carregar o realce na primeira cerca de código, no meio do stream, travava quadros.
@@ -982,13 +1016,9 @@ const MarkdownBody = memo(function MarkdownBody({
 
   useEffect(() => {
     if (!hasClosedCodeBlock) return;
-    let mounted = true;
-    void loadHighlightPlugin().then((plugin) => {
-      if (mounted && plugin) setHighlightPlugin(() => plugin);
+    return scheduleHighlightActivation((plugin) => {
+      if (plugin) setHighlightPlugin(() => plugin);
     });
-    return () => {
-      mounted = false;
-    };
   }, [hasClosedCodeBlock]);
 
   return (
