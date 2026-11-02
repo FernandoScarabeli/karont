@@ -4,6 +4,7 @@ import {
   type ComponentPropsWithoutRef,
   type KeyboardEvent,
   type MouseEvent,
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -29,7 +30,7 @@ export type AgentModels = {
   models: Array<AgentModelsResult["models"][number] & { efforts?: AgentEffort[] }>;
   efforts?: AgentEffort[];
 };
-export type ComposerPopoverName = "agent" | "model" | "config" | "history" | null;
+export type ComposerPopoverName = "agent" | "model" | "effort" | "config" | "history" | null;
 type ConversationMode = NonNullable<Conversation["mode"]>;
 
 export function modelSettingKey(agent: AgentModels["agent"]): string {
@@ -231,6 +232,8 @@ export function ComposerPreferences({
           effort={selectedEffort}
           levels={efforts}
           onChange={onEffortChange}
+          onOpenChange={(open) => onActivePopoverChange(open ? "effort" : null)}
+          open={active("effort")}
         />
       ) : null}
       {supportsFast ? (
@@ -360,7 +363,7 @@ export function ComposerPreferences({
                 ))}
               </fieldset>
             </section>
-            <hr className={styles.sectionSeparator} />
+            <hr className={styles.sectionSeparator} data-ui="" />
             <section className={styles.configSection}>
               <RegisteredFluidHoverButton
                 aria-checked={planMode}
@@ -421,13 +424,17 @@ function EffortButton({
   levels,
   disabled,
   activePopover,
+  open,
   onChange,
+  onOpenChange,
 }: {
   effort: AgentEffort | "";
   levels: AgentEffort[];
   disabled: boolean;
   activePopover: boolean;
+  open: boolean;
   onChange: (value: AgentEffort | "") => void;
+  onOpenChange: (open: boolean) => void;
 }) {
   const currentIndex = levels.indexOf(effort as AgentEffort);
   const effortLabel =
@@ -438,6 +445,14 @@ function EffortButton({
   const [tooltipLabel, setTooltipLabel] = useState(effortLabel);
   const [announcement, setAnnouncement] = useState("");
   const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const listboxId = useId();
+  const selectedIndex = Math.max(0, currentIndex);
+  const [activeIndex, setActiveIndex] = useState(selectedIndex);
+  const setOptionElement = useCallback((index: number, element: HTMLDivElement | null) => {
+    optionRefs.current[index] = element;
+  }, []);
   const angle =
     currentIndex < 0 || levels.length < 2 ? 0 : -110 + (220 * currentIndex) / (levels.length - 1);
 
@@ -488,26 +503,136 @@ function EffortButton({
     }
   }
 
+  useEffect(() => {
+    if (!open) return;
+    setActiveIndex(selectedIndex);
+    requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus());
+  }, [open, selectedIndex]);
+
+  function selectEffort(index: number) {
+    const level = levels[index];
+    if (!level) return;
+    chooseIndex(index);
+    onOpenChange(false);
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  }
+
+  function handleOptionKeyDown(event: KeyboardEvent<HTMLDivElement>, index: number) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      const nextIndex = (index + direction + levels.length) % levels.length;
+      setActiveIndex(nextIndex);
+      optionRefs.current[nextIndex]?.focus();
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      const nextIndex = event.key === "Home" ? 0 : levels.length - 1;
+      setActiveIndex(nextIndex);
+      optionRefs.current[nextIndex]?.focus();
+    } else if (event.key === "Enter" || event.key === " " || event.key === "Tab") {
+      event.preventDefault();
+      selectEffort(index);
+    }
+  }
+
   return (
     <span className={styles.effortControl} data-popover-open={activePopover}>
       <Tooltip label={tooltipLabel} open={activePopover} visible={timedTooltip}>
         <button
+          aria-controls={listboxId}
           aria-description={t.chat.effortChangeDescription}
+          aria-expanded={open}
+          aria-haspopup="listbox"
           aria-label={effortLabel}
           className={styles.effortTrigger}
           data-composer-menu-trigger
           disabled={disabled}
           onClick={advance}
           onKeyDown={handleKeyDown}
+          ref={triggerRef}
           type="button"
         >
           <EffortGauge angle={angle} />
         </button>
       </Tooltip>
+      <ComposerPopover
+        anchorRef={triggerRef}
+        className={styles.effortPopover}
+        id={listboxId}
+        initialFocus={() => optionRefs.current[selectedIndex] ?? null}
+        label={t.chat.effort}
+        onClose={() => onOpenChange(false)}
+        open={open}
+        role="listbox"
+      >
+        {levels.map((level, index) => (
+          <EffortMenuOption
+            active={activeIndex === index}
+            id={`${listboxId}-${index}`}
+            key={level}
+            label={t.chat.efforts[level]}
+            onFocus={() => setActiveIndex(index)}
+            onKeyDown={(event) => handleOptionKeyDown(event, index)}
+            onSelect={() => selectEffort(index)}
+            index={index}
+            selected={index === selectedIndex}
+            setOptionElement={setOptionElement}
+            value={level}
+          />
+        ))}
+      </ComposerPopover>
       <span aria-atomic="true" aria-live="polite" className={styles.srOnly}>
         {announcement}
       </span>
     </span>
+  );
+}
+
+function EffortMenuOption({
+  id,
+  value,
+  label,
+  selected,
+  active,
+  index,
+  setOptionElement,
+  onFocus,
+  onKeyDown,
+  onSelect,
+}: {
+  id: string;
+  value: AgentEffort;
+  label: string;
+  selected: boolean;
+  active: boolean;
+  index: number;
+  setOptionElement: (index: number, element: HTMLDivElement | null) => void;
+  onFocus: () => void;
+  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+  onSelect: () => void;
+}) {
+  const registerHoverItem = useRegisterFluidHoverItem(`effort-${value}`);
+  const optionRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      setOptionElement(index, element);
+      registerHoverItem(element);
+    },
+    [index, registerHoverItem, setOptionElement],
+  );
+  return (
+    <div
+      aria-selected={selected}
+      className={styles.effortMenuOption}
+      id={id}
+      onClick={onSelect}
+      onFocus={onFocus}
+      onKeyDown={onKeyDown}
+      ref={optionRef}
+      role="option"
+      tabIndex={active ? 0 : -1}
+    >
+      <span className={styles.accessName}>{label}</span>
+    </div>
   );
 }
 

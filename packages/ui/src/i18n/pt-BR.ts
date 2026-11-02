@@ -145,7 +145,8 @@ export const t = {
   conversation: {
     title: "Nova conversa",
     welcomeTitle: greetingFor,
-    promptPlaceholder: "Digite sua mensagem",
+    promptPlaceholder: (supportsSkills: boolean) =>
+      `Pergunte qualquer coisa · @ arquivos${supportsSkills ? ", $ skills" : ""}, / comandos`,
     composerKeyboardDescription:
       "Enter envia a mensagem ou abre o terminal. Shift+Enter quebra a linha.",
     agentLabel: "Agente",
@@ -230,6 +231,7 @@ export const t = {
     createFailed: "Não foi possível iniciar a conversa.",
     agentUnavailable: "Este agente ainda não está disponível para conversar.",
     sendFailed: "Não foi possível enviar a mensagem.",
+    compactFailed: "Não foi possível resumir o contexto da conversa.",
     optionsFailed: "Não foi possível salvar as opções da conversa.",
     responseFailed: "Não foi possível enviar sua resposta.",
     stopFailed: "Não foi possível parar o agente.",
@@ -255,7 +257,36 @@ export const t = {
     idle: "Pronto",
     conversationError: "A resposta falhou",
     stop: "Parar",
-    messageInput: "Escreva uma mensagem",
+    messageInput: "Pergunte qualquer coisa · @ arquivos, / comandos",
+    composerPlaceholder: (supportsSkills: boolean) =>
+      `Pergunte qualquer coisa · @ arquivos${supportsSkills ? ", $ skills" : ""}, / comandos`,
+    shortcutSuggestions: {
+      files: "Arquivos do Projeto",
+      skills: "Skills do agente",
+      commands: "Comandos do Karont",
+      loadingFiles: "Buscando arquivos…",
+      loadingSkills: "Carregando skills…",
+      loadingCommands: "Carregando comandos…",
+      nothingFound: "Nada encontrado",
+      commandsByName: {
+        compact: "/compactar",
+        plan: "/planejar",
+        model: "/modelo",
+        effort: "/esforco",
+        access: "/acesso",
+        new: "/nova",
+        rename: "/renomear",
+      },
+      commandDescriptions: {
+        compact: "Resume o contexto da conversa",
+        plan: "Alterna o modo Planejar",
+        model: "Escolhe o modelo da conversa",
+        effort: "Escolhe o nível de esforço",
+        access: "Abre as opções de acesso",
+        new: "Abre uma conversa nova",
+        rename: "Renomeia esta conversa",
+      },
+    },
     attachFile: "Anexar arquivo",
     attachmentRules:
       "Até 8 arquivos. PNG, JPEG, GIF ou WebP até 5 MB; arquivos de texto ou código até 200 kB.",

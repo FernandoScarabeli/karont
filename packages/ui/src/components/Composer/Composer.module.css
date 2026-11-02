@@ -68,6 +68,77 @@
   min-width: 0;
 }
 
+.suggestions {
+  width: min(var(--k-dialog-width-sm), calc(100vw - var(--k-space-4)));
+  min-width: min(var(--k-menu-min-width), calc(100vw - var(--k-space-4)));
+  padding: var(--k-space-1);
+}
+
+.suggestionList {
+  display: grid;
+  gap: var(--k-space-1);
+}
+
+.suggestionOption {
+  display: flex;
+  min-width: 0;
+  min-height: var(--k-control-height-lg);
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: 0 var(--k-space-2);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
+  cursor: pointer;
+}
+
+.suggestionOption[aria-selected="true"] {
+  background: var(--k-color-bg-hover);
+}
+
+.suggestionCopy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: var(--k-space-2);
+}
+
+.suggestionPrimary {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  font-weight: var(--k-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestionDirectory {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--k-color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestionSecondary {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--k-color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestionStatus {
+  min-height: var(--k-control-height-lg);
+  padding: var(--k-space-2);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
 .textarea::placeholder {
   color: var(--k-color-text-secondary);
   opacity: 1;
