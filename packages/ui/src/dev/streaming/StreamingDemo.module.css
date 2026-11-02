@@ -3,7 +3,7 @@
   --streaming-motion-blur: 3px;
   --streaming-motion-shift: 2px;
   --streaming-panel-min-height: 350px;
-  --streaming-panel-min-width: 400px;
+  --streaming-column-max-width: 760px;
   --streaming-content-max-width: 1440px;
   min-height: 100%;
   padding: var(--k-space-5) var(--k-space-6) var(--k-space-6);
@@ -135,11 +135,58 @@
   outline-offset: var(--k-focus-ring-offset);
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--streaming-panel-min-width)), 1fr));
-  gap: var(--k-space-4);
-  align-items: stretch;
+.segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+  padding: var(--k-space-1);
+  border: var(--k-border-width) solid var(--k-color-border-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-color-bg-control);
+}
+
+.segment {
+  min-height: var(--k-control-height-sm);
+  padding: 0 var(--k-space-3);
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  font: inherit;
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.segment:hover {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
+.segment[aria-checked="true"] {
+  border-color: var(--k-color-border-strong);
+  background: var(--k-color-bg-raised);
+  color: var(--k-color-text-primary);
+  font-weight: var(--k-weight-semibold);
+}
+
+.segment:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.versionDetail {
+  margin: calc(var(--k-space-2) * -1) 0 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+.column {
+  width: min(100%, var(--streaming-column-max-width));
+  min-width: 0;
+  margin-inline: auto;
 }
 
 .panel {
@@ -187,7 +234,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.panelDescription,
 .panelStatus {
   margin: 0;
   color: var(--k-color-text-secondary);
