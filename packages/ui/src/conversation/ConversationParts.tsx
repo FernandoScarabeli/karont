@@ -1090,13 +1090,13 @@ function ActionDetails({
     return (
       <div className={styles.actionDetails}>
         {actionSearchQuery(action) ? (
-          <div>
+          <div className={styles.detailBlock}>
             <span className={styles.detailLabel}>{t.chat.input}</span>
             <pre>{actionSearchQuery(action)}</pre>
           </div>
         ) : null}
         {action.output ? (
-          <div>
+          <div className={styles.detailBlock}>
             <span className={styles.detailLabel}>{t.chat.output}</span>
             <pre>{withTruncation(action.output, action.truncated)}</pre>
           </div>
@@ -1125,8 +1125,10 @@ function ActionDetails({
   if (category === "web") {
     return (
       <div className={styles.actionDetails}>
-        <span className={styles.detailLabel}>{action.input || action.title}</span>
-        {action.output ? <pre>{withTruncation(action.output, action.truncated)}</pre> : null}
+        <div className={styles.detailBlock}>
+          <span className={styles.detailLabel}>{action.input || action.title}</span>
+          {action.output ? <pre>{withTruncation(action.output, action.truncated)}</pre> : null}
+        </div>
       </div>
     );
   }
@@ -1135,13 +1137,13 @@ function ActionDetails({
     return (
       <div className={styles.actionDetails}>
         {action.output ? (
-          <div>
+          <div className={styles.detailBlock}>
             <span className={styles.detailLabel}>{t.chat.savedPath}</span>
             <pre>{withTruncation(action.output, action.truncated)}</pre>
           </div>
         ) : null}
         {action.input ? (
-          <div>
+          <div className={styles.detailBlock}>
             <span className={styles.detailLabel}>{t.chat.revisedPrompt}</span>
             <pre>{withTruncation(action.input, action.truncated)}</pre>
           </div>
@@ -1154,13 +1156,13 @@ function ActionDetails({
     return (
       <div className={styles.actionDetails}>
         {action.input ? (
-          <div>
+          <div className={styles.detailBlock}>
             <span className={styles.detailLabel}>{t.chat.input}</span>
             <pre>{formatRawValue(action.input)}</pre>
           </div>
         ) : null}
         {action.output ? (
-          <div>
+          <div className={styles.detailBlock}>
             <span className={styles.detailLabel}>{t.chat.output}</span>
             <pre>{withTruncation(formatRawValue(action.output), action.truncated)}</pre>
           </div>
@@ -1186,11 +1188,13 @@ function ActionDetails({
                 : "";
     return (
       <div className={styles.actionDetails}>
-        <div className={styles.commandHeader}>
-          <span className={styles.detailLabel}>{command}</span>
-          {resultLabel ? <span className={styles.exitCode}>{resultLabel}</span> : null}
+        <div className={styles.detailBlock}>
+          <div className={styles.commandHeader}>
+            <span className={styles.detailLabel}>{command}</span>
+            {resultLabel ? <span className={styles.exitCode}>{resultLabel}</span> : null}
+          </div>
+          {output ? <pre>{withTruncation(output, action.truncated)}</pre> : null}
         </div>
-        {output ? <pre>{withTruncation(output, action.truncated)}</pre> : null}
       </div>
     );
   }
@@ -1198,13 +1202,13 @@ function ActionDetails({
   return (
     <div className={styles.actionDetails}>
       {action.input ? (
-        <div>
+        <div className={styles.detailBlock}>
           <span className={styles.detailLabel}>{t.chat.input}</span>
           <pre>{formatRawValue(action.input)}</pre>
         </div>
       ) : null}
       {action.output ? (
-        <div>
+        <div className={styles.detailBlock}>
           <span className={styles.detailLabel}>{t.chat.output}</span>
           <pre>{withTruncation(formatRawValue(action.output), action.truncated)}</pre>
         </div>
