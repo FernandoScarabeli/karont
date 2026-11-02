@@ -1,4 +1,10 @@
-import type { AnyEvent, Conversation, ConversationMessage, MessagePart } from "@karont/contract";
+import type {
+  AnyEvent,
+  Conversation,
+  ConversationContextUsage,
+  ConversationMessage,
+  MessagePart,
+} from "@karont/contract";
 import { BridgeError } from "@karont/contract";
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { getBridge } from "../bridge/index.ts";
@@ -13,6 +19,7 @@ import {
 
 export type State = {
   conversation: Conversation | null;
+  contextUsage: { conversationId: string; value?: ConversationContextUsage } | null;
   requestedConversationId: string | null;
   messageIds: string[];
   messagesById: Record<string, ConversationMessage>;
@@ -30,6 +37,7 @@ export type Action =
   | {
       type: "loaded";
       conversation: Conversation;
+      contextUsage?: ConversationContextUsage;
       messages: ConversationMessage[];
       hasOlderMessages: boolean;
     }
@@ -50,6 +58,7 @@ export type Action =
 
 const initialState: State = {
   conversation: null,
+  contextUsage: null,
   requestedConversationId: null,
   messageIds: [],
   messagesById: {},
@@ -169,6 +178,7 @@ export function useConversation(conversationId: string) {
         dispatch({
           type: "loaded",
           conversation: result.conversation,
+          ...(result.contextUsage ? { contextUsage: result.contextUsage } : {}),
           messages: result.messages,
           hasOlderMessages: result.hasOlderMessages,
         });
@@ -275,6 +285,8 @@ export function useConversation(conversationId: string) {
   return {
     ...state,
     conversation: visibleConversation,
+    contextUsage:
+      state.contextUsage?.conversationId === conversationId ? state.contextUsage.value : undefined,
     messages: visibleMessages,
     loading: state.loading || state.requestedConversationId !== conversationId,
     hasOlderMessages: stateMatchesConversation
@@ -335,6 +347,10 @@ export function reducer(state: State, action: Action): State {
       ...state,
       requestedConversationId: action.conversation.id,
       conversation: action.conversation,
+      contextUsage: {
+        conversationId: action.conversation.id,
+        ...(action.contextUsage ? { value: action.contextUsage } : {}),
+      },
       messageIds: merged.map((message) => message.id),
       messagesById: Object.fromEntries(merged.map((message) => [message.id, message])),
       loading: false,
@@ -366,6 +382,18 @@ export function reducer(state: State, action: Action): State {
   }
 
   if (action.type === "event") {
+    if (action.event.event === "conversation.contextUsage") {
+      return {
+        ...state,
+        contextUsage: {
+          conversationId: action.event.payload.conversationId,
+          value: {
+            usedTokens: action.event.payload.usedTokens,
+            windowTokens: action.event.payload.windowTokens,
+          },
+        },
+      };
+    }
     if (action.event.event === "conversation.messageCreated") {
       return upsertMessage(state, action.event.payload.message);
     }
@@ -527,6 +555,8 @@ function appendDeltaBatch(
 }
 
 function isConversationEvent(event: AnyEvent, conversationId: string): boolean {
+  if (event.event === "conversation.contextUsage")
+    return event.payload.conversationId === conversationId;
   if (event.event === "conversation.messageCreated")
     return event.payload.conversationId === conversationId;
   if (event.event === "conversation.partUpdated")

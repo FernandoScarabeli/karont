@@ -226,6 +226,11 @@
   --k-composer-switch-thumb-size: 12px;
   --k-composer-config-width: 340px;
   --k-composer-gauge-size: 18px;
+  --k-context-ring-size: var(--k-icon-size-md);
+  --k-context-ring-large-size: 36px;
+  --k-context-ring-stroke: 2px;
+  --k-context-popover-width: 240px;
+  --k-context-percent-size: 10px;
   --k-duration-effort-needle: 220ms;
   --k-chat-content-max-width: 860px;
   --k-chat-user-bubble-max-width: 720px;

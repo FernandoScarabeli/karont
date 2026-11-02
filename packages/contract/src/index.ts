@@ -20,6 +20,7 @@ export type {
   Conversation,
   ConversationAttachment,
   ConversationAttachmentMetadata,
+  ConversationContextUsage,
   ConversationMessage,
   MessagePart,
 } from "./conversations.ts";
@@ -31,6 +32,7 @@ export {
   composerSkillSchema,
   conversationAttachmentMetadataSchema,
   conversationAttachmentSchema,
+  conversationContextUsageSchema,
   conversationOptionsSchema,
   conversationSchema,
   conversationSendParamsSchema,

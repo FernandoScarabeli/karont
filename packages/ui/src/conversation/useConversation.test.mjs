@@ -107,6 +107,28 @@ test("a conclusão ao vivo mantém startedAt e endedAt da mensagem", () => {
   assert.equal(next.responseFinishedId, "mensagem-1");
 });
 
+test("o evento de contexto atualiza o valor sem trocar as mensagens carregadas", () => {
+  const state = stateWithStreamingMessage();
+  const next = reducer(state, {
+    type: "event",
+    event: {
+      event: "conversation.contextUsage",
+      payload: {
+        conversationId: "conversa-1",
+        usedTokens: 90_000,
+        windowTokens: 200_000,
+      },
+    },
+  });
+
+  assert.deepEqual(next.contextUsage, {
+    conversationId: "conversa-1",
+    value: { usedTokens: 90_000, windowTokens: 200_000 },
+  });
+  assert.equal(next.messageIds, state.messageIds);
+  assert.equal(next.messagesById, state.messagesById);
+});
+
 test("um aviso de estado sem horário não apaga o horário já conhecido", () => {
   const state = stateWithStreamingMessage();
   state.messagesById["mensagem-1"] = { ...state.messagesById["mensagem-1"], endedAt: 19_000 };

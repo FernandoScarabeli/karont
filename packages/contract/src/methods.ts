@@ -5,6 +5,7 @@ import {
   agentModelsSchema,
   composerFileSchema,
   composerSkillSchema,
+  conversationContextUsageSchema,
   conversationOptionsSchema,
   conversationSchema,
   conversationSendParamsSchema,
@@ -196,6 +197,7 @@ export const methods = {
       conversation: conversationSchema,
       messages: z.array(messageSchema),
       hasOlderMessages: z.boolean(),
+      contextUsage: conversationContextUsageSchema.optional(),
     }),
   },
   "conversation.markSeen": {

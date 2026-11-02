@@ -164,6 +164,7 @@ test("contratos do composer e compactação validam os formatos por agente", () 
       capabilities: {
         skills: false,
         compact: false,
+        contextUsage: false,
         fileMentions: true,
         fastMode: false,
         plan: false,

@@ -14,6 +14,7 @@ export type AdapterEvent =
   | { kind: "fast-tier-not-applied" }
   | { kind: "text-delta"; partType: "text" | "thinking"; partId: string; delta: string }
   | { kind: "state"; state: "working" | "waiting" }
+  | { kind: "context-usage"; usedTokens: number; windowTokens: number }
   | {
       kind: "turn-end";
       status: "done" | "interrupted" | "error";

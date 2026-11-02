@@ -42,6 +42,7 @@ import {
   fastSettingKey,
   modelSettingKey,
 } from "./ComposerPreferences.tsx";
+import { ConversationContextUsageControl } from "./ConversationContextUsage.tsx";
 import { ConversationHistory } from "./ConversationHistory.tsx";
 import {
   ConversationBranchPlaceholder,
@@ -114,6 +115,7 @@ export function ConversationView({
   const { navigate, openConversationBeside } = useNavigation();
   const {
     conversation: retainedConversation,
+    contextUsage,
     messages,
     hasOlderMessages,
     loading,
@@ -959,6 +961,21 @@ export function ConversationView({
 
   const closeShortcutSuggestions = useCallback(() => setShortcutTrigger(null), []);
 
+  const compactConversation = useCallback(() => {
+    if (!bridge || isCompacting) return;
+    setIsCompacting(true);
+    void bridge
+      .request("conversation.compact", { id })
+      .catch((compactError) => {
+        setInteractionError(
+          compactError instanceof BridgeError && compactError.message
+            ? compactError.message
+            : t.chat.compactFailed,
+        );
+      })
+      .finally(() => setIsCompacting(false));
+  }, [bridge, id, isCompacting, setInteractionError, setIsCompacting]);
+
   function applyShortcutText(value: string, caret: number) {
     pendingComposerCaretRef.current = caret;
     setCaretRequest((current) => current + 1);
@@ -987,18 +1004,7 @@ export function ConversationView({
     applyShortcutText(result.value, result.caret);
 
     if (command === "compact") {
-      if (!bridge || !conversation || isCompacting) return;
-      setIsCompacting(true);
-      void bridge
-        .request("conversation.compact", { id })
-        .catch((compactError) => {
-          setInteractionError(
-            compactError instanceof BridgeError && compactError.message
-              ? compactError.message
-              : t.chat.compactFailed,
-          );
-        })
-        .finally(() => setIsCompacting(false));
+      compactConversation();
     } else if (command === "plan") {
       void saveOptions({ plan: !(visibleConversation?.plan ?? false) });
     } else if (command === "model") {
@@ -1663,14 +1669,29 @@ export function ConversationView({
           disabled={isWaiting || isResponding || isSending || isCompacting}
           leading={composerLeading}
           trailing={
-            currentConversation && !loading && userMessageCount >= 2 ? (
-              <ConversationHistory
-                entries={historyEntries}
-                onOpenChange={setHistoryOpen}
-                onSelectMessage={navigateToHistoryMessage}
-                open={historyOpen}
-                popupContainerRef={messageRegionRef}
-              />
+            currentConversation &&
+            !loading &&
+            (capabilities?.contextUsage === true || userMessageCount >= 2) ? (
+              <>
+                {capabilities?.contextUsage === true ? (
+                  <ConversationContextUsageControl
+                    compactAvailable={capabilities.compact}
+                    compacting={isCompacting}
+                    initialUsage={contextUsage}
+                    key={id}
+                    onCompact={compactConversation}
+                  />
+                ) : null}
+                {userMessageCount >= 2 ? (
+                  <ConversationHistory
+                    entries={historyEntries}
+                    onOpenChange={setHistoryOpen}
+                    onSelectMessage={navigateToHistoryMessage}
+                    open={historyOpen}
+                    popupContainerRef={messageRegionRef}
+                  />
+                ) : null}
+              </>
             ) : undefined
           }
           attachments={composerAttachmentsNode}
