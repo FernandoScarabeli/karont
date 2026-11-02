@@ -4,7 +4,12 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { getBridge } from "../bridge/index.ts";
 import { t } from "../i18n/pt-BR.ts";
 import { cacheConversationSnapshot, getConversationSnapshot } from "./conversationCache.ts";
-import { INITIAL_MESSAGE_WINDOW_SIZE } from "./messageWindow.ts";
+import {
+  INITIAL_MESSAGE_WINDOW_SIZE,
+  OLDER_MESSAGE_PAGE_SIZE,
+  olderMessageCursor,
+  prependOlderMessagePage,
+} from "./messageWindow.ts";
 
 export type State = {
   conversation: Conversation | null;
@@ -181,21 +186,27 @@ export function useConversation(conversationId: string) {
     [],
   );
   const fetchOlderMessages = useCallback(
-    async (before: string): Promise<number | null> => {
+    async (before: string, beforeInsert?: () => void): Promise<number | null> => {
       const bridge = getBridge();
       if (!bridge) return null;
       try {
         const result = await bridge.request("conversation.get", {
           id: conversationId,
-          limit: INITIAL_MESSAGE_WINDOW_SIZE,
+          limit: OLDER_MESSAGE_PAGE_SIZE,
           before,
         });
+        const page = prependOlderMessagePage(
+          messagesRef.current,
+          result.messages,
+          result.hasOlderMessages,
+        );
+        if (page.newMessages.length > 0) beforeInsert?.();
         dispatch({
           type: "olderLoaded",
-          messages: result.messages,
-          hasOlderMessages: result.hasOlderMessages,
+          messages: page.newMessages,
+          hasOlderMessages: page.hasOlderMessages,
         });
-        return result.messages.length;
+        return page.newMessages.length;
       } catch {
         return null;
       }
@@ -207,9 +218,10 @@ export function useConversation(conversationId: string) {
     const bridge = getBridge();
     if (!bridge) return null;
 
-    let before = messagesRef.current[0]?.id;
+    let before = olderMessageCursor(messagesRef.current, hasOlderMessagesRef.current);
     let hasOlderMessages = hasOlderMessagesRef.current;
     const olderMessages: ConversationMessage[] = [];
+    const knownMessageIds = new Set(messagesRef.current.map((message) => message.id));
 
     try {
       while (before && hasOlderMessages) {
@@ -223,8 +235,18 @@ export function useConversation(conversationId: string) {
           hasOlderMessages = false;
           break;
         }
-        olderMessages.unshift(...result.messages);
-        before = result.messages[0]?.id;
+        const newMessages = result.messages.filter((message) => {
+          if (knownMessageIds.has(message.id)) return false;
+          knownMessageIds.add(message.id);
+          return true;
+        });
+        const nextBefore = result.messages[0]?.id;
+        if (newMessages.length === 0 || !nextBefore || nextBefore === before) {
+          hasOlderMessages = false;
+          break;
+        }
+        olderMessages.unshift(...newMessages);
+        before = nextBefore;
         hasOlderMessages = result.hasOlderMessages;
       }
       if (conversationIdRef.current !== conversationId) return null;
@@ -291,12 +313,15 @@ export function reducer(state: State, action: Action): State {
       const message = state.messagesById[id];
       return message ? [message] : [];
     });
-    const merged = mergeOlderMessages(action.messages, currentMessages);
+    const page = prependOlderMessagePage(currentMessages, action.messages, action.hasOlderMessages);
+    const newMessageEntries = Object.fromEntries(
+      page.newMessages.map((message) => [message.id, message]),
+    );
     return {
       ...state,
-      messageIds: merged.map((message) => message.id),
-      messagesById: Object.fromEntries(merged.map((message) => [message.id, message])),
-      hasOlderMessages: action.hasOlderMessages,
+      messageIds: [...page.newMessages.map((message) => message.id), ...state.messageIds],
+      messagesById: { ...state.messagesById, ...newMessageEntries },
+      hasOlderMessages: page.hasOlderMessages,
     };
   }
 
@@ -356,13 +381,6 @@ function mergeLatestMessages(
   const overlapIndex = current.findIndex((message) => latestIds.has(message.id));
   const preserved = overlapIndex < 0 ? [] : current.slice(0, overlapIndex);
   return mergeInOrder(preserved, latestPage);
-}
-
-function mergeOlderMessages(
-  olderPage: ConversationMessage[],
-  current: ConversationMessage[],
-): ConversationMessage[] {
-  return mergeInOrder(olderPage, current);
 }
 
 function mergeInOrder(
