@@ -55,6 +55,7 @@ export function ConversationLoadingFrame({
           placeholder={t.chat.messageInput}
           submitDisabled
           submitLabel={t.chat.send}
+          submitTooltipLabel={t.chat.sendTooltip}
           value=""
         />
       </section>

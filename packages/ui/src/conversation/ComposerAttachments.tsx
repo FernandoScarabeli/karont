@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import {
   classifyAttachmentFile,
@@ -225,17 +226,18 @@ export function AttachmentPicker({
   const inputRef = useRef<HTMLInputElement>(null);
   return (
     <>
-      <button
-        aria-label={t.chat.attachFile}
-        aria-description={t.chat.attachmentRules}
-        className={styles.attachButton}
-        disabled={disabled}
-        onClick={() => inputRef.current?.click()}
-        title={t.chat.attachmentRules}
-        type="button"
-      >
-        <Paperclip aria-hidden="true" size={16} />
-      </button>
+      <Tooltip align="start" label={t.chat.attachTooltip}>
+        <button
+          aria-label={t.chat.attachFile}
+          aria-description={t.chat.attachmentRules}
+          className={styles.attachButton}
+          disabled={disabled}
+          onClick={() => inputRef.current?.click()}
+          type="button"
+        >
+          <Paperclip aria-hidden="true" size={16} />
+        </button>
+      </Tooltip>
       <input
         aria-label={t.chat.chooseAttachments}
         className={styles.fileInput}

@@ -16,6 +16,7 @@ import { getBridge } from "../bridge/index.ts";
 import { Composer } from "../components/Composer/Composer.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
+import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { MOTION_MS } from "../styles/motion.ts";
@@ -778,10 +779,15 @@ export function ConversationView({
       conversation ? (
         <div className={`${styles.composerControls} ${revealLoadedData ? styles.dataReveal : ""}`}>
           <AttachmentPicker disabled={!canAttachFiles} onFiles={composerAttachments.addFiles} />
-          <span className={styles.agentTag}>
-            <AgentIcon agentId={conversation.agent} />
-            <span className={styles.agentName}>{agentDisplayName(conversation.agent)}</span>
-          </span>
+          <Tooltip
+            className={styles.agentTooltip}
+            label={t.chat.agentTooltip(agentDisplayName(conversation.agent))}
+          >
+            <span className={styles.agentTag}>
+              <AgentIcon agentId={conversation.agent} />
+              <span className={styles.agentName}>{agentDisplayName(conversation.agent)}</span>
+            </span>
+          </Tooltip>
           <ComposerPreferences
             activePopover={activePopover}
             disabled={isWorking || isWaiting || isResponding || isSending || !bridge}
@@ -1101,6 +1107,7 @@ export function ConversationView({
             isSending
           }
           submitLabel={isWorking ? t.chat.stop : t.chat.send}
+          submitTooltipLabel={isWorking ? t.chat.stop : t.chat.sendTooltip}
           dragActive={composerAttachments.isDragging}
           dropMessage={t.chat.dropAttachments}
           value={draft}

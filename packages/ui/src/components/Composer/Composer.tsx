@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Tooltip } from "../Tooltip/Tooltip.tsx";
 import styles from "./Composer.module.css";
 
 export type ComposerProps = {
@@ -18,6 +19,7 @@ export type ComposerProps = {
   onSubmit: () => void;
   placeholder: string;
   submitLabel: string;
+  submitTooltipLabel?: string;
   ariaDescription?: string;
   submitDisabled?: boolean;
   leading: ReactNode;
@@ -45,6 +47,7 @@ export const Composer = memo(function Composer({
   onSubmit,
   placeholder,
   submitLabel,
+  submitTooltipLabel,
   ariaDescription,
   submitDisabled = false,
   leading,
@@ -147,27 +150,28 @@ export const Composer = memo(function Composer({
           <div className={styles.leading}>{leading}</div>
           <div className={styles.actions}>
             {trailing ? <div className={styles.trailing}>{trailing}</div> : null}
-            <button
-              aria-disabled={cannotSubmit}
-              aria-label={submitLabel}
-              className={styles.submit}
-              onClick={(event) => {
-                if (busy) {
-                  event.preventDefault();
-                  onStop?.();
-                } else if (cannotSubmit) {
-                  event.preventDefault();
-                }
-              }}
-              title={submitLabel}
-              type="submit"
-            >
-              {busy ? (
-                <Square aria-hidden="true" size={14} strokeWidth={2.2} />
-              ) : (
-                <ArrowUp aria-hidden="true" size={18} strokeWidth={2} />
-              )}
-            </button>
+            <Tooltip align="end" label={submitTooltipLabel ?? submitLabel}>
+              <button
+                aria-disabled={cannotSubmit}
+                aria-label={submitLabel}
+                className={styles.submit}
+                onClick={(event) => {
+                  if (busy) {
+                    event.preventDefault();
+                    onStop?.();
+                  } else if (cannotSubmit) {
+                    event.preventDefault();
+                  }
+                }}
+                type="submit"
+              >
+                {busy ? (
+                  <Square aria-hidden="true" size={14} strokeWidth={2.2} />
+                ) : (
+                  <ArrowUp aria-hidden="true" size={18} strokeWidth={2} />
+                )}
+              </button>
+            </Tooltip>
           </div>
         </div>
       </form>
