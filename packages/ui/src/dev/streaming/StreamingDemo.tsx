@@ -1,4 +1,5 @@
 import { RotateCcw } from "lucide-react";
+import type { KeyboardEvent } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../../components/Button/Button.tsx";
 import styles from "./StreamingDemo.module.css";
@@ -21,14 +22,40 @@ const versions: { id: Version; title: string; detail: string }[] = [
   { id: "C", title: "Ritmo + fade", detail: "Palavras novas entram com fade; código por linha." },
   { id: "D", title: "Ritmo + desfoque", detail: "Fade e desfoque leve no texto que chega." },
 ];
+const defaultVersion: Version = "C";
 
 export function StreamingDemo() {
   const [runId, setRunId] = useState(0);
   const [incomingText, setIncomingText] = useState("");
   const [done, setDone] = useState(false);
   const [speed, setSpeed] = useState<Speed>("normal");
+  const [selectedVersion, setSelectedVersion] = useState<Version>(defaultVersion);
   const speedRef = useRef(speed);
   speedRef.current = speed;
+  const radioRefs = useRef<Partial<Record<Version, HTMLButtonElement | null>>>({});
+  const selectedDetail = versions.find((version) => version.id === selectedVersion)?.detail ?? "";
+
+  // Only the selected version is rendered; changing it restarts the stream.
+  const selectVersion = (version: Version) => {
+    if (version === selectedVersion) return;
+    setSelectedVersion(version);
+    setRunId((value) => value + 1);
+  };
+
+  const handleRadioKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const step =
+      event.key === "ArrowRight" || event.key === "ArrowDown"
+        ? 1
+        : event.key === "ArrowLeft" || event.key === "ArrowUp"
+          ? -1
+          : 0;
+    if (step === 0) return;
+    event.preventDefault();
+    const next = versions[(index + step + versions.length) % versions.length];
+    if (!next) return;
+    radioRefs.current[next.id]?.focus();
+    selectVersion(next.id);
+  };
 
   useEffect(() => {
     let cursor = 0;
@@ -100,6 +127,34 @@ export function StreamingDemo() {
             </span>
           </div>
           <div className={styles.actions}>
+            <div
+              aria-describedby="streaming-version-detail"
+              aria-label="Versão exibida"
+              className={styles.segmented}
+              role="radiogroup"
+            >
+              {versions.map((version, index) => {
+                const selected = version.id === selectedVersion;
+                return (
+                  // biome-ignore lint/a11y/useSemanticElements: o seletor pedido usa role=radio em botões, com setas e foco roving.
+                  <button
+                    aria-checked={selected}
+                    className={styles.segment}
+                    key={version.id}
+                    onClick={() => selectVersion(version.id)}
+                    onKeyDown={(event) => handleRadioKeyDown(event, index)}
+                    ref={(element) => {
+                      radioRefs.current[version.id] = element;
+                    }}
+                    role="radio"
+                    tabIndex={selected ? 0 : -1}
+                    type="button"
+                  >
+                    {version.id} · {version.title}
+                  </button>
+                );
+              })}
+            </div>
             <label className={styles.speedControl}>
               <span>Velocidade</span>
               <select
@@ -120,18 +175,19 @@ export function StreamingDemo() {
           </div>
         </div>
 
-        <div className={styles.grid}>
-          {versions.map((version) => (
-            <VersionColumn
-              key={`${runId}-${version.id}`}
-              description={version.detail}
-              done={done}
-              incomingText={incomingText}
-              title={version.title}
-              totalLength={sampleMarkdown.length}
-              version={version.id}
-            />
-          ))}
+        <p className={styles.versionDetail} id="streaming-version-detail">
+          {selectedDetail}
+        </p>
+
+        <div className={styles.column}>
+          <VersionColumn
+            key={`${runId}-${selectedVersion}`}
+            done={done}
+            incomingText={incomingText}
+            title={versions.find((version) => version.id === selectedVersion)?.title ?? ""}
+            totalLength={sampleMarkdown.length}
+            version={selectedVersion}
+          />
         </div>
       </div>
     </main>
@@ -139,14 +195,12 @@ export function StreamingDemo() {
 }
 
 function VersionColumn({
-  description,
   done,
   incomingText,
   title,
   totalLength,
   version,
 }: {
-  description: string;
   done: boolean;
   incomingText: string;
   title: string;
@@ -156,7 +210,6 @@ function VersionColumn({
   if (version === "A") {
     return (
       <VersionPanel
-        description={description}
         done={done}
         incomingLength={incomingText.length}
         title={title}
@@ -169,7 +222,6 @@ function VersionColumn({
 
   return (
     <SmoothVersionColumn
-      description={description}
       done={done}
       incomingLength={incomingText.length}
       incomingText={incomingText}
@@ -181,7 +233,6 @@ function VersionColumn({
 }
 
 function SmoothVersionColumn({
-  description,
   done,
   incomingLength,
   incomingText,
@@ -189,7 +240,6 @@ function SmoothVersionColumn({
   totalLength,
   version,
 }: {
-  description: string;
   done: boolean;
   incomingLength: number;
   incomingText: string;
@@ -203,7 +253,6 @@ function SmoothVersionColumn({
 
   return (
     <VersionPanel
-      description={description}
       done={done}
       frame={revealed}
       incomingLength={incomingLength}
@@ -217,7 +266,6 @@ function SmoothVersionColumn({
 }
 
 function VersionPanel({
-  description,
   done,
   frame,
   incomingLength,
@@ -227,7 +275,6 @@ function VersionPanel({
   version,
   visibleText,
 }: {
-  description: string;
   done: boolean;
   frame?: FrameSample;
   incomingLength: number;
@@ -274,7 +321,6 @@ function VersionPanel({
             <span className={styles.version}>{version}</span>
             {title}
           </h2>
-          <p className={styles.panelDescription}>{description}</p>
         </div>
         <p className={styles.panelStatus}>{status}</p>
       </header>
