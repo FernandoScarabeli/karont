@@ -128,6 +128,10 @@
   transition: opacity var(--k-motion-moderate) var(--k-ease);
 }
 
+.messageRegion[data-transitioning="true"] .messageList {
+  opacity: var(--k-conversation-history-dim-opacity);
+}
+
 .historyBackdrop {
   position: absolute;
   z-index: var(--k-layer-menu);

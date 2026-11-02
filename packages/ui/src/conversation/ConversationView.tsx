@@ -74,12 +74,14 @@ type ConversationOptionsPatch = {
 
 export function ConversationView({
   id,
+  conversationSummary = null,
   isActivePane,
   headerActions,
   dragHandleProps,
   openedAt,
 }: {
   id: string;
+  conversationSummary?: Conversation | null;
   isActivePane: boolean;
   headerActions?: ReactNode;
   openedAt: number;
@@ -93,7 +95,7 @@ export function ConversationView({
   const bridge = getBridge();
   const { openConversationBeside } = useNavigation();
   const {
-    conversation,
+    conversation: retainedConversation,
     messages,
     hasOlderMessages,
     loading,
@@ -105,12 +107,58 @@ export function ConversationView({
     fetchOlderMessages,
     fetchAllOlderMessages,
   } = useConversation(id);
+  const currentConversation = retainedConversation?.id === id ? retainedConversation : null;
+  const conversation = currentConversation ?? conversationSummary;
+  const showingPreviousConversation = Boolean(
+    retainedConversation && retainedConversation.id !== id,
+  );
+  const activeConversationIdRef = useRef(id);
+  activeConversationIdRef.current = id;
   const markSeenInFlight = useRef(false);
-  const [draft, setDraft] = useState("");
+  const [draftState, setDraftState] = useState({ conversationId: id, value: "" });
+  const draft = draftState.conversationId === id ? draftState.value : "";
+  const setDraft = useCallback(
+    (value: string | ((currentDraft: string) => string)) => {
+      setDraftState((current) => {
+        if (activeConversationIdRef.current !== id) return current;
+        const currentDraft = current.conversationId === id ? current.value : "";
+        return {
+          conversationId: id,
+          value: typeof value === "function" ? value(currentDraft) : value,
+        };
+      });
+    },
+    [id],
+  );
   const [models, setModels] = useState<AgentModels | null>(null);
-  const [activePopover, setActivePopover] = useState<ComposerPopoverName>(null);
+  const [activePopoverState, setActivePopoverState] = useState<{
+    conversationId: string;
+    value: ComposerPopoverName;
+  }>({ conversationId: id, value: null });
+  const activePopover = activePopoverState.conversationId === id ? activePopoverState.value : null;
+  const setActivePopover = useCallback(
+    (value: ComposerPopoverName) => {
+      if (activeConversationIdRef.current === id) {
+        setActivePopoverState({ conversationId: id, value });
+      }
+    },
+    [id],
+  );
   const [optimisticOptions, setOptimisticOptions] = useState<ConversationOptionsPatch>({});
-  const [interactionError, setInteractionError] = useState("");
+  const [interactionErrorState, setInteractionErrorState] = useState({
+    conversationId: id,
+    value: "",
+  });
+  const interactionError =
+    interactionErrorState.conversationId === id ? interactionErrorState.value : "";
+  const setInteractionError = useCallback(
+    (value: string) => {
+      if (activeConversationIdRef.current === id) {
+        setInteractionErrorState({ conversationId: id, value });
+      }
+    },
+    [id],
+  );
   const [announcement, setAnnouncement] = useState("");
   const [pendingHistoryMessageId, setPendingHistoryMessageId] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
@@ -118,10 +166,11 @@ export function ConversationView({
   const [olderPageVersion, setOlderPageVersion] = useState(0);
   const visibleMessageCountRef = useRef(visibleMessageCount);
   visibleMessageCountRef.current = visibleMessageCount;
-  const [isResponding, setIsResponding] = useState(false);
-  const [isStopping, setIsStopping] = useState(false);
-  const [isSending, setIsSending] = useState(false);
-  const [isRenamingTitle, setIsRenamingTitle] = useState(false);
+  const [isResponding, setIsResponding] = useConversationScopedFlag(id);
+  const [isStopping, setIsStopping] = useConversationScopedFlag(id);
+  const [isSending, setIsSending] = useConversationScopedFlag(id);
+  const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null);
+  const isRenamingTitle = renamingConversationId === id;
   const [workingIndicatorPresence, setWorkingIndicatorPresence] = useState(() => ({
     conversationId: id,
     present: false,
@@ -135,7 +184,8 @@ export function ConversationView({
     if (
       !bridge ||
       document.visibilityState !== "visible" ||
-      !conversation?.unreadAt ||
+      loading ||
+      !currentConversation?.unreadAt ||
       markSeenInFlight.current
     ) {
       return;
@@ -151,7 +201,7 @@ export function ConversationView({
     } finally {
       markSeenInFlight.current = false;
     }
-  }, [bridge, conversation?.unreadAt, id, updateConversation]);
+  }, [bridge, currentConversation?.unreadAt, id, loading, updateConversation]);
 
   useEffect(() => {
     void markSeen();
@@ -170,9 +220,9 @@ export function ConversationView({
     if (responseFinishedId) void markSeen();
   }, [markSeen, responseFinishedId]);
   const [titleDraft, setTitleDraft] = useState("");
-  const [isSavingTitle, setIsSavingTitle] = useState(false);
+  const [isSavingTitle, setIsSavingTitle] = useConversationScopedFlag(id);
   const previousConversationIdRef = useRef(id);
-  const initiallyHadConversationRef = useRef(Boolean(conversation));
+  const initiallyHadConversationRef = useRef(Boolean(currentConversation ?? conversationSummary));
   const messageRegionRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const olderMessagesSentinelRef = useRef<HTMLDivElement>(null);
@@ -194,14 +244,12 @@ export function ConversationView({
   const saveRevisionRef = useRef(0);
   const sendRevisionRef = useRef(0);
   const sendPendingRef = useRef(false);
-  const activeConversationIdRef = useRef(id);
   const optimisticConversationIdRef = useRef(id);
   const updateFollowState = useCallback((state: FollowState) => {
     if (followRef.current === state) return;
     followRef.current = state;
     setFollowState(state);
   }, []);
-  activeConversationIdRef.current = id;
   const agent = conversation?.agent;
   const currentModels =
     models?.agent === agent ? models : agent ? (getCachedAgentModels(agent) ?? null) : null;
@@ -265,7 +313,7 @@ export function ConversationView({
     [orderedMessages],
   );
   const hasLoadedOlderMessages = visibleMessages.length < orderedMessages.length;
-  const canLoadOlderMessages = hasLoadedOlderMessages || hasOlderMessages;
+  const canLoadOlderMessages = !loading && (hasLoadedOlderMessages || hasOlderMessages);
   const canLoadOlderMessagesRef = useRef(canLoadOlderMessages);
   canLoadOlderMessagesRef.current = canLoadOlderMessages;
   const hasOlderMessagesRef = useRef(hasOlderMessages);
@@ -299,16 +347,19 @@ export function ConversationView({
           ? `${latestPart.state}:${latestPart.durationMs ?? ""}`
           : (latestPart?.id ?? "");
   const scrollVersion = `${latestMessage?.id ?? "empty"}:${latestPart?.id ?? ""}:${latestPartContent}:${visibleMessages.length}:${conversation?.state ?? "idle"}`;
-  const setHistoryOpen = useCallback((open: boolean) => {
-    setActivePopover(open ? "history" : null);
-  }, []);
+  const setHistoryOpen = useCallback(
+    (open: boolean) => {
+      setActivePopover(open ? "history" : null);
+    },
+    [setActivePopover],
+  );
 
   useEffect(() => {
     if (!historyOpen || !hasOlderMessages) return;
     void fetchAllOlderMessages().then((loadedCount) => {
       if (loadedCount === null) setInteractionError(t.chat.loadFailed);
     });
-  }, [fetchAllOlderMessages, hasOlderMessages, historyOpen]);
+  }, [fetchAllOlderMessages, hasOlderMessages, historyOpen, setInteractionError]);
 
   const navigateToHistoryMessage = useCallback(
     (messageId: string) => {
@@ -397,7 +448,7 @@ export function ConversationView({
       return;
     }
     olderMessageLoadInFlight.current = false;
-  }, [fetchOlderMessages]);
+  }, [fetchOlderMessages, setInteractionError]);
 
   useEffect(() => {
     const list = messageListRef.current;
@@ -488,12 +539,13 @@ export function ConversationView({
     });
   }, [id, isWaiting, workingActive]);
   const composerAttachments = useComposerAttachments(
-    Boolean(conversation && bridge && !isWaiting && !isResponding && !isSending),
+    Boolean(currentConversation && bridge && !loading && !isWaiting && !isResponding && !isSending),
     id,
   );
   const { info: gitInfo, loading: gitInfoLoading } = useGitInfo(conversation?.cwd, id);
   useEffect(() => {
     if (previousConversationIdRef.current === id) return;
+    const previousConversationId = previousConversationIdRef.current;
     previousConversationIdRef.current = id;
     updateFollowState("following");
     optimisticConversationIdRef.current = id;
@@ -502,9 +554,10 @@ export function ConversationView({
     saveRevisionRef.current += 1;
     sendRevisionRef.current += 1;
     sendPendingRef.current = false;
-    setIsSending(false);
+    setIsSending(false, previousConversationId);
     setDraft("");
     setInteractionError("");
+    setRenamingConversationId(null);
     setPendingHistoryMessageId(null);
     setHighlightedMessageId(null);
     setVisibleMessageCount(INITIAL_MESSAGE_WINDOW_SIZE);
@@ -515,7 +568,7 @@ export function ConversationView({
     }
     messageListRef.current?.style.removeProperty("--history-navigation-space");
     setActivePopover(null);
-  }, [id, updateFollowState]);
+  }, [id, setDraft, updateFollowState, setActivePopover, setInteractionError, setIsSending]);
 
   useEffect(() => {
     if (conversation && !isRenamingTitle) setTitleDraft(conversation.title);
@@ -673,15 +726,18 @@ export function ConversationView({
         return false;
       }
     },
-    [announce],
+    [announce, setInteractionError],
   );
 
-  const editMessage = useCallback((text: string) => {
-    setDraft(text);
-    requestAnimationFrame(() => {
-      composerSectionRef.current?.querySelector("textarea")?.focus();
-    });
-  }, []);
+  const editMessage = useCallback(
+    (text: string) => {
+      setDraft(text);
+      requestAnimationFrame(() => {
+        composerSectionRef.current?.querySelector("textarea")?.focus();
+      });
+    },
+    [setDraft],
+  );
 
   const sendMessage = useCallback(
     async (
@@ -692,7 +748,8 @@ export function ConversationView({
       const text = textValue.trim();
       if (
         !bridge ||
-        !conversation ||
+        !currentConversation ||
+        loading ||
         (!text && files.length === 0) ||
         isWorking ||
         isWaiting ||
@@ -750,12 +807,16 @@ export function ConversationView({
       addMessage,
       bridge,
       composerAttachments.remove,
-      conversation,
+      currentConversation,
       id,
       isSending,
       isWaiting,
       isWorking,
+      loading,
+      setDraft,
       updateFollowState,
+      setInteractionError,
+      setIsSending,
     ],
   );
 
@@ -774,11 +835,11 @@ export function ConversationView({
     } finally {
       setIsStopping(false);
     }
-  }, [bridge, conversation, id, isStopping]);
+  }, [bridge, conversation, id, isStopping, setInteractionError, setIsStopping]);
 
   const respond = useCallback(
     async (response: ResponseInput) => {
-      if (!bridge || !conversation || isResponding) return;
+      if (!bridge || !currentConversation || loading || isResponding) return;
       setIsResponding(true);
       setInteractionError("");
       try {
@@ -793,12 +854,12 @@ export function ConversationView({
         setIsResponding(false);
       }
     },
-    [bridge, conversation, id, isResponding],
+    [bridge, currentConversation, id, isResponding, loading, setInteractionError, setIsResponding],
   );
 
   const retry = useCallback(
     async (messageId: string) => {
-      if (!bridge || !conversation) return;
+      if (!bridge || !currentConversation || loading) return;
       setInteractionError("");
       try {
         const result = await bridge.request("conversation.retry", { id, messageId });
@@ -811,12 +872,12 @@ export function ConversationView({
         );
       }
     },
-    [addMessage, bridge, conversation, id],
+    [addMessage, bridge, currentConversation, id, loading, setInteractionError],
   );
 
   const branchMessage = useCallback(
     async (messageId: string) => {
-      if (!bridge || !conversation || isWorking || isWaiting || isSending) return;
+      if (!bridge || !currentConversation || loading || isWorking || isWaiting || isSending) return;
       setInteractionError("");
       try {
         const result = await bridge.request("conversation.branch", { id, messageId });
@@ -831,7 +892,17 @@ export function ConversationView({
         );
       }
     },
-    [bridge, conversation, id, isSending, isWaiting, isWorking, openConversationBeside],
+    [
+      bridge,
+      currentConversation,
+      id,
+      isSending,
+      isWaiting,
+      isWorking,
+      loading,
+      openConversationBeside,
+      setInteractionError,
+    ],
   );
 
   const saveOptions = useCallback(
@@ -841,7 +912,7 @@ export function ConversationView({
         | { key: string; value: string | boolean }
         | { key: string; value: string | boolean }[],
     ): Promise<void> => {
-      if (!bridge || !conversation) return Promise.resolve();
+      if (!bridge || !currentConversation || loading) return Promise.resolve();
 
       const conversationId = id;
       if (activeConversationIdRef.current !== conversationId) return Promise.resolve();
@@ -905,7 +976,7 @@ export function ConversationView({
       saveQueueRef.current = queuedSave;
       return queuedSave;
     },
-    [bridge, conversation, id, updateConversation],
+    [bridge, currentConversation, id, updateConversation, loading, setInteractionError],
   );
 
   const copyFolderPath = useCallback(async () => {
@@ -915,9 +986,9 @@ export function ConversationView({
   }, [conversation, copyText]);
 
   function beginTitleRename() {
-    if (!conversation || isSavingTitle || isRenamingTitle) return;
+    if (!conversation || loading || isSavingTitle || isRenamingTitle) return;
     setTitleDraft(conversation.title);
-    setIsRenamingTitle(true);
+    setRenamingConversationId(id);
     requestAnimationFrame(() => {
       titleInputRef.current?.focus();
       titleInputRef.current?.select();
@@ -926,13 +997,13 @@ export function ConversationView({
 
   function cancelTitleRename() {
     setTitleDraft(conversation?.title ?? "");
-    setIsRenamingTitle(false);
+    setRenamingConversationId(null);
     requestAnimationFrame(() => titleHeadingRef.current?.focus());
   }
 
   async function saveTitleRename() {
     const titleValue = titleDraft.trim();
-    if (!bridge || !conversation || isSavingTitle) return;
+    if (!bridge || !conversation || loading || isSavingTitle) return;
     if (!titleValue) {
       setInteractionError(t.chat.titleRequired);
       titleInputRef.current?.focus();
@@ -942,10 +1013,13 @@ export function ConversationView({
     setIsSavingTitle(true);
     try {
       const result = await bridge.request("conversation.rename", { id, title: titleValue });
-      updateConversation(result.conversation);
+      const stillActive = activeConversationIdRef.current === id;
+      if (stillActive) updateConversation(result.conversation);
       upsertConversation(result.conversation);
-      setIsRenamingTitle(false);
-      requestAnimationFrame(() => titleHeadingRef.current?.focus());
+      if (stillActive) {
+        setRenamingConversationId(null);
+        requestAnimationFrame(() => titleHeadingRef.current?.focus());
+      }
     } catch (renameError) {
       setInteractionError(
         renameError instanceof BridgeError && renameError.message
@@ -964,7 +1038,7 @@ export function ConversationView({
     [conversation],
   );
   const canAttachFiles = Boolean(
-    conversation && bridge && !isWaiting && !isResponding && !isSending,
+    currentConversation && !loading && bridge && !isWaiting && !isResponding && !isSending,
   );
   const changeEffort = useCallback(
     (value: AgentEffort | "") => {
@@ -1030,7 +1104,7 @@ export function ConversationView({
           </Tooltip>
           <ComposerPreferences
             activePopover={activePopover}
-            disabled={isWorking || isWaiting || isResponding || isSending || !bridge}
+            disabled={loading || isWorking || isWaiting || isResponding || isSending || !bridge}
             effort={visibleConversation?.effort ?? ""}
             fastMode={visibleConversation?.fast ?? false}
             mode={visibleConversation?.mode ?? "edit"}
@@ -1070,6 +1144,8 @@ export function ConversationView({
       visibleConversation?.mode,
       visibleConversation?.model,
       revealLoadedData,
+      setActivePopover,
+      loading,
     ],
   );
   const composerAttachmentsNode = useMemo(
@@ -1204,12 +1280,18 @@ export function ConversationView({
         {headerActions}
       </header>
 
-      <div className={styles.messageRegion} data-history-open={historyOpen} ref={messageRegionRef}>
+      <div
+        className={styles.messageRegion}
+        data-history-open={historyOpen}
+        data-transitioning={showingPreviousConversation ? "true" : undefined}
+        inert={showingPreviousConversation || undefined}
+        ref={messageRegionRef}
+      >
         <FollowBottomContext value={pinToBottom}>
           <ConversationMessageList
-            canBranch={!isWorking && !isWaiting && !isSending}
-            canRetry={!isWorking && !isWaiting && !isSending}
-            conversation={conversation}
+            canBranch={!loading && !isWorking && !isWaiting && !isSending}
+            canRetry={!loading && !isWorking && !isWaiting && !isSending}
+            conversation={retainedConversation}
             error={error}
             highlightedMessageId={highlightedMessageId}
             latestAgentMessageId={latestAgentMessageId}
@@ -1274,7 +1356,7 @@ export function ConversationView({
           disabled={isWaiting || isResponding || isSending}
           leading={composerLeading}
           trailing={
-            conversation && userMessageCount >= 2 ? (
+            currentConversation && !loading && userMessageCount >= 2 ? (
               <ConversationHistory
                 entries={historyEntries}
                 onOpenChange={setHistoryOpen}
@@ -1324,4 +1406,19 @@ function findLatestTodos(message: ConversationMessage | null) {
     if (part?.type === "todos") return part;
   }
   return null;
+}
+
+function useConversationScopedFlag(conversationId: string) {
+  const [state, setState] = useState({ conversationId, value: false });
+  const value = state.conversationId === conversationId && state.value;
+  const setValue = useCallback(
+    (nextValue: boolean, ownerConversationId = conversationId) => {
+      setState((current) => {
+        if (!nextValue && current.conversationId !== ownerConversationId) return current;
+        return { conversationId: ownerConversationId, value: nextValue };
+      });
+    },
+    [conversationId],
+  );
+  return [value, setValue] as const;
 }

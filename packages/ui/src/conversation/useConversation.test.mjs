@@ -128,6 +128,48 @@ test("um aviso de estado sem horário não apaga o horário já conhecido", () =
   assert.equal(message.endedAt, 19_000);
 });
 
+test("a troca mantém a conversa anterior até a nova carregar e descarta falha atrasada", () => {
+  const previous = stateWithStreamingMessage();
+  const switching = reducer(previous, {
+    type: "requesting",
+    conversationId: "conversa-2",
+  });
+
+  assert.equal(switching.loading, true);
+  assert.equal(switching.conversation, conversation);
+  assert.deepEqual(switching.messageIds, ["mensagem-1"]);
+  assert.equal(switching.requestedConversationId, "conversa-2");
+
+  const staleFailure = reducer(switching, {
+    type: "failed",
+    conversationId: "conversa-1",
+    error: "Falha antiga",
+  });
+  assert.equal(staleFailure, switching);
+});
+
+test("ao carregar a conversa nova, mensagens da anterior não ficam misturadas", () => {
+  const previous = stateWithStreamingMessage();
+  const switching = reducer(previous, {
+    type: "requesting",
+    conversationId: "conversa-2",
+  });
+  const nextConversation = { ...conversation, id: "conversa-2", title: "Nova" };
+  const nextMessage = {
+    ...historyMessage("mensagem-2", "2026-11-01T12:00:02.000Z"),
+    conversationId: "conversa-2",
+  };
+  const loaded = reducer(switching, {
+    type: "loaded",
+    conversation: nextConversation,
+    messages: [nextMessage],
+    hasOlderMessages: false,
+  });
+
+  assert.equal(loaded.conversation.id, "conversa-2");
+  assert.deepEqual(loaded.messageIds, ["mensagem-2"]);
+});
+
 test("ignora deltas já incluídos na foto ao reabrir uma resposta", () => {
   const state = stateWithStreamingMessage();
   state.messagesById["mensagem-1"] = {
