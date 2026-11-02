@@ -122,7 +122,9 @@ class FakeCodexProcess extends EventEmitter {
               )
             : expected.method === "thread/start"
               ? deepEqual(omitPolicy(expected.params), omitPolicy(value.params))
-              : deepEqual(expected.params ?? {}, value.params ?? {});
+              : expected.method === "thread/resume"
+                ? deepEqual(omitAccessPolicy(expected.params), omitAccessPolicy(value.params))
+                : deepEqual(expected.params ?? {}, value.params ?? {});
     if (!paramsMatch) {
       this.#fail(`Parâmetros de ${String(value.method)} não correspondem à fixture.`);
       return;
@@ -295,6 +297,10 @@ function matchesTurnStart(expected: unknown, actual: unknown): boolean {
   if (!isRecord(expected) || !isRecord(actual)) return false;
   const { input: expectedInput, ...expectedParams } = expected;
   const { input: actualInput, ...actualParams } = actual;
+  delete expectedParams.sandbox;
+  delete expectedParams.approvalPolicy;
+  delete actualParams.sandbox;
+  delete actualParams.approvalPolicy;
   if (!("serviceTier" in expectedParams)) delete actualParams.serviceTier;
   if (!("serviceTierForTurn" in expectedParams)) delete actualParams.serviceTierForTurn;
   if (!Array.isArray(expectedInput) || !Array.isArray(actualInput) || actualInput.length < 1)
@@ -331,5 +337,11 @@ function omitPolicy(value: unknown): unknown {
     serviceTier: _serviceTier,
     ...params
   } = value;
+  return params;
+}
+
+function omitAccessPolicy(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const { sandbox: _sandbox, approvalPolicy: _approvalPolicy, ...params } = value;
   return params;
 }

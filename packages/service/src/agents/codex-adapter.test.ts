@@ -789,6 +789,42 @@ test("modos Codex usam as políticas reais do app-server", async (t) => {
   }
 });
 
+test("Codex aplica o modo atualizado ao retomar uma conversa", async () => {
+  const harness = await createHarness("continuar");
+  try {
+    const conversation = createConversation(harness.manager, "read-only");
+    await harness.manager.send(conversation.id, fixturePrompt("continuar"));
+    const initialTurn = requestParams(
+      harness.fakes[0]?.messages[0]?.find((message) => message.method === "turn/start"),
+    );
+    assert.equal(initialTurn.sandbox, "read-only");
+    assert.equal(initialTurn.approvalPolicy, "never");
+    await waitForState(harness, conversation.id, "idle");
+
+    await harness.manager.setOptions(conversation.id, { mode: "edit" });
+    await harness.manager.send(conversation.id, fixturePrompt("continuar", -1));
+    await waitForState(harness, conversation.id, "idle");
+
+    const resumedRequests = harness.fakes[1]?.messages[0] ?? [];
+    assert.deepEqual(
+      requestParams(resumedRequests.find((message) => message.method === "thread/resume")),
+      {
+        threadId: "00000000-0000-4000-8000-000000000002",
+        cwd: "/home/user/projeto",
+        sandbox: "workspace-write",
+        approvalPolicy: "untrusted",
+      },
+    );
+    const turnStart = requestParams(
+      resumedRequests.find((message) => message.method === "turn/start"),
+    );
+    assert.equal(turnStart.sandbox, "workspace-write");
+    assert.equal(turnStart.approvalPolicy, "untrusted");
+  } finally {
+    await harness.close();
+  }
+});
+
 test("aprovações de comando permitem, permitem sempre nesta conversa ou negam", async (t) => {
   for (const scenario of [
     "comando-permitido",
@@ -1001,7 +1037,7 @@ test("retoma thread, interrompe turno e trata CLI ausente", async (t) => {
   await t.test("retomar thread", async () => {
     const harness = await createHarness("continuar", { resumeExisting: true });
     try {
-      const conversation = createConversation(harness.manager);
+      const conversation = createConversation(harness.manager, "edit");
       setAgentSession(harness.db, conversation.id, "00000000-0000-4000-8000-000000000002");
       await harness.manager.send(conversation.id, fixturePrompt("continuar", -1));
       await waitForState(harness, conversation.id, "idle");

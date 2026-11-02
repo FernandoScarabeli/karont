@@ -124,10 +124,15 @@ export class CodexAdapter implements AgentAdapter {
     this.#fast = conversation.fast && Boolean(selectedModel?.supportsFast && this.#fastServiceTier);
     this.#effort = normalizeEffort(conversation.effort ?? selected.effort);
 
+    const { sandbox, approvalPolicy } = permissionSettings(conversation.mode);
     if (resume) {
-      await this.#request("thread/resume", { threadId: sessionId, cwd: conversation.cwd });
+      await this.#request("thread/resume", {
+        threadId: sessionId,
+        cwd: conversation.cwd,
+        sandbox,
+        approvalPolicy,
+      });
     } else {
-      const { sandbox, approvalPolicy } = permissionSettings(conversation.mode);
       this.#threadStarting = true;
       let result: unknown;
       try {
@@ -414,7 +419,10 @@ export class CodexAdapter implements AgentAdapter {
     collaborationMode?: "default" | "plan",
     attachments: ConversationAttachment[] = [],
   ): Promise<void> {
-    if (!this.#threadId) throw new AgentCliError("failed", "A conversa Codex não foi iniciada.");
+    const conversation = this.#conversation;
+    if (!conversation || !this.#threadId)
+      throw new AgentCliError("failed", "A conversa Codex não foi iniciada.");
+    const { sandbox, approvalPolicy } = permissionSettings(conversation.mode);
     const input = await this.#prepareInput(text, attachments);
     this.#turnOpen = true;
     this.#stopRequested = false;
@@ -427,6 +435,8 @@ export class CodexAdapter implements AgentAdapter {
       input,
       model: this.#modelId,
       effort: this.#effort,
+      sandbox,
+      approvalPolicy,
       ...(this.#fast && this.#fastServiceTier
         ? { serviceTier: this.#fastServiceTier }
         : { serviceTierForTurn: "default" }),
