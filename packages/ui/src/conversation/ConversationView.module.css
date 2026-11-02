@@ -120,7 +120,7 @@
 }
 
 .messageList[data-reveal="true"] > :not(.bottomSentinel) {
-  animation: conversationDataReveal var(--k-duration-fast) var(--k-ease) both;
+  animation: conversationDataReveal var(--k-motion-fast) var(--k-ease) both;
 }
 
 .loading,
@@ -343,7 +343,7 @@
 }
 
 .dataReveal {
-  animation: conversationDataReveal var(--k-duration-fast) var(--k-ease) both;
+  animation: conversationDataReveal var(--k-motion-fast) var(--k-ease) both;
 }
 
 @keyframes conversationDataReveal {

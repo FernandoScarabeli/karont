@@ -13,7 +13,7 @@
   border: var(--k-border-width) solid var(--k-color-border);
   border-radius: var(--k-radius-2xl);
   background: var(--k-color-bg-raised);
-  transition: border-color var(--k-duration-fast) var(--k-ease);
+  transition: border-color var(--k-motion-fast) var(--k-ease);
 }
 
 .attachments {
@@ -143,7 +143,7 @@
   background: var(--k-color-primary);
   color: var(--k-color-on-primary);
   cursor: pointer;
-  transition: background-color var(--k-duration-fast) var(--k-ease);
+  transition: background-color var(--k-motion-fast) var(--k-ease);
 }
 
 .submit:hover:not([aria-disabled="true"]) {

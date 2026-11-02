@@ -99,8 +99,6 @@
   --k-control-height-sm: 28px;
   --k-control-height-md: 32px;
   --k-control-height-lg: 36px;
-  --k-duration-fast: 120ms;
-  --k-duration-spring: 260ms;
   --k-duration-cursor-blink: 500ms;
   --k-duration-caret-blink: 1s;
   /* Níveis de movimento (Fluid Functionalism). Espelhados em styles/motion.ts. */
@@ -162,25 +160,10 @@
   --k-duration-status-pulse-medium: 1.6s;
   --k-working-spiral-duration: 1.8s;
   --k-working-shimmer-duration: 2.8s;
-  --k-working-transition-duration: 180ms;
   --k-opacity-terminal-dim: 0.72;
   --k-chat-working-spinner-size: 14px;
+  /* Curva simples (ease-out) para o tier fast e para os exits; sem quique. */
   --k-ease: cubic-bezier(0.2, 0, 0, 1);
-  --k-ease-spring: linear(
-    0,
-    0.006 4%,
-    0.026 8%,
-    0.086 16%,
-    0.191 24%,
-    0.345 34%,
-    0.535 46%,
-    0.728 58%,
-    0.885 70%,
-    0.986 82%,
-    1.025 90%,
-    1.012 96%,
-    1
-  );
   --k-opacity-disabled: 0.5;
 
   --k-topbar-height: 48px;
@@ -350,8 +333,12 @@
   }
 }
 
+/* Sem movimento e sem quique. Fades rápidos ficam instantâneos, como antes. */
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --k-duration-fast: 0ms;
+    --k-motion-fast: 0ms;
+    --k-motion-fast-exit: 0ms;
+    --k-ease-spring-moderate: var(--k-ease);
+    --k-ease-spring-slow: var(--k-ease);
   }
 }

@@ -80,7 +80,7 @@
   height: 100%;
   background: var(--k-color-border);
   content: "";
-  transition: background-color var(--k-duration-fast) var(--k-ease);
+  transition: background-color var(--k-motion-fast) var(--k-ease);
 }
 
 .separator[aria-orientation="horizontal"]::after {

@@ -17,6 +17,7 @@ import { Composer } from "../components/Composer/Composer.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
 import { t } from "../i18n/pt-BR.ts";
+import { MOTION_MS } from "../styles/motion.ts";
 import {
   AttachmentChips,
   AttachmentPicker,
@@ -214,7 +215,7 @@ export function ConversationView({
     if (!conversation || initiallyHadConversationRef.current) return;
     initiallyHadConversationRef.current = true;
     setRevealLoadedData(true);
-    const timer = window.setTimeout(() => setRevealLoadedData(false), 120);
+    const timer = window.setTimeout(() => setRevealLoadedData(false), MOTION_MS.fast);
     return () => window.clearTimeout(timer);
   }, [conversation]);
 
