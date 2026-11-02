@@ -165,6 +165,56 @@ test("fim e erro da resposta marcam a conversa como não vista e emitem atualiza
   }
 });
 
+test("a conclusão ao vivo leva o mesmo início e fim gravados na mensagem", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-message-timing-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  let tick = 0;
+  const manager = new ConversationManager({
+    db,
+    env: { ...process.env, KARONT_AGENT_IDLE_MS: "10000" },
+    broadcast: async (event) => {
+      events.push(event);
+    },
+    adapterFactory: (_conversation, emit) =>
+      new FinishTestAdapter(emit, { mode: "turn-end", status: "done" }),
+    now: () => new Date(Date.UTC(2026, 10, 1, 12, 0, 0) + tick++ * 1_000).toISOString(),
+    titleGenerator: async () => null,
+  });
+  const conversation = manager.create({
+    agent: "claude",
+    title: "Tempo de trabalho",
+    cwd: root,
+    mode: "edit",
+  });
+
+  try {
+    await manager.send(conversation.id, "Conclua esta tarefa.");
+    await waitForState(manager, conversation.id, "idle");
+
+    const persisted = getMessage(db, manager.get(conversation.id)?.messages.at(-1)?.id ?? "");
+    assert.ok(persisted?.startedAt !== undefined && persisted.endedAt !== undefined);
+    assert.ok(persisted.endedAt > persisted.startedAt);
+    const finalEvent = events
+      .filter(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          "messageStatus" in event.payload &&
+          event.payload.messageStatus === "done" &&
+          event.payload.conversation.id === conversation.id,
+      )
+      .at(-1);
+    assert.ok(finalEvent?.event === "conversation.stateChanged");
+    assert.ok("messageId" in finalEvent.payload);
+    assert.equal(finalEvent.payload.messageId, persisted.id);
+    assert.equal(finalEvent.payload.messageStartedAt, persisted.startedAt);
+    assert.equal(finalEvent.payload.messageEndedAt, persisted.endedAt);
+  } finally {
+    await manager.close();
+    db.close();
+  }
+});
+
 test("serviço grava erro JSON do Codex em texto legível e preserva detalhes", async () => {
   const raw =
     '{"type":"error","error":{"message":"regurg plugin blocked the output stream.","type":"invalid_request_error","param":null,"code":"safety_violation"},"status":400,"sequence_number":53}';

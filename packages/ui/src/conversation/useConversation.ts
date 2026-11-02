@@ -5,7 +5,7 @@ import { getBridge } from "../bridge/index.ts";
 import { t } from "../i18n/pt-BR.ts";
 import { cacheConversationSnapshot, getConversationSnapshot } from "./conversationCache.ts";
 
-type State = {
+export type State = {
   conversation: Conversation | null;
   messageIds: string[];
   messagesById: Record<string, ConversationMessage>;
@@ -15,7 +15,7 @@ type State = {
   responseFinishedId: string | null;
 };
 
-type Action =
+export type Action =
   | { type: "conversation"; conversation: Conversation }
   | { type: "message"; message: ConversationMessage }
   | { type: "loaded"; conversation: Conversation; messages: ConversationMessage[] }
@@ -174,7 +174,7 @@ function createInitialState(conversationId: string): State {
   };
 }
 
-function reducer(state: State, action: Action): State {
+export function reducer(state: State, action: Action): State {
   if (action.type === "message") return upsertMessage(state, action.message);
   if (action.type === "conversation") return { ...state, conversation: action.conversation };
   if (action.type === "loaded") {
@@ -211,11 +211,17 @@ function reducer(state: State, action: Action): State {
       if ("messageId" in action.event.payload) {
         const message = next.messagesById[action.event.payload.messageId];
         if (message) {
+          const { messageStartedAt, messageEndedAt } = action.event.payload;
           next = {
             ...next,
             messagesById: {
               ...next.messagesById,
-              [message.id]: { ...message, status: action.event.payload.messageStatus },
+              [message.id]: {
+                ...message,
+                status: action.event.payload.messageStatus,
+                ...(messageStartedAt !== undefined ? { startedAt: messageStartedAt } : {}),
+                ...(messageEndedAt !== undefined ? { endedAt: messageEndedAt } : {}),
+              },
             },
           };
         }

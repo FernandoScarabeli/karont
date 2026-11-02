@@ -595,10 +595,7 @@ export class ConversationManager {
       conversation.state = event.state;
       conversation.updatedAt = this.#now();
       updateConversation(this.#db, conversation);
-      await this.#stateEvent(conversation, {
-        messageId: message.id,
-        messageStatus: message.status,
-      });
+      await this.#stateEvent(conversation, message);
       return;
     }
     if (event.kind === "part") {
@@ -727,10 +724,7 @@ export class ConversationManager {
         conversation.unreadAt = completedAt;
       }
       updateConversation(this.#db, conversation);
-      await this.#stateEvent(conversation, {
-        messageId: message.id,
-        messageStatus: message.status,
-      });
+      await this.#stateEvent(conversation, message);
       if (event.status === "done") this.#scheduleConversationTitle(conversation, message);
       if (!pendingPlan) this.#scheduleIdleDispose(conversationId, active);
     }
@@ -863,7 +857,7 @@ export class ConversationManager {
     conversation.updatedAt = completedAt;
     if (message.status === "error") conversation.unreadAt = completedAt;
     updateConversation(this.#db, conversation);
-    await this.#stateEvent(conversation, { messageId: message.id, messageStatus: message.status });
+    await this.#stateEvent(conversation, message);
     if (active?.currentMessage?.id === message.id) active.currentMessage = undefined;
   }
 
@@ -906,14 +900,17 @@ export class ConversationManager {
     return Date.parse(this.#now());
   }
 
-  async #stateEvent(
-    conversation: Conversation,
-    message?: { messageId: string; messageStatus: ConversationMessage["status"] },
-  ): Promise<void> {
+  async #stateEvent(conversation: Conversation, message?: ConversationMessage): Promise<void> {
     await this.#emit({
       event: "conversation.stateChanged",
       payload: message
-        ? { conversation, messageId: message.messageId, messageStatus: message.messageStatus }
+        ? {
+            conversation,
+            messageId: message.id,
+            messageStatus: message.status,
+            ...(message.startedAt !== undefined ? { messageStartedAt: message.startedAt } : {}),
+            ...(message.endedAt !== undefined ? { messageEndedAt: message.endedAt } : {}),
+          }
         : { conversation },
     });
   }
