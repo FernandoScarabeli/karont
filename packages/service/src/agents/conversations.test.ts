@@ -546,6 +546,32 @@ test("mantém o fork Claude pendente se o primeiro turno não informa um novo sy
   }
 });
 
+test("conclui o fork Claude quando result informa um id novo sem system/init", async () => {
+  const harness = await createHarness("branch-fork-result-new-id", {}, { exitAfterResult: true });
+  try {
+    const source = harness.manager.create({
+      agent: "claude",
+      title: "Conversa original",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    setAgentSession(harness.db, source.id, "claude-source-session");
+    addTranscriptMessages(harness.db, source.id, [
+      { id: "source-user-1", author: "user", text: "Pergunta original" },
+      { id: "source-agent-1", author: "agent", text: "Resposta original" },
+    ]);
+
+    const branch = await harness.manager.branch(source.id, "source-agent-1");
+    await harness.manager.send(branch.id, "Primeiro turno do ramo.");
+    await waitForState(harness, branch.id, "idle");
+
+    assert.equal(getAgentSession(harness.db, branch.id), "claude-forked-session");
+    assert.equal(isBranchForkPending(harness.db, branch.id), false);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("conclui o fork Claude quando system/init informa uma sessão nova", async () => {
   const harness = await createHarness("branch-fork");
   try {
@@ -1459,6 +1485,53 @@ test("setOptions preserva metadados alterados durante descarte do agente", async
   }
 });
 
+test("setOptions sem alteração efetiva mantém o adaptador aquecido", async () => {
+  let starts = 0;
+  let disposals = 0;
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => {
+      starts += 1;
+    },
+    send: async () => emit({ kind: "turn-end", status: "done" }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => {
+      disposals += 1;
+    },
+  });
+  const harness = await createHarness(
+    "texto",
+    { KARONT_AGENT_IDLE_MS: "60000" },
+    {
+      adapterFactory,
+      codexModelCache: {
+        models: [{ id: "gpt-basic", name: "GPT básico", efforts: ["low"], supportsFast: false }],
+        efforts: ["low"],
+      },
+    },
+  );
+  try {
+    const conversation = harness.manager.create({
+      agent: "codex",
+      title: "Conversa Codex",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      model: "gpt-basic",
+    });
+    await harness.manager.send(conversation.id, "Primeira mensagem.");
+    await waitForState(harness, conversation.id, "idle");
+
+    await harness.manager.setOptions(conversation.id, { fast: true });
+    await harness.manager.send(conversation.id, "Segunda mensagem.");
+    await waitForState(harness, conversation.id, "idle");
+
+    assert.equal(starts, 1);
+    assert.equal(disposals, 0);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("CLI ausente gera erro retryable e o reinício marca streaming como interrupted", async (t) => {
   await t.test("erro", async () => {
     const harness = await createHarness("erro");
@@ -1504,6 +1577,94 @@ test("CLI ausente gera erro retryable e o reinício marca streaming como interru
     assert.ok(recovered?.parts.some((part) => part.type === "error" && part.retryable));
     db.close();
   });
+});
+
+test("Claude não abre processo se for descartado enquanto valida a pasta", async () => {
+  const fixturePath = fileURLToPath(new URL("texto.jsonl", fixtureDir));
+  const fake = createFakeClaudeSpawn(fixturePath, { initializeModels: modelFixture });
+  const env = {
+    ...process.env,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CLAUDE_CLI: "claude",
+  };
+  let spawnCount = 0;
+  const adapter = new ClaudeAdapter(() => undefined, {
+    env,
+    spawn: (command, args, options) => {
+      spawnCount += 1;
+      return fake(command, args, options);
+    },
+  });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "dispose-before-spawn-claude",
+    agent: "claude",
+    title: "Abertura cancelada",
+    cwd: os.tmpdir(),
+    mode: "edit",
+    fast: false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const starting = adapter.start(conversation, "session-id", false);
+  try {
+    await adapter.dispose();
+    await assert.rejects(starting, /foi encerrada/);
+    assert.equal(spawnCount, 0);
+  } finally {
+    await adapter.dispose();
+  }
+});
+
+test("Claude mata o processo se dispose acontecer dentro do spawn", async () => {
+  const env = {
+    ...process.env,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CLAUDE_CLI: "claude",
+  };
+  let adapter!: ClaudeAdapter;
+  let disposal: Promise<void> | undefined;
+  const signals: NodeJS.Signals[] = [];
+  const child = Object.assign(new EventEmitter(), {
+    exitCode: null as number | null,
+    signalCode: null as NodeJS.Signals | null,
+    kill(signal: NodeJS.Signals) {
+      signals.push(signal);
+      child.signalCode = signal;
+      queueMicrotask(() => child.emit("exit", null, signal));
+      return true;
+    },
+  });
+  adapter = new ClaudeAdapter(() => undefined, {
+    env,
+    spawn: () => {
+      disposal = adapter.dispose();
+      return child as unknown as ChildProcess;
+    },
+  });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "dispose-during-spawn-claude",
+    agent: "claude",
+    title: "Abertura cancelada",
+    cwd: os.tmpdir(),
+    mode: "edit",
+    fast: false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  await assert.rejects(adapter.start(conversation, "session-id", false), /foi encerrada/);
+  await disposal;
+  assert.deepEqual(signals, ["SIGTERM"]);
 });
 
 test("processo da CLI fecha por ociosidade e próxima mensagem retoma a sessão", async () => {
@@ -1652,11 +1813,11 @@ test("agent.models lê o initialize uma vez, elimina o alias do padrão e respei
     const legacyHaiku = first.models.find((model) => model.id === "claude-haiku-4-5-20251001");
 
     assert.equal(first.models.length, 12);
-    assert.equal(defaultModel?.id, "default");
+    assert.equal(defaultModel?.id, "opus");
     assert.equal(defaultModel?.name, "Opus 5.5");
-    assert.deepEqual(defaultModel?.aliases, ["opus"]);
+    assert.deepEqual(defaultModel?.aliases, ["default"]);
     assert.equal(
-      first.models.some((model) => model.id === "opus"),
+      first.models.some((model) => model.id === "default"),
       false,
     );
     assert.deepEqual(defaultModel?.efforts, ["low", "medium", "high", "xhigh", "max"]);
@@ -1691,7 +1852,7 @@ test("agent.models reaproveita o initialize do adaptador Claude ativo", async ()
     await waitForState(harness, conversation.id, "idle");
 
     const models = await harness.manager.models("claude");
-    assert.equal(models.models.find((model) => model.isDefault)?.id, "default");
+    assert.equal(models.models.find((model) => model.isDefault)?.id, "opus");
     assert.equal(harness.spawnArgs.length, 1);
     assert.equal(
       harness.claudeFake.messages.filter(
@@ -1701,6 +1862,25 @@ test("agent.models reaproveita o initialize do adaptador Claude ativo", async ()
       ).length,
       1,
     );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude não envia o marcador default como modelo explícito", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Preferência antiga",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      model: "default",
+    });
+    await harness.manager.send(conversation.id, "Continue com o modelo padrão.");
+    await waitForState(harness, conversation.id, "idle");
+
+    assert.equal(harness.spawnArgs[0]?.includes("--model"), false);
   } finally {
     await harness.close();
   }
@@ -1822,6 +2002,52 @@ test("retry reenvia os bytes dos anexos da mensagem original", async () => {
       .get(conversation.id) as { attachments_json: string };
     assert.equal(raw.attachments_json.includes(imageData), false);
     assert.equal(raw.attachments_json.includes("Trecho de referência."), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("retry descarta os bytes de anexos das conversas mais antigas", async () => {
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async () =>
+      emit({
+        kind: "turn-end",
+        status: "error",
+        error: { type: "failed", text: "Falha simulada." },
+      }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness("texto", {}, { adapterFactory });
+  try {
+    const conversations = Array.from({ length: 4 }, () => createConversation(harness.manager));
+    for (const [index, conversation] of conversations.entries()) {
+      await harness.manager.send(conversation.id, `Mensagem ${index}.`, false, [
+        {
+          name: `nota-${index}.txt`,
+          mimeType: "text/plain",
+          kind: "text",
+          data: `anexo-${index}`,
+        },
+      ]);
+      await waitForState(harness, conversation.id, "error");
+    }
+
+    const oldest = conversations[0];
+    const latest = conversations.at(-1);
+    assert.ok(oldest && latest);
+    const oldestAgent = latestAgent(harness, oldest.id);
+    assert.ok(oldestAgent);
+    await assert.rejects(
+      harness.manager.retry(oldest.id, oldestAgent.id),
+      /bytes dos anexos não estão mais disponíveis/,
+    );
+    const latestAgentMessage = latestAgent(harness, latest.id);
+    assert.ok(latestAgentMessage);
+    await harness.manager.retry(latest.id, latestAgentMessage.id);
+    await waitForState(harness, latest.id, "error");
   } finally {
     await harness.close();
   }

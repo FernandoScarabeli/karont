@@ -10,6 +10,7 @@ import {
   type ConversationAttachment,
   describeAgentError,
   type MessagePart,
+  reasoningEffortSchema,
 } from "@karont/contract";
 import { validateFolder } from "../folders.ts";
 import type {
@@ -27,7 +28,7 @@ import { mapCodexSpecialAction, truncateUtf8 } from "./tool-actions.ts";
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
 const RPC_TIMEOUT_MS = 30_000;
 const INTERRUPT_TIMEOUT_MS = 3_000;
-const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+const EFFORTS = reasoningEffortSchema.options;
 type Effort = (typeof EFFORTS)[number];
 type RpcId = string | number;
 type JsonRecord = Record<string, unknown>;
@@ -100,7 +101,9 @@ export class CodexAdapter implements AgentAdapter {
   #attachmentCleanup: Promise<void> = Promise.resolve();
 
   constructor(emit: (event: AdapterEvent) => void, options: CodexAdapterOptions = {}) {
-    this.#emit = emit;
+    this.#emit = (event) => {
+      if (!this.#disposed) emit(event);
+    };
     this.#env = options.env ?? process.env;
     this.#spawn = options.spawn ?? nodeSpawn;
     this.#homeDir = options.homeDir ?? os.homedir();
@@ -116,7 +119,9 @@ export class CodexAdapter implements AgentAdapter {
     this.#stopRequested = false;
     this.#models = { models: [], efforts: [...EFFORTS] };
     await this.#startServer(conversation.cwd);
+    this.#throwIfDisposed();
     const catalog = await this.#request("model/list", { limit: 100, includeHidden: false });
+    this.#throwIfDisposed();
     this.#models = parseModelList(catalog);
     const selected = selectModel(this.#models, catalog, conversation.model);
     this.#modelId = selected.id;
@@ -133,6 +138,7 @@ export class CodexAdapter implements AgentAdapter {
         sandbox,
         approvalPolicy,
       });
+      this.#throwIfDisposed();
     } else {
       this.#threadStarting = true;
       let result: unknown;
@@ -144,6 +150,7 @@ export class CodexAdapter implements AgentAdapter {
           approvalPolicy,
           ...(this.#fast && this.#fastServiceTier ? { serviceTier: this.#fastServiceTier } : {}),
         });
+        this.#throwIfDisposed();
       } finally {
         this.#threadStarting = false;
       }
@@ -382,6 +389,7 @@ export class CodexAdapter implements AgentAdapter {
 
   async #startServer(cwd: string): Promise<void> {
     const folder = await validateFolder(cwd);
+    this.#throwIfDisposed();
     if (!folder.exists || !folder.isDirectory) {
       throw new AgentCliError("failed", `A pasta do projeto não existe mais: ${cwd}`);
     }
@@ -393,17 +401,24 @@ export class CodexAdapter implements AgentAdapter {
         platform: this.#platform,
       })) ||
       "codex";
+    this.#throwIfDisposed();
+    let child: ChildProcess;
     try {
-      this.#child = this.#spawn(command, ["app-server", "--stdio"], {
+      child = this.#spawn(command, ["app-server", "--stdio"], {
         cwd,
         env: this.#env,
         stdio: ["pipe", "pipe", "pipe"],
       });
+      this.#child = child;
+      if (this.#disposed) {
+        terminateSpawnedChild(child);
+        this.#child = undefined;
+        this.#throwIfDisposed();
+      }
     } catch (error) {
       throw classifyStartError(error, command);
     }
 
-    const child = this.#child;
     if (!child.stdin || !child.stdout || !child.stderr)
       throw new AgentCliError("failed", "O Codex não abriu os canais de comunicação esperados.");
     const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
@@ -416,7 +431,13 @@ export class CodexAdapter implements AgentAdapter {
       clientInfo: { name: "karont", version: "0.0.0", title: "Karont" },
       capabilities: { experimentalApi: true },
     });
+    this.#throwIfDisposed();
     await this.#notify("initialized", {});
+    this.#throwIfDisposed();
+  }
+
+  #throwIfDisposed(): void {
+    if (this.#disposed) throw new AgentCliError("failed", "O processo Codex foi encerrado.");
   }
 
   async #startTurn(
@@ -427,7 +448,7 @@ export class CodexAdapter implements AgentAdapter {
     const conversation = this.#conversation;
     if (!conversation || !this.#threadId)
       throw new AgentCliError("failed", "A conversa Codex não foi iniciada.");
-    const { sandbox, approvalPolicy } = permissionSettings(conversation.mode);
+    const { approvalPolicy } = permissionSettings(conversation.mode);
     const input = await this.#prepareInput(text, attachments);
     this.#turnOpen = true;
     this.#stopRequested = false;
@@ -440,7 +461,6 @@ export class CodexAdapter implements AgentAdapter {
       input,
       model: this.#modelId,
       effort: this.#effort,
-      sandboxPolicy: codexSandboxPolicy(sandbox),
       approvalPolicy,
       ...(this.#fast && this.#fastServiceTier
         ? { serviceTier: this.#fastServiceTier }
@@ -1178,6 +1198,14 @@ export const createCodexAdapterFactory =
   (_conversation, emit) =>
     new CodexAdapter(emit, options);
 
+function terminateSpawnedChild(child: ChildProcess): void {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const timer = setTimeout(() => child.kill("SIGKILL"), 1_000);
+  timer.unref?.();
+  child.once("exit", () => clearTimeout(timer));
+  child.kill("SIGTERM");
+}
+
 export function createCodexModelLoader(
   options: CodexAdapterOptions = {},
 ): (cwd: string) => Promise<AdapterModelList> {
@@ -1191,14 +1219,6 @@ function permissionSettings(mode: Conversation["mode"]): {
   if (mode === "read-only") return { sandbox: "read-only", approvalPolicy: "never" };
   if (mode === "full") return { sandbox: "danger-full-access", approvalPolicy: "never" };
   return { sandbox: "workspace-write", approvalPolicy: "untrusted" };
-}
-
-function codexSandboxPolicy(sandbox: "read-only" | "workspace-write" | "danger-full-access"): {
-  type: "readOnly" | "workspaceWrite" | "dangerFullAccess";
-} {
-  if (sandbox === "read-only") return { type: "readOnly" };
-  if (sandbox === "danger-full-access") return { type: "dangerFullAccess" };
-  return { type: "workspaceWrite" };
 }
 
 function parseModelList(value: unknown): AdapterModelList {

@@ -4,27 +4,28 @@ import { defaultModel, findModelByIdOrAlias, resolveModelId } from "./modelCatal
 
 const models = {
   models: [
-    { id: "default", name: "Opus 5.5", aliases: ["opus"], isDefault: true },
+    { id: "opus", name: "Opus 5.5", aliases: ["default"], isDefault: true },
     { id: "sonnet", name: "Sonnet 5.5" },
   ],
 };
 
-test("resolve a preferência antiga para o modelo padrão sem expor um alias duplicado", () => {
-  assert.equal(findModelByIdOrAlias(models, "opus")?.id, "default");
-  assert.equal(resolveModelId(models, "opus"), "default");
+test("resolve a preferência default para o modelo explícito marcado como padrão", () => {
+  assert.equal(findModelByIdOrAlias(models, "default")?.id, "opus");
+  assert.equal(resolveModelId(models, "default"), "opus");
   assert.equal(
-    models.models.some((model) => model.id === "opus"),
+    models.models.some((model) => model.id === "default"),
     false,
   );
 });
 
-test("modelo removido da lista cai no padrão disponível", () => {
-  assert.equal(resolveModelId(models, "modelo-removido"), "default");
-  assert.equal(defaultModel(models)?.id, "default");
+test("preserva um modelo salvo que não está na lista atual", () => {
+  assert.equal(resolveModelId(models, "claude-opus-4-8"), "claude-opus-4-8");
+  assert.equal(defaultModel(models)?.id, "opus");
 });
 
-test("usa o primeiro modelo se a lista não marcar um padrão", () => {
+test("só usa o primeiro modelo quando não há preferência salva", () => {
   const catalog = { models: [{ id: "sonnet", name: "Sonnet" }] };
   assert.equal(defaultModel(catalog)?.id, "sonnet");
-  assert.equal(resolveModelId(catalog, "modelo-removido"), "sonnet");
+  assert.equal(resolveModelId(catalog, ""), "sonnet");
+  assert.equal(resolveModelId(catalog, "modelo-removido"), "modelo-removido");
 });

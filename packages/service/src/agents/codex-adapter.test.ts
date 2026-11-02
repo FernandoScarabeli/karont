@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { lstat, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -308,6 +309,97 @@ test("Codex distingue pasta do projeto apagada de CLI ausente", async (context) 
       error.message === `A pasta do projeto não existe mais: ${cwd}`,
   );
   assert.equal(spawnCount, 0);
+});
+
+test("Codex não abre processo se for descartado enquanto valida a pasta", async () => {
+  const env = {
+    ...process.env,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CODEX_CLI: "codex",
+  };
+  const fake = createFakeCodexSpawn(fileURLToPath(new URL("texto.jsonl", fixtureDir)), {
+    cwdOverride: os.tmpdir(),
+  });
+  let spawnCount = 0;
+  const adapter = new CodexAdapter(() => undefined, {
+    env,
+    homeDir: os.tmpdir(),
+    spawn: (command, args, options) => {
+      spawnCount += 1;
+      return fake(command, args, options);
+    },
+  });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "dispose-before-spawn-codex",
+    agent: "codex",
+    title: "Abertura cancelada",
+    cwd: os.tmpdir(),
+    mode: "read-only",
+    fast: false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const starting = adapter.start(conversation, "thread-id", false);
+  try {
+    await adapter.dispose();
+    await assert.rejects(starting, /foi encerrado/);
+    assert.equal(spawnCount, 0);
+  } finally {
+    await adapter.dispose();
+  }
+});
+
+test("Codex mata o processo se dispose acontecer dentro do spawn", async () => {
+  const env = {
+    ...process.env,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CODEX_CLI: "codex",
+  };
+  let adapter!: CodexAdapter;
+  let disposal: Promise<void> | undefined;
+  const signals: NodeJS.Signals[] = [];
+  const child = Object.assign(new EventEmitter(), {
+    exitCode: null as number | null,
+    signalCode: null as NodeJS.Signals | null,
+    kill(signal: NodeJS.Signals) {
+      signals.push(signal);
+      child.signalCode = signal;
+      queueMicrotask(() => child.emit("exit", null, signal));
+      return true;
+    },
+  });
+  adapter = new CodexAdapter(() => undefined, {
+    env,
+    homeDir: os.tmpdir(),
+    spawn: () => {
+      disposal = adapter.dispose();
+      return child as unknown as import("node:child_process").ChildProcess;
+    },
+  });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "dispose-during-spawn-codex",
+    agent: "codex",
+    title: "Abertura cancelada",
+    cwd: os.tmpdir(),
+    mode: "read-only",
+    fast: false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  await assert.rejects(adapter.start(conversation, "thread-id", false), /foi encerrado/);
+  await disposal;
+  assert.deepEqual(signals, ["SIGTERM"]);
 });
 
 test("thread/turns/list recupera o turno selecionado em histórico antigo", async () => {
@@ -804,11 +896,11 @@ test("deixa a duração nula quando não há início ou duração informados", a
   }
 });
 
-test("modos Codex usam as políticas reais do app-server", async (t) => {
-  for (const [mode, sandbox, sandboxPolicy, approvalPolicy] of [
-    ["read-only", "read-only", { type: "readOnly" }, "never"],
-    ["edit", "workspace-write", { type: "workspaceWrite" }, "untrusted"],
-    ["full", "danger-full-access", { type: "dangerFullAccess" }, "never"],
+test("modos Codex usam sandbox na thread e aprovação por turno", async (t) => {
+  for (const [mode, sandbox, approvalPolicy] of [
+    ["read-only", "read-only", "never"],
+    ["edit", "workspace-write", "untrusted"],
+    ["full", "danger-full-access", "never"],
   ] as const) {
     await t.test(mode, async () => {
       const harness = await createHarness("texto", { mode });
@@ -832,7 +924,7 @@ test("modos Codex usam as políticas reais do app-server", async (t) => {
         );
         const turnParams = requestParams(turnStart);
         assert.equal(turnParams.sandbox, undefined);
-        assert.deepEqual(turnParams.sandboxPolicy, sandboxPolicy);
+        assert.equal(turnParams.sandboxPolicy, undefined);
         assert.equal(turnParams.approvalPolicy, approvalPolicy);
       } finally {
         await harness.close();
@@ -850,7 +942,7 @@ test("Codex aplica o modo atualizado ao retomar uma conversa", async () => {
       harness.fakes[0]?.messages[0]?.find((message) => message.method === "turn/start"),
     );
     assert.equal(initialTurn.sandbox, undefined);
-    assert.deepEqual(initialTurn.sandboxPolicy, { type: "readOnly" });
+    assert.equal(initialTurn.sandboxPolicy, undefined);
     assert.equal(initialTurn.approvalPolicy, "never");
     await waitForState(harness, conversation.id, "idle");
 
@@ -872,7 +964,7 @@ test("Codex aplica o modo atualizado ao retomar uma conversa", async () => {
       resumedRequests.find((message) => message.method === "turn/start"),
     );
     assert.equal(turnStart.sandbox, undefined);
-    assert.deepEqual(turnStart.sandboxPolicy, { type: "workspaceWrite" });
+    assert.equal(turnStart.sandboxPolicy, undefined);
     assert.equal(turnStart.approvalPolicy, "untrusted");
   } finally {
     await harness.close();
