@@ -113,6 +113,7 @@
   overflow: auto;
   overscroll-behavior: contain;
   padding: var(--k-space-4) var(--k-space-6);
+  padding-block-end: calc(var(--k-space-4) + var(--history-navigation-space, 0px));
   scroll-behavior: auto;
   overflow-anchor: none;
   transition: opacity var(--k-motion-moderate) var(--k-ease);
@@ -133,24 +134,28 @@
   margin-block-start: var(--k-space-6);
 }
 
-.highlightedMessage::before {
-  position: absolute;
-  z-index: 0;
-  inset: calc(-1 * var(--k-space-2)) 0;
-  border-radius: var(--k-radius-xl);
-  background: var(--k-color-bg-hover);
-  content: "";
-  pointer-events: none;
-  animation: historyMessageHighlight calc(var(--k-motion-slow) * 4) var(--k-ease) both;
+.highlightedMessage > :global(article[data-author="user"]) > :global(div[class*="userBubble"]) {
+  position: relative;
+  isolation: isolate;
 }
 
-.highlightedMessage > :global(article[data-message-id]) {
-  z-index: 1;
+.highlightedMessage
+  > :global(article[data-author="user"])
+  > :global(div[class*="userBubble"])::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--k-color-bg-control) 84%, var(--k-color-text-primary));
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  animation: historyMessageHighlight calc(var(--k-motion-slow) * 5) var(--k-ease) both;
 }
 
 @keyframes historyMessageHighlight {
   from {
-    opacity: 0.72;
+    opacity: 1;
   }
 
   to {
@@ -217,6 +222,7 @@
 .historyOption {
   position: relative;
   z-index: 1;
+  flex: 0 0 auto;
   min-width: 0;
   color: var(--k-color-text-primary);
   cursor: pointer;
@@ -312,8 +318,10 @@
     transition: none;
   }
 
-  .highlightedMessage::before {
+  .highlightedMessage
+    > :global(article[data-author="user"])
+    > :global(div[class*="userBubble"])::before {
     animation: none;
-    opacity: 0;
+    opacity: 1;
   }
 }
