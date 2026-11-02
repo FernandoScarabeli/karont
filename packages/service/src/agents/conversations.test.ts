@@ -10,6 +10,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import type {
   AnyEvent,
+  ComposerSkill,
   Conversation,
   ConversationAttachment,
   ConversationMessage,
@@ -2129,6 +2130,60 @@ test("retry reenvia os bytes dos anexos da mensagem original", async () => {
     assert.equal(raw.attachments_json.includes(imageData), false);
     assert.equal(raw.attachments_json.includes("Trecho de referência."), false);
   } finally {
+    await harness.close();
+  }
+});
+
+test("retry reenvia as skills da mensagem original", async () => {
+  const receivedSkills: Array<Array<{ name: string; path?: string }>> = [];
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async (_text, _plan, _attachments, skills = []) => {
+      receivedSkills.push(structuredClone(skills));
+      emit({ kind: "turn-end", status: "done" });
+    },
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness("texto", {}, { adapterFactory });
+  let restartedManager: ConversationManager | undefined;
+  try {
+    const conversation = createConversation(harness.manager);
+    const skills: Array<Pick<ComposerSkill, "name" | "path">> = [
+      { name: "project-helper", path: "/projeto/.agents/skills/project-helper/SKILL.md" },
+    ];
+
+    await harness.manager.send(conversation.id, "Use a skill do projeto.", false, [], skills);
+    await waitForState(harness, conversation.id, "idle");
+    const userMessage = harness.manager
+      .get(conversation.id)
+      ?.messages.find((message) => message.author === "user");
+    assert.deepEqual(userMessage?.parts[0], {
+      id: userMessage?.parts[0]?.id,
+      type: "text",
+      markdown: "Use a skill do projeto.",
+      skills,
+    });
+    const agentMessage = harness.manager
+      .get(conversation.id)
+      ?.messages.find((message) => message.author === "agent");
+    assert.ok(agentMessage);
+
+    await harness.manager.close();
+    restartedManager = new ConversationManager({
+      db: harness.db,
+      broadcast: async (event) => {
+        harness.events.push(event);
+      },
+      adapterFactory,
+    });
+    await restartedManager.retry(conversation.id, agentMessage.id);
+    await waitForState(harness, conversation.id, "idle");
+
+    assert.deepEqual(receivedSkills, [skills, skills]);
+  } finally {
+    await restartedManager?.close();
     await harness.close();
   }
 });

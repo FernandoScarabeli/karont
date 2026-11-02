@@ -53,6 +53,11 @@ const messagePartBase = {
   startedAt: z.number().int().nonnegative().optional(),
   endedAt: z.number().int().nonnegative().optional(),
 };
+export const composerSkillReferenceSchema = z.strictObject({
+  name: z.string().min(1).max(240),
+  path: z.string().min(1).max(4_096).optional(),
+});
+export type ComposerSkillReference = z.infer<typeof composerSkillReferenceSchema>;
 const actionTypeSchema = z.enum([
   "read",
   "edit",
@@ -75,6 +80,7 @@ export const messagePartSchema = z.discriminatedUnion("type", [
     type: z.literal("text"),
     markdown: z.string(),
     operation: z.literal("compact").optional(),
+    skills: z.array(composerSkillReferenceSchema).max(8).optional(),
     sources: z.array(messageSourceSchema).max(MAX_MESSAGE_SOURCES).optional(),
   }),
   z.strictObject({ ...messagePartBase, type: z.literal("thinking"), text: z.string() }),
@@ -196,15 +202,7 @@ export const conversationSendParamsSchema = z.strictObject({
   text: z.string().min(1).max(65_536),
   plan: z.boolean().optional(),
   attachments: z.array(conversationAttachmentSchema).max(8).optional(),
-  skills: z
-    .array(
-      z.strictObject({
-        name: z.string().min(1).max(240),
-        path: z.string().min(1).max(4_096).optional(),
-      }),
-    )
-    .max(8)
-    .optional(),
+  skills: z.array(composerSkillReferenceSchema).max(8).optional(),
 });
 
 export const composerSkillSchema = z.strictObject({

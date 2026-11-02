@@ -17,6 +17,7 @@ export { pickFolderOptionsSchema } from "./bridge.ts";
 export type {
   AgentCapabilities,
   ComposerSkill,
+  ComposerSkillReference,
   Conversation,
   ConversationAttachment,
   ConversationAttachmentMetadata,
@@ -29,6 +30,7 @@ export {
   agentIdSchema,
   agentModelsSchema,
   composerFileSchema,
+  composerSkillReferenceSchema,
   composerSkillSchema,
   conversationAttachmentMetadataSchema,
   conversationAttachmentSchema,

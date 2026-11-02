@@ -453,6 +453,9 @@ export class ConversationManager {
           type: "text",
           markdown: text,
           ...(operation === "compact" ? { operation: "compact" as const } : {}),
+          ...(skills.length
+            ? { skills: skills.map(({ name, path }) => ({ name, ...(path ? { path } : {}) })) }
+            : {}),
         },
       ],
       ...(validatedAttachments.metadata.length
@@ -533,6 +536,7 @@ export class ConversationManager {
     const text = textPart?.type === "text" ? textPart.markdown : "";
     const operation =
       textPart?.type === "text" && textPart.operation === "compact" ? "compact" : "send";
+    const skills = textPart?.type === "text" ? (textPart.skills ?? []) : [];
     if (!user || !text)
       throw new Error("A mensagem original não está disponível para nova tentativa.");
     let attachments: ConversationAttachment[] = [];
@@ -554,7 +558,7 @@ export class ConversationManager {
         : withBranchContext(text, getBranchContextPending(this.#db, id)),
       undefined,
       attachments,
-      [],
+      skills,
       operation,
     );
     return agentMessage;
