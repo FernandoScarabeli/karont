@@ -48,6 +48,7 @@ import { FollowBottomContext } from "./followBottom.ts";
 import { FollowScroller } from "./followScroll.ts";
 import { type FollowEvent, type FollowState, nextFollowState } from "./followState.ts";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
+import { resolveModelId } from "./modelCatalog.ts";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
 import { WorkingIndicator } from "./WorkingIndicator.tsx";
@@ -666,6 +667,13 @@ export function ConversationView({
     },
     [bridge, conversation, id, updateConversation],
   );
+
+  useEffect(() => {
+    if (!conversation?.model || !currentModels?.models.length) return;
+    const resolvedModel = resolveModelId(currentModels, conversation.model);
+    if (resolvedModel && resolvedModel !== conversation.model)
+      void saveOptions({ model: resolvedModel });
+  }, [conversation?.model, currentModels, saveOptions]);
 
   const copyFolderPath = useCallback(async () => {
     if (!conversation) return;

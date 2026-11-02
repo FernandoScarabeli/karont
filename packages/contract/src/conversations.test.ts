@@ -116,7 +116,16 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
   assert.equal(
     methods["agent.models"].result.safeParse({
       agent: "claude",
-      models: [{ id: "haiku", name: "Haiku", supportsFast: false }],
+      models: [
+        {
+          id: "default",
+          name: "Opus 5.5",
+          aliases: ["opus"],
+          isDefault: true,
+          efforts: ["low", "medium", "high", "xhigh", "max"],
+          supportsFast: false,
+        },
+      ],
       efforts: ["low", "medium", "high", "xhigh", "max"],
     }).success,
     true,

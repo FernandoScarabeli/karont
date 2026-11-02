@@ -12,6 +12,7 @@ import { validateFolder } from "../folders.ts";
 import type {
   AdapterEvent,
   AdapterFactory,
+  AdapterModelList,
   AdapterResponse,
   AdapterStartOptions,
   AgentAdapter,
@@ -22,6 +23,7 @@ import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
 const MAX_STDOUT_LINE_BYTES = 32 * 1024 * 1024;
 const CONTROL_REQUEST_TIMEOUT_MS = 10_000;
+const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 const READ_ONLY_ALLOWED_TOOLS = new Set([
   "Read",
   "Glob",
@@ -79,6 +81,7 @@ export class ClaudeAdapter implements AgentAdapter {
   >();
   readonly #taskIds = new Map<string, string>();
   readonly #parts = new Map<string, MessagePart>();
+  #models: AdapterModelList = { models: [], efforts: [] };
   readonly #controlRequests = new Map<string, ControlRequest>();
   #child: ChildProcess | undefined;
   #conversation: Conversation | undefined;
@@ -302,6 +305,18 @@ export class ClaudeAdapter implements AgentAdapter {
     await this.#write({ type: "user", message: { role: "user", content } });
   }
 
+  async getModels(): Promise<AdapterModelList> {
+    if (this.#conversation?.agent !== "claude") return { models: [], efforts: [] };
+    return {
+      models: this.#models.models.map((model) => ({
+        ...model,
+        ...(model.aliases ? { aliases: [...model.aliases] } : {}),
+        efforts: [...model.efforts],
+      })),
+      efforts: [...this.#models.efforts],
+    };
+  }
+
   async respond(partId: string, response: AdapterResponse): Promise<void> {
     const pending = this.#pending.get(partId);
     if (!pending) throw new Error("A resposta solicitada não está mais pendente.");
@@ -503,9 +518,11 @@ export class ClaudeAdapter implements AgentAdapter {
     const type = value.type;
     if (type === "control_response") {
       const control = value.response as Record<string, unknown> | undefined;
-      if (control?.request_id === "karont-initialize" && control.subtype === "success")
+      if (control?.request_id === "karont-initialize" && control.subtype === "success") {
+        const response = control.response as Record<string, unknown> | undefined;
+        if (Array.isArray(response?.models)) this.#models = mapClaudeModels(response.models);
         this.#initResolve?.();
-      else if (typeof control?.request_id === "string") {
+      } else if (typeof control?.request_id === "string") {
         const pending = this.#controlRequests.get(control.request_id);
         if (!pending) return;
         this.#controlRequests.delete(control.request_id);
@@ -988,6 +1005,106 @@ export const createClaudeAdapterFactory =
   (options: ClaudeAdapterOptions = {}): AdapterFactory =>
   (_conversation, emit) =>
     new ClaudeAdapter(emit, options);
+
+export function createClaudeModelLoader(
+  options: ClaudeAdapterOptions = {},
+): (cwd: string) => Promise<AdapterModelList> {
+  return async (cwd) => {
+    const now = new Date().toISOString();
+    const conversation: Conversation = {
+      id: randomUUID(),
+      agent: "claude",
+      title: "Lista de modelos",
+      cwd,
+      mode: "edit",
+      fast: false,
+      pinnedAt: null,
+      archivedAt: null,
+      unreadAt: null,
+      state: "idle",
+      createdAt: now,
+      updatedAt: now,
+    };
+    const adapter = new ClaudeAdapter(() => undefined, options);
+    try {
+      await adapter.start(conversation, randomUUID(), false);
+      const modelList = await adapter.getModels();
+      if (modelList.models.length === 0)
+        throw new Error("Claude Code não devolveu a lista de modelos.");
+      return modelList;
+    } finally {
+      await adapter.dispose();
+    }
+  };
+}
+
+function mapClaudeModels(rawModels: unknown[]): AdapterModelList {
+  const groups = new Map<string, Array<Record<string, unknown> & { value: string }>>();
+  for (const raw of rawModels) {
+    if (!isRecord(raw) || typeof raw.value !== "string" || raw.value.length === 0) continue;
+    const resolvedModel =
+      typeof raw.resolvedModel === "string" && raw.resolvedModel.length > 0
+        ? raw.resolvedModel
+        : raw.value;
+    const group = groups.get(resolvedModel) ?? [];
+    group.push(raw as Record<string, unknown> & { value: string });
+    groups.set(resolvedModel, group);
+  }
+
+  const models: AdapterModelList["models"] = [];
+  for (const [resolvedModel, group] of groups) {
+    const defaultEntry = group.find((entry) => entry.value === "default");
+    const selected = defaultEntry ?? group[0];
+    if (!selected) continue;
+    const capability =
+      (defaultEntry?.supportsEffort === true ? defaultEntry : undefined) ??
+      group.find((entry) => entry.supportsEffort === true);
+    const efforts =
+      capability && Array.isArray(capability.supportedEffortLevels)
+        ? [...new Set(capability.supportedEffortLevels)].filter(
+            (effort): effort is (typeof CLAUDE_EFFORTS)[number] =>
+              typeof effort === "string" &&
+              CLAUDE_EFFORTS.includes(effort as (typeof CLAUDE_EFFORTS)[number]),
+          )
+        : [];
+    const aliasNames = group.filter((entry) => entry !== selected);
+    const resolvedName = aliasNames.find((entry) => entry.displayName)?.displayName;
+    const name = defaultEntry
+      ? (typeof resolvedName === "string"
+          ? resolvedName
+          : modelNameFromResolvedModel(resolvedModel)
+        )
+          .replace(/\s*\(recommended\)\s*/i, "")
+          .trim()
+      : typeof selected.displayName === "string" && selected.displayName.length > 0
+        ? selected.displayName
+        : modelNameFromResolvedModel(resolvedModel);
+    models.push({
+      id: selected.value,
+      name,
+      ...(aliasNames.length ? { aliases: aliasNames.map((entry) => entry.value) } : {}),
+      ...(defaultEntry ? { isDefault: true } : {}),
+      efforts,
+      ...(efforts[0] ? { defaultEffort: efforts.includes("medium") ? "medium" : efforts[0] } : {}),
+      supportsFast: false,
+    });
+  }
+
+  models.sort((left, right) => Number(right.isDefault === true) - Number(left.isDefault === true));
+  const efforts = [...new Set(models.flatMap((model) => model.efforts))];
+  return {
+    models,
+    efforts,
+  };
+}
+
+function modelNameFromResolvedModel(modelId: string): string {
+  const readable = modelId
+    .replace(/^claude-/i, "")
+    .replace(/(\d)-(?=\d)/g, "$1.")
+    .replaceAll("-", " ");
+  return readable.replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+}
 
 function permissionModeFor(conversation: Conversation): string {
   return conversation.mode === "read-only"

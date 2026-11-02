@@ -179,6 +179,7 @@ export const t = {
     agents: { claude: "Claude Code", codex: "Codex" },
     composerOptions: "Opções da conversa",
     model: "Modelo",
+    modelDefault: "Padrão",
     effort: "Esforço",
     fastMode: "Modo rápido",
     fastModeEnabled: "Modo rápido ligado",

@@ -175,6 +175,8 @@ export const agentModelsSchema = z.strictObject({
     z.strictObject({
       id: z.string(),
       name: z.string(),
+      aliases: z.array(z.string()).optional(),
+      isDefault: z.boolean().optional(),
       efforts: z.array(reasoningEffortSchema).optional(),
       defaultEffort: reasoningEffortSchema.optional(),
       supportsFast: z.boolean(),

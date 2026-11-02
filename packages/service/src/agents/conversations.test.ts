@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -25,12 +26,15 @@ import {
   setSetting,
 } from "../db.ts";
 import type { AdapterFactory, AdapterModelList } from "./adapter.ts";
-import { AgentCliError, ClaudeAdapter } from "./claude-adapter.ts";
+import { AgentCliError, ClaudeAdapter, createClaudeModelLoader } from "./claude-adapter.ts";
 import { ConversationManager } from "./conversation-manager.ts";
 import { createFakeClaudeSpawn, type FakeClaudeSpawn } from "./testing/fake-claude-process.ts";
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
 const fixtureDir = new URL("./fixtures/claude/", import.meta.url);
+const modelFixture = JSON.parse(
+  readFileSync(fileURLToPath(new URL("modelos.json", fixtureDir)), "utf8"),
+) as Record<string, unknown>[];
 
 type Harness = {
   manager: ConversationManager;
@@ -89,6 +93,7 @@ async function createHarness(
       options?: Pick<TitleGeneratorOptions, "codexModel" | "codexEffort">,
     ) => Promise<string | null>;
     codexModelCache?: AdapterModelList;
+    claudeModelLoader?: (cwd: string) => Promise<AdapterModelList>;
     adapterFactory?: AdapterFactory;
   } = {},
 ): Promise<Harness> {
@@ -111,7 +116,14 @@ async function createHarness(
     KARONT_DISABLE_AGENT_DETECTION: "1",
     KARONT_CLAUDE_CLI: "claude",
   };
-  const fakeSpawn = createFakeClaudeSpawn(fixturePath, fakeOptions);
+  const fakeSpawn = createFakeClaudeSpawn(fixturePath, {
+    ...fakeOptions,
+    initializeModels: modelFixture,
+  });
+  const spawn = (command: string, args: string[], options: SpawnOptions) => {
+    spawnArgs.push(args);
+    return fakeSpawn(command, args, options);
+  };
   const manager = new ConversationManager({
     db,
     env,
@@ -128,11 +140,9 @@ async function createHarness(
       ((_conversation, emit) =>
         new ClaudeAdapter(emit, {
           env,
-          spawn: (command, args, options) => {
-            spawnArgs.push(args);
-            return fakeSpawn(command, args, options);
-          },
+          spawn,
         })),
+    claudeModelLoader: fakeOptions.claudeModelLoader ?? createClaudeModelLoader({ env, spawn }),
     ...(fakeOptions.titleGenerator ? { titleGenerator: fakeOptions.titleGenerator } : {}),
   });
   return {
@@ -1628,6 +1638,96 @@ test("o serviço ignora modo rápido nas conversas Claude, inclusive as antigas"
     const current = harness.manager.get(conversation.id)?.conversation;
     assert.equal(current?.fast, false);
     assert.equal(harness.spawnArgs[0]?.includes("--settings"), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("agent.models lê o initialize uma vez, elimina o alias do padrão e respeita capacidades", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const first = await harness.manager.models("claude");
+    const second = await harness.manager.models("claude");
+    const defaultModel = first.models.find((model) => model.isDefault);
+    const legacyHaiku = first.models.find((model) => model.id === "claude-haiku-4-5-20251001");
+
+    assert.equal(first.models.length, 12);
+    assert.equal(defaultModel?.id, "default");
+    assert.equal(defaultModel?.name, "Opus 5.5");
+    assert.deepEqual(defaultModel?.aliases, ["opus"]);
+    assert.equal(
+      first.models.some((model) => model.id === "opus"),
+      false,
+    );
+    assert.deepEqual(defaultModel?.efforts, ["low", "medium", "high", "xhigh", "max"]);
+    assert.deepEqual(legacyHaiku?.efforts, []);
+    assert.equal(
+      first.models.every((model) => model.supportsFast === false),
+      true,
+    );
+    assert.deepEqual(second, first);
+    assert.equal(
+      harness.claudeFake.messages.filter(
+        (message) =>
+          message.type === "control_request" &&
+          (message.request as { subtype?: string } | undefined)?.subtype === "initialize",
+      ).length,
+      1,
+    );
+    assert.equal(
+      harness.claudeFake.messages.some((message) => message.type === "user"),
+      false,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("agent.models reaproveita o initialize do adaptador Claude ativo", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Leia a mensagem.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const models = await harness.manager.models("claude");
+    assert.equal(models.models.find((model) => model.isDefault)?.id, "default");
+    assert.equal(harness.spawnArgs.length, 1);
+    assert.equal(
+      harness.claudeFake.messages.filter(
+        (message) =>
+          message.type === "control_request" &&
+          (message.request as { subtype?: string } | undefined)?.subtype === "initialize",
+      ).length,
+      1,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("agent.models usa a lista fixa quando a consulta independente falha e não repete a tentativa", async () => {
+  let attempts = 0;
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      claudeModelLoader: async () => {
+        attempts += 1;
+        throw new Error("Claude Code indisponível.");
+      },
+    },
+  );
+  try {
+    const first = await harness.manager.models("claude");
+    const second = await harness.manager.models("claude");
+    assert.deepEqual(
+      first.models.map(({ id }) => id),
+      ["opus", "sonnet", "haiku"],
+    );
+    assert.equal(first.models.find((model) => model.id === "opus")?.isDefault, true);
+    assert.deepEqual(second, first);
+    assert.equal(attempts, 1);
   } finally {
     await harness.close();
   }

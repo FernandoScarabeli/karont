@@ -9,6 +9,7 @@ type FakeClaudeOptions = {
   planDecision?: "approve" | "adjust";
   initializeGate?: { started: () => void; released: Promise<void> };
   largeImageBytes?: number;
+  initializeModels?: Record<string, unknown>[];
 };
 
 export type FakeClaudeSpawn = ((
@@ -223,25 +224,44 @@ class FakeClaudeProcess extends EventEmitter {
   }
 
   #outputLine(line: string): string {
-    const imageBytes = this.#options.largeImageBytes;
-    if (imageBytes === undefined) return line;
     const value = JSON.parse(line) as {
       type?: string;
+      response?: {
+        request_id?: string;
+        response?: { models?: unknown };
+      };
       message?: { content?: unknown };
     };
-    if (value.type !== "user" || !Array.isArray(value.message?.content)) return line;
-    const data = "A".repeat(Math.ceil(imageBytes / 3) * 4);
-    const content = value.message.content.map((item) => {
-      if (typeof item !== "object" || item === null || !("type" in item)) return item;
-      const result = item as { type?: unknown; tool_use_id?: unknown };
-      return result.type === "tool_result"
-        ? {
-            ...result,
-            content: [{ type: "image", source: { type: "base64", media_type: "image/png", data } }],
-          }
-        : item;
-    });
-    return JSON.stringify({ ...value, message: { ...value.message, content } });
+    if (
+      value.type === "control_response" &&
+      value.response?.request_id === "karont-initialize" &&
+      this.#options.initializeModels &&
+      value.response.response
+    ) {
+      value.response.response.models = this.#options.initializeModels;
+    }
+    const imageBytes = this.#options.largeImageBytes;
+    if (
+      imageBytes !== undefined &&
+      value.type === "user" &&
+      Array.isArray(value.message?.content)
+    ) {
+      const data = "A".repeat(Math.ceil(imageBytes / 3) * 4);
+      const content = value.message.content.map((item) => {
+        if (typeof item !== "object" || item === null || !("type" in item)) return item;
+        const result = item as { type?: unknown; tool_use_id?: unknown };
+        return result.type === "tool_result"
+          ? {
+              ...result,
+              content: [
+                { type: "image", source: { type: "base64", media_type: "image/png", data } },
+              ],
+            }
+          : item;
+      });
+      value.message = { ...value.message, content };
+    }
+    return JSON.stringify(value);
   }
 
   #finish(code: number | null, signal: NodeJS.Signals | null): void {

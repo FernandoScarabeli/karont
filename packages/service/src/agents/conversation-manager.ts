@@ -46,11 +46,16 @@ import type {
   AdapterResponse,
   AgentAdapter,
 } from "./adapter.ts";
-import { AgentCliError, createClaudeAdapterFactory } from "./claude-adapter.ts";
+import {
+  AgentCliError,
+  createClaudeAdapterFactory,
+  createClaudeModelLoader,
+} from "./claude-adapter.ts";
 import { createCodexAdapterFactory, createCodexModelLoader } from "./codex-adapter.ts";
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
 const CODEX_MODELS_SETTING = "agent.codex.models";
+const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 const BRANCH_CONTEXT_LIMIT = 24_000;
 
 type ActiveConversation = {
@@ -78,6 +83,7 @@ export type ConversationManagerOptions = {
   env?: NodeJS.ProcessEnv;
   adapterFactory?: AdapterFactory;
   codexModelLoader?: (cwd: string) => Promise<AdapterModelList>;
+  claudeModelLoader?: (cwd: string) => Promise<AdapterModelList>;
   now?: () => string;
   titleGenerator?: (
     agent: Conversation["agent"],
@@ -93,6 +99,7 @@ export class ConversationManager {
   readonly #env: NodeJS.ProcessEnv;
   readonly #factory: AdapterFactory;
   readonly #codexModelLoader: (cwd: string) => Promise<AdapterModelList>;
+  readonly #claudeModelLoader: (cwd: string) => Promise<AdapterModelList>;
   readonly #now: () => string;
   readonly #titleGenerator: NonNullable<ConversationManagerOptions["titleGenerator"]>;
   readonly #active = new Map<string, ActiveConversation>();
@@ -108,6 +115,10 @@ export class ConversationManager {
   };
   #codexModelFetchedAt: string | undefined;
   #codexModelLoadPromise: Promise<void> | undefined;
+  #claudeModelList = legacyClaudeModelList();
+  #claudeModelFetchedAt: string | undefined;
+  #claudeModelLoadPromise: Promise<void> | undefined;
+  #claudeModelLoadAttempted = false;
   #closing = false;
   #deletingAll = false;
   readonly #agentOperations = new Set<Promise<unknown>>();
@@ -119,6 +130,8 @@ export class ConversationManager {
     const claudeFactory = createClaudeAdapterFactory({ env: this.#env });
     const codexFactory = createCodexAdapterFactory({ env: this.#env });
     this.#codexModelLoader = options.codexModelLoader ?? createCodexModelLoader({ env: this.#env });
+    this.#claudeModelLoader =
+      options.claudeModelLoader ?? createClaudeModelLoader({ env: this.#env });
     this.#factory =
       options.adapterFactory ??
       ((conversation, emit) =>
@@ -606,6 +619,8 @@ export class ConversationManager {
     models: {
       id: string;
       name: string;
+      aliases?: string[];
+      isDefault?: boolean;
       efforts?: NonNullable<Conversation["effort"]>[];
       defaultEffort?: NonNullable<Conversation["effort"]>;
       supportsFast: boolean;
@@ -613,7 +628,6 @@ export class ConversationManager {
     efforts: ("low" | "medium" | "high" | "xhigh" | "max")[];
     fetchedAt?: string;
   }> {
-    const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
     if (agent === "codex") {
       await this.#loadCodexModelsIfNeeded();
       return {
@@ -631,15 +645,59 @@ export class ConversationManager {
         ...(this.#codexModelFetchedAt ? { fetchedAt: this.#codexModelFetchedAt } : {}),
       };
     }
+    await this.#loadClaudeModelsIfNeeded();
     return {
       agent,
-      models: [
-        { id: "opus", name: "Opus", supportsFast: false },
-        { id: "sonnet", name: "Sonnet", supportsFast: false },
-        { id: "haiku", name: "Haiku", supportsFast: false },
-      ],
-      efforts: [...efforts],
+      models: this.#claudeModelList.models.map(
+        ({ id, name, aliases, isDefault, efforts, defaultEffort }) => ({
+          id,
+          name,
+          ...(aliases ? { aliases: [...aliases] } : {}),
+          ...(isDefault ? { isDefault: true } : {}),
+          efforts: [...efforts],
+          ...(defaultEffort ? { defaultEffort } : {}),
+          supportsFast: false,
+        }),
+      ),
+      efforts: [...this.#claudeModelList.efforts],
+      ...(this.#claudeModelFetchedAt ? { fetchedAt: this.#claudeModelFetchedAt } : {}),
     };
+  }
+
+  async #loadClaudeModelsIfNeeded(): Promise<void> {
+    if (this.#claudeModelLoadAttempted) return;
+    if (this.#claudeModelLoadPromise) return this.#claudeModelLoadPromise;
+    const loading = (async () => {
+      try {
+        const active = [...this.#active.values()].find((entry) => entry.agent === "claude");
+        let modelList: AdapterModelList | undefined;
+        if (active) {
+          await active.startPromise;
+          modelList = await active.adapter.getModels?.();
+        } else {
+          modelList = await this.#claudeModelLoader(os.homedir());
+        }
+        if (modelList?.models.length) {
+          this.#cacheClaudeModelList(modelList);
+        }
+      } catch {
+        // Keep the legacy list if Claude is unavailable or initialization fails.
+      } finally {
+        this.#claudeModelLoadAttempted = true;
+      }
+    })();
+    this.#claudeModelLoadPromise = loading;
+    try {
+      await loading;
+    } finally {
+      if (this.#claudeModelLoadPromise === loading) this.#claudeModelLoadPromise = undefined;
+    }
+  }
+
+  #cacheClaudeModelList(modelList: AdapterModelList): void {
+    this.#claudeModelList = modelList;
+    this.#claudeModelFetchedAt = this.#now();
+    this.#claudeModelLoadAttempted = true;
   }
 
   async #loadCodexModelsIfNeeded(): Promise<void> {
@@ -653,7 +711,7 @@ export class ConversationManager {
           await active.startPromise;
           modelList = await active.adapter.getModels?.();
         }
-        modelList ??= await this.#codexModelLoader(os.homedir());
+        if (!modelList?.models.length) modelList = await this.#codexModelLoader(os.homedir());
         this.#cacheCodexModelList(modelList);
       } catch {
         // Keep returning the most recent list if Codex is unavailable.
@@ -677,7 +735,7 @@ export class ConversationManager {
           id,
           name,
           efforts,
-          defaultEffort,
+          ...(defaultEffort ? { defaultEffort } : {}),
           supportsFast,
         })),
         efforts: modelList.efforts,
@@ -762,9 +820,14 @@ export class ConversationManager {
         .then(async () => {
           await activeRef.eventQueue;
           if (activeRef.removed || this.#deletingAll) return;
+          if (conversation.agent === "claude") {
+            const modelList = await adapter.getModels?.();
+            if (modelList?.models.length) this.#cacheClaudeModelList(modelList);
+            return;
+          }
           if (conversation.agent !== "codex") return;
           const modelList = await adapter.getModels?.();
-          if (modelList) this.#cacheCodexModelList(modelList);
+          if (modelList?.models.length) this.#cacheCodexModelList(modelList);
         })
         .catch(async (error: unknown) => {
           if (!this.#closing && !activeRef.stopRequested && !activeRef.removed) {
@@ -1275,6 +1338,37 @@ function modelSupportsFast(
     typeof modelId === "string" &&
     modelList.models.some((model) => model.id === modelId && model.supportsFast)
   );
+}
+
+function legacyClaudeModelList(): AdapterModelList {
+  const efforts = [...CLAUDE_EFFORTS];
+  return {
+    models: [
+      {
+        id: "opus",
+        name: "Opus",
+        isDefault: true,
+        efforts: [...efforts],
+        defaultEffort: "medium",
+        supportsFast: false,
+      },
+      {
+        id: "sonnet",
+        name: "Sonnet",
+        efforts: [...efforts],
+        defaultEffort: "medium",
+        supportsFast: false,
+      },
+      {
+        id: "haiku",
+        name: "Haiku",
+        efforts: [...efforts],
+        defaultEffort: "medium",
+        supportsFast: false,
+      },
+    ],
+    efforts,
+  };
 }
 
 function readCodexModelCache(
