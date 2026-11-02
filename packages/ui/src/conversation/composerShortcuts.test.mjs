@@ -6,8 +6,10 @@ import {
   detectComposerShortcut,
   findMentionedSkills,
   fuzzyFilter,
+  hasSkillMention,
   insertComposerShortcut,
   removeComposerCommand,
+  requestSkillCatalogOnce,
 } from "./composerShortcuts.ts";
 
 test("detecta atalhos no começo e depois de espaço na posição do cursor", () => {
@@ -99,6 +101,40 @@ test("skills só seguem no envio enquanto o nome continua no texto", () => {
   assert.deepEqual(findMentionedSkills("$project-helper $review", catalog, 1), [catalog[0]]);
   assert.deepEqual(findMentionedSkills("$project-helper confira", catalog), [catalog[0]]);
   assert.deepEqual(findMentionedSkills("$unknown", catalog), []);
+});
+
+test("o envio espera e reutiliza a requisição em andamento do catálogo de skills", async () => {
+  const requests = [];
+  const skillFixture = [{ name: "deploy", path: "/fixture/.agents/skills/deploy/SKILL.md" }];
+  let resolveCatalog;
+  const catalogRequest = new Promise((resolve) => {
+    resolveCatalog = resolve;
+  });
+  const state = { current: null };
+  const loadCatalog = () => {
+    requests.push("composer.skills");
+    return catalogRequest;
+  };
+  const popoverRequest = requestSkillCatalogOnce(state, "conversa-1", loadCatalog);
+  const sendCatalogRequest = requestSkillCatalogOnce(state, "conversa-1", loadCatalog);
+  const selectedSkills = sendCatalogRequest.then((catalog) =>
+    findMentionedSkills("$deploy agora", catalog),
+  );
+
+  assert.equal(sendCatalogRequest, popoverRequest);
+  await Promise.resolve();
+  assert.deepEqual(requests, ["composer.skills"]);
+
+  resolveCatalog(skillFixture);
+  assert.deepEqual(await selectedSkills, skillFixture);
+  assert.deepEqual(await popoverRequest, skillFixture);
+  assert.deepEqual(requests, ["composer.skills"]);
+});
+
+test("identifica quando o texto exige catálogo e não para mensagens comuns", () => {
+  assert.equal(hasSkillMention("$deploy agora"), true);
+  assert.equal(hasSkillMention("Use depois"), false);
+  assert.equal(hasSkillMention("Custa $"), false);
 });
 
 test("pontuação final não faz a skill mencionada desaparecer do envio", () => {

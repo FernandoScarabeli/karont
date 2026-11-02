@@ -13,6 +13,50 @@ export type ComposerSkillReference = {
   path?: string;
 };
 
+export type SkillCatalogRequestState<T> = {
+  conversationId: string;
+  catalog: readonly T[] | null;
+  promise: Promise<readonly T[]> | null;
+};
+
+export function requestSkillCatalogOnce<T>(
+  state: { current: SkillCatalogRequestState<T> | null },
+  conversationId: string,
+  load: () => Promise<readonly T[]>,
+): Promise<readonly T[]> {
+  const current = state.current;
+  if (current?.conversationId === conversationId) {
+    if (current.catalog !== null) return Promise.resolve(current.catalog);
+    if (current.promise) return current.promise;
+  }
+
+  const requestState: SkillCatalogRequestState<T> = {
+    conversationId,
+    catalog: null,
+    promise: null,
+  };
+  const request = Promise.resolve()
+    .then(load)
+    .then((catalog) => {
+      if (state.current === requestState) {
+        requestState.catalog = catalog;
+        requestState.promise = null;
+      }
+      return catalog;
+    })
+    .catch((error: unknown) => {
+      if (state.current === requestState) state.current = null;
+      throw error;
+    });
+  requestState.promise = request;
+  state.current = requestState;
+  return request;
+}
+
+export function hasSkillMention(value: string): boolean {
+  return /(?:^|\s)\$[^\s$]+/u.test(value);
+}
+
 export function consumePendingComposerCaret(pending: { current: number | null }): number | null {
   const caret = pending.current;
   pending.current = null;

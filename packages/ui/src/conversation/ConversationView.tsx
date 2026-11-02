@@ -58,8 +58,11 @@ import {
   detectComposerShortcut,
   findMentionedSkills,
   fuzzyFilter,
+  hasSkillMention,
   insertComposerShortcut,
   removeComposerCommand,
+  requestSkillCatalogOnce,
+  type SkillCatalogRequestState,
 } from "./composerShortcuts.ts";
 import { cacheAgentModels, getCachedAgentModels } from "./conversationCache.ts";
 import { getConversationHistory } from "./conversationHistory.ts";
@@ -173,6 +176,18 @@ export function ConversationView({
   const [filesLoading, setFilesLoading] = useState(false);
   const [skillCatalog, setSkillCatalog] = useState<ComposerSkill[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
+  const skillCatalogRequestRef = useRef<SkillCatalogRequestState<ComposerSkill> | null>(null);
+  const requestSkillCatalog = useCallback(
+    () =>
+      requestSkillCatalogOnce(skillCatalogRequestRef, id, () =>
+        bridge
+          ? bridge
+              .request("composer.skills", { conversationId: id })
+              .then((result) => result.skills)
+          : Promise.resolve([]),
+      ),
+    [bridge, id],
+  );
   const [optimisticOptions, setOptimisticOptions] = useState<ConversationOptionsPatch>({});
   const [interactionErrorState, setInteractionErrorState] = useState({
     conversationId: id,
@@ -498,19 +513,21 @@ export function ConversationView({
     }
     let active = true;
     setSkillsLoading(true);
-    const request = bridge
-      .request("composer.skills", { conversationId: id })
-      .then((result) => result.skills)
-      .catch(() => []);
-    void request.then((skills) => {
-      if (!active) return;
-      setSkillCatalog(skills);
-      setSkillsLoading(false);
-    });
+    void requestSkillCatalog()
+      .then((skills) => {
+        if (!active) return;
+        setSkillCatalog([...skills]);
+        setSkillsLoading(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setSkillCatalog([]);
+        setSkillsLoading(false);
+      });
     return () => {
       active = false;
     };
-  }, [bridge, capabilities?.skills, conversation?.id, id, skillsShortcutOpen]);
+  }, [bridge, capabilities?.skills, conversation?.id, id, requestSkillCatalog, skillsShortcutOpen]);
 
   const latestMessage = visibleMessages.at(-1);
   const latestAgentMessageId = useMemo(
@@ -748,6 +765,9 @@ export function ConversationView({
     setShortcutTrigger(null);
     setFileSuggestions([]);
     setSkillCatalog([]);
+    if (skillCatalogRequestRef.current?.conversationId === previousConversationId) {
+      skillCatalogRequestRef.current = null;
+    }
     setInteractionError("");
     setRenamingConversationId(null);
     setPendingHistoryMessageId(null);
@@ -1027,11 +1047,6 @@ export function ConversationView({
       attachmentIds: string[] = [],
     ) => {
       const text = textValue.trim();
-      const selectedSkills = findMentionedSkills(
-        text,
-        skillCatalog,
-        capabilities?.maxSkillsPerMessage ?? 8,
-      );
       if (
         !bridge ||
         !currentConversation ||
@@ -1048,6 +1063,10 @@ export function ConversationView({
       updateFollowState(nextFollowState(followRef.current, { type: "newMessage" }));
       const sendRevision = ++sendRevisionRef.current;
       sendPendingRef.current = true;
+      const skillCatalogPromise =
+        hasSkillMention(text) && capabilities?.skills === true
+          ? requestSkillCatalog().catch(() => [])
+          : null;
       setInteractionError("");
       setDraft("");
       try {
@@ -1058,6 +1077,13 @@ export function ConversationView({
         } while (observedQueue !== saveQueueRef.current);
 
         if (activeConversationIdRef.current !== conversationId) return;
+        const selectedSkills = skillCatalogPromise
+          ? findMentionedSkills(
+              text,
+              await skillCatalogPromise,
+              capabilities?.maxSkillsPerMessage ?? 8,
+            )
+          : [];
         setIsSending(true);
         const result = await bridge.request("conversation.send", {
           id: conversationId,
@@ -1099,8 +1125,9 @@ export function ConversationView({
       isSending,
       isWaiting,
       isWorking,
+      capabilities?.skills,
       capabilities?.maxSkillsPerMessage,
-      skillCatalog,
+      requestSkillCatalog,
       loading,
       setDraft,
       updateFollowState,
