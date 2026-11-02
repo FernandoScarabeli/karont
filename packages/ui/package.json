@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test src/conversation/*.test.mjs",
+    "test": "node --test src/conversation/*.test.mjs src/components/FluidHover/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
