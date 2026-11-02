@@ -1,5 +1,15 @@
-import { ArrowUp } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, type ReactNode, useLayoutEffect, useRef } from "react";
+import { ArrowUp, Square } from "lucide-react";
+import {
+  type ClipboardEventHandler,
+  type DragEventHandler,
+  type FormEvent,
+  type KeyboardEvent,
+  memo,
+  type ReactNode,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import styles from "./Composer.module.css";
 
 export type ComposerProps = {
@@ -15,9 +25,21 @@ export type ComposerProps = {
   disabled?: boolean;
   hint?: string;
   mono?: boolean;
+  busy?: boolean;
+  onStop?: () => void;
+  attachments?: ReactNode;
+  dragActive?: boolean;
+  dropMessage?: string;
+  onPaste?: ClipboardEventHandler<HTMLTextAreaElement>;
+  onDragEnter?: DragEventHandler<HTMLFormElement>;
+  onDragLeave?: DragEventHandler<HTMLFormElement>;
+  onDragOver?: DragEventHandler<HTMLFormElement>;
+  onDrop?: DragEventHandler<HTMLFormElement>;
+  below?: ReactNode;
+  animatedPlaceholder?: ReactNode;
 };
 
-export function Composer({
+export const Composer = memo(function Composer({
   value,
   onChange,
   onSubmit,
@@ -30,9 +52,22 @@ export function Composer({
   disabled = false,
   hint,
   mono = false,
+  busy = false,
+  onStop,
+  attachments,
+  dragActive = false,
+  dropMessage,
+  onPaste,
+  onDragEnter,
+  onDragLeave,
+  onDragOver,
+  onDrop,
+  below,
+  animatedPlaceholder,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const cannotSubmit = disabled || submitDisabled;
+  const [isFocused, setIsFocused] = useState(false);
+  const cannotSubmit = !busy && (disabled || submitDisabled);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -47,11 +82,16 @@ export function Composer({
 
   function submit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
+    if (busy) {
+      onStop?.();
+      return;
+    }
     if (cannotSubmit) return;
     onSubmit();
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (busy) return;
     if (
       event.key !== "Enter" ||
       event.shiftKey ||
@@ -67,19 +107,42 @@ export function Composer({
 
   return (
     <div className={styles.wrapper}>
-      <form className={styles.card} onSubmit={submit}>
-        <textarea
-          aria-description={ariaDescription}
-          aria-label={placeholder}
-          className={`${styles.textarea} ${mono ? styles.mono : ""}`}
-          disabled={disabled}
-          onChange={(event) => onChange(event.currentTarget.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          ref={textareaRef}
-          rows={2}
-          value={value}
-        />
+      <form
+        className={`${styles.card} ${dragActive ? styles.dragActive : ""}`}
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onSubmit={submit}
+      >
+        {attachments ? <div className={styles.attachments}>{attachments}</div> : null}
+        <div className={styles.textareaWrap}>
+          <textarea
+            aria-description={ariaDescription}
+            aria-label={placeholder}
+            className={`${styles.textarea} ${mono ? styles.mono : ""} ${animatedPlaceholder && !value && !isFocused && !disabled ? styles.animatedPlaceholderInput : ""}`}
+            disabled={disabled}
+            onBlur={() => setIsFocused(false)}
+            onChange={(event) => onChange(event.currentTarget.value)}
+            onFocus={() => setIsFocused(true)}
+            onKeyDown={handleKeyDown}
+            onPaste={onPaste}
+            placeholder={placeholder}
+            ref={textareaRef}
+            rows={1}
+            value={value}
+          />
+          {animatedPlaceholder && !value && !isFocused && !disabled ? (
+            <div aria-hidden="true" className={styles.placeholderOverlay}>
+              {animatedPlaceholder}
+            </div>
+          ) : null}
+        </div>
+        {dragActive && dropMessage ? (
+          <div className={styles.dropNotice} role="status">
+            {dropMessage}
+          </div>
+        ) : null}
         <div className={styles.footer}>
           <div className={styles.leading}>{leading}</div>
           <div className={styles.actions}>
@@ -89,17 +152,27 @@ export function Composer({
               aria-label={submitLabel}
               className={styles.submit}
               onClick={(event) => {
-                if (cannotSubmit) event.preventDefault();
+                if (busy) {
+                  event.preventDefault();
+                  onStop?.();
+                } else if (cannotSubmit) {
+                  event.preventDefault();
+                }
               }}
               title={submitLabel}
               type="submit"
             >
-              <ArrowUp aria-hidden="true" size={18} strokeWidth={2} />
+              {busy ? (
+                <Square aria-hidden="true" size={14} strokeWidth={2.2} />
+              ) : (
+                <ArrowUp aria-hidden="true" size={18} strokeWidth={2} />
+              )}
             </button>
           </div>
         </div>
       </form>
+      {below}
       {hint ? <p className={styles.hint}>{hint}</p> : null}
     </div>
   );
-}
+});

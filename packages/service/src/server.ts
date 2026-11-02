@@ -2,6 +2,7 @@ import type { Stats } from "node:fs";
 import { chmod, lstat, unlink } from "node:fs/promises";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { type AnyEvent, authFrameSchema, CONTRACT_VERSION, parseRequest } from "@karont/contract";
+import type { AdapterFactory } from "./agents/adapter.ts";
 import { createNonce, createSecret, verifyMac } from "./auth.ts";
 import { ConnectionClosedError, FrameWriter } from "./connection.ts";
 import { openDatabase } from "./db.ts";
@@ -26,6 +27,7 @@ export type StartServiceOptions = {
   env?: NodeJS.ProcessEnv;
   homeDir?: string;
   ptyFactory?: TerminalPtyFactory;
+  adapterFactory?: AdapterFactory;
   exitProcess?: (code: number) => void;
 };
 
@@ -50,6 +52,7 @@ export async function startService({
   env = process.env,
   homeDir,
   ptyFactory,
+  adapterFactory,
   exitProcess = (code) => process.exit(code),
 }: StartServiceOptions): Promise<{ close(): Promise<void> }> {
   await ensurePrivateDir(paths.runtimeDir);
@@ -75,6 +78,7 @@ export async function startService({
     env,
     ...(homeDir ? { homeDir } : {}),
     ...(ptyFactory ? { ptyFactory } : {}),
+    ...(adapterFactory ? { adapterFactory } : {}),
     emit: async (event: AnyEvent, conn) => {
       await conn.emit(event);
     },
@@ -208,6 +212,7 @@ export async function startService({
         state.socket.destroy();
       }
       await handlers.closeTerminals();
+      await handlers.closeAgents();
       await serverClosed;
       db.close();
       await Promise.all([

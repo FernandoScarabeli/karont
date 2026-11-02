@@ -1,0 +1,457 @@
+import assert from "node:assert/strict";
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { test } from "node:test";
+import type { AnyEvent, Conversation } from "@karont/contract";
+import { getMessage, openDatabase } from "../db.ts";
+import type { AdapterEvent, AdapterFactory, AgentAdapter } from "./adapter.ts";
+import { ConversationManager } from "./conversation-manager.ts";
+
+test("a mensagem é gravada com debounce no streaming e imediatamente ao concluir", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-message-save-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  db.exec(
+    "CREATE TABLE message_save_count (count INTEGER NOT NULL); INSERT INTO message_save_count VALUES (0); CREATE TRIGGER count_message_saves AFTER UPDATE ON messages BEGIN UPDATE message_save_count SET count=count+1; END;",
+  );
+
+  let releaseTurn!: () => void;
+  let announceFirstBatch!: () => void;
+  const firstBatch = new Promise<void>((resolve) => {
+    announceFirstBatch = resolve;
+  });
+  const continueTurn = new Promise<void>((resolve) => {
+    releaseTurn = resolve;
+  });
+  const adapterFactory: AdapterFactory = (_conversation, emit) => {
+    return new PersistenceTestAdapter(emit, firstBatch, continueTurn, announceFirstBatch);
+  };
+  const manager = new ConversationManager({
+    db,
+    env: { ...process.env, KARONT_MESSAGE_SAVE_DEBOUNCE_MS: "1000" },
+    broadcast: async () => undefined,
+    adapterFactory,
+  });
+  const conversation = manager.create({
+    agent: "claude",
+    title: "Streaming longo",
+    cwd: os.tmpdir(),
+    mode: "edit",
+  });
+
+  try {
+    const sending = manager.send(conversation.id, "Responda aos poucos.");
+    await firstBatch;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(messageSaveCount(db), 0);
+
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    assert.equal(messageSaveCount(db), 1);
+    const snapshot = manager.get(conversation.id);
+    assert.equal(snapshot?.conversation.state, "working");
+    assert.ok(
+      snapshot?.messages
+        .at(-1)
+        ?.parts.some((part) => part.type === "text" && part.markdown.length > 8),
+    );
+
+    releaseTurn();
+    await sending;
+    await waitForState(manager, conversation.id, "idle");
+    assert.equal(messageSaveCount(db), 2);
+  } finally {
+    releaseTurn();
+    await manager.close();
+    db.close();
+  }
+});
+
+test("parar e encerrar o serviço gravam o texto pendente imediatamente", async (t) => {
+  await t.test("parar", async () => {
+    const harness = await createLifecycleHarness();
+    try {
+      const conversation = harness.manager.create({
+        agent: "claude",
+        title: "Parada",
+        cwd: os.tmpdir(),
+        mode: "edit",
+      });
+      const sending = harness.manager.send(conversation.id, "Pare durante o streaming.");
+      await harness.started;
+      assert.equal(messageSaveCount(harness.db), 0);
+      assert.equal(await harness.manager.stop(conversation.id), true);
+      await sending;
+      await waitForState(harness.manager, conversation.id, "idle");
+      assert.equal(messageSaveCount(harness.db), 2);
+      assert.equal(harness.manager.get(conversation.id)?.messages.at(-1)?.status, "interrupted");
+    } finally {
+      await harness.manager.close();
+      harness.db.close();
+    }
+  });
+
+  await t.test("encerrar serviço", async () => {
+    const harness = await createLifecycleHarness();
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Encerrada",
+      cwd: os.tmpdir(),
+      mode: "edit",
+    });
+    const sending = harness.manager.send(conversation.id, "Salve antes de encerrar.");
+    await harness.started;
+    await harness.manager.close();
+    await sending;
+    assert.equal(messageSaveCount(harness.db), 1);
+    const message = harness.manager.get(conversation.id)?.messages.at(-1);
+    assert.equal(message?.status, "streaming");
+    assert.ok(message?.parts.some((part) => part.type === "text" && part.markdown === "rascunho"));
+    harness.db.close();
+  });
+});
+
+test("fim e erro da resposta marcam a conversa como não vista e emitem atualização", async () => {
+  const scenarios = [
+    { name: "conclusão", mode: "turn-end", status: "done" },
+    { name: "erro do agente", mode: "turn-end", status: "error" },
+    { name: "falha ao enviar", mode: "throw", status: "error" },
+  ] as const;
+  const completedAt = "2026-11-01T12:00:00.000Z";
+
+  for (const scenario of scenarios) {
+    const root = await mkdtemp(path.join(os.tmpdir(), "karont-unread-status-"));
+    const db = openDatabase(path.join(root, "karont.db"));
+    const events: AnyEvent[] = [];
+    const manager = new ConversationManager({
+      db,
+      env: { ...process.env, KARONT_AGENT_IDLE_MS: "10000" },
+      broadcast: async (event) => {
+        events.push(event);
+      },
+      adapterFactory: (_conversation, emit) => new FinishTestAdapter(emit, scenario),
+      now: () => completedAt,
+      titleGenerator: async () => null,
+    });
+    const conversation = manager.create({
+      agent: "claude",
+      title: `Resposta: ${scenario.name}`,
+      cwd: root,
+      mode: "edit",
+    });
+
+    try {
+      await manager.send(conversation.id, "Conclua esta tarefa.");
+      await waitForState(manager, conversation.id, scenario.status === "done" ? "idle" : "error");
+
+      const result = manager.get(conversation.id);
+      assert.equal(result?.conversation.unreadAt, completedAt, scenario.name);
+      assert.equal(result?.messages.at(-1)?.status, scenario.status, scenario.name);
+      const finalEvent = events
+        .filter(
+          (event) =>
+            event.event === "conversation.stateChanged" &&
+            "messageStatus" in event.payload &&
+            event.payload.conversation.id === conversation.id,
+        )
+        .at(-1);
+      assert.ok(finalEvent, scenario.name);
+      if (finalEvent?.event === "conversation.stateChanged") {
+        assert.equal(finalEvent.payload.conversation.unreadAt, completedAt, scenario.name);
+      }
+    } finally {
+      await manager.close();
+      db.close();
+    }
+  }
+});
+
+test("a conclusão ao vivo leva o mesmo início e fim gravados na mensagem", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-message-timing-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  let tick = 0;
+  const manager = new ConversationManager({
+    db,
+    env: { ...process.env, KARONT_AGENT_IDLE_MS: "10000" },
+    broadcast: async (event) => {
+      events.push(event);
+    },
+    adapterFactory: (_conversation, emit) =>
+      new FinishTestAdapter(emit, { mode: "turn-end", status: "done" }),
+    now: () => new Date(Date.UTC(2026, 10, 1, 12, 0, 0) + tick++ * 1_000).toISOString(),
+    titleGenerator: async () => null,
+  });
+  const conversation = manager.create({
+    agent: "claude",
+    title: "Tempo de trabalho",
+    cwd: root,
+    mode: "edit",
+  });
+
+  try {
+    await manager.send(conversation.id, "Conclua esta tarefa.");
+    await waitForState(manager, conversation.id, "idle");
+
+    const persisted = getMessage(db, manager.get(conversation.id)?.messages.at(-1)?.id ?? "");
+    assert.ok(persisted?.startedAt !== undefined && persisted.endedAt !== undefined);
+    assert.ok(persisted.endedAt > persisted.startedAt);
+    const finalEvent = events
+      .filter(
+        (event) =>
+          event.event === "conversation.stateChanged" &&
+          "messageStatus" in event.payload &&
+          event.payload.messageStatus === "done" &&
+          event.payload.conversation.id === conversation.id,
+      )
+      .at(-1);
+    assert.ok(finalEvent?.event === "conversation.stateChanged");
+    assert.ok("messageId" in finalEvent.payload);
+    assert.equal(finalEvent.payload.messageId, persisted.id);
+    assert.equal(finalEvent.payload.messageStartedAt, persisted.startedAt);
+    assert.equal(finalEvent.payload.messageEndedAt, persisted.endedAt);
+  } finally {
+    await manager.close();
+    db.close();
+  }
+});
+
+test("serviço grava erro JSON do Codex em texto legível e preserva detalhes", async () => {
+  const raw =
+    '{"type":"error","error":{"message":"regurg plugin blocked the output stream.","type":"invalid_request_error","param":null,"code":"safety_violation"},"status":400,"sequence_number":53}';
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-agent-error-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  const manager = new ConversationManager({
+    db,
+    env: { ...process.env, KARONT_AGENT_IDLE_MS: "10000" },
+    broadcast: async (event) => {
+      events.push(event);
+    },
+    adapterFactory: (_conversation, emit) => new RawErrorTestAdapter(emit, raw),
+    titleGenerator: async () => null,
+  });
+  const conversation = manager.create({
+    agent: "codex",
+    title: "Erro do Codex",
+    cwd: root,
+    mode: "edit",
+  });
+
+  try {
+    await manager.send(conversation.id, "Responda.");
+    await waitForState(manager, conversation.id, "error");
+    const inMemoryMessage = manager
+      .get(conversation.id)
+      ?.messages.find((message) => message.author === "agent");
+    const persistedMessage = inMemoryMessage ? getMessage(db, inMemoryMessage.id) : null;
+    const persistedPart = persistedMessage?.parts.find((part) => part.type === "error");
+    assert.equal(persistedPart?.type, "error");
+    if (persistedPart?.type !== "error") return;
+    assert.equal(
+      persistedPart.text,
+      "O Codex interrompeu a resposta: o filtro de conteúdo do provedor bloqueou o texto. Tente reformular o pedido.",
+    );
+    assert.equal(persistedPart.details, raw);
+    assert.ok(
+      events.some(
+        (event) =>
+          event.event === "conversation.partUpdated" &&
+          event.payload.kind === "upsert" &&
+          event.payload.part.type === "error" &&
+          event.payload.part.details === raw,
+      ),
+    );
+  } finally {
+    await manager.close();
+    db.close();
+  }
+});
+
+function messageSaveCount(db: ReturnType<typeof openDatabase>): number {
+  const row = db.prepare("SELECT count FROM message_save_count").get() as { count: number };
+  return row.count;
+}
+
+async function waitForState(
+  manager: ConversationManager,
+  id: string,
+  state: Conversation["state"],
+): Promise<void> {
+  if (manager.get(id)?.conversation.state === state) return;
+  await new Promise<void>((resolve, reject) => {
+    const check = () => {
+      if (manager.get(id)?.conversation.state === state) {
+        clearInterval(timer);
+        resolve();
+      }
+    };
+    const timer = setInterval(check, 5);
+    setTimeout(() => {
+      clearInterval(timer);
+      reject(new Error(`Timeout esperando ${state}.`));
+    }, 5_000).unref?.();
+  });
+}
+
+async function createLifecycleHarness(): Promise<{
+  manager: ConversationManager;
+  db: ReturnType<typeof openDatabase>;
+  started: Promise<void>;
+}> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-message-lifecycle-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  db.exec(
+    "CREATE TABLE message_save_count (count INTEGER NOT NULL); INSERT INTO message_save_count VALUES (0); CREATE TRIGGER count_message_saves AFTER UPDATE ON messages BEGIN UPDATE message_save_count SET count=count+1; END;",
+  );
+  let announceStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    announceStarted = resolve;
+  });
+  const manager = new ConversationManager({
+    db,
+    env: { ...process.env, KARONT_MESSAGE_SAVE_DEBOUNCE_MS: "1000" },
+    broadcast: async () => undefined,
+    adapterFactory: (_conversation, emit) => new LifecycleTestAdapter(emit, announceStarted),
+  });
+  return { manager, db, started };
+}
+
+class PersistenceTestAdapter implements AgentAdapter {
+  readonly #emit: (event: AdapterEvent) => void;
+  readonly #firstBatch: Promise<void>;
+  readonly #continueTurn: Promise<void>;
+  readonly #announceFirstBatch: () => void;
+
+  constructor(
+    emit: (event: AdapterEvent) => void,
+    firstBatch: Promise<void>,
+    continueTurn: Promise<void>,
+    announceFirstBatch: () => void,
+  ) {
+    this.#emit = emit;
+    this.#firstBatch = firstBatch;
+    this.#continueTurn = continueTurn;
+    this.#announceFirstBatch = announceFirstBatch;
+  }
+
+  async start(): Promise<void> {}
+
+  async send(): Promise<void> {
+    for (let index = 0; index < 8; index += 1)
+      this.#emit({ kind: "text-delta", partType: "text", partId: "answer", delta: "a" });
+    this.#announceFirstBatch();
+    await this.#firstBatch;
+    for (let index = 0; index < 15; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      this.#emit({ kind: "text-delta", partType: "text", partId: "answer", delta: "b" });
+    }
+    await this.#continueTurn;
+    this.#emit({ kind: "text-delta", partType: "text", partId: "answer", delta: "done" });
+    this.#emit({ kind: "turn-end", status: "done" });
+  }
+
+  async respond(): Promise<void> {}
+
+  async interrupt(): Promise<void> {
+    this.#emit({ kind: "turn-end", status: "interrupted" });
+  }
+
+  async dispose(): Promise<void> {}
+}
+
+class LifecycleTestAdapter implements AgentAdapter {
+  readonly #emit: (event: AdapterEvent) => void;
+  readonly #announceStarted: () => void;
+  #releaseSend!: () => void;
+
+  constructor(emit: (event: AdapterEvent) => void, announceStarted: () => void) {
+    this.#emit = emit;
+    this.#announceStarted = announceStarted;
+  }
+
+  async start(): Promise<void> {}
+
+  async send(): Promise<void> {
+    this.#emit({ kind: "text-delta", partType: "text", partId: "answer", delta: "rascunho" });
+    this.#announceStarted();
+    await new Promise<void>((resolve) => {
+      this.#releaseSend = resolve;
+    });
+  }
+
+  async respond(): Promise<void> {}
+
+  async interrupt(): Promise<void> {
+    this.#emit({
+      kind: "turn-end",
+      status: "interrupted",
+      error: { type: "interrupted", text: "Resposta interrompida pelo usuário." },
+    });
+    this.#releaseSend();
+  }
+
+  async dispose(): Promise<void> {
+    this.#releaseSend?.();
+  }
+}
+
+class FinishTestAdapter implements AgentAdapter {
+  readonly #emit: (event: AdapterEvent) => void;
+  readonly #scenario: {
+    mode: "turn-end" | "throw";
+    status: "done" | "error";
+  };
+
+  constructor(
+    emit: (event: AdapterEvent) => void,
+    scenario: { mode: "turn-end" | "throw"; status: "done" | "error" },
+  ) {
+    this.#emit = emit;
+    this.#scenario = scenario;
+  }
+
+  async start(): Promise<void> {}
+
+  async send(): Promise<void> {
+    if (this.#scenario.mode === "throw") throw new Error("Falha simulada no envio.");
+    this.#emit({
+      kind: "turn-end",
+      status: this.#scenario.status,
+      ...(this.#scenario.status === "error"
+        ? { error: { type: "failed" as const, text: "Falha simulada." } }
+        : {}),
+    });
+  }
+
+  async respond(): Promise<void> {}
+
+  async interrupt(): Promise<void> {
+    this.#emit({ kind: "turn-end", status: "interrupted" });
+  }
+
+  async dispose(): Promise<void> {}
+}
+
+class RawErrorTestAdapter implements AgentAdapter {
+  readonly #emit: (event: AdapterEvent) => void;
+  readonly #raw: string;
+
+  constructor(emit: (event: AdapterEvent) => void, raw: string) {
+    this.#emit = emit;
+    this.#raw = raw;
+  }
+
+  async start(): Promise<void> {}
+
+  async send(): Promise<void> {
+    this.#emit({
+      kind: "turn-end",
+      status: "error",
+      error: { type: "failed", text: this.#raw },
+    });
+  }
+
+  async respond(): Promise<void> {}
+  async interrupt(): Promise<void> {}
+  async dispose(): Promise<void> {}
+}

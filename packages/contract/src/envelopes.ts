@@ -74,7 +74,7 @@ export const clientFrameSchema = z.discriminatedUnion("type", [
   requestEnvelopeSchema,
 ]);
 
-export const MAX_FRAME_BYTES = 1_048_576;
+export const MAX_FRAME_BYTES = 64 * 1024 * 1024;
 
 export type RequestEnvelope = z.infer<typeof requestEnvelopeSchema>;
 export type ResponseEnvelope = z.infer<typeof responseEnvelopeSchema>;

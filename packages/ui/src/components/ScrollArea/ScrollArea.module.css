@@ -1,0 +1,38 @@
+.scrollArea {
+  scrollbar-gutter: stable;
+}
+
+.scrollArea::-webkit-scrollbar {
+  width: var(--k-scrollbar-track-width);
+  height: var(--k-scrollbar-track-width);
+}
+
+.scrollArea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollArea::-webkit-scrollbar-thumb {
+  border: var(--k-scrollbar-thumb-inset) solid transparent;
+  border-radius: var(--k-radius-full);
+  background: var(--k-color-scrollbar-thumb);
+  background-clip: content-box;
+  transition: background-color var(--k-motion-fast) var(--k-ease);
+}
+
+.scrollArea:hover::-webkit-scrollbar-thumb,
+.scrollArea:focus-within::-webkit-scrollbar-thumb,
+.scrollArea::-webkit-scrollbar-thumb:active {
+  background-color: var(--k-color-scrollbar-thumb-hover);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .scrollArea {
+    scrollbar-color: var(--k-color-scrollbar-thumb) transparent;
+    scrollbar-width: auto;
+  }
+
+  .scrollArea:hover,
+  .scrollArea:focus-within {
+    scrollbar-color: var(--k-color-scrollbar-thumb-hover) transparent;
+  }
+}

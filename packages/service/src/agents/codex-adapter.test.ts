@@ -1,0 +1,1160 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { lstat, mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+import type { AnyEvent, Conversation, MessagePart } from "@karont/contract";
+import {
+  addMessage,
+  createConversation as createConversationRecord,
+  getMessage,
+  getSetting,
+  openDatabase,
+  setAgentSession,
+  setSetting,
+} from "../db.ts";
+import type { AdapterModelList } from "./adapter.ts";
+import { CodexAdapter, unwrapCodexShellCommand } from "./codex-adapter.ts";
+import { ConversationManager } from "./conversation-manager.ts";
+import { createFakeCodexSpawn, type FakeCodexSpawn } from "./testing/fake-codex-process.ts";
+import { mapCodexSpecialAction } from "./tool-actions.ts";
+
+const fixtureDir = new URL("./fixtures/codex/", import.meta.url);
+
+type Harness = {
+  manager: ConversationManager;
+  db: ReturnType<typeof openDatabase>;
+  events: AnyEvent[];
+  fakes: FakeCodexSpawn[];
+  subscribe(listener: (event: AnyEvent) => void): () => void;
+  close(): Promise<void>;
+};
+
+async function createHarness(
+  scenario: string,
+  options: {
+    mode?: Conversation["mode"];
+    idleMs?: number;
+    resumeExisting?: boolean;
+    fakeError?: boolean;
+    withoutCommandTiming?: boolean;
+    withoutCommandStart?: boolean;
+    planDecision?: "approve" | "adjust";
+    serviceTierReported?: string | null;
+    codexModelCache?: AdapterModelList;
+  } = {},
+): Promise<Harness> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-codex-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  const listeners = new Set<(event: AnyEvent) => void>();
+  const fakes: FakeCodexSpawn[] = [];
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CODEX_CLI: "codex",
+    ...(options.idleMs === undefined ? {} : { KARONT_AGENT_IDLE_MS: String(options.idleMs) }),
+  };
+  const fixturePath = fileURLToPath(new URL(`${scenario}.jsonl`, fixtureDir));
+  if (options.codexModelCache) {
+    setSetting(db, "agent.codex.models", {
+      agent: "codex",
+      ...options.codexModelCache,
+      fetchedAt: new Date().toISOString(),
+    });
+  }
+  const manager = new ConversationManager({
+    db,
+    env,
+    broadcast: async (event) => {
+      events.push(event);
+      for (const listener of listeners) listener(event);
+    },
+    adapterFactory: (_conversation, emit) =>
+      new CodexAdapter(emit, {
+        env,
+        spawn: (command, args, spawnOptions) => {
+          if (options.fakeError)
+            throw Object.assign(new Error(`spawn ${command} ENOENT`), { code: "ENOENT" });
+          const fake = createFakeCodexSpawn(fixturePath, {
+            startAtResume:
+              scenario === "continuar" && (options.resumeExisting === true || fakes.length > 0),
+            withoutCommandTiming: options.withoutCommandTiming,
+            withoutCommandStart: options.withoutCommandStart,
+            planDecision: options.planDecision,
+            ...(Object.hasOwn(options, "serviceTierReported")
+              ? { serviceTierReported: options.serviceTierReported }
+              : {}),
+          });
+          fakes.push(fake);
+          return fake(command, args, spawnOptions);
+        },
+      }),
+    codexModelLoader: async (cwd) => {
+      if (options.fakeError)
+        throw Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" });
+      const fake = createFakeCodexSpawn(fixturePath);
+      fakes.push(fake);
+      return new CodexAdapter(() => undefined, {
+        env,
+        spawn: (command, args, spawnOptions) => fake(command, args, { ...spawnOptions, cwd }),
+      }).loadModelCatalog(cwd);
+    },
+  });
+
+  return {
+    manager,
+    db,
+    events,
+    fakes,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    close: async () => {
+      await manager.close();
+      db.close();
+    },
+  };
+}
+
+function createConversation(
+  manager: ConversationManager,
+  mode: Conversation["mode"] = "read-only",
+): Conversation {
+  return manager.create({
+    agent: "codex",
+    title: "Conversa de teste",
+    cwd: "/home/user/projeto",
+    mode,
+  });
+}
+
+function fixturePrompt(scenario: string, index = 0): string {
+  const records = readFileSync(new URL(`${scenario}.jsonl`, fixtureDir), "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { direction: string; stream: string; line: string });
+  const prompts = records.flatMap((record) => {
+    if (record.direction !== "out" || record.stream !== "stdin") return [];
+    const request = JSON.parse(record.line) as {
+      method?: string;
+      params?: { input?: { text?: string }[] };
+    };
+    return request.method === "turn/start" ? [request.params?.input?.[0]?.text ?? ""] : [];
+  });
+  const selected = prompts[index < 0 ? prompts.length + index : index];
+  if (!selected) throw new Error(`A fixture ${scenario} não possui esse turno.`);
+  return selected;
+}
+
+async function waitForState(
+  harness: Harness,
+  id: string,
+  state: Conversation["state"],
+): Promise<void> {
+  if (harness.manager.get(id)?.conversation.state === state) return;
+  await new Promise<void>((resolve, reject) => {
+    const remove = harness.subscribe((event) => {
+      if (
+        event.event === "conversation.stateChanged" &&
+        event.payload.conversation.id === id &&
+        event.payload.conversation.state === state
+      ) {
+        clearTimeout(timer);
+        remove();
+        resolve();
+      }
+    });
+    const timer = setTimeout(() => {
+      const snapshot = harness.manager.get(id);
+      remove();
+      reject(
+        new Error(
+          `Timeout esperando estado ${state}; atual=${snapshot?.conversation.state}; mensagens=${JSON.stringify(snapshot?.messages)}`,
+        ),
+      );
+    }, 5_000);
+  });
+}
+
+async function waitForPart(
+  harness: Harness,
+  id: string,
+  predicate: (part: MessagePart) => boolean,
+): Promise<MessagePart> {
+  const existing = harness.manager
+    .get(id)
+    ?.messages.flatMap((message) => message.parts)
+    .find(predicate);
+  if (existing) return existing;
+  return new Promise((resolve, reject) => {
+    const remove = harness.subscribe((event) => {
+      if (
+        event.event !== "conversation.partUpdated" ||
+        event.payload.conversationId !== id ||
+        event.payload.kind !== "upsert" ||
+        !predicate(event.payload.part)
+      )
+        return;
+      clearTimeout(timer);
+      remove();
+      resolve(event.payload.part);
+    });
+    const timer = setTimeout(() => {
+      remove();
+      reject(new Error("Timeout esperando parte do Codex."));
+    }, 5_000);
+  });
+}
+
+function latestAgent(harness: Harness, id: string) {
+  return [...(harness.manager.get(id)?.messages ?? [])]
+    .reverse()
+    .find((message) => message.author === "agent");
+}
+
+function requestParams(request: { params?: unknown } | undefined): Record<string, unknown> {
+  return typeof request?.params === "object" &&
+    request.params !== null &&
+    !Array.isArray(request.params)
+    ? (request.params as Record<string, unknown>)
+    : {};
+}
+
+test("thread/fork ramifica o Codex no turno selecionado", async () => {
+  const env = {
+    ...process.env,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CODEX_CLI: "codex",
+  };
+  const fake = createFakeCodexSpawn(fileURLToPath(new URL("branch-fork.jsonl", fixtureDir)));
+  const adapter = new CodexAdapter(() => undefined, {
+    env,
+    homeDir: os.tmpdir(),
+    spawn: (command, args, options) => fake(command, args, options),
+  });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "branch-test",
+    agent: "codex",
+    title: "Conversa de teste",
+    cwd: "/tmp/karont-branch",
+    mode: "read-only",
+    model: "gpt-test",
+    fast: false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  const sessionId = await adapter.forkThread(conversation, "codex-source-thread", {
+    lastTurnId: "codex-turn-selected",
+  });
+  assert.equal(sessionId, "codex-forked-thread");
+  const request = fake.messages[0]?.find((message) => message.method === "thread/fork");
+  assert.deepEqual(request?.params, {
+    threadId: "codex-source-thread",
+    lastTurnId: "codex-turn-selected",
+    cwd: "/tmp/karont-branch",
+    model: "gpt-test",
+    sandbox: "read-only",
+    approvalPolicy: "never",
+  });
+});
+
+test("thread/turns/list recupera o turno selecionado em histórico antigo", async () => {
+  const env = {
+    ...process.env,
+    KARONT_DISABLE_AGENT_DETECTION: "1",
+    KARONT_CODEX_CLI: "codex",
+  };
+  const fake = createFakeCodexSpawn(fileURLToPath(new URL("branch-fork-legacy.jsonl", fixtureDir)));
+  const adapter = new CodexAdapter(() => undefined, {
+    env,
+    homeDir: os.tmpdir(),
+    spawn: (command, args, options) => fake(command, args, options),
+  });
+  const timestamp = new Date().toISOString();
+  const conversation: Conversation = {
+    id: "branch-test-legacy",
+    agent: "codex",
+    title: "Conversa de teste",
+    cwd: "/tmp/karont-branch",
+    mode: "read-only",
+    model: "gpt-test",
+    fast: false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  const sessionId = await adapter.forkThread(conversation, "codex-source-thread", {
+    turnIndex: 1,
+    expectedTurnCount: 2,
+  });
+  assert.equal(sessionId, "codex-forked-thread");
+  const messages = fake.messages[0] ?? [];
+  const turnsRequest = messages.find((message) => message.method === "thread/turns/list");
+  assert.deepEqual(turnsRequest?.params, {
+    threadId: "codex-source-thread",
+    sortDirection: "asc",
+    limit: 200,
+    itemsView: "notLoaded",
+  });
+  const forkRequest = messages.find((message) => message.method === "thread/fork");
+  assert.deepEqual(forkRequest?.params, {
+    threadId: "codex-source-thread",
+    lastTurnId: "codex-turn-selected",
+    cwd: "/tmp/karont-branch",
+    model: "gpt-test",
+    sandbox: "read-only",
+    approvalPolicy: "never",
+  });
+});
+
+test("mapeia fileChange, MCP, subagente e imagem dos fixtures Codex", () => {
+  const records = readFileSync(new URL("acoes-especiais.jsonl", fixtureDir), "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { line: string });
+  const items = records.map((record) => {
+    const event = JSON.parse(record.line) as { params: { item: Record<string, unknown> } };
+    return event.params.item;
+  });
+  const mapped = items.map((item) => mapCodexSpecialAction(item));
+  const fileChange = mapped[0];
+  const mcp = mapped[1];
+  const subagent = mapped[2];
+  const image = mapped[3];
+  assert.equal(fileChange?.actionType, "edit");
+  assert.deepEqual(JSON.parse(fileChange?.output ?? ""), [
+    {
+      path: "src/modulo.ts",
+      kind: { type: "update" },
+      diff: "--- src/modulo.ts\n+++ src/modulo.ts\n@@ -1,1 +1,1 @@\n-const antigo = 1;\n+const novo = 2;",
+    },
+  ]);
+  assert.equal(mcp?.actionType, "mcp");
+  assert.equal(mcp?.server, "docs");
+  assert.equal(mcp?.tool, "lookup");
+  assert.deepEqual(JSON.parse(mcp?.input ?? ""), { query: "guia de instalação", limit: 2 });
+  assert.match(mcp?.output ?? "", /Dois resultados/);
+  assert.equal(subagent?.actionType, "subagent");
+  assert.equal(subagent?.title, "Revise o módulo src/modulo.ts e resuma os achados.");
+  assert.equal(subagent?.input, "Tarefa: Revise o módulo src/modulo.ts e resuma os achados.");
+  assert.equal(image?.actionType, "image");
+  assert.equal(image?.title, "Gerou uma imagem");
+  assert.equal(image?.input, "Ilustração técnica de uma aplicação desktop");
+  assert.equal(image?.output, "/tmp/karont/generated.png");
+});
+
+test("agrupa spawn e wait do Codex em uma ação de subagente e aninha ações da thread filha", async () => {
+  const harness = await createHarness("subagente");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, fixturePrompt("subagente"));
+    await waitForState(harness, conversation.id, "idle");
+
+    const parts = latestAgent(harness, conversation.id)?.parts ?? [];
+    const actions = parts.filter(
+      (part): part is Extract<MessagePart, { type: "action" }> => part.type === "action",
+    );
+    const subagents = actions.filter((action) => action.actionType === "subagent");
+    assert.equal(subagents.length, 1);
+    const subagent = subagents[0];
+    assert.ok(subagent);
+    assert.equal(subagent.state, "ok");
+    assert.equal(subagent.title, "Listar os arquivos do projeto e resumir a estrutura.");
+    assert.equal(
+      subagent.input,
+      "Tarefa: Listar os arquivos do projeto e resumir a estrutura.\nModelo: gpt-6.1-sol",
+    );
+    assert.match(subagent.output, /Encontrei README\.md e a pasta src/);
+    assert.ok(actions.some((action) => action.parentId === subagent.id));
+    assert.equal(
+      actions.some((action) => action.state === "running"),
+      false,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("processa subAgentActivity e itens da thread filha conforme a captura real do Codex", async () => {
+  const harness = await createHarness("subagente-real");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, fixturePrompt("subagente-real"), false);
+    await waitForPart(
+      harness,
+      conversation.id,
+      (part) => part.type === "action" && part.actionType === "subagent" && part.state === "ok",
+    );
+
+    const parts = latestAgent(harness, conversation.id)?.parts ?? [];
+    const actions = parts.filter(
+      (part): part is Extract<MessagePart, { type: "action" }> => part.type === "action",
+    );
+    const subagents = actions.filter((action) => action.actionType === "subagent");
+    assert.equal(subagents.length, 1);
+    const subagent = subagents[0];
+    assert.ok(subagent);
+    assert.equal(subagent.title, "Listar arquivos");
+    assert.equal(subagent.input, "Modelo: gpt-5.6-terra · esforço: medium");
+    assert.equal(subagent.state, "ok");
+    assert.ok((subagent.durationMs ?? 0) > 0);
+    assert.match(subagent.output, /configura o pacote ES Modules/);
+    assert.match(subagent.output, /consolidação de produto repetido/);
+
+    const childActions = actions.filter((action) => action.parentId === subagent.id);
+    assert.equal(childActions.length, 2);
+    assert.ok(childActions.some((action) => action.title === "Leu arquivos"));
+    assert.ok(childActions.some((action) => action.title === "Leu package.json"));
+    assert.deepEqual(
+      actions.filter((action) => action.parentId === undefined),
+      [subagent],
+    );
+    assert.equal(
+      actions.some((action) => action.title === "Usou um subagente"),
+      false,
+    );
+
+    const mainText = parts
+      .filter((part): part is Extract<MessagePart, { type: "text" }> => part.type === "text")
+      .map((part) => part.markdown)
+      .join("\n");
+    assert.match(mainText, /Vou delegar apenas o inventário/);
+    assert.doesNotMatch(mainText, /consolidação de produto repetido/);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("não deixa subagente em andamento quando o turno termina", async () => {
+  const harness = await createHarness("subagente-em-progresso");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, fixturePrompt("subagente-em-progresso"));
+    await waitForState(harness, conversation.id, "idle");
+
+    const action = latestAgent(harness, conversation.id)?.parts.find(
+      (part) => part.type === "action" && part.actionType === "subagent",
+    );
+    assert.equal(action?.type === "action" ? action.state : undefined, "error");
+    assert.match(action?.type === "action" ? action.output : "", /interrompido/i);
+    assert.equal(
+      latestAgent(harness, conversation.id)?.parts.some(
+        (part) => part.type === "action" && part.state === "running",
+      ),
+      false,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Codex respeita limites em bytes e mantém o JSON do diff válido ao truncar", () => {
+  const action = mapCodexSpecialAction({
+    type: "fileChange",
+    changes: [{ path: "a.ts", kind: { type: "update" }, diff: "+á\n".repeat(40_000) }],
+  });
+  assert.ok(action);
+  assert.equal(Buffer.byteLength(action.input, "utf8") <= 8 * 1024, true);
+  assert.equal(Buffer.byteLength(action.output, "utf8") <= 64 * 1024, true);
+  assert.equal(action.truncated, true);
+  assert.equal(JSON.parse(action.output)[0]?.path, "a.ts");
+});
+
+test("Codex transmite texto, converte leitura em ação e carrega os modelos reais", async (t) => {
+  await t.test("texto", async () => {
+    const harness = await createHarness("texto");
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, fixturePrompt("texto"));
+      await waitForState(harness, conversation.id, "idle");
+      const message = latestAgent(harness, conversation.id);
+      assert.equal(message?.status, "done");
+      assert.equal(typeof message?.startedAt, "number");
+      assert.equal(typeof message?.endedAt, "number");
+      assert.ok((message?.endedAt ?? 0) >= (message?.startedAt ?? 0));
+      for (const part of message?.parts ?? []) {
+        assert.equal(typeof part.startedAt, "number", `parte ${part.id} sem início registrado`);
+        assert.equal(typeof part.endedAt, "number", `parte ${part.id} sem fim registrado`);
+        assert.ok((part.endedAt ?? 0) >= (part.startedAt ?? 0));
+      }
+      assert.ok(
+        message?.parts.some((part) => part.type === "text" && part.markdown.includes("Oi!")),
+      );
+      assert.ok(
+        harness.events.some(
+          (event) =>
+            event.event === "conversation.partUpdated" &&
+            event.payload.kind === "delta" &&
+            event.payload.delta.length > 0,
+        ),
+      );
+      const models = await harness.manager.models("codex");
+      assert.equal(models.models.length, 8);
+      assert.ok(models.models.some((model) => model.id === "gpt-6.1-sol"));
+      assert.equal(models.models.find((model) => model.id === "gpt-6-luna")?.supportsFast, true);
+      assert.deepEqual(models.efforts, ["low", "medium", "high", "xhigh", "max"]);
+      const hostRequests = harness.fakes[0]?.messages[0] ?? [];
+      assert.equal(hostRequests.filter((request) => request.method === "model/list").length, 1);
+      const turnStart = hostRequests.find((request) => request.method === "turn/start");
+      assert.equal(requestParams(turnStart).serviceTier, undefined);
+      assert.equal(requestParams(turnStart).serviceTierForTurn, "default");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("leitura", async () => {
+    const harness = await createHarness("leitura");
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, fixturePrompt("leitura"));
+      await waitForState(harness, conversation.id, "idle");
+      const readAction = latestAgent(harness, conversation.id)?.parts.find(
+        (part) =>
+          part.type === "action" && part.actionType === "read" && part.title.includes("README.md"),
+      );
+      assert.ok(readAction?.type === "action");
+      assert.equal(typeof readAction.startedAt, "number");
+      assert.equal(typeof readAction.endedAt, "number");
+      assert.ok((readAction.endedAt ?? 0) >= (readAction.startedAt ?? 0));
+      assert.ok(
+        latestAgent(harness, conversation.id)?.parts.some(
+          (part) => part.type === "text" && part.markdown.includes("Projeto de teste"),
+        ),
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+test("agent.models carrega uma vez antes da primeira mensagem e reutiliza o cache persistido", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const [first, concurrent] = await Promise.all([
+      harness.manager.models("codex"),
+      harness.manager.models("codex"),
+    ]);
+    assert.equal(first.models.length, 8);
+    assert.equal(first.fetchedAt, concurrent.fetchedAt);
+    assert.deepEqual(first.models[0]?.efforts, ["low", "medium", "high", "xhigh", "max"]);
+    assert.equal(first.models[0]?.defaultEffort, "low");
+    assert.equal(first.models.find((model) => model.id === "gpt-6-sol")?.defaultEffort, "medium");
+    assert.equal(harness.fakes.length, 1);
+    assert.equal(harness.fakes[0]?.processes[0]?.signalCode, "SIGTERM");
+    const requests = harness.fakes[0]?.messages[0] ?? [];
+    assert.deepEqual(
+      requests
+        .filter((request) => typeof request.method === "string")
+        .map((request) => request.method),
+      ["initialize", "initialized", "model/list"],
+    );
+
+    const saved = getSetting(harness.db, "agent.codex.models");
+    assert.ok(saved && typeof saved === "object" && !Array.isArray(saved));
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
+    assert.equal(saved.fetchedAt, first.fetchedAt);
+
+    await harness.manager.close();
+    let loaderCalls = 0;
+    const restarted = new ConversationManager({
+      db: harness.db,
+      broadcast: async () => undefined,
+      env: { KARONT_DISABLE_AGENT_DETECTION: "1" },
+      codexModelLoader: async () => {
+        loaderCalls += 1;
+        throw new Error("O catálogo persistido deveria ser suficiente.");
+      },
+    });
+    const restored = await restarted.models("codex");
+    assert.deepEqual(restored, first);
+    assert.equal(loaderCalls, 0);
+    await restarted.close();
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Codex só recebe a faixa rápida quando o modelo a anuncia", async (t) => {
+  const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
+  const modelCache = (supportsFast: boolean): AdapterModelList => ({
+    models: [
+      {
+        id: "gpt-6.1-sol",
+        name: "GPT-6.1 Sol",
+        efforts: [...efforts],
+        defaultEffort: "low",
+        supportsFast,
+      },
+    ],
+    efforts: [...efforts],
+  });
+
+  await t.test("ligado", async () => {
+    const harness = await createHarness("texto", { codexModelCache: modelCache(true) });
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.setOptions(conversation.id, { model: "gpt-6.1-sol" });
+      await harness.manager.setOptions(conversation.id, { fast: true });
+      await harness.manager.send(conversation.id, fixturePrompt("texto"));
+      await waitForState(harness, conversation.id, "idle");
+
+      const requests = harness.fakes[0]?.messages[0] ?? [];
+      const threadStart = requests.find((request) => request.method === "thread/start");
+      const turnStart = requests.find((request) => request.method === "turn/start");
+      assert.equal(requestParams(threadStart).serviceTier, "priority");
+      assert.equal(requestParams(turnStart).serviceTier, "priority");
+      assert.equal(requestParams(turnStart).serviceTierForTurn, undefined);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("modelo sem suporte", async () => {
+    const harness = await createHarness("texto", { codexModelCache: modelCache(false) });
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.setOptions(conversation.id, { model: "gpt-6.1-sol" });
+      const result = await harness.manager.setOptions(conversation.id, { fast: true });
+      assert.equal(result.fast, false);
+      await harness.manager.send(conversation.id, fixturePrompt("texto"));
+      await waitForState(harness, conversation.id, "idle");
+
+      const requests = harness.fakes[0]?.messages[0] ?? [];
+      const threadStart = requests.find((request) => request.method === "thread/start");
+      const turnStart = requests.find((request) => request.method === "turn/start");
+      assert.equal(requestParams(threadStart).serviceTier, undefined);
+      assert.equal(requestParams(turnStart).serviceTier, undefined);
+      assert.equal(requestParams(turnStart).serviceTierForTurn, "default");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("desligado", async () => {
+    const harness = await createHarness("texto");
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, fixturePrompt("texto"));
+      await waitForState(harness, conversation.id, "idle");
+
+      const requests = harness.fakes[0]?.messages[0] ?? [];
+      const turnStart = requests.find((request) => request.method === "turn/start");
+      assert.equal(requestParams(turnStart).serviceTier, undefined);
+      assert.equal(requestParams(turnStart).serviceTierForTurn, "default");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("tier não aplicado desliga o raio e a preferência sem criar mensagem", async () => {
+    const harness = await createHarness("texto", {
+      codexModelCache: modelCache(true),
+      serviceTierReported: "default",
+    });
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.setOptions(conversation.id, { model: "gpt-6.1-sol" });
+      await harness.manager.setOptions(conversation.id, { fast: true });
+      setSetting(harness.db, "composer.codex.fast", true);
+      await harness.manager.send(conversation.id, fixturePrompt("texto"));
+      await waitForState(harness, conversation.id, "idle");
+
+      const current = harness.manager.get(conversation.id)?.conversation;
+      assert.equal(current?.fast, false);
+      assert.equal(getSetting(harness.db, "composer.codex.fast"), false);
+      assert.equal(harness.manager.get(conversation.id)?.messages.length, 2);
+      const turnStart = harness.fakes[0]?.messages[0]?.find(
+        (request) => request.method === "turn/start",
+      );
+      assert.equal(requestParams(turnStart).serviceTier, undefined);
+      assert.equal(requestParams(turnStart).serviceTierForTurn, "default");
+      assert.ok(
+        harness.events.some(
+          (event) =>
+            event.event === "conversation.stateChanged" &&
+            event.payload.conversation.id === conversation.id &&
+            event.payload.conversation.fast === false,
+        ),
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+test("remove wrappers bash, sh e zsh com aspas simples ou duplas", () => {
+  assert.equal(unwrapCodexShellCommand("/bin/bash -lc 'mkdir -p /tmp/x'"), "mkdir -p /tmp/x");
+  assert.equal(unwrapCodexShellCommand('sh -c "mkdir -p /tmp/x"'), "mkdir -p /tmp/x");
+  assert.equal(unwrapCodexShellCommand('zsh -lc "printf \\"ok\\""'), 'printf "ok"');
+  assert.equal(unwrapCodexShellCommand("npm test"), "npm test");
+});
+
+test("mede a duração pela observação quando o Codex omite os tempos da ação", async () => {
+  const harness = await createHarness("comando-permitido", {
+    mode: "edit",
+    withoutCommandTiming: true,
+  });
+  try {
+    const conversation = createConversation(harness.manager, "edit");
+    await harness.manager.send(conversation.id, fixturePrompt("comando-permitido"));
+    const permission = await waitForPart(
+      harness,
+      conversation.id,
+      (part) => part.type === "permission" && part.state === "pending",
+    );
+    await harness.manager.respond(conversation.id, permission.id, {
+      responseType: "permission",
+      decision: "allow",
+    });
+    await waitForState(harness, conversation.id, "idle");
+    const action = latestAgent(harness, conversation.id)?.parts.find(
+      (part) => part.type === "action" && part.actionType === "command",
+    );
+    assert.ok(action?.type === "action" && action.durationMs !== null && action.durationMs > 0);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("deixa a duração nula quando não há início ou duração informados", async () => {
+  const harness = await createHarness("comando-permitido", {
+    mode: "edit",
+    withoutCommandTiming: true,
+    withoutCommandStart: true,
+  });
+  try {
+    const conversation = createConversation(harness.manager, "edit");
+    await harness.manager.send(conversation.id, fixturePrompt("comando-permitido"));
+    const permission = await waitForPart(
+      harness,
+      conversation.id,
+      (part) => part.type === "permission" && part.state === "pending",
+    );
+    await harness.manager.respond(conversation.id, permission.id, {
+      responseType: "permission",
+      decision: "allow",
+    });
+    await waitForState(harness, conversation.id, "idle");
+    const action = latestAgent(harness, conversation.id)?.parts.find(
+      (part) => part.type === "action" && part.actionType === "command",
+    );
+    assert.equal(action?.type === "action" ? action.durationMs : undefined, null);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("modos Codex usam as políticas reais do app-server", async (t) => {
+  for (const [mode, sandbox, approvalPolicy] of [
+    ["read-only", "read-only", "never"],
+    ["edit", "workspace-write", "untrusted"],
+    ["full", "danger-full-access", "never"],
+  ] as const) {
+    await t.test(mode, async () => {
+      const harness = await createHarness("texto", { mode });
+      try {
+        const conversation = createConversation(harness.manager, mode);
+        await harness.manager.send(conversation.id, fixturePrompt("texto"));
+        await waitForState(harness, conversation.id, "idle");
+        const threadStart = harness.fakes[0]?.messages[0]?.find(
+          (message) => message.method === "thread/start",
+        );
+        assert.equal(
+          (threadStart?.params as Record<string, unknown> | undefined)?.sandbox,
+          sandbox,
+        );
+        assert.equal(
+          (threadStart?.params as Record<string, unknown> | undefined)?.approvalPolicy,
+          approvalPolicy,
+        );
+      } finally {
+        await harness.close();
+      }
+    });
+  }
+});
+
+test("aprovações de comando permitem, permitem sempre nesta conversa ou negam", async (t) => {
+  for (const scenario of [
+    "comando-permitido",
+    "comando-permitir-sempre",
+    "comando-negado",
+  ] as const) {
+    await t.test(scenario, async () => {
+      const harness = await createHarness(scenario, { mode: "edit" });
+      try {
+        const conversation = createConversation(harness.manager, "edit");
+        await harness.manager.send(conversation.id, fixturePrompt(scenario));
+        const permission = await waitForPart(
+          harness,
+          conversation.id,
+          (part) => part.type === "permission" && part.state === "pending",
+        );
+        assert.ok(
+          permission.type === "permission" &&
+            permission.summary.includes("touch /tmp/arquivo-de-teste"),
+        );
+        const decision =
+          scenario === "comando-permitir-sempre"
+            ? "always"
+            : scenario === "comando-negado"
+              ? "deny"
+              : "allow";
+        await harness.manager.respond(conversation.id, permission.id, {
+          responseType: "permission",
+          decision,
+        });
+        await waitForState(harness, conversation.id, "idle");
+        const response = harness.fakes[0]?.messages[0]?.find(
+          (message) => message.id === 0 && message.method === undefined,
+        );
+        assert.equal(
+          (response?.result as Record<string, unknown> | undefined)?.decision,
+          decision === "allow" ? "accept" : decision === "always" ? "acceptForSession" : "decline",
+        );
+        const finalPermission = latestAgent(harness, conversation.id)?.parts.find(
+          (part) => part.id === permission.id,
+        );
+        assert.equal(
+          finalPermission?.type === "permission" ? finalPermission.state : undefined,
+          decision === "deny" ? "denied" : "allowed",
+        );
+        if (scenario === "comando-permitido") {
+          const action = latestAgent(harness, conversation.id)?.parts.find(
+            (part) => part.type === "action" && part.actionType === "command",
+          );
+          assert.ok(action?.type === "action");
+          if (action?.type === "action") {
+            assert.equal(action.title, "touch /tmp/arquivo-de-teste && ls");
+            assert.equal(action.input, "touch /tmp/arquivo-de-teste && ls");
+            assert.ok(action.durationMs !== null && action.durationMs > 0);
+          }
+        }
+      } finally {
+        await harness.close();
+      }
+    });
+  }
+});
+
+test("pergunta, plano aprovado e atualização da lista de tarefas", async (t) => {
+  await t.test("pergunta", async () => {
+    const harness = await createHarness("pergunta");
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, fixturePrompt("pergunta"));
+      const question = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "question" && part.state === "pending",
+      );
+      assert.ok(question.type === "question" && question.questions[0]?.options.length === 2);
+      await harness.manager.respond(conversation.id, question.id, {
+        responseType: "question",
+        answers: { "0": ["A"] },
+      });
+      await waitForState(harness, conversation.id, "idle");
+      const response = harness.fakes[0]?.messages[0]?.find(
+        (message) => message.id === 0 && message.method === undefined,
+      );
+      assert.deepEqual(
+        (response?.result as { answers?: Record<string, { answers: string[] }> } | undefined)
+          ?.answers,
+        { opcao: { answers: ["A"] } },
+      );
+      const finalQuestion = latestAgent(harness, conversation.id)?.parts.find(
+        (part) => part.id === question.id,
+      );
+      assert.equal(
+        finalQuestion?.type === "question" ? finalQuestion.state : undefined,
+        "answered",
+      );
+      assert.equal(typeof finalQuestion?.startedAt, "number");
+      assert.equal(typeof finalQuestion?.endedAt, "number");
+      assert.ok((finalQuestion?.endedAt ?? 0) >= (finalQuestion?.startedAt ?? 0));
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("plano", async () => {
+    const harness = await createHarness("plano");
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, fixturePrompt("plano"), true);
+      const plan = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "plan" && part.state === "pending",
+      );
+      await waitForState(harness, conversation.id, "waiting");
+      await harness.manager.respond(conversation.id, plan.id, {
+        responseType: "plan",
+        decision: "approve",
+      });
+      await waitForState(harness, conversation.id, "idle");
+      assert.ok(
+        latestAgent(harness, conversation.id)?.parts.some(
+          (part) => part.type === "plan" && part.state === "approved",
+        ),
+      );
+      const turns = harness.fakes[0]?.messages[0]?.filter(
+        (message) => message.method === "turn/start",
+      );
+      assert.equal(turns?.length, 2);
+      const approvalParams = turns?.[1]?.params as
+        | { input?: { text?: string }[]; collaborationMode?: { mode?: string } }
+        | undefined;
+      assert.equal(
+        approvalParams?.input?.[0]?.text,
+        "Execute o plano aprovado no modo de acesso escolhido para esta conversa.",
+      );
+      assert.equal(approvalParams?.collaborationMode?.mode, "default");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("ajustar", async () => {
+    const harness = await createHarness("plano", { planDecision: "adjust" });
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, fixturePrompt("plano"), true);
+      const plan = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "plan" && part.state === "pending",
+      );
+      await waitForState(harness, conversation.id, "waiting");
+      const comment = "Inclua a validação do resultado como segundo passo.";
+      await harness.manager.respond(conversation.id, plan.id, {
+        responseType: "plan",
+        decision: "reject",
+        comment,
+      });
+      const revisedPlan = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "plan" && part.state === "pending" && part.id !== plan.id,
+      );
+      assert.equal(revisedPlan.type, "plan");
+      await waitForState(harness, conversation.id, "waiting");
+      const rejectedPlan = latestAgent(harness, conversation.id)?.parts.find(
+        (part) => part.id === plan.id,
+      );
+      assert.equal(rejectedPlan?.type === "plan" ? rejectedPlan.state : undefined, "rejected");
+      const turns = harness.fakes[0]?.messages[0]?.filter(
+        (message) => message.method === "turn/start",
+      );
+      const adjustmentParams = turns?.[1]?.params as
+        | { input?: { text?: string }[]; collaborationMode?: { mode?: string } }
+        | undefined;
+      assert.equal(adjustmentParams?.input?.[0]?.text, comment);
+      assert.equal(adjustmentParams?.collaborationMode?.mode, "plan");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("tarefas", async () => {
+    const harness = await createHarness("tarefas");
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, fixturePrompt("tarefas"));
+      const plan = await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "plan" && part.state === "pending",
+      );
+      await harness.manager.respond(conversation.id, plan.id, {
+        responseType: "plan",
+        decision: "approve",
+      });
+      await waitForState(harness, conversation.id, "idle");
+      const todos = latestAgent(harness, conversation.id)?.parts.find(
+        (part) => part.type === "todos",
+      );
+      assert.ok(todos?.type === "todos" && todos.items.length === 2);
+      assert.ok(todos?.type === "todos" && todos.items.every((item) => item.state === "done"));
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+test("retoma thread, interrompe turno e trata CLI ausente", async (t) => {
+  await t.test("retomar thread", async () => {
+    const harness = await createHarness("continuar", { resumeExisting: true });
+    try {
+      const conversation = createConversation(harness.manager);
+      setAgentSession(harness.db, conversation.id, "00000000-0000-4000-8000-000000000002");
+      await harness.manager.send(conversation.id, fixturePrompt("continuar", -1));
+      await waitForState(harness, conversation.id, "idle");
+      assert.equal(
+        harness.fakes[0]?.messages[0]?.find((message) => message.method === "thread/resume")
+          ?.method,
+        "thread/resume",
+      );
+      assert.ok(
+        latestAgent(harness, conversation.id)?.parts.some(
+          (part) => part.type === "text" && part.markdown === "jatobá",
+        ),
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("parar", async () => {
+    const harness = await createHarness("parar");
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, fixturePrompt("parar"));
+      await waitForPart(
+        harness,
+        conversation.id,
+        (part) => part.type === "text" && part.markdown.length > 0,
+      );
+      assert.equal(await harness.manager.stop(conversation.id), true);
+      await waitForState(harness, conversation.id, "idle");
+      assert.equal(latestAgent(harness, conversation.id)?.status, "interrupted");
+      assert.ok(
+        latestAgent(harness, conversation.id)?.parts.some(
+          (part) => part.type === "error" && part.errorType === "interrupted",
+        ),
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+
+  await t.test("CLI ausente", async () => {
+    const harness = await createHarness("erro", { fakeError: true });
+    try {
+      const conversation = createConversation(harness.manager);
+      await harness.manager.send(conversation.id, "Olá.");
+      await waitForState(harness, conversation.id, "error");
+      assert.ok(
+        latestAgent(harness, conversation.id)?.parts.some(
+          (part) => part.type === "error" && part.errorType === "cli-not-found" && part.retryable,
+        ),
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+test("retomada após ociosidade reinicia o processo e consulta modelos uma vez por processo", async () => {
+  const harness = await createHarness("continuar", { idleMs: 20 });
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, fixturePrompt("continuar", 0));
+    await waitForState(harness, conversation.id, "idle");
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.equal((await harness.manager.models("codex")).models.length, 8);
+    await harness.manager.send(conversation.id, fixturePrompt("continuar", -1));
+    await waitForState(harness, conversation.id, "idle");
+    assert.equal(harness.fakes.length, 2);
+    assert.equal(
+      harness.fakes[0]?.messages[0]?.filter((message) => message.method === "model/list").length,
+      1,
+    );
+    assert.equal(
+      harness.fakes[1]?.messages[0]?.filter((message) => message.method === "model/list").length,
+      1,
+    );
+    assert.equal(
+      harness.fakes[1]?.messages[0]?.some((message) => message.method === "thread/resume"),
+      true,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("o serviço recupera mensagens streaming após reinício", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-codex-restart-"));
+  const dbPath = path.join(root, "karont.db");
+  let db = openDatabase(dbPath);
+  const conversation = createConversationRecord(db, {
+    agent: "codex",
+    title: "Interrompida",
+    cwd: "/home/user/projeto",
+    mode: "read-only",
+  });
+  const message = {
+    id: "codex-message-streaming",
+    conversationId: conversation.id,
+    author: "agent" as const,
+    status: "streaming" as const,
+    parts: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  addMessage(db, message);
+  db.close();
+  db = openDatabase(dbPath);
+  const recovered = getMessage(db, message.id);
+  assert.equal(recovered?.status, "interrupted");
+  assert.ok(recovered?.parts.some((part) => part.type === "error" && part.retryable));
+  db.close();
+});
+
+test("Codex recebe texto e localImage; o arquivo temporário some ao fim do turno", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    const imageData = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    const attachments = [
+      { name: "notas.md", mimeType: "text/markdown", kind: "text" as const, data: "linha 1" },
+      { name: "pixel.png", mimeType: "image/png", kind: "image" as const, data: imageData },
+    ];
+    const prompt = fixturePrompt("texto");
+    const sent = await harness.manager.send(conversation.id, prompt, false, attachments);
+    await waitForState(harness, conversation.id, "idle");
+
+    const turnStart = harness.fakes[0]?.messages[0]?.find(
+      (message) => message.method === "turn/start",
+    );
+    assert.ok(turnStart);
+    const input = (turnStart.params as { input: Record<string, unknown>[] }).input;
+    assert.deepEqual(input.slice(0, 2), [
+      { type: "text", text: prompt },
+      { type: "text", text: "Arquivo anexado: notas.md\n\n```\nlinha 1\n```" },
+    ]);
+    assert.equal(input[2]?.type, "localImage");
+    const imagePath = input[2]?.path;
+    assert.equal(typeof imagePath, "string");
+    assert.equal(path.isAbsolute(imagePath as string), true);
+    await assert.rejects(lstat(imagePath as string), { code: "ENOENT" });
+
+    const persisted = getMessage(harness.db, sent.userMessage.id);
+    assert.deepEqual(persisted?.attachments, [
+      { name: "notas.md", mimeType: "text/markdown", kind: "text", sizeBytes: 7 },
+      { name: "pixel.png", mimeType: "image/png", kind: "image", sizeBytes: 8 },
+    ]);
+    const raw = harness.db
+      .prepare("SELECT attachments_json FROM messages WHERE id=?")
+      .get(sent.userMessage.id) as { attachments_json: string };
+    assert.equal(raw.attachments_json.includes(imageData), false);
+    assert.equal(raw.attachments_json.includes("linha 1"), false);
+  } finally {
+    await harness.close();
+  }
+});

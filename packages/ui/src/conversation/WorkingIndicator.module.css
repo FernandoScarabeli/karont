@@ -1,0 +1,118 @@
+.indicator {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  margin-block-start: var(--k-space-1);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-tight);
+}
+
+.indicator[data-exiting="true"] {
+  animation: workingExit var(--k-motion-moderate-exit) var(--k-ease) both;
+}
+
+.mainLine {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--k-control-height-sm);
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.spiral {
+  display: block;
+  width: var(--k-chat-working-spinner-size);
+  height: var(--k-chat-working-spinner-size);
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+  transform-origin: center;
+  animation: spiralSpin var(--k-working-spiral-duration) linear infinite;
+}
+
+.step {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--k-color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shimmer {
+  position: relative;
+  display: inline-block;
+  color: var(--k-color-text-muted);
+}
+
+.shimmerBase {
+  display: inline-block;
+  color: var(--k-color-text-muted);
+}
+
+.shimmerBand {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 36%;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateX(-278%);
+  animation: shimmerWindow var(--k-working-shimmer-duration) linear infinite;
+}
+
+.shimmerHighlight {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: max-content;
+  color: transparent;
+  background: var(--k-color-text-primary);
+  background-clip: text; /* taste-skill-ignore: shimmer solicitado no indicador de trabalho */
+  -webkit-background-clip: text; /* taste-skill-ignore: shimmer solicitado no indicador de trabalho */
+  white-space: nowrap;
+  transform: translateX(100%);
+  animation: shimmerCounter var(--k-working-shimmer-duration) linear infinite;
+}
+
+@keyframes spiralSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmerWindow {
+  to {
+    transform: translateX(278%);
+  }
+}
+
+@keyframes shimmerCounter {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes workingExit {
+  to {
+    opacity: 0;
+    transform: translateY(var(--k-space-1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indicator[data-exiting="true"] {
+    animation: none;
+  }
+
+  .spiral,
+  .shimmerBand,
+  .shimmerHighlight {
+    animation: none;
+  }
+
+  .shimmerBand {
+    display: none;
+  }
+}

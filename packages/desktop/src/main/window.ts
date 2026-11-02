@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, protocol } from "electron";
+import { app, BrowserWindow, protocol, shell } from "electron";
+import { validateExternalUrl } from "./external-url.ts";
 import { resolveProtocolPath } from "./protocol-path.ts";
 
 const distributionDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -69,12 +70,19 @@ export function createMainWindow(): BrowserWindow {
   });
 
   const contents = mainWindow.webContents;
-  contents.setWindowOpenHandler(() => ({ action: "deny" }));
+  contents.setWindowOpenHandler(({ url }) => {
+    openAllowedExternalUrl(url);
+    return { action: "deny" };
+  });
   contents.on("will-navigate", (event, url) => {
-    if (!isAppUrl(url)) event.preventDefault();
+    if (isAppUrl(url)) return;
+    event.preventDefault();
+    openAllowedExternalUrl(url);
   });
   contents.on("will-redirect", (event, url) => {
-    if (!isAppUrl(url)) event.preventDefault();
+    if (isAppUrl(url)) return;
+    event.preventDefault();
+    openAllowedExternalUrl(url);
   });
   contents.on("before-input-event", (event, input) => {
     if (!input.control || !input.shift || input.key.toLowerCase() !== "i") return;
@@ -97,6 +105,11 @@ export function loadMainWindow(mainWindow: BrowserWindow): Promise<void> {
 
 function isAppUrl(url: string): boolean {
   return url.startsWith("karont://app/");
+}
+
+function openAllowedExternalUrl(value: string): void {
+  const url = validateExternalUrl(value);
+  if (url) void shell.openExternal(url).catch(() => undefined);
 }
 
 function protocolResponse(body: string | Buffer, status: number, contentType: string): Response {

@@ -62,6 +62,67 @@ Repositório recriado do zero em 2026-10-31.
 
 17. Ajustes do dono antes do PR do M1 (2026-10-31): o botão de pasta abre **direto** o seletor de pastas do sistema (sem menu); a Nova conversa ganha uma frase grande ("Vamos trabalhar"); placeholder do Terminal "Digite seu comando"; **sem textos de ajuda** embaixo do campo (nada de "Enter abre…"); ícones reais das CLIs (devicons, MIT) no seletor e nas Configurações. Para depois: placeholder com frases engraçadas que vão trocando ("faz meu café", "domine o mundo").
 
+18. M2 é **chat interativo completo** (2026-10-31): permissão de comando no chat (Permitir / Sempre nesta conversa / Negar), perguntas do agente com opções, plano para aprovar, lista de tarefas ao vivo, linha do tempo dos passos. Claude por processo aberto com `stream-json` + `--permission-prompts host`; Codex por `codex app-server`. Modos: Só leitura / Pode editar (comandos pedem permissão) / Liberado. Composer no estilo da referência do dono (agente/modelo, esforço, acesso, anexar, enviar; faixa embaixo com pasta e branch). Referências de interface: agent-elements.21st.dev, fluidfunctionalism.com, kobra.systems (trace-waterfall). Dependências `react-markdown`, `remark-gfm`, `rehype-highlight` aprovadas. Fixtures gravados com o modelo mais barato (Haiku / menor do Codex).
+
+19. **Leveza é requisito** (2026-10-31): o app não pode comer RAM nem CPU. Toda tarefa do M2 em diante leva critério de desempenho (lista virtualizada em conversas longas, deltas agrupados, nada de re-render por token, processos das CLIs encerrados quando ociosos, sem polling). O orquestrador mede RAM/CPU no fim de cada marco.
+
+20. **Planejar** (decisão do orquestrador na ausência do dono, 2026-10-31, revisável): botão "Planejar" no composer. Com ele ligado, o agente só planeja (Claude `plan`, Codex `collaborationMode: plan`); o cartão de plano tem Aprovar (executa no modo de acesso escolhido) e Ajustar.
+
+## M2 — estado em 2026-10-31 (fim da sessão sem o dono)
+Branch `m2-chat` (sem PR). Feito e testado com as CLIs reais no preview (Haiku / GPT-5.6-Luna):
+- Chat com Claude Code (processo aberto, `stream-json`, `--permission-prompts host --permission-prompt-tool stdio`) e Codex (`codex app-server --stdio`).
+- Texto ao vivo com markdown, ações, cartões de permissão (Permitir / Sempre / Negar), pergunta com opções, plano (botão Planejar, Aprovar/Ajustar), tarefas, erro com tentar de novo, Parar, continuar sessão.
+- Composer: agente, modelo (lista real do Codex), esforço por modelo, acesso, Planejar.
+- Linha do tempo em cascata com horários reais por parte.
+- Leveza: app parado ≈ 340 MB de memória real (PSS, janela + serviço + preview), CPU ≈ 0%.
+- Fixtures reais em `packages/service/src/agents/fixtures/` e protocolo em `PROTOCOLO.md`.
+
+## M2 — estado em 2026-11-01 (com o dono)
+Branch `m2-chat` (sem PR; o dono testa no preview antes de juntar na `main`). Depois do estado anterior, entrou:
+- Cartões do Codex (permissão, pergunta, plano) testados de verdade na tela. Corrigido: resposta de pergunta não chegava (chave por índice) e "Pode editar" do Codex agora usa `approvalPolicy: untrusted`.
+- Anexos (botão, colar, arrastar; imagem até 5 MB, texto até 200 kB; só metadados no banco), branch do Git na faixa (`folders.gitInfo`), links abrem no navegador (`openExternal` validado no main).
+- Planejar lembrado por conversa (migração v7).
+- Leveza do streaming: markdown em blocos memorizados, deltas a cada 64 ms; aba da UI 12–20% de CPU numa resposta de ~14 mil caracteres (antes 60–110%), serviço ~1–2% e 52 MB. Bundle inicial 464 kB (terminal e realce sob demanda).
+- UX: títulos automáticos (CLI do agente, modelo barato, em segundo plano; renomear com duplo clique), ações resumidas ("Leu 3 arquivos"; comando completo atrás de um botão; cartões de permissão mostram o comando inteiro), faixa pasta/branch mais estreita que o composer, saudação por horário com nome (`system.userName` + "Como te chamar" nas Configurações), placeholder digitando frases engraçadas (`TextType` próprio, sem gsap).
+
+### Rodada de UI/UX (2026-11-01, tarde) — já na `m2-chat`
+- **Barra do composer (F9):** agente sem pílula; modelo sem "Padrão", lembrado por agente (`composer.<agente>.model`), é o que de fato é enviado; esforço = ícone `Gauge` do Lucide cujo ponteiro gira, **clique avança o nível** (setas também), etiqueta "Esforço: X" some sozinha; botão de opções (`SlidersHorizontal`) com Acesso (**Só ler / Pedir antes / Acesso total**) e Planejar (switch), selos "Planejar"/"Acesso total" quando ativos. Salvamento otimista (nada pisca). Composer mais baixo (textarea mín. 40px).
+- **Lista de conversas (F10):** ⋯ no hover/foco e botão direito: Fixar, Renomear (inline), Abrir ao lado, Arquivar, Apagar (com confirmação). Grupos "Fixadas"/"Recentes"; "Ver arquivadas" no ⋯ do cabeçalho (⋯ à esquerda do `+`). Migração v9 (`pinned_at`, `archived_at`), `conversation.setPinned`/`setArchived`, `list({ archived })`. Scrollbar própria (`components/ScrollArea`, 12px no Chromium, `auto` no Firefox, `scrollbar-gutter: stable`, colada na borda da sidebar). Área de trabalho sem moldura (canto reto, uma linha só). Corrigido `Dialog` que roubava o foco na montagem.
+- **Status na sidebar (F11):** bolinha antes do ⋯: verde = resposta não vista, amarelo pulsando (2,4 s) = trabalhando, laranja-avermelhado = precisa de você, vazada = erro. Migração v10 (`unread_at`), `conversation.markSeen`. Status saiu do cabeçalho da conversa.
+- **Erros legíveis (F12):** `describeAgentError` no contrato (filtro de conteúdo, limite, sobrecarga, contexto longo, login, rede); parte `error` ganhou `details` (cru) atrás de "Ver detalhes".
+- **Opções da mensagem por clique (F15):** nada aparece sob as mensagens por padrão; um clique na mensagem mostra copiar/editar/tentar de novo e a **Linha do tempo**; Esc/clique fora fecha; seleção de texto e links não abrem.
+- A vitrine `#chat` (F13/F14) foi criada e **removida** a pedido do dono.
+- **Clique na mensagem (F17/F19):** sem moldura nem fundo ao abrir (foco visível só no teclado). Mensagem do usuário: data e hora em cima do balão, Copiar/Editar embaixo; "Reenviar" removido. Resposta do agente: data embaixo, acima das ações. Data e ícones alinhados à borda.
+- **Trocar de conversa sem piscar (F18):** caches pequenos em memória (`conversationCache.ts`: 20 conversas, modelos por agente, branch por pasta) mostram o último dado na hora e atualizam por trás; composer e faixa com a forma final enquanto carrega; "Carregando…" só após 300 ms. Medido quadro a quadro: nenhum quadro sem controles.
+- **Data e espaço (F21):** formato "17:14 · 1 de nov." (ano só se for outro); data em cima também na resposta do agente; espaço da data e das ações sempre reservado (abrir só faz fade, nada se move; só a Linha do tempo empurra).
+- **"Trabalhando" versão C (F20 protótipo → F22):** pontinhos 3×3 em espiral + frase do passo com shimmer (Pensando, Lendo X, Lendo N arquivos, Rodando X, Respondendo, Trabalhando, Parando) + linha do raciocínio + chips dos arquivos; fica logo abaixo da resposta que está chegando; some em `waiting`. Tela provisória `#trabalhando` apagada. Testado com Claude Haiku real.
+- **Conversa no estilo Agent Elements (F23 protótipo → F24):** linhas de ferramenta com ícone, sem caixa; resposta terminada recolhida em "Trabalhou por X ›" (só a resposta final visível; erro e pendências sempre fora); indicador = espiral + frase com shimmer (substituiu a versão C). Referência MIT reescrita no nosso padrão, sem dependência nova.
+- **Dados das ferramentas (B9/B10):** `actionType` ganhou `subagent`, `mcp`, `image`; campos opcionais `parentId`, `server`, `tool`. Claude Edit/MultiEdit/Write geram diff unificado no formato do Codex, com números de linha reais e 3 linhas de contexto (o serviço lê o arquivo na hora do `tool_use`; sem posição → diff sem `@@`). Fixtures de subagente/MCP/imagem são construídos (não gravados): falta testar com CLIs reais.
+- **Ajustes (F25–F27):** opções da mensagem voltaram para o hover (espaço reservado); conversa mais junta; composer ajustado ao conteúdo; história aberta sem caixa; painel de diff com números de linha, cores e realce (sem copiar/baixar, a pedido do dono). Diff do Claude conferido com edição real.
+- **Mais ajustes (F28–F35, 2026-11-01 noite):** painéis de ferramenta sem caixa própria; "Apagar todas as conversas" em Configurações › Geral › Dados (`conversation.count`/`deleteAll`, para agentes antes, não apaga terminais); saída de comando com cara de terminal (prompt `$`, "saída N · duração", cores ANSI com parser próprio); **fluid hover** (destaque único que desliza, mola em CSS `linear()`, sem `motion`) em sidebar, menus e Configurações; **texto em máquina de escrever** (letra a letra, ~220 car/s adaptativo, cursor de bloco; só na última parte de texto em andamento; rolagem acompanha no mesmo quadro e só para por ação do usuário). Medido com Claude real: 60 fps sem quadros longos, rolagem 100% colada.
+- **Executor:** o Codex estourou o limite na noite de 2026-11-01; o dono mandou usar subagente Haiku até voltar.
+- **F36/B11/F37:** tokens de movimento (`--k-motion-fast/moderate/slow` + `-exit`, molas em `linear()`, `styles/motion.ts`) aplicados no app todo; subagente do Claude 2.1.x se chama **`Agent`** (não `Task`) e agora vira `subagent` com os passos filhos (`parent_tool_use_id`) aninhados — fixture real sanitizada `subagente-agent.jsonl`; MCP conferido com Claude real (`pencil · get_style`); "Trabalhou por X" agora recebe `startedAt/endedAt` ao vivo (`conversation.stateChanged`). Codex ainda sem teste real de subagente/MCP (limite). E2E teve 1 falha intermitente numa rodada (23 s), passou na seguinte: observar.
+
+### Decisões do dono nesta rodada
+- Sem letras de atalho de teclado nos menus.
+- Odeia cartões com faixa/borda colorida lateral (ex.: cartão de erro atual). Ainda **não escolheu** o novo modelo de erro; os 4 propostos foram: (1) inline sem cartão, (2) nota neutra com título, (3) rodapé com separador fino e ações à direita, (4) caixinha compacta de uma linha com botões de ícone e frase só nos detalhes.
+- Quer protótipo visual (tela provisória) antes de implementar mudanças grandes de visual.
+
+### Rodada de 2026-11-01 (noite) → 2026-11-02 — também já na `m2-chat`
+- F38: ações da mensagem **só com ícone** (tooltip + `aria-label`): usuário = Copiar, Editar; agente = Copiar, Tentar de novo (só na última resposta, agente parado), **Criar branch**, Linha do tempo. "Criar branch" = **ramificar a conversa** (opção A do dono): `conversation.branch({ id, messageId })`, conversa nova "<título> · ramo" com histórico até o ponto, abre em painel. Fork nativo: Claude `--resume <id> --fork-session` (só a última resposta); Codex `thread/fork` com `lastTurnId` (qualquer turno). Resposta antiga do Claude → sessão nova com o histórico como contexto + aviso discreto. Testado com Codex real: o ramo lembrou do contexto.
+- F40: ícones de ação quadrados (28 px), sem passar da borda.
+- B12/B13: subagente do Codex pelo protocolo **real**: `subAgentActivity` (`started`/`completed`, `agentThreadId`, `agentPath`) + itens da thread filha (`params.threadId`) aninhados por `parentId`; `wait` sem receptores não vira linha. Fixture real sanitizado `fixtures/codex/subagente-real.jsonl`. Testado com Codex real.
+- F39: raio (modo rápido) no composer; Codex manda `serviceTier` (tier anunciado pelo `model/list`, ex. `priority`) por turno.
+
+## Estado ao fim da sessão (2026-11-02) — LEIA ISTO PRIMEIRO
+- Branch `m2-chat`, tudo commitado e testado (unidade + E2E 4/4). PR #3 aberto. Preview: `npm run preview:web` (o serviço muda → reiniciar o preview).
+- **F41 concluída e na `m2-chat`:** raio (modo rápido) **só no Codex** — no Claude o ícone não aparece (o modo rápido do Claude depende de "uso extra" na conta; na do dono vem `extra_usage_disabled`); **nenhum aviso** de "indisponível" (o dono não quer); se o Codex confirmar que não aplicou, o raio só apaga. Nada rodando ao fechar a sessão.
+- B14 (reabrir o Claude ao ligar o raio) foi **cancelada** (perdeu sentido com a F41); a worktree `m2-b14-fast-reinicia` pode ser descartada.
+- **PR aberto (2026-11-02):** https://github.com/FernandoScarabeli/karont/pull/3 (`m2-chat` → `main`), CI verde; local: check + build + E2E 4/4. **Falta:** o dono aprovar o merge.
+- Pendências pequenas: bundle inicial > 500 kB; aviso do PostCSS no build (`from`); 1 falha intermitente no E2E numa rodada (passou na seguinte) — observar; no Claude, ao terminar, o "Trabalhou por X" já vem ao vivo (F37).
+- Executor: Codex `gpt-6-luna` xhigh fast (o limite estourou e voltou em 2026-11-01; quando estourar, usar subagente Haiku com as mesmas regras).
+- Testes reais: projeto de teste em `/tmp/karont-teste-grande` (loja-mini com git). Scripts Playwright temporários `.x.mjs` na raiz (apagar depois). A ponte `window.karont` não existe no preview; para inspecionar dados, ler o banco em modo leitura: `~/.local/share/karont/karont.db`.
+
 ## Notas técnicas
 - Pacotes: `packages/contract`, `packages/service`, `packages/desktop`, `packages/ui`. Versões fixas (sem `^`).
 - Node 24 roda `.ts` direto (type stripping): testes e serviço em dev rodam sem build. Por isso o TS usa `erasableSyntaxOnly` (sem `enum`/`namespace`) e imports com extensão `.ts`.
@@ -69,7 +130,8 @@ Repositório recriado do zero em 2026-10-31.
 - Electron 45.2.1 traz Node 24.22.1 com `node:sqlite`: o serviço pode rodar como `ELECTRON_RUN_AS_NODE=1` no app empacotado.
 - Tokens de cor vêm da "Direção A · Lua" do `karont.pen`. Só `--k-color-danger` (`#EF7B73`) não estava no design: proposta do orquestrador, ajustável.
 - Biome usa `"preset": "recommended"` (o `biome migrate` tinha trocado para `none`, o que desliga as regras).
-- Preview web: `npm run preview:web` na raiz → http://127.0.0.1:5173/. Reaproveita um serviço já rodando; se não houver, inicia um em modo dev (`KARONT_DEV=1`) e o encerra ao sair.
+- Codex: `.claude/settings.local.json` libera `codex exec` sem pedir permissão (dono pediu "libera o codex"). Tarefas: uma worktree por tarefa em `~/karont-worktrees/<tarefa>` + `<tarefa>-ref/` (tarefa.md, resposta.md, codex.log); seguimento com `codex exec ... resume <SID>`.
+- Preview web: `npm run preview:web` na raiz → http://127.0.0.1:5173/. Reaproveita um serviço já rodando; se não houver, inicia um em modo dev (`KARONT_DEV=1`) e o encerra ao sair. Depois de mudar o serviço, reinicie o preview (`kill $(pgrep -f '^node src/preview/main.ts')` e rode de novo). Testes de tela: scripts Playwright temporários na raiz (`.x.mjs`, apagar depois), Claude com Haiku.
 - Rodar o app: `npm run start:desktop` (com `CHROME_DEVEL_SANDBOX=/usr/local/lib/karont-dev/chrome-sandbox`). E2E: `npm run test:e2e` (mesma variável). Rodada completa local: ~6 s de checagens + ~2 s de E2E.
 - O E2E usa `chromiumSandbox: true`: o Playwright passa `--no-sandbox` ao Electron por padrão.
 - O serviço destacado é iniciado por um `bash` mínimo que fecha os descritores herdados acima de 2. O Chromium deixa caches da GPU e sockets internos sem CLOEXEC, e o serviço os seguraria por horas (isso também travava o `app.close()` do Playwright).

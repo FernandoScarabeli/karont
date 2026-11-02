@@ -12,6 +12,7 @@ import {
   closePane as closePaneInLayout,
   createInitialLayout,
   findPane,
+  findPaneByConversation,
   findPaneByTerminal,
   isValidLayout,
   type LayoutNode,
@@ -36,6 +37,7 @@ export type View =
 export type NavigationTarget =
   | View
   | { name: "new-conversation" }
+  | { name: "conversation"; id: string }
   | { name: "terminal"; id: string };
 
 type NavigationState = {
@@ -46,6 +48,9 @@ type NavigationState = {
   navigate: (view: NavigationTarget) => void;
   setActivePane: (paneId: string) => void;
   splitActivePane: (direction: "row" | "column", paneId?: string) => string | null;
+  openConversationBeside: (conversationId: string) => string | null;
+  closeConversationWorkspacePanes: (conversationId: string) => void;
+  closeAllConversationPanes: () => void;
   closeWorkspacePane: (paneId: string) => void;
   closeTerminalWorkspacePane: (terminalId: string) => void;
   moveWorkspacePane: (paneId: string, targetPaneId: string, edge: PaneEdge) => void;
@@ -123,6 +128,15 @@ export function NavigationProvider({ children }: PropsWithChildren) {
   }, [bridge, navigationLoaded, view.name]);
 
   useEffect(() => {
+    if (!bridge) return;
+    return bridge.onEvent((event) => {
+      if (event.event === "conversation.deletedAll") {
+        setLayout((current) => resetConversationPanes(current));
+      }
+    });
+  }, [bridge]);
+
+  useEffect(() => {
     if (!bridge || !layoutLoaded) return;
     const timeout = window.setTimeout(() => {
       void bridge.request("settings.set", { key: LAYOUT_SETTING, value: layout }).catch(() => {
@@ -155,6 +169,18 @@ export function NavigationProvider({ children }: PropsWithChildren) {
         setView({ name: "workspace" });
         return;
       }
+      if (target.name === "conversation") {
+        const existing = findPaneByConversation(layout, target.id);
+        if (existing) {
+          setActivePaneId(existing.id);
+        } else {
+          setLayout((current) =>
+            setPaneView(current, activePaneId, { kind: "chat", conversationId: target.id }),
+          );
+        }
+        setView({ name: "workspace" });
+        return;
+      }
       setView(target);
     },
     [activePaneId, layout],
@@ -177,6 +203,48 @@ export function NavigationProvider({ children }: PropsWithChildren) {
     },
     [activePaneId, layout],
   );
+
+  const openConversationBeside = useCallback(
+    (conversationId: string) => {
+      const existing = findPaneByConversation(layout, conversationId);
+      if (existing) {
+        setActivePaneId(existing.id);
+        setView({ name: "workspace" });
+        return existing.id;
+      }
+      if (paneCount(layout) >= 6) return null;
+      const nextLayout = splitPaneInLayout(layout, activePaneId, "row", "after", {
+        kind: "chat",
+        conversationId,
+      });
+      const nextPane = listPanes(nextLayout).find(
+        (pane) => pane.view.kind === "chat" && pane.view.conversationId === conversationId,
+      );
+      if (!nextPane) return null;
+      setLayout(nextLayout);
+      setActivePaneId(nextPane.id);
+      setView({ name: "workspace" });
+      setStatusMessage(t.workspace.paneSplit);
+      return nextPane.id;
+    },
+    [activePaneId, layout],
+  );
+
+  const closeConversationWorkspacePanes = useCallback((conversationId: string) => {
+    setLayout((current) => {
+      let next = current;
+      for (const pane of listPanes(current)) {
+        if (pane.view.kind === "chat" && pane.view.conversationId === conversationId) {
+          next = setPaneView(next, pane.id, { kind: "new-conversation" });
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const closeAllConversationPanes = useCallback(() => {
+    setLayout((current) => resetConversationPanes(current));
+  }, []);
 
   const closeWorkspacePane = useCallback(
     (paneId: string) => {
@@ -226,6 +294,9 @@ export function NavigationProvider({ children }: PropsWithChildren) {
         navigate,
         setActivePane,
         splitActivePane,
+        openConversationBeside,
+        closeConversationWorkspacePanes,
+        closeAllConversationPanes,
         closeWorkspacePane,
         closeTerminalWorkspacePane,
         moveWorkspacePane,
@@ -235,6 +306,16 @@ export function NavigationProvider({ children }: PropsWithChildren) {
       {children}
     </NavigationContext.Provider>
   );
+}
+
+function resetConversationPanes(layout: LayoutNode): LayoutNode {
+  let next = layout;
+  for (const pane of listPanes(layout)) {
+    if (pane.view.kind === "chat") {
+      next = setPaneView(next, pane.id, { kind: "new-conversation" });
+    }
+  }
+  return next;
 }
 
 export function useNavigation(): NavigationState {

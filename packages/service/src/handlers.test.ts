@@ -3,7 +3,13 @@ import { access, chmod, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "nod
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { type AnyEvent, type ParsedRequest, parseRequest } from "@karont/contract";
+import {
+  type AnyEvent,
+  type Conversation,
+  type ParsedRequest,
+  parseRequest,
+} from "@karont/contract";
+import type { AdapterFactory, AgentAdapter } from "./agents/adapter.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
 import { openDatabase, recordRecentFolder } from "./db.ts";
 import type { HandlerConnection } from "./handlers.ts";
@@ -86,6 +92,10 @@ test("ping, info e settings usam contrato e banco", async () => {
   assert.equal(info.contractVersion, 1);
   assert.equal(info.startedAt, "2026-10-31T00:00:00.000Z");
   assert.equal(info.homeDir, root);
+  const userName = (await handlers.handle(request("system.userName", {}), conn)) as {
+    name: string | null;
+  };
+  assert.ok(userName.name === null || typeof userName.name === "string");
   assert.deepEqual(
     await handlers.handle(request("settings.set", { key: "test.value", value: [1, "two"] }), conn),
     {
@@ -97,6 +107,325 @@ test("ping, info e settings usam contrato e banco", async () => {
     key: "test.value",
     value: [1, "two"],
   });
+  db.close();
+});
+
+test("conversation.rename persiste o título e emite conversation.stateChanged", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => {
+      events.push(event);
+    },
+    env: { PATH: "" },
+    homeDir: root,
+  });
+  const created = (await handlers.handle(
+    request("conversation.create", { agent: "claude", cwd: root }),
+    connection([]),
+  )) as { conversation: { id: string } };
+  const result = (await handlers.handle(
+    request("conversation.rename", { id: created.conversation.id, title: "  Revisar o fluxo  " }),
+    connection(events),
+  )) as { conversation: { title: string } };
+
+  assert.equal(result.conversation.title, "Revisar o fluxo");
+  assert.ok(
+    events.some(
+      (event) =>
+        event.event === "conversation.stateChanged" &&
+        event.payload.conversation.title === "Revisar o fluxo",
+    ),
+  );
+  db.close();
+});
+
+test("conversation.markSeen limpa uma vez, persiste e não emite ao repetir", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-conversation-mark-seen-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => {
+      events.push(event);
+    },
+    env: { PATH: "" },
+    homeDir: root,
+  });
+
+  try {
+    const created = (await handlers.handle(
+      request("conversation.create", { agent: "claude", cwd: root }),
+      connection([]),
+    )) as { conversation: { id: string; updatedAt: string } };
+    const unreadAt = "2026-11-01T12:00:00.000Z";
+    db.prepare("UPDATE conversations SET unread_at=? WHERE id=?").run(
+      unreadAt,
+      created.conversation.id,
+    );
+    db.exec(
+      "CREATE TABLE unread_write_count (count INTEGER NOT NULL); INSERT INTO unread_write_count VALUES (0); CREATE TRIGGER count_unread_clears AFTER UPDATE OF unread_at ON conversations WHEN OLD.unread_at IS NOT NULL AND NEW.unread_at IS NULL BEGIN UPDATE unread_write_count SET count=count+1; END;",
+    );
+
+    const first = (await handlers.handle(
+      request("conversation.markSeen", { id: created.conversation.id }),
+      connection(events),
+    )) as { conversation: { unreadAt: string | null; updatedAt: string } };
+    assert.equal(first.conversation.unreadAt, null);
+    assert.equal(first.conversation.updatedAt, created.conversation.updatedAt);
+    assert.equal(
+      (db.prepare("SELECT count FROM unread_write_count").get() as { count: number }).count,
+      1,
+    );
+    assert.equal(events.filter((event) => event.event === "conversation.stateChanged").length, 1);
+
+    events.length = 0;
+    const second = (await handlers.handle(
+      request("conversation.markSeen", { id: created.conversation.id }),
+      connection(events),
+    )) as { conversation: { unreadAt: string | null } };
+    assert.equal(second.conversation.unreadAt, null);
+    assert.equal(
+      (db.prepare("SELECT count FROM unread_write_count").get() as { count: number }).count,
+      1,
+    );
+    assert.equal(events.length, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test("conversation.deleteAll remove conversas e dados, para o agente e preserva terminais", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-delete-all-conversations-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  let interrupted = false;
+  let disposed = false;
+  const adapterFactory: AdapterFactory = (_conversation, emit) => {
+    const adapter: AgentAdapter = {
+      start: async () => undefined,
+      send: async () => emit({ kind: "state", state: "working" }),
+      respond: async () => undefined,
+      interrupt: async () => {
+        interrupted = true;
+        emit({ kind: "turn-end", status: "interrupted" });
+      },
+      dispose: async () => {
+        disposed = true;
+      },
+    };
+    return adapter;
+  };
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void events.push(event),
+    ptyFactory: () => new TestPty(),
+    adapterFactory,
+    env: { PATH: "", SHELL: "/bin/bash" },
+    homeDir: root,
+  });
+  context.after(async () => {
+    await handlers.closeAgents();
+    await handlers.closeTerminals();
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const create = async (title: string) => {
+    const result = (await handlers.handle(
+      request("conversation.create", { agent: "claude", cwd: root, title }),
+      connection([]),
+    )) as { conversation: Conversation };
+    return result.conversation;
+  };
+  const conversations = [
+    await create("Em andamento"),
+    await create("Arquivada"),
+    await create("Fixada"),
+  ];
+  await handlers.handle(
+    request("conversation.setArchived", { id: conversations[1]?.id, archived: true }),
+    connection([]),
+  );
+  await handlers.handle(
+    request("conversation.setPinned", { id: conversations[2]?.id, pinned: true }),
+    connection([]),
+  );
+  for (const conversation of conversations) {
+    db.prepare(
+      "INSERT INTO messages (id,conversation_id,author,status,parts,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+    ).run(
+      `message-${conversation.id}`,
+      conversation.id,
+      "user",
+      "done",
+      "[]",
+      conversation.createdAt,
+      conversation.updatedAt,
+    );
+    db.prepare(
+      "INSERT INTO agent_sessions (conversation_id,session_id,updated_at) VALUES (?,?,?)",
+    ).run(conversation.id, `session-${conversation.id}`, conversation.updatedAt);
+  }
+  const terminal = (await handlers.handle(
+    request("terminals.open", { cwd: root, cols: 80, rows: 24 }),
+    connection([]),
+  )) as { terminal: { id: string } };
+  await handlers.handle(
+    request("conversation.send", { id: conversations[0]?.id, text: "Trabalhe" }),
+    connection([]),
+  );
+
+  assert.deepEqual(await handlers.handle(request("conversation.count", {}), connection([])), {
+    count: conversations.length,
+  });
+  const result = await handlers.handle(request("conversation.deleteAll", {}), connection([]));
+
+  assert.deepEqual(result, { deleted: conversations.length });
+  assert.equal(interrupted, true);
+  assert.equal(disposed, true);
+  assert.equal(
+    (db.prepare("SELECT COUNT(*) AS count FROM conversations").get() as { count: number }).count,
+    0,
+  );
+  assert.equal(
+    (db.prepare("SELECT COUNT(*) AS count FROM messages").get() as { count: number }).count,
+    0,
+  );
+  assert.equal(
+    (db.prepare("SELECT COUNT(*) AS count FROM agent_sessions").get() as { count: number }).count,
+    0,
+  );
+  assert.deepEqual(
+    (
+      (await handlers.handle(request("terminals.list", {}), connection([]))) as {
+        terminals: { id: string }[];
+      }
+    ).terminals.map(({ id }) => id),
+    [terminal.terminal.id],
+  );
+  const deletedEvent = events.find((event) => event.event === "conversation.deletedAll");
+  assert.ok(deletedEvent);
+  if (deletedEvent?.event === "conversation.deletedAll") {
+    assert.deepEqual(deletedEvent.payload, { deleted: conversations.length });
+  }
+});
+
+test("conversation.setPinned e setArchived persistem, notificam e arquivam sem parar a conversa", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-conversation-actions-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  const events: AnyEvent[] = [];
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => {
+      events.push(event);
+    },
+    env: { PATH: "" },
+    homeDir: root,
+  });
+  const created = (await handlers.handle(
+    request("conversation.create", { agent: "claude", cwd: root }),
+    connection([]),
+  )) as { conversation: { id: string; updatedAt: string } };
+
+  const pinned = (await handlers.handle(
+    request("conversation.setPinned", { id: created.conversation.id, pinned: true }),
+    connection(events),
+  )) as {
+    conversation: { pinnedAt: string | null; archivedAt: string | null; updatedAt: string };
+  };
+  assert.ok(pinned.conversation.pinnedAt);
+  assert.equal(pinned.conversation.archivedAt, null);
+  assert.equal(pinned.conversation.updatedAt, created.conversation.updatedAt);
+  const pinnedList = (await handlers.handle(
+    request("conversation.list", { limit: 20 }),
+    connection([]),
+  )) as { conversations: Array<{ pinnedAt: string | null }> };
+  assert.equal(pinnedList.conversations[0]?.pinnedAt, pinned.conversation.pinnedAt);
+  assert.ok(
+    events.some(
+      (event) =>
+        event.event === "conversation.stateChanged" &&
+        event.payload.conversation.pinnedAt === pinned.conversation.pinnedAt,
+    ),
+  );
+
+  db.prepare("UPDATE conversations SET state='working' WHERE id=?").run(created.conversation.id);
+  const archived = (await handlers.handle(
+    request("conversation.setArchived", { id: created.conversation.id, archived: true }),
+    connection(events),
+  )) as {
+    conversation: {
+      pinnedAt: string | null;
+      archivedAt: string | null;
+      state: string;
+      updatedAt: string;
+    };
+  };
+  assert.equal(archived.conversation.pinnedAt, null);
+  assert.ok(archived.conversation.archivedAt);
+  assert.equal(archived.conversation.state, "working");
+  assert.equal(archived.conversation.updatedAt, created.conversation.updatedAt);
+  assert.deepEqual(
+    (
+      (await handlers.handle(request("conversation.list", { limit: 20 }), connection([]))) as {
+        conversations: unknown[];
+      }
+    ).conversations,
+    [],
+  );
+  const archivedList = (await handlers.handle(
+    request("conversation.list", { archived: true, limit: 20 }),
+    connection([]),
+  )) as {
+    conversations: Array<{
+      id: string;
+      state: string;
+      pinnedAt: string | null;
+      archivedAt: string | null;
+    }>;
+  };
+  assert.deepEqual(
+    archivedList.conversations.map((conversation) => conversation.id),
+    [created.conversation.id],
+  );
+  assert.equal(archivedList.conversations[0]?.state, "working");
+  assert.equal(archivedList.conversations[0]?.pinnedAt, null);
+  assert.ok(archivedList.conversations[0]?.archivedAt);
+  assert.ok(
+    events.some(
+      (event) =>
+        event.event === "conversation.stateChanged" &&
+        event.payload.conversation.archivedAt === archived.conversation.archivedAt,
+    ),
+  );
+
+  const unarchived = (await handlers.handle(
+    request("conversation.setArchived", { id: created.conversation.id, archived: false }),
+    connection(events),
+  )) as { conversation: { archivedAt: string | null; state: string } };
+  assert.equal(unarchived.conversation.archivedAt, null);
+  assert.equal(unarchived.conversation.state, "working");
+  const unpinned = (await handlers.handle(
+    request("conversation.setPinned", { id: created.conversation.id, pinned: false }),
+    connection(events),
+  )) as { conversation: { pinnedAt: string | null; updatedAt: string } };
+  assert.equal(unpinned.conversation.pinnedAt, null);
+  assert.equal(unpinned.conversation.updatedAt, created.conversation.updatedAt);
   db.close();
 });
 

@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, closeSync, lstatSync, openSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import type { JsonValue, RecentFolder } from "@karont/contract";
+import type {
+  Conversation,
+  ConversationAttachmentMetadata,
+  ConversationMessage,
+  JsonValue,
+  MessagePart,
+  RecentFolder,
+} from "@karont/contract";
 
 export const migrations: { version: number; up: string }[] = [
   {
@@ -16,6 +23,63 @@ export const migrations: { version: number; up: string }[] = [
     version: 3,
     up: "CREATE TABLE recent_folders (path TEXT PRIMARY KEY, used_at TEXT NOT NULL) STRICT;",
   },
+  {
+    version: 4,
+    up: `CREATE TABLE conversations (
+      id TEXT PRIMARY KEY, agent TEXT NOT NULL, title TEXT NOT NULL, cwd TEXT NOT NULL,
+      mode TEXT NOT NULL, model TEXT, effort TEXT, state TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      author TEXT NOT NULL, status TEXT NOT NULL, parts TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE INDEX messages_conversation_order ON messages(conversation_id, created_at);
+    CREATE TABLE agent_sessions (
+      conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;`,
+  },
+  {
+    version: 5,
+    up: `ALTER TABLE messages ADD COLUMN started_at_ms INTEGER;
+    ALTER TABLE messages ADD COLUMN ended_at_ms INTEGER;`,
+  },
+  {
+    version: 6,
+    up: "ALTER TABLE messages ADD COLUMN attachments_json TEXT;",
+  },
+  {
+    version: 7,
+    up: "ALTER TABLE conversations ADD COLUMN plan INTEGER NOT NULL DEFAULT 0 CHECK (plan IN (0, 1));",
+  },
+  {
+    version: 8,
+    up: "ALTER TABLE conversations ADD COLUMN title_manually_set INTEGER NOT NULL DEFAULT 0 CHECK (title_manually_set IN (0, 1));",
+  },
+  {
+    version: 9,
+    up: `ALTER TABLE conversations ADD COLUMN pinned_at TEXT;
+    ALTER TABLE conversations ADD COLUMN archived_at TEXT;`,
+  },
+  {
+    version: 10,
+    up: "ALTER TABLE conversations ADD COLUMN unread_at TEXT;",
+  },
+  {
+    version: 11,
+    up: `ALTER TABLE conversations ADD COLUMN branched_from_id TEXT;
+    ALTER TABLE conversations ADD COLUMN branched_from_message_id TEXT;
+    ALTER TABLE conversations ADD COLUMN branch_context_enabled INTEGER NOT NULL DEFAULT 0 CHECK (branch_context_enabled IN (0, 1));
+    ALTER TABLE conversations ADD COLUMN branch_context_pending TEXT;
+    ALTER TABLE conversations ADD COLUMN fork_pending INTEGER NOT NULL DEFAULT 0 CHECK (fork_pending IN (0, 1));
+    ALTER TABLE messages ADD COLUMN agent_turn_id TEXT;`,
+  },
+  {
+    version: 12,
+    up: "ALTER TABLE conversations ADD COLUMN fast INTEGER NOT NULL DEFAULT 0 CHECK (fast IN (0, 1));",
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -26,6 +90,388 @@ export type CustomAgentRecord = {
   command: string;
   createdAt: string;
 };
+
+export type NewConversation = Pick<Conversation, "agent" | "title" | "cwd" | "mode"> &
+  Partial<
+    Pick<
+      Conversation,
+      | "model"
+      | "effort"
+      | "plan"
+      | "fast"
+      | "branchedFromId"
+      | "branchedFromMessageId"
+      | "branchContext"
+    >
+  >;
+
+export function createConversation(db: DatabaseSync, input: NewConversation): Conversation {
+  const now = new Date().toISOString();
+  const conversation: Conversation = {
+    id: randomUUID(),
+    ...input,
+    plan: input.plan ?? false,
+    fast: input.fast ?? false,
+    pinnedAt: null,
+    archivedAt: null,
+    unreadAt: null,
+    state: "idle",
+    createdAt: now,
+    updatedAt: now,
+  };
+  db.prepare(
+    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,fast,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at,branched_from_id,branched_from_message_id,branch_context_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+  ).run(
+    conversation.id,
+    conversation.agent,
+    conversation.title,
+    conversation.cwd,
+    conversation.mode,
+    conversation.model ?? null,
+    conversation.effort ?? null,
+    conversation.plan ? 1 : 0,
+    conversation.fast ? 1 : 0,
+    conversation.state,
+    now,
+    now,
+    conversation.title === "Nova conversa" ? 0 : 1,
+    conversation.pinnedAt,
+    conversation.archivedAt,
+    conversation.unreadAt,
+    conversation.branchedFromId ?? null,
+    conversation.branchedFromMessageId ?? null,
+    conversation.branchContext ? 1 : 0,
+  );
+  return conversation;
+}
+
+export function getConversation(db: DatabaseSync, id: string): Conversation | null {
+  const row = db.prepare("SELECT * FROM conversations WHERE id=?").get(id) as
+    | ConversationRow
+    | undefined;
+  return row ? mapConversation(row) : null;
+}
+
+export function listConversations(
+  db: DatabaseSync,
+  filters: { agent?: string; cwd?: string; archived?: boolean; limit: number },
+): Conversation[] {
+  const clauses: string[] = [];
+  const values: (string | number)[] = [];
+  clauses.push(filters.archived ? "archived_at IS NOT NULL" : "archived_at IS NULL");
+  if (filters.agent) {
+    clauses.push("agent=?");
+    values.push(filters.agent);
+  }
+  if (filters.cwd) {
+    clauses.push("cwd=?");
+    values.push(filters.cwd);
+  }
+  values.push(filters.limit);
+  const rows = db
+    .prepare(
+      `SELECT * FROM conversations WHERE ${clauses.join(" AND ")} ORDER BY CASE WHEN pinned_at IS NULL THEN 1 ELSE 0 END, pinned_at DESC, updated_at DESC LIMIT ?`,
+    )
+    .all(...values) as ConversationRow[];
+  return rows.map(mapConversation);
+}
+
+export function countConversations(db: DatabaseSync): number {
+  const row = db.prepare("SELECT COUNT(*) AS count FROM conversations").get() as
+    | { count: number }
+    | undefined;
+  return row?.count ?? 0;
+}
+
+export function listConversationStates(
+  db: DatabaseSync,
+): { id: string; state: Conversation["state"] }[] {
+  return db.prepare("SELECT id, state FROM conversations").all() as {
+    id: string;
+    state: Conversation["state"];
+  }[];
+}
+
+export function updateConversation(db: DatabaseSync, conversation: Conversation): void {
+  db.prepare(
+    "UPDATE conversations SET title=?,mode=?,model=?,effort=?,plan=?,fast=?,state=?,updated_at=?,pinned_at=?,archived_at=?,unread_at=? WHERE id=?",
+  ).run(
+    conversation.title,
+    conversation.mode,
+    conversation.model ?? null,
+    conversation.effort ?? null,
+    conversation.plan ? 1 : 0,
+    conversation.fast ? 1 : 0,
+    conversation.state,
+    conversation.updatedAt,
+    conversation.pinnedAt,
+    conversation.archivedAt,
+    conversation.unreadAt,
+    conversation.id,
+  );
+}
+
+export function markConversationSeen(
+  db: DatabaseSync,
+  id: string,
+): { conversation: Conversation | null; changed: boolean } {
+  const changed =
+    db
+      .prepare("UPDATE conversations SET unread_at=NULL WHERE id=? AND unread_at IS NOT NULL")
+      .run(id).changes > 0;
+  return { conversation: getConversation(db, id), changed };
+}
+
+export function setConversationTitle(
+  db: DatabaseSync,
+  id: string,
+  title: string,
+  updatedAt: string,
+  manual: boolean,
+): Conversation | null {
+  const result = manual
+    ? db
+        .prepare("UPDATE conversations SET title=?,title_manually_set=1,updated_at=? WHERE id=?")
+        .run(title, updatedAt, id)
+    : db
+        .prepare(
+          "UPDATE conversations SET title=?,updated_at=? WHERE id=? AND title_manually_set=0 AND title='Nova conversa'",
+        )
+        .run(title, updatedAt, id);
+  if (result.changes === 0) return null;
+  return getConversation(db, id);
+}
+
+export function addMessage(db: DatabaseSync, message: ConversationMessage): void {
+  db.prepare(
+    "INSERT INTO messages (id,conversation_id,author,status,parts,attachments_json,created_at,updated_at,started_at_ms,ended_at_ms,agent_turn_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+  ).run(
+    message.id,
+    message.conversationId,
+    message.author,
+    message.status,
+    JSON.stringify(message.parts),
+    message.attachments ? JSON.stringify(message.attachments) : null,
+    message.createdAt,
+    message.updatedAt,
+    message.startedAt ?? null,
+    message.endedAt ?? null,
+    message.agentTurnId ?? null,
+  );
+}
+
+export function saveMessage(db: DatabaseSync, message: ConversationMessage): void {
+  db.prepare(
+    "UPDATE messages SET status=?,parts=?,attachments_json=?,updated_at=?,started_at_ms=?,ended_at_ms=?,agent_turn_id=? WHERE id=?",
+  ).run(
+    message.status,
+    JSON.stringify(message.parts),
+    message.attachments ? JSON.stringify(message.attachments) : null,
+    message.updatedAt,
+    message.startedAt ?? null,
+    message.endedAt ?? null,
+    message.agentTurnId ?? null,
+    message.id,
+  );
+}
+
+export function getMessage(db: DatabaseSync, id: string): ConversationMessage | null {
+  const row = db.prepare("SELECT * FROM messages WHERE id=?").get(id) as MessageRow | undefined;
+  return row ? mapMessage(row) : null;
+}
+
+export function listMessages(db: DatabaseSync, conversationId: string): ConversationMessage[] {
+  return (
+    db
+      .prepare("SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at ASC,rowid ASC")
+      .all(conversationId) as MessageRow[]
+  ).map(mapMessage);
+}
+
+export function deleteConversation(db: DatabaseSync, id: string): boolean {
+  return db.prepare("DELETE FROM conversations WHERE id=?").run(id).changes > 0;
+}
+
+export function deleteAllConversations(db: DatabaseSync): number {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const changes = db.prepare("DELETE FROM conversations").run().changes;
+    const deleted = typeof changes === "bigint" ? Number(changes) : changes;
+    if (!Number.isSafeInteger(deleted)) throw new Error("A quantidade de conversas é inválida.");
+    db.exec("COMMIT");
+    return deleted;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function getAgentSession(db: DatabaseSync, conversationId: string): string | null {
+  const row = db
+    .prepare("SELECT session_id FROM agent_sessions WHERE conversation_id=?")
+    .get(conversationId) as { session_id: string } | undefined;
+  return row?.session_id ?? null;
+}
+
+export function setAgentSession(db: DatabaseSync, conversationId: string, sessionId: string): void {
+  db.prepare(
+    "INSERT INTO agent_sessions (conversation_id,session_id,updated_at) VALUES (?,?,?) ON CONFLICT(conversation_id) DO UPDATE SET session_id=excluded.session_id,updated_at=excluded.updated_at",
+  ).run(conversationId, sessionId, new Date().toISOString());
+}
+
+export function getBranchContextPending(db: DatabaseSync, conversationId: string): string | null {
+  const row = db
+    .prepare("SELECT branch_context_pending FROM conversations WHERE id=?")
+    .get(conversationId) as { branch_context_pending: string | null } | undefined;
+  return row?.branch_context_pending ?? null;
+}
+
+export function completeBranchContext(db: DatabaseSync, conversationId: string): void {
+  db.prepare("UPDATE conversations SET branch_context_pending=NULL WHERE id=?").run(conversationId);
+}
+
+export function setBranchContextPending(
+  db: DatabaseSync,
+  conversationId: string,
+  context: string,
+): void {
+  db.prepare("UPDATE conversations SET branch_context_pending=? WHERE id=?").run(
+    context,
+    conversationId,
+  );
+}
+
+export function isBranchForkPending(db: DatabaseSync, conversationId: string): boolean {
+  const row = db.prepare("SELECT fork_pending FROM conversations WHERE id=?").get(conversationId) as
+    | { fork_pending: number }
+    | undefined;
+  return row?.fork_pending === 1;
+}
+
+export function completeBranchFork(db: DatabaseSync, conversationId: string): void {
+  db.prepare("UPDATE conversations SET fork_pending=0 WHERE id=?").run(conversationId);
+}
+
+export function setBranchSession(
+  db: DatabaseSync,
+  conversationId: string,
+  sessionId: string,
+  forkPending: boolean,
+): void {
+  setAgentSession(db, conversationId, sessionId);
+  db.prepare("UPDATE conversations SET fork_pending=? WHERE id=?").run(
+    forkPending ? 1 : 0,
+    conversationId,
+  );
+}
+
+export function setMessageAgentTurnId(
+  db: DatabaseSync,
+  messageId: string,
+  agentTurnId: string,
+): void {
+  db.prepare("UPDATE messages SET agent_turn_id=? WHERE id=?").run(agentTurnId, messageId);
+}
+
+export function recoverInterruptedMessages(db: DatabaseSync): void {
+  const rows = db.prepare("SELECT * FROM messages WHERE status='streaming'").all() as MessageRow[];
+  const now = new Date().toISOString();
+  for (const row of rows) {
+    const message = mapMessage(row);
+    const error: MessagePart = {
+      id: randomUUID(),
+      type: "error",
+      errorType: "interrupted",
+      text: "Serviço reiniciado durante a resposta. Tente de novo.",
+      retryable: true,
+      startedAt: Date.parse(now),
+      endedAt: Date.parse(now),
+    };
+    message.parts.push(error);
+    message.status = "interrupted";
+    message.updatedAt = now;
+    message.endedAt = Date.parse(now);
+    saveMessage(db, message);
+  }
+  db.prepare(
+    "UPDATE conversations SET state='idle',updated_at=? WHERE state IN ('working','waiting')",
+  ).run(now);
+}
+
+type ConversationRow = {
+  id: string;
+  agent: Conversation["agent"];
+  title: string;
+  cwd: string;
+  mode: Conversation["mode"];
+  model: string | null;
+  effort: Conversation["effort"] | null;
+  plan: number;
+  fast: number;
+  pinned_at: string | null;
+  archived_at: string | null;
+  unread_at: string | null;
+  branched_from_id: string | null;
+  branched_from_message_id: string | null;
+  branch_context_enabled: number;
+  state: Conversation["state"];
+  created_at: string;
+  updated_at: string;
+};
+type MessageRow = {
+  id: string;
+  conversation_id: string;
+  author: ConversationMessage["author"];
+  status: ConversationMessage["status"];
+  parts: string;
+  attachments_json: string | null;
+  started_at_ms: number | null;
+  ended_at_ms: number | null;
+  agent_turn_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+function mapConversation(row: ConversationRow): Conversation {
+  return {
+    id: row.id,
+    agent: row.agent,
+    title: row.title,
+    cwd: row.cwd,
+    mode: row.mode,
+    ...(row.model ? { model: row.model } : {}),
+    ...(row.effort ? { effort: row.effort } : {}),
+    plan: row.plan === 1,
+    fast: row.fast === 1,
+    ...(row.branched_from_id ? { branchedFromId: row.branched_from_id } : {}),
+    ...(row.branched_from_message_id
+      ? { branchedFromMessageId: row.branched_from_message_id }
+      : {}),
+    ...(row.branch_context_enabled === 1 ? { branchContext: true } : {}),
+    pinnedAt: row.pinned_at,
+    archivedAt: row.archived_at,
+    unreadAt: row.unread_at,
+    state: row.state,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+function mapMessage(row: MessageRow): ConversationMessage {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    author: row.author,
+    status: row.status,
+    parts: JSON.parse(row.parts) as MessagePart[],
+    ...(row.attachments_json
+      ? { attachments: JSON.parse(row.attachments_json) as ConversationAttachmentMetadata[] }
+      : {}),
+    ...(row.started_at_ms !== null ? { startedAt: row.started_at_ms } : {}),
+    ...(row.ended_at_ms !== null ? { endedAt: row.ended_at_ms } : {}),
+    ...(row.agent_turn_id ? { agentTurnId: row.agent_turn_id } : {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
 export function openDatabase(dbPath: string): DatabaseSync {
   try {
@@ -64,6 +510,7 @@ export function openDatabase(dbPath: string): DatabaseSync {
         throw error;
       }
     }
+    recoverInterruptedMessages(db);
     return db;
   } catch (error) {
     db.close();

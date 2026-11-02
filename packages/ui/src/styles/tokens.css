@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --k-color-bg-app: #0f0f10;
   --k-color-bg-sheet: #141415;
   --k-color-bg-raised: #19191b;
@@ -16,16 +17,41 @@
   --k-color-working: #7db4e0;
   --k-color-attention: #e5a93b;
   --k-color-danger: #ef7b73;
+  --k-color-status-unread: #82c996;
+  --k-color-status-working: #d2b768;
+  --k-color-status-needs-you: #e38c76;
   --k-color-focus: var(--k-color-primary);
   --k-color-brand: #f3eee3;
   --k-color-ok: #6fcf97;
+  --k-color-diff-added-bg: color-mix(in srgb, var(--k-color-ok) 9%, transparent);
+  --k-color-diff-removed-bg: color-mix(in srgb, var(--k-color-danger) 8%, transparent);
   --k-color-terminal-selection: rgb(243 238 227 / 30%);
+  --k-color-terminal-bg: #0b0b0c;
+  --k-color-terminal-ansi-0: #55555b;
+  --k-color-terminal-ansi-1: #ef7b73;
+  --k-color-terminal-ansi-2: #6fcf97;
+  --k-color-terminal-ansi-3: #e5a93b;
+  --k-color-terminal-ansi-4: #7db4e0;
+  --k-color-terminal-ansi-5: #c69ce8;
+  --k-color-terminal-ansi-6: #72c9be;
+  --k-color-terminal-ansi-7: #d9d9dd;
+  --k-color-terminal-ansi-8: #85858b;
+  --k-color-terminal-ansi-9: #ff9c94;
+  --k-color-terminal-ansi-10: #8ee3aa;
+  --k-color-terminal-ansi-11: #f1c56d;
+  --k-color-terminal-ansi-12: #a0cef0;
+  --k-color-terminal-ansi-13: #d9b6f3;
+  --k-color-terminal-ansi-14: #98e4dc;
+  --k-color-terminal-ansi-15: #ffffff;
+  --k-color-scrollbar-thumb: rgb(133 133 139 / 8%);
+  --k-color-scrollbar-thumb-hover: rgb(133 133 139 / 30%);
   --k-color-dialog-backdrop: rgb(0 0 0 / 72%);
   --k-color-drop-zone: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
+  --k-color-bg-fast-active: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
   --k-shadow-dialog: 0 var(--k-space-8) var(--k-space-10) rgb(0 0 0 / 32%);
 
   --k-font-sans: "Geist Sans", system-ui, sans-serif;
-  --k-font-mono: "Geist Mono", ui-monospace, monospace;
+  --k-font-mono: "Geist Mono", ui-monospace, monospace; /* taste-skill-ignore: code */
   --k-font-brand: "Sora Variable", var(--k-font-sans);
   --k-weight-brand: 600;
 
@@ -66,12 +92,78 @@
   --k-radius-full: 999px;
 
   --k-border-width: 1px;
+  --k-scrollbar-track-width: 14px;
+  --k-scrollbar-thumb-inset: 1px;
+  --k-sidebar-scrollbar-content-inset: 10px;
   --k-focus-ring-width: 2px;
   --k-focus-ring-offset: 2px;
   --k-control-height-sm: 28px;
   --k-control-height-md: 32px;
   --k-control-height-lg: 36px;
-  --k-duration-fast: 120ms;
+  --k-duration-cursor-blink: 500ms;
+  --k-duration-caret-blink: 1s;
+  /* Níveis de movimento (Fluid Functionalism). Espelhados em styles/motion.ts. */
+  --k-motion-fast: 80ms;
+  --k-motion-moderate: 160ms;
+  --k-motion-slow: 240ms;
+  --k-motion-fast-exit: 60ms;
+  --k-motion-moderate-exit: 120ms;
+  --k-motion-slow-exit: 160ms;
+  /* Molas em linear(): criticamente amortecida (moderate, 160 ms) e bounce 0,12 (slow). */
+  --k-ease-spring-moderate: linear(
+    0,
+    0.04,
+    0.13,
+    0.241,
+    0.355,
+    0.463,
+    0.559,
+    0.642,
+    0.713,
+    0.771,
+    0.819,
+    0.857,
+    0.888,
+    0.913,
+    0.932,
+    0.948,
+    1
+  );
+  --k-ease-spring-slow: linear(
+    0,
+    0.019,
+    0.068,
+    0.136,
+    0.214,
+    0.296,
+    0.379,
+    0.459,
+    0.534,
+    0.603,
+    0.665,
+    0.72,
+    0.768,
+    0.81,
+    0.846,
+    0.876,
+    0.902,
+    0.923,
+    0.941,
+    0.955,
+    0.967,
+    0.976,
+    0.983,
+    0.989,
+    1
+  );
+  --k-duration-highlight: 1.2s;
+  --k-duration-status-pulse-slow: 2.4s;
+  --k-duration-status-pulse-medium: 1.6s;
+  --k-working-spiral-duration: 1.8s;
+  --k-working-shimmer-duration: 2.8s;
+  --k-opacity-terminal-dim: 0.72;
+  --k-chat-working-spinner-size: 14px;
+  /* Curva simples (ease-out) para o tier fast e para os exits; sem quique. */
   --k-ease: cubic-bezier(0.2, 0, 0, 1);
   --k-opacity-disabled: 0.5;
 
@@ -83,6 +175,8 @@
   --k-sidebar-footer-gap: 8px;
   --k-sheet-padding: 40px;
   --k-dot-size: 8px;
+  --k-status-dot-size-small: 6px;
+  --k-status-dot-size-large: 8px;
   --k-icon-size-md: 16px;
   --k-brand-mark-size: 14px;
   --k-brand-mark-height: 22px;
@@ -111,15 +205,121 @@
   --k-layer-separator: 1;
   --k-layer-drop-zone: 2;
   --k-layer-menu: 3;
+  --k-layer-popover: 4;
   --k-settings-nav-width: 160px;
   --k-settings-content-max-width: 960px;
   --k-settings-prose-width: 68ch;
   --k-new-conversation-width: 760px;
   --k-new-conversation-prompt-height: 180px;
   --k-terminal-header-height: 52px;
-  --k-composer-textarea-min-height: 56px;
+  --k-composer-textarea-min-height: 40px;
   --k-composer-textarea-max-height: 224px;
   --k-composer-submit-size: 36px;
+  --k-composer-select-max-width: 180px;
+  --k-composer-agent-max-width: 160px;
+  --k-composer-agent-width: 7rem;
+  --k-composer-model-width: 8rem;
+  --k-composer-radio-size: 16px;
+  --k-composer-radio-dot-size: 8px;
+  --k-composer-switch-width: 34px;
+  --k-composer-switch-height: 20px;
+  --k-composer-switch-thumb-size: 12px;
+  --k-composer-config-width: 340px;
+  --k-composer-gauge-size: 18px;
+  --k-duration-effort-needle: 220ms;
+  --k-chat-content-max-width: 860px;
+  --k-chat-user-bubble-max-width: 720px;
+  --k-chat-code-max-height: 360px;
+  --k-chat-part-max-height: 240px;
+  --k-chat-diff-max-height: 360px;
+  --k-chat-diff-line-number-width: 3.5rem;
+  --k-chat-diff-marker-width: 1.5rem;
+  --k-chat-diff-edge-width: 2px;
+  --k-chat-command-output-max-height: 320px;
+  --k-chat-terminal-cursor-width: 7px;
+  --k-chat-terminal-cursor-height: 1em;
+  --k-chat-terminal-cursor-gap: var(--k-border-width);
+  --k-chat-terminal-cursor-offset: -0.12em;
+  --k-chat-timeline-track-height: 12px;
+  --k-chat-timeline-axis-height: 32px;
+  --k-chat-timeline-kind-width: 144px;
+  --k-chat-timeline-detail-width: 180px;
+  --k-chat-timeline-track-width: 180px;
+  --k-chat-timeline-duration-width: 120px;
+  --k-chat-timeline-min-width: 640px;
+  --k-chat-timeline-row-height: 36px;
+  --k-chat-scroll-size: 10px;
+  --k-chat-action-mark-size: 18px;
+  --k-chat-action-label-offset: 22px;
+  --k-chat-focus-outline-offset: 1px;
+  --k-chat-space-large: 48px;
+  --k-chat-progress-min-width: 24px;
+  --k-chat-progress-max-width: 100%;
+  --k-chat-message-intrinsic-size: 160px;
+  --k-chat-adjustment-min-height: 96px;
+  --k-chat-pinned-todos-max-height: 180px;
+  --k-color-code-text: #d9d9dd;
+  --k-color-code-keyword: #c69ce8;
+  --k-color-code-string: #a6c78b;
+  --k-color-code-number: #e7b875;
+  --k-color-code-comment: #8d8d94;
+  --k-color-code-title: #7db4e0;
+  --k-color-code-meta: #e5a93b;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --k-color-bg-app: #f4f4f2;
+  --k-color-bg-sheet: #ffffff;
+  --k-color-bg-raised: #fafaf8;
+  --k-color-bg-control: #eeeeec;
+  --k-color-bg-hover: #e8e8e6;
+  --k-color-border: #dededb;
+  --k-color-border-strong: #c8c8c4;
+  --k-color-border-muted: #aaa9a5;
+  --k-color-text-primary: #242426;
+  --k-color-text-secondary: #55565b;
+  --k-color-text-muted: #64656a;
+  --k-color-primary: #29292c;
+  --k-color-on-primary: #ffffff;
+  --k-color-primary-hover: #111113;
+  --k-color-working: #285d84;
+  --k-color-attention: #875400;
+  --k-color-danger: #a52e2a;
+  --k-color-focus: #29292c;
+  --k-color-brand: #29292c;
+  --k-color-ok: #27673b;
+  --k-color-terminal-selection: rgb(41 41 44 / 18%);
+  --k-color-terminal-bg: #f0f0ee;
+  --k-color-terminal-ansi-0: #626269;
+  --k-color-terminal-ansi-1: #a52e2a;
+  --k-color-terminal-ansi-2: #27673b;
+  --k-color-terminal-ansi-3: #875400;
+  --k-color-terminal-ansi-4: #285d84;
+  --k-color-terminal-ansi-5: #75408a;
+  --k-color-terminal-ansi-6: #176b65;
+  --k-color-terminal-ansi-7: #55565b;
+  --k-color-terminal-ansi-8: #6a6a70;
+  --k-color-terminal-ansi-9: #8a221c;
+  --k-color-terminal-ansi-10: #1b6730;
+  --k-color-terminal-ansi-11: #704100;
+  --k-color-terminal-ansi-12: #214d7a;
+  --k-color-terminal-ansi-13: #713683;
+  --k-color-terminal-ansi-14: #135c57;
+  --k-color-terminal-ansi-15: #242426;
+  --k-color-scrollbar-thumb: rgb(100 101 106 / 10%);
+  --k-color-scrollbar-thumb-hover: rgb(100 101 106 / 30%);
+  --k-color-dialog-backdrop: rgb(0 0 0 / 34%);
+  --k-color-drop-zone: color-mix(in srgb, var(--k-color-primary) 10%, transparent);
+  --k-color-bg-fast-active: color-mix(in srgb, var(--k-color-primary) 8%, transparent);
+  --k-shadow-dialog: 0 var(--k-space-8) var(--k-space-10) rgb(0 0 0 / 16%);
+  --k-color-code-text: #2c2c30;
+  --k-color-code-keyword: #6f3d89;
+  --k-color-code-string: #396b27;
+  --k-color-code-number: #865208;
+  --k-color-code-comment: #606168;
+  --k-color-code-title: #285d84;
+  --k-color-code-meta: #875400;
 }
 
 @container new-conversation (max-width: 520px) {
@@ -135,8 +335,12 @@
   }
 }
 
+/* Sem movimento e sem quique. Fades rápidos ficam instantâneos, como antes. */
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --k-duration-fast: 0ms;
+    --k-motion-fast: 0ms;
+    --k-motion-fast-exit: 0ms;
+    --k-ease-spring-moderate: var(--k-ease);
+    --k-ease-spring-slow: var(--k-ease);
   }
 }
