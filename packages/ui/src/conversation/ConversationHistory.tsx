@@ -57,14 +57,17 @@ export const ConversationHistory = memo(function ConversationHistory({
     const list = listRef.current;
     if (!option || !list) return;
     option.focus({ preventScroll: true });
-    const optionTop = option.offsetTop;
-    const optionBottom = optionTop + option.offsetHeight;
-    if (optionTop < list.scrollTop) list.scrollTop = optionTop;
-    else if (optionBottom > list.scrollTop + list.clientHeight) {
-      list.scrollTop = optionBottom - list.clientHeight;
-    }
+    option.scrollIntoView({ block: "nearest" });
     setHasItemsAbove(list.scrollTop > 0);
   }, [activeMessageId]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    if (!list) return;
+    list.scrollTop = list.scrollHeight;
+    setHasItemsAbove(list.scrollTop > 0);
+  }, [open]);
 
   useLayoutEffect(() => {
     if (!open) return;

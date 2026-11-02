@@ -16,6 +16,7 @@
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-behavior: auto;
   padding-block: var(--k-space-3);
   padding-inline-end: 0;
   padding-inline-start: var(--k-space-2);
@@ -45,6 +46,7 @@
   justify-content: flex-end;
   padding-inline-end: 0;
   padding-inline-start: var(--k-space-1);
+  scroll-margin-block: var(--k-space-3);
   color: var(--k-color-text-primary);
   cursor: pointer;
 }
