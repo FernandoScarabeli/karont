@@ -44,6 +44,7 @@
 }
 
 .choices {
+  position: relative;
   overflow: hidden;
   border: var(--k-border-width) solid var(--k-color-border);
   border-radius: var(--k-radius-lg);
@@ -51,6 +52,8 @@
 }
 
 .choice {
+  position: relative;
+  z-index: 1;
   display: flex;
   min-height: var(--k-control-height-lg);
   align-items: center;
@@ -61,10 +64,6 @@
 
 .choice + .choice {
   border-block-start: var(--k-border-width) solid var(--k-color-border);
-}
-
-.choice:has(.radio:checked) {
-  background: var(--k-color-bg-control);
 }
 
 .choice:has(.radio:disabled) {

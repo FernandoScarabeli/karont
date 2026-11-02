@@ -100,6 +100,7 @@
   --k-control-height-md: 32px;
   --k-control-height-lg: 36px;
   --k-duration-fast: 120ms;
+  --k-duration-spring: 260ms;
   --k-duration-cursor-blink: 500ms;
   --k-duration-highlight: 1.2s;
   --k-duration-status-pulse-slow: 2.4s;
@@ -110,6 +111,21 @@
   --k-opacity-terminal-dim: 0.72;
   --k-chat-working-spinner-size: 14px;
   --k-ease: cubic-bezier(0.2, 0, 0, 1);
+  --k-ease-spring: linear(
+    0,
+    0.006 4%,
+    0.026 8%,
+    0.086 16%,
+    0.191 24%,
+    0.345 34%,
+    0.535 46%,
+    0.728 58%,
+    0.885 70%,
+    0.986 82%,
+    1.025 90%,
+    1.012 96%,
+    1
+  );
   --k-opacity-disabled: 0.5;
 
   --k-topbar-height: 48px;

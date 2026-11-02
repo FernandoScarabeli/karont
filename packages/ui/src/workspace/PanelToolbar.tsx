@@ -1,5 +1,6 @@
 import { Columns2, X } from "lucide-react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { FluidHoverHighlight, useFluidHover } from "../components/FluidHover/FluidHover.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./PanelToolbar.module.css";
@@ -14,7 +15,18 @@ type PanelToolbarProps = {
 export function PanelToolbar({ paneTitle, canSplit, onSplit, onClosePane }: PanelToolbarProps) {
   const [isSplitOpen, setIsSplitOpen] = useState(false);
   const splitTrigger = useRef<HTMLButtonElement>(null);
+  const toolbarRef = useRef<HTMLFieldSetElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const toolbarHover = useFluidHover(toolbarRef, {
+    axis: "x",
+    isItemDisabled: (element) => element.matches(":disabled"),
+  });
+  const menuHover = useFluidHover(menuRef, {
+    axis: "y",
+    isItemDisabled: (element) => element.matches(":disabled"),
+    gapClick: { maxDistance: 6 },
+    nearest: true,
+  });
 
   useEffect(() => {
     if (!isSplitOpen) return;
@@ -59,9 +71,11 @@ export function PanelToolbar({ paneTitle, canSplit, onSplit, onClosePane }: Pane
     <fieldset
       aria-description={t.workspace.panelShortcuts}
       className={styles.toolbar}
+      ref={toolbarHover.containerRef}
       title={t.workspace.panelShortcuts}
     >
       <legend className={styles.visuallyHidden}>{t.workspace.panelActions}</legend>
+      <FluidHoverHighlight controller={toolbarHover} />
       <div className={styles.menuWrap}>
         <IconButton
           aria-expanded={isSplitOpen}
@@ -69,7 +83,10 @@ export function PanelToolbar({ paneTitle, canSplit, onSplit, onClosePane }: Pane
           icon={<Columns2 aria-hidden="true" size={16} strokeWidth={1.75} />}
           label={t.workspace.split}
           onClick={() => setIsSplitOpen((open) => !open)}
-          ref={splitTrigger}
+          ref={(element) => {
+            splitTrigger.current = element;
+            toolbarHover.registerItem("split", element);
+          }}
           size="sm"
         />
         {isSplitOpen ? (
@@ -77,9 +94,10 @@ export function PanelToolbar({ paneTitle, canSplit, onSplit, onClosePane }: Pane
             aria-label={t.workspace.split}
             className={styles.menu}
             onKeyDown={handleMenuKeyDown}
-            ref={menuRef}
+            ref={menuHover.containerRef}
             role="menu"
           >
+            <FluidHoverHighlight controller={menuHover} />
             <button
               className={styles.menuItem}
               disabled={!canSplit}
@@ -87,6 +105,7 @@ export function PanelToolbar({ paneTitle, canSplit, onSplit, onClosePane }: Pane
                 closeMenu(false);
                 onSplit("row");
               }}
+              ref={(element) => menuHover.registerItem("split-right", element)}
               role="menuitem"
               type="button"
             >
@@ -99,6 +118,7 @@ export function PanelToolbar({ paneTitle, canSplit, onSplit, onClosePane }: Pane
                 closeMenu(false);
                 onSplit("column");
               }}
+              ref={(element) => menuHover.registerItem("split-below", element)}
               role="menuitem"
               type="button"
             >
@@ -113,6 +133,9 @@ export function PanelToolbar({ paneTitle, canSplit, onSplit, onClosePane }: Pane
         icon={<X aria-hidden="true" size={16} strokeWidth={1.75} />}
         label={t.workspace.closePane(paneTitle)}
         onClick={onClosePane}
+        ref={(element) => {
+          toolbarHover.registerItem("close", element);
+        }}
         size="sm"
       />
     </fieldset>

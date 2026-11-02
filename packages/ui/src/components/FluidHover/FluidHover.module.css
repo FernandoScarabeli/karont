@@ -1,0 +1,26 @@
+.highlight {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  width: var(--fluid-hover-width, 0px);
+  height: var(--fluid-hover-height, 0px);
+  border-radius: var(--fluid-hover-radius, var(--k-radius-md));
+  background: var(--k-color-bg-hover);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(var(--fluid-hover-x, 0px), var(--fluid-hover-y, 0px), 0);
+  transition:
+    transform var(--k-duration-spring) var(--k-ease-spring),
+    opacity var(--k-duration-fast) var(--k-ease);
+}
+
+.highlight[data-fluid-hover-snap="true"] {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .highlight {
+    transition: opacity var(--k-duration-fast) var(--k-ease);
+  }
+}

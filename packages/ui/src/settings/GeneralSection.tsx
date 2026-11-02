@@ -3,6 +3,7 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } fro
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
 import { Dialog } from "../components/Dialog/Dialog.tsx";
+import { FluidHoverHighlight, useFluidHover } from "../components/FluidHover/FluidHover.tsx";
 import { TextField } from "../components/TextField/TextField.tsx";
 import { clearAllConversationsFromIndex } from "../conversation/useConversationIndex.ts";
 import { t } from "../i18n/pt-BR.ts";
@@ -60,6 +61,8 @@ export function GeneralSection() {
   const [userNameError, setUserNameError] = useState("");
   const [userNameAnnouncement, setUserNameAnnouncement] = useState("");
   const [isSavingUserName, setIsSavingUserName] = useState(false);
+  const choicesRef = useRef<HTMLDivElement>(null);
+  const fluidHover = useFluidHover(choicesRef, { axis: "y" });
   const mountedRef = useRef(false);
 
   const loadPreference = useCallback(async () => {
@@ -187,9 +190,14 @@ export function GeneralSection() {
             {announcement}
           </span>
         </legend>
-        <div className={styles.choices}>
+        <div className={styles.choices} ref={fluidHover.containerRef}>
+          <FluidHoverHighlight controller={fluidHover} />
           {choices.map((choice) => (
-            <label className={styles.choice} key={choice.value}>
+            <label
+              className={styles.choice}
+              key={choice.value}
+              ref={(element) => fluidHover.registerItem(choice.value, element)}
+            >
               <input
                 checked={behavior === choice.value}
                 className={styles.radio}

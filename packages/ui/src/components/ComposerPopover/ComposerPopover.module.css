@@ -16,6 +16,11 @@
   scrollbar-width: thin;
 }
 
+.popover > :not([data-fluid-hover-highlight]) {
+  position: relative;
+  z-index: 1;
+}
+
 .popover:focus {
   outline: none;
 }

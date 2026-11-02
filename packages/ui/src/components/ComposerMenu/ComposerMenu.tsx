@@ -3,12 +3,14 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useId,
   useRef,
   useState,
 } from "react";
 import { ComposerPopover, ComposerPopoverHeading } from "../ComposerPopover/ComposerPopover.tsx";
+import { useRegisterFluidHoverItem } from "../FluidHover/FluidHover.tsx";
 import styles from "./ComposerMenu.module.css";
 
 export type ComposerMenuOption = {
@@ -47,6 +49,9 @@ export function ComposerMenu({
   const focusIntentRef = useRef<"option" | "popover">("popover");
   const [activeIndex, setActiveIndex] = useState(0);
   const listboxId = useId();
+  const setOptionElement = useCallback((index: number, element: HTMLDivElement | null) => {
+    optionRefs.current[index] = element;
+  }, []);
 
   useEffect(() => {
     if (open && focusIntentRef.current === "option") optionRefs.current[activeIndex]?.focus();
@@ -144,43 +149,73 @@ export function ComposerMenu({
           role="listbox"
         >
           {options.map((option, index) => (
-            <div
-              aria-selected={option.selected}
-              className={[
-                styles.option,
-                option.selected ? styles.selected : "",
-                option.action ? styles.action : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              id={`${listboxId}-${index}`}
+            <ComposerMenuOptionRow
+              activeIndex={activeIndex}
+              index={index}
               key={option.id}
-              onClick={() => select(option)}
+              listboxId={listboxId}
+              onFocus={() => setActiveIndex(index)}
               onKeyDown={(event) => {
                 event.stopPropagation();
                 handleListKeyDown(event);
               }}
-              onMouseMove={() => {
-                focusIntentRef.current = "popover";
-                setActiveIndex(index);
-              }}
-              ref={(element) => {
-                optionRefs.current[index] = element;
-              }}
-              role="option"
-              tabIndex={activeIndex === index ? 0 : -1}
-            >
-              <span className={styles.optionContent}>{option.content}</span>
-              <Check
-                aria-hidden="true"
-                className={styles.check}
-                data-visible={option.selected ? "true" : "false"}
-                size={15}
-              />
-            </div>
+              onSelect={() => select(option)}
+              option={option}
+              setOptionElement={setOptionElement}
+            />
           ))}
         </div>
       </ComposerPopover>
+    </div>
+  );
+}
+
+function ComposerMenuOptionRow({
+  option,
+  index,
+  activeIndex,
+  listboxId,
+  onFocus,
+  onKeyDown,
+  onSelect,
+  setOptionElement,
+}: {
+  option: ComposerMenuOption;
+  index: number;
+  activeIndex: number;
+  listboxId: string;
+  onFocus: () => void;
+  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+  onSelect: () => void;
+  setOptionElement: (index: number, element: HTMLDivElement | null) => void;
+}) {
+  const registerHoverItem = useRegisterFluidHoverItem(option.id);
+  const optionRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      setOptionElement(index, element);
+      registerHoverItem(element);
+    },
+    [index, registerHoverItem, setOptionElement],
+  );
+  return (
+    <div
+      aria-selected={option.selected}
+      className={[styles.option, option.action ? styles.action : ""].filter(Boolean).join(" ")}
+      id={`${listboxId}-${index}`}
+      onClick={onSelect}
+      onFocus={onFocus}
+      onKeyDown={onKeyDown}
+      ref={optionRef}
+      role="option"
+      tabIndex={activeIndex === index ? 0 : -1}
+    >
+      <span className={styles.optionContent}>{option.content}</span>
+      <Check
+        aria-hidden="true"
+        className={styles.check}
+        data-visible={option.selected ? "true" : "false"}
+        size={15}
+      />
     </div>
   );
 }

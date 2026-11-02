@@ -2,12 +2,14 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
+  useCallback,
   useEffect,
   useId,
   useRef,
   useState,
 } from "react";
 import { ComposerPopover } from "../ComposerPopover/ComposerPopover.tsx";
+import { useRegisterFluidHoverItem } from "../FluidHover/FluidHover.tsx";
 import { IconButton } from "../IconButton/IconButton.tsx";
 import styles from "./ActionMenu.module.css";
 
@@ -48,6 +50,9 @@ export function ActionMenu({
   const [activeIndex, setActiveIndex] = useState(0);
   const menuId = useId();
   const buttonRef = triggerRef ?? localTriggerRef;
+  const setItemElement = useCallback((index: number, element: HTMLButtonElement | null) => {
+    itemRefs.current[index] = element;
+  }, []);
 
   useEffect(() => {
     if (open) itemRefs.current[activeIndex]?.focus();
@@ -116,6 +121,8 @@ export function ActionMenu({
       <ComposerPopover
         anchorPoint={anchorPoint}
         anchorRef={buttonRef}
+        fluidHoverGapClick={{ maxDistance: 6 }}
+        fluidHoverNearest
         id={menuId}
         initialFocus={() => itemRefs.current[activeIndex] ?? null}
         label={label}
@@ -128,34 +135,70 @@ export function ActionMenu({
             "separator" in item ? (
               <hr className={styles.separator} key={item.id} />
             ) : (
-              <button
-                aria-disabled={item.disabled || undefined}
-                className={`${styles.item} ${item.danger ? styles.danger : ""}`}
-                disabled={item.disabled}
+              <ActionMenuButton
+                activeIndex={activeIndex}
+                index={index}
+                item={item}
                 key={item.id}
-                onClick={() => {
+                onFocus={() => setActiveIndex(index)}
+                onKeyDown={onMenuKeyDown}
+                onSelect={() => {
                   if (item.disabled) return;
                   item.onSelect();
                   closeMenu(true);
                 }}
-                onFocus={() => setActiveIndex(index)}
-                onKeyDown={onMenuKeyDown}
-                ref={(element) => {
-                  itemRefs.current[index] = element;
-                }}
-                role="menuitem"
-                tabIndex={activeIndex === index ? 0 : -1}
-                type="button"
-              >
-                <span aria-hidden="true" className={styles.icon}>
-                  {item.icon}
-                </span>
-                <span className={styles.itemLabel}>{item.label}</span>
-              </button>
+                setItemElement={setItemElement}
+              />
             ),
           )}
         </div>
       </ComposerPopover>
     </>
+  );
+}
+
+function ActionMenuButton({
+  item,
+  index,
+  activeIndex,
+  onFocus,
+  onKeyDown,
+  onSelect,
+  setItemElement,
+}: {
+  item: Extract<ActionMenuItem, { label: string }>;
+  index: number;
+  activeIndex: number;
+  onFocus: () => void;
+  onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+  onSelect: () => void;
+  setItemElement: (index: number, element: HTMLButtonElement | null) => void;
+}) {
+  const registerHoverItem = useRegisterFluidHoverItem(item.id);
+  const itemRef = useCallback(
+    (element: HTMLButtonElement | null) => {
+      setItemElement(index, element);
+      registerHoverItem(element);
+    },
+    [index, registerHoverItem, setItemElement],
+  );
+  return (
+    <button
+      aria-disabled={item.disabled || undefined}
+      className={`${styles.item} ${item.danger ? styles.danger : ""}`}
+      disabled={item.disabled}
+      onClick={onSelect}
+      onFocus={onFocus}
+      onKeyDown={onKeyDown}
+      ref={itemRef}
+      role="menuitem"
+      tabIndex={activeIndex === index ? 0 : -1}
+      type="button"
+    >
+      <span aria-hidden="true" className={styles.icon}>
+        {item.icon}
+      </span>
+      <span className={styles.itemLabel}>{item.label}</span>
+    </button>
   );
 }

@@ -1,6 +1,14 @@
 import type { Conversation, ResultOf } from "@karont/contract";
 import { ListTodo, SlidersHorizontal, TriangleAlert } from "lucide-react";
-import { type KeyboardEvent, type MouseEvent, useEffect, useId, useRef, useState } from "react";
+import {
+  type ComponentPropsWithoutRef,
+  type KeyboardEvent,
+  type MouseEvent,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "../components/Button/Button.tsx";
 import { ComposerMenu, type ComposerMenuOption } from "../components/ComposerMenu/ComposerMenu.tsx";
 import {
@@ -8,6 +16,7 @@ import {
   ComposerPopoverHeading,
 } from "../components/ComposerPopover/ComposerPopover.tsx";
 import { Dialog } from "../components/Dialog/Dialog.tsx";
+import { useRegisterFluidHoverItem } from "../components/FluidHover/FluidHover.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./ComposerPreferences.module.css";
 
@@ -255,40 +264,28 @@ export function ComposerPreferences({
               <fieldset className={styles.accessOptions}>
                 <legend className={styles.srOnly}>{t.chat.access}</legend>
                 {modes.map((value, index) => (
-                  <label className={styles.accessOption} data-checked={mode === value} key={value}>
-                    <input
-                      aria-describedby={`${configPopoverId}-${value}-description`}
-                      aria-labelledby={`${configPopoverId}-${value}-name`}
-                      checked={mode === value}
-                      className={styles.radioInput}
-                      disabled={disabled}
-                      name={`${configPopoverId}-access`}
-                      onChange={() => chooseMode(value)}
-                      ref={(element) => {
-                        modeRefs.current[index] = element;
-                      }}
-                      type="radio"
-                      value={value}
-                    />
-                    <span aria-hidden="true" className={styles.radioMark} />
-                    <span className={styles.accessCopy}>
-                      <span className={styles.accessName} id={`${configPopoverId}-${value}-name`}>
-                        {t.chat.modes[value]}
-                      </span>
-                      <span
-                        className={styles.accessDescription}
-                        id={`${configPopoverId}-${value}-description`}
-                      >
-                        {t.chat.modeDescriptions[value]}
-                      </span>
-                    </span>
-                  </label>
+                  <RegisteredAccessOption
+                    checked={mode === value}
+                    description={t.chat.modeDescriptions[value]}
+                    fluidKey={`access-${value}`}
+                    inputId={`${configPopoverId}-${value}-name`}
+                    key={value}
+                    inputRef={(element) => {
+                      modeRefs.current[index] = element;
+                    }}
+                    inputName={`${configPopoverId}-access`}
+                    label={t.chat.modes[value]}
+                    onChange={() => chooseMode(value)}
+                    optionId={`${configPopoverId}-${value}`}
+                    value={value}
+                    disabled={disabled}
+                  />
                 ))}
               </fieldset>
             </section>
             <hr className={styles.sectionSeparator} />
             <section className={styles.configSection}>
-              <button
+              <RegisteredFluidHoverButton
                 aria-checked={planMode}
                 aria-describedby={planDescriptionId}
                 aria-label={t.chat.planMode}
@@ -297,6 +294,7 @@ export function ComposerPreferences({
                 onClick={() => onPlanModeChange(!planMode)}
                 role="switch"
                 type="button"
+                fluidKey="plan-mode"
               >
                 <span className={styles.planCopy}>
                   <span className={styles.accessName}>{t.chat.planMode}</span>
@@ -307,7 +305,7 @@ export function ComposerPreferences({
                 <span aria-hidden="true" className={styles.switchTrack} data-checked={planMode}>
                   <span className={styles.switchThumb} />
                 </span>
-              </button>
+              </RegisteredFluidHoverButton>
             </section>
           </fieldset>
         </ComposerPopover>
@@ -464,4 +462,65 @@ function EffortGauge({ angle }: { angle: number }) {
 
 export function agentDisplayName(agent: string): string {
   return agent === "claude" ? t.chat.agents.claude : t.chat.agents.codex;
+}
+
+function RegisteredAccessOption({
+  fluidKey,
+  checked,
+  disabled,
+  description,
+  inputId,
+  inputName,
+  label,
+  onChange,
+  inputRef,
+  optionId,
+  value,
+}: {
+  fluidKey: string;
+  checked: boolean;
+  disabled: boolean;
+  description: string;
+  inputId: string;
+  inputName: string;
+  label: string;
+  onChange: () => void;
+  inputRef: (element: HTMLInputElement | null) => void;
+  optionId: string;
+  value: ConversationMode;
+}) {
+  const registerHoverItem = useRegisterFluidHoverItem(fluidKey);
+  return (
+    <label className={styles.accessOption} data-checked={checked} ref={registerHoverItem}>
+      <input
+        aria-describedby={`${optionId}-description`}
+        aria-labelledby={inputId}
+        checked={checked}
+        className={styles.radioInput}
+        disabled={disabled}
+        name={inputName}
+        onChange={onChange}
+        ref={inputRef}
+        type="radio"
+        value={value}
+      />
+      <span aria-hidden="true" className={styles.radioMark} />
+      <span className={styles.accessCopy}>
+        <span className={styles.accessName} id={inputId}>
+          {label}
+        </span>
+        <span className={styles.accessDescription} id={`${optionId}-description`}>
+          {description}
+        </span>
+      </span>
+    </label>
+  );
+}
+
+function RegisteredFluidHoverButton({
+  fluidKey,
+  ...props
+}: ComponentPropsWithoutRef<"button"> & { fluidKey: string }) {
+  const registerHoverItem = useRegisterFluidHoverItem(fluidKey);
+  return <button {...props} ref={registerHoverItem} />;
 }
