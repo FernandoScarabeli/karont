@@ -138,15 +138,6 @@ export function useConversationIndex(archived = false) {
   );
 }
 
-export function getConversationSummary(id: string): Conversation | undefined {
-  if (deletedIds.has(id)) return undefined;
-  return (
-    latestConversations.get(id) ??
-    snapshots.active.conversations.find((conversation) => conversation.id === id) ??
-    snapshots.archived.conversations.find((conversation) => conversation.id === id)
-  );
-}
-
 export function upsertConversation(conversation: Conversation) {
   latestConversations.set(conversation.id, conversation);
   deletedIds.delete(conversation.id);

@@ -52,10 +52,6 @@
   padding: 0;
 }
 
-.fastPlaceholder {
-  pointer-events: none;
-}
-
 .fastTrigger {
   color: var(--k-color-text-muted);
 }
@@ -79,14 +75,6 @@
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-}
-
-.effortPlaceholder {
-  display: inline-flex;
-  width: var(--k-control-height-md);
-  min-width: var(--k-control-height-md);
-  height: var(--k-control-height-md);
-  flex: 0 0 auto;
 }
 
 .effortTrigger {

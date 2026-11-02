@@ -320,30 +320,30 @@
   gap: var(--k-space-1);
 }
 
-.messageRegion {
+.messageRegion,
+.composerControls,
+.composerBelow {
   transition:
     filter var(--k-motion-conversation-blur) var(--k-ease),
     opacity var(--k-motion-conversation-blur) var(--k-ease);
 }
 
-.messageRegion[data-conversation-blur="waiting"] {
-  visibility: hidden;
-  transition: none;
-}
-
 .messageRegion[data-conversation-blur="blurring"],
-.messageRegion[data-conversation-blur="blurred"] {
+.messageRegion[data-conversation-blur="blurred"],
+.composerControls[data-conversation-blur="blurring"],
+.composerControls[data-conversation-blur="blurred"],
+.composerBelow[data-conversation-blur="blurring"],
+.composerBelow[data-conversation-blur="blurred"] {
   filter: blur(var(--k-blur-conversation-radius));
   opacity: var(--k-blur-conversation-opacity);
 }
 
-.messageRegion[data-conversation-blur="blurring"] {
-  transition: none;
-}
-
 .messageRegion[data-conversation-blur="blurring"],
 .messageRegion[data-conversation-blur="revealing"],
-.messageRegion[data-conversation-blur="revealing"] {
+.composerControls[data-conversation-blur="blurring"],
+.composerControls[data-conversation-blur="revealing"],
+.composerBelow[data-conversation-blur="blurring"],
+.composerBelow[data-conversation-blur="revealing"] {
   will-change: filter, opacity;
 }
 
@@ -497,11 +497,15 @@
     animation: none;
   }
 
-  .messageRegion {
+  .messageRegion,
+  .composerControls,
+  .composerBelow {
     transition: none;
   }
 
-  .messageRegion[data-conversation-blur]:not([data-conversation-blur="waiting"]) {
+  .messageRegion[data-conversation-blur],
+  .composerControls[data-conversation-blur],
+  .composerBelow[data-conversation-blur] {
     filter: none;
     opacity: 1;
     will-change: auto;
