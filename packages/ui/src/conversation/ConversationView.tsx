@@ -53,6 +53,7 @@ import { type ResponseInput, TodosPart } from "./ConversationParts.tsx";
 import styles from "./ConversationView.module.css";
 import {
   type ComposerShortcutTrigger,
+  consumePendingComposerCaret,
   detectComposerShortcut,
   findMentionedSkills,
   fuzzyFilter,
@@ -124,6 +125,7 @@ export function ConversationView({
   } = useConversation(id);
   const markSeenInFlight = useRef(false);
   const [draft, setDraft] = useState("");
+  const [caretRequest, setCaretRequest] = useState(0);
   const [models, setModels] = useState<AgentModels | null>(null);
   const [capabilities, setCapabilities] = useState<AgentCapabilities | null>(null);
   const [capabilitiesLoading, setCapabilitiesLoading] = useState(false);
@@ -205,6 +207,7 @@ export function ConversationView({
   const olderMessagesObserverRef = useRef<IntersectionObserver | null>(null);
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const composerSectionRef = useRef<HTMLElement>(null);
+  const pendingComposerCaretRef = useRef<number | null>(null);
   const titleHeadingRef = useRef<HTMLHeadingElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const historyHighlightTimerRef = useRef<number | null>(null);
@@ -847,6 +850,16 @@ export function ConversationView({
     }
   }, [olderPageVersion, scrollVersion]);
 
+  useLayoutEffect(() => {
+    if (caretRequest === 0) return;
+    const textarea = composerSectionRef.current?.querySelector("textarea");
+    if (!textarea) return;
+    const caret = consumePendingComposerCaret(pendingComposerCaretRef);
+    if (caret === null) return;
+    textarea.focus();
+    textarea.setSelectionRange(caret, caret);
+  }, [caretRequest]);
+
   const announce = useCallback((text: string) => setAnnouncement(text), []);
 
   const copyText = useCallback(
@@ -891,14 +904,10 @@ export function ConversationView({
   const closeShortcutSuggestions = useCallback(() => setShortcutTrigger(null), []);
 
   function applyShortcutText(value: string, caret: number) {
+    pendingComposerCaretRef.current = caret;
+    setCaretRequest((current) => current + 1);
     setDraft(value);
     setShortcutTrigger(null);
-    requestAnimationFrame(() => {
-      const textarea = composerSectionRef.current?.querySelector("textarea");
-      if (!textarea) return;
-      textarea.focus();
-      textarea.setSelectionRange(caret, caret);
-    });
   }
 
   function selectComposerSuggestion(option: ComposerAutocompleteOption) {

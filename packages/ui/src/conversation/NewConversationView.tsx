@@ -15,6 +15,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -45,6 +46,7 @@ import {
 } from "./ComposerPreferences.tsx";
 import {
   type ComposerShortcutTrigger,
+  consumePendingComposerCaret,
   detectComposerShortcut,
   findMentionedSkills,
   fuzzyFilter,
@@ -85,6 +87,7 @@ export function NewConversationView({
   const [folderPath, setFolderPath] = useState(PERSONAL_FOLDER);
   const [homePath, setHomePath] = useState<string>();
   const [command, setCommand] = useState("");
+  const [caretRequest, setCaretRequest] = useState(0);
   const [activePopover, setActivePopover] = useState<ComposerPopoverName>(null);
   const [isOpening, setIsOpening] = useState(false);
   const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false);
@@ -117,6 +120,7 @@ export function NewConversationView({
   const titleId = useId();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const composerSectionRef = useRef<HTMLElement>(null);
+  const pendingComposerCaretRef = useRef<number | null>(null);
   const folderDialogFormId = useId();
 
   const updateFolderPath = useCallback((path: string) => {
@@ -383,6 +387,16 @@ export function NewConversationView({
       active = false;
     };
   }, [bridge, capabilities?.skills, selectedAgentForShortcuts, suggestionCwd]);
+
+  useLayoutEffect(() => {
+    if (caretRequest === 0) return;
+    const textarea = composerSectionRef.current?.querySelector("textarea");
+    if (!textarea) return;
+    const caret = consumePendingComposerCaret(pendingComposerCaretRef);
+    if (caret === null) return;
+    textarea.focus();
+    textarea.setSelectionRange(caret, caret);
+  }, [caretRequest]);
 
   useEffect(() => {
     if (
@@ -697,14 +711,10 @@ export function NewConversationView({
   }
 
   function applyShortcutText(value: string, caret: number) {
+    pendingComposerCaretRef.current = caret;
+    setCaretRequest((current) => current + 1);
     setCommand(value);
     setShortcutTrigger(null);
-    requestAnimationFrame(() => {
-      const textarea = composerSectionRef.current?.querySelector("textarea");
-      if (!textarea) return;
-      textarea.focus();
-      textarea.setSelectionRange(caret, caret);
-    });
   }
 
   function selectComposerSuggestion(option: ComposerAutocompleteOption) {

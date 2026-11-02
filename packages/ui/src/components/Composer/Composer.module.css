@@ -106,7 +106,8 @@
 
 .suggestionPrimary {
   min-width: 0;
-  flex: 0 1 auto;
+  max-width: 45%;
+  flex: 0 0 auto;
   overflow: hidden;
   font-weight: var(--k-weight-medium);
   text-overflow: ellipsis;
@@ -124,7 +125,7 @@
 
 .suggestionSecondary {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0%;
   overflow: hidden;
   color: var(--k-color-text-secondary);
   text-overflow: ellipsis;

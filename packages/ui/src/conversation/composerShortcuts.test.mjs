@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { composerAutocompleteKeyAction } from "../components/Composer/composerKeyboard.ts";
 import {
+  consumePendingComposerCaret,
   detectComposerShortcut,
   findMentionedSkills,
   fuzzyFilter,
@@ -54,6 +55,29 @@ test("insere uma sugestão no token sob o cursor e mantém o restante do texto",
     value: "Leia @src/readme.md depois",
     caret: 20,
   });
+});
+
+test("restaura o cursor uma vez após inserir e mantém a posição ao continuar digitando", () => {
+  const value = "Quantas linhas tem @src/carr";
+  const trigger = detectComposerShortcut(value, value.length);
+  assert.ok(trigger);
+  const insertion = insertComposerShortcut(value, trigger, "@src/carrinho.js ");
+  assert.equal(insertion.value, "Quantas linhas tem @src/carrinho.js ");
+  assert.equal(insertion.caret, insertion.value.length);
+
+  const pendingCaret = { current: insertion.caret };
+  assert.equal(consumePendingComposerCaret(pendingCaret), insertion.caret);
+
+  const afterQuestion = `${insertion.value.slice(0, insertion.caret)}?${insertion.value.slice(insertion.caret)}`;
+  const caretAfterQuestion = insertion.caret + 1;
+  assert.equal(consumePendingComposerCaret(pendingCaret), null);
+
+  const continuation = " Responda só o número.";
+  const finalValue =
+    afterQuestion.slice(0, caretAfterQuestion) +
+    continuation +
+    afterQuestion.slice(caretAfterQuestion);
+  assert.equal(finalValue, "Quantas linhas tem @src/carrinho.js ? Responda só o número.");
 });
 
 test("remove comando e recolhe o espaço entre o texto preservado", () => {
