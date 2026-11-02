@@ -813,6 +813,62 @@ test("Claude publica e persiste o uso da última mensagem assistant", async () =
   }
 });
 
+test("Claude atualiza o uso de contexto depois de compactar", async () => {
+  const harness = await createHarness("compactar");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Resuma o contexto.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const beforeCompact = { usedTokens: 90_000, windowTokens: 200_000 };
+    assert.deepEqual(harness.manager.get(conversation.id)?.contextUsage, beforeCompact);
+
+    await harness.manager.compact(conversation.id);
+    await waitForState(harness, conversation.id, "idle");
+
+    const afterCompact = { usedTokens: 17_000, windowTokens: 200_000 };
+    assert.deepEqual(harness.manager.get(conversation.id)?.contextUsage, afterCompact);
+    assert.ok(
+      harness.events.some(
+        (event) =>
+          event.event === "conversation.contextUsage" &&
+          event.payload.conversationId === conversation.id &&
+          event.payload.usedTokens === afterCompact.usedTokens &&
+          event.payload.windowTokens === afterCompact.windowTokens,
+      ),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Claude limpa o uso de contexto se a compactação não informar tokens pós-compactação", async () => {
+  const harness = await createHarness("compactar-sem-uso");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Resuma o contexto.");
+    await waitForState(harness, conversation.id, "idle");
+    assert.deepEqual(harness.manager.get(conversation.id)?.contextUsage, {
+      usedTokens: 90_000,
+      windowTokens: 200_000,
+    });
+
+    await harness.manager.compact(conversation.id);
+    await waitForState(harness, conversation.id, "idle");
+    assert.equal(harness.manager.get(conversation.id)?.contextUsage, undefined);
+
+    await harness.manager.close();
+    harness.manager = new ConversationManager({
+      db: harness.db,
+      env: { ...process.env, KARONT_DISABLE_AGENT_DETECTION: "1" },
+      broadcast: async () => undefined,
+    });
+    assert.equal(harness.manager.get(conversation.id)?.contextUsage, undefined);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("o manager não publica uso quando o adaptador não declara a capacidade", async () => {
   const harness = await createHarness(
     "texto",

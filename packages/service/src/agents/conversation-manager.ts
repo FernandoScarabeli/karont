@@ -1141,6 +1141,14 @@ export class ConversationManager {
       });
       return;
     }
+    if (event.kind === "context-usage-unknown") {
+      if (!this.#requireAgentRegistration(active.agent).capabilities.contextUsage) return;
+      this.#contextUsage.delete(conversationId);
+      this.#db
+        .prepare("DELETE FROM conversation_context_usage WHERE conversation_id=?")
+        .run(conversationId);
+      return;
+    }
     if (event.kind === "sources") {
       active.sources = event.sources;
       const textPart = active.sourcePartId

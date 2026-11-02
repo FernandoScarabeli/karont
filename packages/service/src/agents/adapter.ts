@@ -15,6 +15,7 @@ export type AdapterEvent =
   | { kind: "text-delta"; partType: "text" | "thinking"; partId: string; delta: string }
   | { kind: "state"; state: "working" | "waiting" }
   | { kind: "context-usage"; usedTokens: number; windowTokens: number }
+  | { kind: "context-usage-unknown" }
   | {
       kind: "turn-end";
       status: "done" | "interrupted" | "error";

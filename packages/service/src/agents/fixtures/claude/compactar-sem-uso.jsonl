@@ -1,0 +1,9 @@
+{"direction":"out","stream":"stdin","line":"{\"type\":\"control_request\",\"request_id\":\"karont-initialize\",\"request\":{\"subtype\":\"initialize\"}}"}
+{"direction":"in","stream":"stdout","line":"{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"sessao-compactacao\",\"model\":\"claude-haiku-5-5\"}"}
+{"direction":"in","stream":"stdout","line":"{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"karont-initialize\",\"response\":{\"commands\":[],\"models\":[]}}}"}
+{"direction":"out","stream":"stdin","line":"{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Resuma o contexto.\"}}"}
+{"direction":"in","stream":"stdout","line":"{\"type\":\"assistant\",\"message\":{\"model\":\"claude-haiku-5-5\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Contexto resumido.\"}],\"usage\":{\"input_tokens\":3000,\"cache_read_input_tokens\":78000,\"cache_creation_input_tokens\":9000}}} "}
+{"direction":"in","stream":"stdout","line":"{\"type\":\"result\",\"subtype\":\"success\",\"session_id\":\"sessao-compactacao\",\"modelUsage\":{\"claude-haiku-5-5\":{\"contextWindow\":200000}},\"is_error\":false}"}
+{"direction":"out","stream":"stdin","line":"{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"/compact\"}}"}
+{"direction":"in","stream":"stdout","line":"{\"type\":\"system\",\"subtype\":\"compact_boundary\",\"compactMetadata\":{\"trigger\":\"manual\",\"preTokens\":90000,\"durationMs\":6},\"session_id\":\"sessao-compactacao\"}"}
+{"direction":"in","stream":"stdout","line":"{\"type\":\"result\",\"subtype\":\"success\",\"session_id\":\"sessao-compactacao\",\"modelUsage\":{\"claude-haiku-5-5\":{\"contextWindow\":200000}},\"is_error\":false}"}

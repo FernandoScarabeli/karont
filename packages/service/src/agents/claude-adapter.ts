@@ -118,6 +118,9 @@ export class ClaudeAdapter implements AgentAdapter {
   #lastPlan = "";
   #lastAssistantUsage: unknown;
   #lastAssistantModel: string | undefined;
+  #lastContextWindowTokens: number | undefined;
+  #compactBoundaryTokens: number | undefined;
+  #compactInProgress = false;
   #turnOpen = false;
   #stopRequested = false;
   #disposed = false;
@@ -343,7 +346,14 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   async compact(): Promise<void> {
-    await this.send("/compact");
+    this.#compactInProgress = true;
+    this.#compactBoundaryTokens = undefined;
+    try {
+      await this.send("/compact");
+    } catch (error) {
+      this.#compactInProgress = false;
+      throw error;
+    }
   }
 
   async getModels(): Promise<AdapterModelList> {
@@ -604,6 +614,14 @@ export class ClaudeAdapter implements AgentAdapter {
         const errorType = classifyErrorText(detail);
         this.#completeTurn("error", { type: errorType, text: detail });
       }
+      if (value.subtype === "compact_boundary") {
+        const metadata = isRecord(value.compactMetadata)
+          ? value.compactMetadata
+          : isRecord(value.compact_metadata)
+            ? value.compact_metadata
+            : undefined;
+        this.#compactBoundaryTokens = tokenCount(metadata?.postTokens);
+      }
       if (value.subtype === "permission_denied") this.#emit({ kind: "state", state: "working" });
       return;
     }
@@ -661,7 +679,28 @@ export class ClaudeAdapter implements AgentAdapter {
         value.modelUsage,
         this.#lastAssistantModel,
       );
-      if (usage) this.#emit({ kind: "context-usage", ...usage });
+      if (usage) {
+        this.#lastContextWindowTokens = usage.windowTokens;
+        this.#emit({ kind: "context-usage", ...usage });
+      } else if (
+        this.#compactInProgress &&
+        value.is_error !== true &&
+        value.subtype !== "error_during_execution"
+      ) {
+        const windowTokens =
+          claudeContextWindow(value.modelUsage, this.#lastAssistantModel) ??
+          this.#lastContextWindowTokens;
+        if (this.#compactBoundaryTokens !== undefined && windowTokens !== undefined) {
+          this.#lastContextWindowTokens = windowTokens;
+          this.#emit({
+            kind: "context-usage",
+            usedTokens: this.#compactBoundaryTokens,
+            windowTokens,
+          });
+        } else this.#emit({ kind: "context-usage-unknown" });
+      }
+      this.#compactInProgress = false;
+      this.#compactBoundaryTokens = undefined;
       if (typeof value.session_id === "string" && value.session_id !== this.#forkSessionSourceId) {
         this.#sessionId = value.session_id;
         this.#resumeSession = true;
@@ -990,6 +1029,8 @@ export class ClaudeAdapter implements AgentAdapter {
   ): void {
     if (!this.#turnOpen) return;
     this.#turnOpen = false;
+    this.#compactInProgress = false;
+    this.#compactBoundaryTokens = undefined;
     if (status !== "done") {
       for (const action of this.#actions.values()) {
         const part = this.#parts.get(action.partId);
@@ -1481,6 +1522,24 @@ function isAllowSuggestion(value: unknown): boolean {
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function claudeContextWindow(modelUsage: unknown, model: string | undefined): number | undefined {
+  if (!isRecord(modelUsage)) return undefined;
+  if (model && isRecord(modelUsage[model])) {
+    const windowTokens = tokenCount(modelUsage[model].contextWindow);
+    if (windowTokens !== undefined && windowTokens > 0) return windowTokens;
+  }
+  for (const usage of Object.values(modelUsage)) {
+    if (!isRecord(usage)) continue;
+    const windowTokens = tokenCount(usage.contextWindow);
+    if (windowTokens !== undefined && windowTokens > 0) return windowTokens;
+  }
+  return undefined;
+}
+
+function tokenCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 function formatTextAttachment(
