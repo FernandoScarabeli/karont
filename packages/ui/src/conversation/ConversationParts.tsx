@@ -34,8 +34,10 @@ import {
   type ReactNode,
   type UIEvent,
   useCallback,
+  useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -66,6 +68,7 @@ import styles from "./ConversationParts.module.css";
 import { formatWorkDuration, splitFinalAnswer } from "./conversationDisplay.ts";
 import { cleanMarkdownPreview, formatConversationText } from "./displayText.ts";
 import { getAllowedExternalUrl } from "./externalLinks.ts";
+import { FollowBottomContext } from "./followBottom.ts";
 import { splitMarkdownBlocks } from "./markdownBlocks.ts";
 import { rehypeCaret } from "./rehypeCaret.ts";
 import { CARET_FADE_MS } from "./typewriter.ts";
@@ -83,6 +86,22 @@ function loadHighlightPlugin(): Promise<HighlightPlugin | null> {
     .then(({ default: rehypeHighlight }) => rehypeHighlight)
     .catch(() => null);
   return highlightPluginPromise;
+}
+
+// Carregar o realce na primeira cerca de código, no meio do stream, travava quadros.
+// Quando uma resposta em streaming ganha uma cerca, o módulo é carregado em tempo ocioso.
+const FENCE_LINE = /^ {0,3}(?:`{3,}|~{3,})/mu;
+let highlightPreloadRequested = false;
+
+function preloadHighlightPlugin(markdown: string): void {
+  if (highlightPreloadRequested || !FENCE_LINE.test(markdown)) return;
+  highlightPreloadRequested = true;
+  const load = () => void loadHighlightPlugin();
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(load, { timeout: 1000 });
+  } else {
+    window.setTimeout(load, 200);
+  }
 }
 
 const messageDateFormatter = new Intl.DateTimeFormat("pt-BR", {
@@ -754,6 +773,17 @@ function TypewriterMarkdownBody({
   const revealed = useTypewriterText(markdown, done);
   const caughtUp = revealed.length === markdown.length;
   const caretPhase: CaretPhase = !caughtUp ? "streaming" : done ? "done" : "idle";
+  const pinToBottom = useContext(FollowBottomContext);
+
+  // Roda a cada render, ou seja a cada quadro revelado, antes da pintura (o hook usa
+  // flushSync). Sem lista de dependências de propósito: cada render é um quadro novo.
+  useLayoutEffect(() => {
+    pinToBottom();
+  });
+
+  useEffect(() => {
+    if (!done) preloadHighlightPlugin(markdown);
+  }, [done, markdown]);
 
   useEffect(() => {
     if (!done || !caughtUp) return;

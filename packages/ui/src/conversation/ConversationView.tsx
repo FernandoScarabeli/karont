@@ -41,6 +41,7 @@ import { MessageRow, type ResponseInput, TodosPart } from "./ConversationParts.t
 import styles from "./ConversationView.module.css";
 import { cacheAgentModels, getCachedAgentModels } from "./conversationCache.ts";
 import { formatFolderPath } from "./displayText.ts";
+import { FollowBottomContext } from "./followBottom.ts";
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
@@ -318,6 +319,35 @@ export function ConversationView({
 
   // O texto digitado cresce entre um delta e outro. Enquanto o usuário está no fim,
   // acompanha a altura da última mensagem; se ele subiu, não mexe na rolagem.
+  // Chamado pelo texto digitado a cada quadro (antes da pintura). Só lê a altura
+  // ao fixar, e só se o usuário estiver no fim.
+  const pinToBottom = useCallback(() => {
+    const list = messageListRef.current;
+    if (list && wasNearBottom.current) list.scrollTop = list.scrollHeight;
+  }, []);
+
+  // Subir com a roda ou com o teclado marca o usuário como fora do fim antes de
+  // qualquer quadro seguinte. A rolagem para cima aparece no evento de scroll.
+  useEffect(() => {
+    const list = messageListRef.current;
+    if (!list) return;
+    let lastScrollTop = list.scrollTop;
+    const onScroll = () => {
+      if (list.scrollTop < lastScrollTop) wasNearBottom.current = false;
+      lastScrollTop = list.scrollTop;
+    };
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0) wasNearBottom.current = false;
+    };
+    list.addEventListener("scroll", onScroll, { passive: true });
+    list.addEventListener("wheel", onWheel, { passive: true });
+    return () => {
+      list.removeEventListener("scroll", onScroll);
+      list.removeEventListener("wheel", onWheel);
+    };
+  }, []);
+
+  // Rede de segurança para outros crescimentos (imagens, realce, blocos fechados).
   useEffect(() => {
     const list = messageListRef.current;
     const latestId = latestMessage?.id;
@@ -326,12 +356,10 @@ export function ConversationView({
       `:scope > article[data-message-id="${CSS.escape(latestId)}"]`,
     );
     if (!latestArticle) return;
-    const observer = new ResizeObserver(() => {
-      if (wasNearBottom.current) list.scrollTop = list.scrollHeight;
-    });
+    const observer = new ResizeObserver(pinToBottom);
     observer.observe(latestArticle);
     return () => observer.disconnect();
-  }, [latestMessage?.id]);
+  }, [latestMessage?.id, pinToBottom]);
 
   useEffect(() => {
     const list = messageListRef.current;
@@ -840,78 +868,80 @@ export function ConversationView({
         {headerActions}
       </header>
 
-      <section
-        aria-label={t.chat.messageList}
-        className={`${styles.messageList} ${scrollAreaStyles.scrollArea}`}
-        data-reveal={revealLoadedData ? "true" : undefined}
-        ref={messageListRef}
-      >
-        {loading && !conversation && showSlowLoading ? (
-          <p className={styles.loading}>{t.chat.loading}</p>
-        ) : null}
-        {error ? (
-          <p className={styles.error} role="alert">
-            <TriangleAlert aria-hidden="true" size={16} />
-            {error}
-          </p>
-        ) : null}
-        {!loading && !error && messages.length === 0 ? (
-          <div className={styles.empty}>
-            <MessageSquareText aria-hidden="true" size={22} />
-            <p>{t.chat.emptyTitle(conversation ? agentDisplayName(conversation.agent) : "")}</p>
-            <span>{t.conversation.promptPlaceholder}</span>
-          </div>
-        ) : null}
-        {orderedMessages.length > visibleMessages.length ? (
-          <button
-            className={styles.olderMessages}
-            onClick={() => {
-              previousScrollHeight.current = messageListRef.current?.scrollHeight ?? 0;
-              restoreAfterOlder.current = true;
-              setVisibleMessageCount((count) => count + 100);
-            }}
-            type="button"
-          >
-            {t.chat.showOlderMessages}
-          </button>
-        ) : null}
-        {visibleMessages.map((message) => (
-          <MessageRow
-            key={message.id}
-            message={message}
-            agent={conversation?.agent}
-            cwd={conversation?.cwd ?? ""}
-            onAnnounce={announce}
-            onCopy={copyText}
-            onEdit={editMessage}
-            onRespond={respond}
-            onRetry={retry}
-            onWorkingIndicatorExit={
-              message.author === "agent" &&
-              message.id === latestMessage?.id &&
-              shouldShowWorkingIndicator
-                ? completeWorkingIndicatorExit
-                : undefined
-            }
-            workingIndicator={
-              message.author === "agent" &&
-              message.id === latestMessage?.id &&
-              shouldShowWorkingIndicator
-                ? workingIndicatorProps
-                : undefined
-            }
-          />
-        ))}
-        {latestMessage?.author !== "agent" && shouldShowWorkingIndicator ? (
-          <div className={styles.workingFallback}>
-            <WorkingIndicator
-              {...workingIndicatorProps}
-              onExitComplete={completeWorkingIndicatorExit}
+      <FollowBottomContext value={pinToBottom}>
+        <section
+          aria-label={t.chat.messageList}
+          className={`${styles.messageList} ${scrollAreaStyles.scrollArea}`}
+          data-reveal={revealLoadedData ? "true" : undefined}
+          ref={messageListRef}
+        >
+          {loading && !conversation && showSlowLoading ? (
+            <p className={styles.loading}>{t.chat.loading}</p>
+          ) : null}
+          {error ? (
+            <p className={styles.error} role="alert">
+              <TriangleAlert aria-hidden="true" size={16} />
+              {error}
+            </p>
+          ) : null}
+          {!loading && !error && messages.length === 0 ? (
+            <div className={styles.empty}>
+              <MessageSquareText aria-hidden="true" size={22} />
+              <p>{t.chat.emptyTitle(conversation ? agentDisplayName(conversation.agent) : "")}</p>
+              <span>{t.conversation.promptPlaceholder}</span>
+            </div>
+          ) : null}
+          {orderedMessages.length > visibleMessages.length ? (
+            <button
+              className={styles.olderMessages}
+              onClick={() => {
+                previousScrollHeight.current = messageListRef.current?.scrollHeight ?? 0;
+                restoreAfterOlder.current = true;
+                setVisibleMessageCount((count) => count + 100);
+              }}
+              type="button"
+            >
+              {t.chat.showOlderMessages}
+            </button>
+          ) : null}
+          {visibleMessages.map((message) => (
+            <MessageRow
+              key={message.id}
+              message={message}
+              agent={conversation?.agent}
+              cwd={conversation?.cwd ?? ""}
+              onAnnounce={announce}
+              onCopy={copyText}
+              onEdit={editMessage}
+              onRespond={respond}
+              onRetry={retry}
+              onWorkingIndicatorExit={
+                message.author === "agent" &&
+                message.id === latestMessage?.id &&
+                shouldShowWorkingIndicator
+                  ? completeWorkingIndicatorExit
+                  : undefined
+              }
+              workingIndicator={
+                message.author === "agent" &&
+                message.id === latestMessage?.id &&
+                shouldShowWorkingIndicator
+                  ? workingIndicatorProps
+                  : undefined
+              }
             />
-          </div>
-        ) : null}
-        <div aria-hidden="true" className={styles.bottomSentinel} ref={bottomSentinelRef} />
-      </section>
+          ))}
+          {latestMessage?.author !== "agent" && shouldShowWorkingIndicator ? (
+            <div className={styles.workingFallback}>
+              <WorkingIndicator
+                {...workingIndicatorProps}
+                onExitComplete={completeWorkingIndicatorExit}
+              />
+            </div>
+          ) : null}
+          <div aria-hidden="true" className={styles.bottomSentinel} ref={bottomSentinelRef} />
+        </section>
+      </FollowBottomContext>
 
       <section
         aria-label={t.chat.messageComposer}
