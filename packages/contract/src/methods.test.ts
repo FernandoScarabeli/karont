@@ -60,6 +60,10 @@ test("conversation.send aceita até 8 anexos e a mensagem expõe só metadados",
     true,
   );
   assert.equal(
+    schema.safeParse({ id: "c1", text: "Leia", skills: [{ name: "project-helper" }] }).success,
+    true,
+  );
+  assert.equal(
     schema.safeParse({
       id: "c1",
       text: "Leia",
@@ -92,6 +96,81 @@ test("conversation.send aceita até 8 anexos e a mensagem expõe só metadados",
       attachments: [{ ...savedMessage.attachments[0], data: "conteúdo" }],
     }).success,
     false,
+  );
+});
+
+test("contratos do composer e compactação validam os formatos por agente", () => {
+  assert.equal(
+    methods["composer.files"].params.safeParse({ conversationId: "c1", query: "readme" }).success,
+    true,
+  );
+  assert.equal(
+    methods["composer.files"].params.safeParse({ cwd: "/tmp/projeto", query: "src/a" }).success,
+    true,
+  );
+  assert.equal(
+    methods["composer.files"].params.safeParse({ cwd: "/tmp/projeto", query: "x", extra: true })
+      .success,
+    false,
+  );
+  assert.equal(
+    methods["composer.files"].result.safeParse({
+      files: [{ path: "src/index.ts", name: "index.ts" }],
+    }).success,
+    true,
+  );
+  assert.equal(methods["composer.skills"].params.safeParse({ conversationId: "c1" }).success, true);
+  assert.equal(
+    methods["composer.skills"].params.safeParse({ agent: "codex", cwd: "/tmp/projeto" }).success,
+    true,
+  );
+  assert.equal(
+    methods["composer.skills"].params.safeParse({ agent: "teste", cwd: "/tmp/projeto" }).success,
+    true,
+  );
+  assert.equal(
+    methods["composer.skills"].result.safeParse({
+      skills: [
+        {
+          name: "project-helper",
+          description: "Executa uma tarefa de exemplo.",
+          source: "agente-de-teste",
+          path: "/tmp/projeto/.agents/skills/project-helper/SKILL.md",
+        },
+      ],
+    }).success,
+    true,
+  );
+  assert.equal(methods["conversation.compact"].params.safeParse({ id: "c1" }).success, true);
+  assert.equal(methods["conversation.compact"].result.safeParse({ ok: true }).success, true);
+  assert.equal(
+    methods["agent.models"].params.safeParse({ agent: "agente-de-teste" }).success,
+    true,
+  );
+  assert.equal(
+    methods["agent.models"].result.safeParse({
+      agent: "agente-de-teste",
+      models: [],
+      efforts: [],
+    }).success,
+    true,
+  );
+  assert.equal(
+    methods["agent.capabilities"].params.safeParse({ agent: "agente-de-teste" }).success,
+    true,
+  );
+  assert.equal(
+    methods["agent.capabilities"].result.safeParse({
+      capabilities: {
+        skills: false,
+        compact: false,
+        fileMentions: true,
+        fastMode: false,
+        plan: false,
+        fork: false,
+      },
+    }).success,
+    true,
   );
 });
 

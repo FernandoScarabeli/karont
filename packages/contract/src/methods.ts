@@ -1,6 +1,10 @@
 import { z } from "zod";
 import {
+  agentCapabilitiesSchema,
+  agentIdSchema,
   agentModelsSchema,
+  composerFileSchema,
+  composerSkillSchema,
   conversationOptionsSchema,
   conversationSchema,
   conversationSendParamsSchema,
@@ -194,6 +198,10 @@ export const methods = {
     params: conversationSendParamsSchema,
     result: z.strictObject({ userMessage: messageSchema, agentMessage: messageSchema }),
   },
+  "conversation.compact": {
+    params: z.strictObject({ id: z.string().min(1) }),
+    result: z.strictObject({ ok: z.literal(true) }),
+  },
   "conversation.stop": {
     params: z.strictObject({ id: z.string().min(1) }),
     result: z.strictObject({ stopped: z.boolean() }),
@@ -258,8 +266,26 @@ export const methods = {
     result: z.strictObject({ conversation: conversationSchema }),
   },
   "agent.models": {
-    params: z.strictObject({ agent: z.enum(["claude", "codex"]) }),
+    params: z.strictObject({ agent: agentIdSchema }),
     result: agentModelsSchema,
+  },
+  "agent.capabilities": {
+    params: z.strictObject({ agent: agentIdSchema }),
+    result: z.strictObject({ capabilities: agentCapabilitiesSchema }),
+  },
+  "composer.files": {
+    params: z.union([
+      z.strictObject({ conversationId: z.string().min(1), query: z.string().max(512) }),
+      z.strictObject({ cwd: folderPathSchema, query: z.string().max(512) }),
+    ]),
+    result: z.strictObject({ files: z.array(composerFileSchema).max(50) }),
+  },
+  "composer.skills": {
+    params: z.union([
+      z.strictObject({ conversationId: z.string().min(1) }),
+      z.strictObject({ agent: agentIdSchema, cwd: folderPathSchema }),
+    ]),
+    result: z.strictObject({ skills: z.array(composerSkillSchema) }),
   },
   "folders.recent": {
     params: emptyParamsSchema,

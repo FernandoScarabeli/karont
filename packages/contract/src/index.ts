@@ -15,6 +15,8 @@ export type {
 } from "./bridge.ts";
 export { pickFolderOptionsSchema } from "./bridge.ts";
 export type {
+  AgentCapabilities,
+  ComposerSkill,
   Conversation,
   ConversationAttachment,
   ConversationAttachmentMetadata,
@@ -22,7 +24,11 @@ export type {
   MessagePart,
 } from "./conversations.ts";
 export {
+  agentCapabilitiesSchema,
+  agentIdSchema,
   agentModelsSchema,
+  composerFileSchema,
+  composerSkillSchema,
   conversationAttachmentMetadataSchema,
   conversationAttachmentSchema,
   conversationOptionsSchema,

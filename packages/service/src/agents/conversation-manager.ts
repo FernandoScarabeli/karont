@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import os from "node:os";
 import type { DatabaseSync } from "node:sqlite";
 import {
+  type AgentCapabilities,
   type AnyEvent,
   agentModelsSchema,
+  type ComposerSkill,
   type Conversation,
   type ConversationAttachment,
   type ConversationMessage,
@@ -13,6 +15,7 @@ import {
 } from "@karont/contract";
 import { validateAttachments } from "../attachments.ts";
 import { DeltaCoalescer } from "../coalescer.ts";
+import { ComposerFileSearch } from "../composer-files.ts";
 import {
   addMessage,
   completeBranchContext,
@@ -40,19 +43,21 @@ import {
   setSetting,
   updateConversation,
 } from "../db.ts";
+import { ServiceError } from "../errors.ts";
 import type {
   AdapterEvent,
   AdapterFactory,
   AdapterModelList,
   AdapterResponse,
   AgentAdapter,
+  AgentAdapterRegistration,
 } from "./adapter.ts";
 import {
   AgentCliError,
-  createClaudeAdapterFactory,
+  createClaudeAdapterRegistration,
   createClaudeModelLoader,
 } from "./claude-adapter.ts";
-import { createCodexAdapterFactory, createCodexModelLoader } from "./codex-adapter.ts";
+import { createCodexAdapterRegistration, createCodexModelLoader } from "./codex-adapter.ts";
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
 const CODEX_MODELS_SETTING = "agent.codex.models";
@@ -84,8 +89,11 @@ export type ConversationManagerOptions = {
   broadcast: (event: AnyEvent) => Promise<void>;
   env?: NodeJS.ProcessEnv;
   adapterFactory?: AdapterFactory;
+  agentRegistrations?: Readonly<Record<string, AgentAdapterRegistration>>;
   codexModelLoader?: (cwd: string) => Promise<AdapterModelList>;
   claudeModelLoader?: (cwd: string) => Promise<AdapterModelList>;
+  codexSkillLoader?: (cwd: string) => Promise<ComposerSkill[]>;
+  claudeSkillLoader?: (cwd: string) => Promise<ComposerSkill[]>;
   now?: () => string;
   titleGenerator?: (
     agent: Conversation["agent"],
@@ -99,9 +107,11 @@ export class ConversationManager {
   readonly #db: DatabaseSync;
   readonly #broadcast: ConversationManagerOptions["broadcast"];
   readonly #env: NodeJS.ProcessEnv;
-  readonly #factory: AdapterFactory;
+  readonly #adapterFactoryOverride: AdapterFactory | undefined;
+  readonly #agentRegistrations: Map<string, AgentAdapterRegistration>;
   readonly #codexModelLoader: (cwd: string) => Promise<AdapterModelList>;
   readonly #claudeModelLoader: (cwd: string) => Promise<AdapterModelList>;
+  readonly #fileSearch = new ComposerFileSearch();
   readonly #now: () => string;
   readonly #titleGenerator: NonNullable<ConversationManagerOptions["titleGenerator"]>;
   readonly #active = new Map<string, ActiveConversation>();
@@ -125,20 +135,25 @@ export class ConversationManager {
   #closing = false;
   #deletingAll = false;
   readonly #agentOperations = new Set<Promise<unknown>>();
+  readonly #skillCache = new Map<string, { cachedAt: number; skills: ComposerSkill[] }>();
 
   constructor(options: ConversationManagerOptions) {
     this.#db = options.db;
     this.#broadcast = options.broadcast;
     this.#env = options.env ?? process.env;
-    const claudeFactory = createClaudeAdapterFactory({ env: this.#env });
-    const codexFactory = createCodexAdapterFactory({ env: this.#env });
+    const claudeRegistration = createClaudeAdapterRegistration({ env: this.#env });
+    const codexRegistration = createCodexAdapterRegistration({ env: this.#env });
     this.#codexModelLoader = options.codexModelLoader ?? createCodexModelLoader({ env: this.#env });
     this.#claudeModelLoader =
       options.claudeModelLoader ?? createClaudeModelLoader({ env: this.#env });
-    this.#factory =
-      options.adapterFactory ??
-      ((conversation, emit) =>
-        (conversation.agent === "codex" ? codexFactory : claudeFactory)(conversation, emit));
+    if (options.codexSkillLoader) codexRegistration.loadSkills = options.codexSkillLoader;
+    if (options.claudeSkillLoader) claudeRegistration.loadSkills = options.claudeSkillLoader;
+    this.#agentRegistrations = new Map([
+      ["claude", claudeRegistration],
+      ["codex", codexRegistration],
+      ...Object.entries(options.agentRegistrations ?? {}),
+    ]);
+    this.#adapterFactoryOverride = options.adapterFactory;
     this.#now = options.now ?? (() => new Date().toISOString());
     this.#titleGenerator =
       options.titleGenerator ??
@@ -224,6 +239,57 @@ export class ConversationManager {
     return { conversation: this.#ignoreClaudeFast(conversation), messages };
   }
 
+  async files(input: { conversationId: string; query: string } | { cwd: string; query: string }) {
+    const cwd =
+      "conversationId" in input ? this.#requireConversation(input.conversationId).cwd : input.cwd;
+    return { files: await this.#fileSearch.search(cwd, input.query) };
+  }
+
+  async skills(
+    input: { conversationId: string } | { agent: string; cwd: string },
+  ): Promise<{ skills: ComposerSkill[] }> {
+    const conversation =
+      "conversationId" in input ? this.#requireConversation(input.conversationId) : undefined;
+    const agent = "agent" in input ? input.agent : conversation?.agent;
+    const cwd = "cwd" in input ? input.cwd : conversation?.cwd;
+    if (!agent || !cwd) return { skills: [] };
+    const registration = this.#requireAgentRegistration(agent);
+    if (!registration.capabilities.skills) return { skills: [] };
+    const active = conversation
+      ? this.#active.get(conversation.id)
+      : [...this.#active.entries()].find(([id, entry]) => {
+          const existing = getConversation(this.#db, id);
+          return entry.agent === agent && existing?.cwd === cwd;
+        })?.[1];
+
+    if (active?.adapter.getSkills) {
+      try {
+        await active.startPromise;
+        const skills = await active.adapter.getSkills();
+        this.#cacheSkills(agent, cwd, skills);
+        return { skills: cloneSkills(skills) };
+      } catch {
+        // A CLI ausente deixa o catálogo vazio, como no fallback de modelos.
+      }
+    }
+
+    const key = skillCacheKey(agent, cwd);
+    const cached = this.#skillCache.get(key);
+    if (cached && Date.now() - cached.cachedAt < 10_000)
+      return { skills: cloneSkills(cached.skills) };
+    if (cached) this.#skillCache.delete(key);
+
+    try {
+      const skills = registration.loadSkills ? await registration.loadSkills(cwd) : [];
+      this.#cacheSkills(agent, cwd, skills);
+      return { skills: cloneSkills(skills) };
+    } catch {
+      const skills: ComposerSkill[] = [];
+      this.#cacheSkills(agent, cwd, skills);
+      return { skills };
+    }
+  }
+
   async branch(id: string, messageId: string): Promise<Conversation> {
     this.#assertNotDeletingAll();
     return this.#trackAgentOperation(this.#branch(id, messageId));
@@ -252,7 +318,7 @@ export class ConversationManager {
     } else if (source.agent === "codex" && sourceSessionId) {
       const agentMessages = messages.filter((message) => message.author === "agent");
       const turnIndex = agentMessages.findIndex((message) => message.id === selected.id);
-      const adapter = this.#factory(source, () => undefined);
+      const adapter = this.#createAdapter(source, () => undefined);
       try {
         branchSessionId =
           (await adapter.forkThread?.(
@@ -307,9 +373,23 @@ export class ConversationManager {
     text: string,
     plan?: boolean,
     attachments?: ConversationAttachment[],
+    skills: Array<Pick<ComposerSkill, "name" | "path">> = [],
   ): Promise<{ userMessage: ConversationMessage; agentMessage: ConversationMessage }> {
     this.#assertNotDeletingAll();
-    return this.#trackAgentOperation(this.#send(id, text, plan, attachments));
+    return this.#trackAgentOperation(this.#send(id, text, plan, attachments, skills));
+  }
+
+  async compact(id: string): Promise<{ ok: true }> {
+    this.#assertNotDeletingAll();
+    const conversation = this.#requireConversation(id);
+    if (!this.#requireAgentRegistration(conversation.agent).capabilities.compact)
+      throw new Error("Este agente não oferece compactação.");
+    if (!getAgentSession(this.#db, id))
+      throw new Error("Envie uma mensagem antes de compactar esta conversa.");
+    await this.#trackAgentOperation(
+      this.#send(id, "/compactar", undefined, undefined, [], "compact"),
+    );
+    return { ok: true };
   }
 
   async #send(
@@ -317,6 +397,8 @@ export class ConversationManager {
     text: string,
     plan?: boolean,
     attachments?: ConversationAttachment[],
+    skills: Array<Pick<ComposerSkill, "name" | "path">> = [],
+    operation: "send" | "compact" = "send",
   ): Promise<{ userMessage: ConversationMessage; agentMessage: ConversationMessage }> {
     const validatedAttachments = validateAttachments(attachments);
     const conversation = this.#requireConversation(id);
@@ -324,6 +406,7 @@ export class ConversationManager {
       throw new Error("A conversa já está em andamento.");
     const now = this.#now();
     if (
+      operation === "send" &&
       !listMessages(this.#db, id).some((message) => message.author === "user") &&
       conversation.title === "Nova conversa"
     ) {
@@ -364,14 +447,17 @@ export class ConversationManager {
     }
     const agentMessage = this.#newAgentMessage(id);
     // O desligado mantém a inferência textual já usada pelo adaptador Codex.
-    const requestedPlan = plan ?? (conversation.plan ? true : undefined);
-    const branchContext = getBranchContextPending(this.#db, id);
+    const requestedPlan =
+      operation === "compact" ? undefined : (plan ?? (conversation.plan ? true : undefined));
+    const branchContext = operation === "compact" ? null : getBranchContextPending(this.#db, id);
     await this.#startTurn(
       conversation,
       agentMessage,
       withBranchContext(text, branchContext),
       requestedPlan,
       validatedAttachments.data,
+      skills,
+      operation,
     );
     return { userMessage, agentMessage };
   }
@@ -642,8 +728,8 @@ export class ConversationManager {
     }
   }
 
-  async models(agent: "claude" | "codex"): Promise<{
-    agent: "claude" | "codex";
+  async models(agent: string): Promise<{
+    agent: string;
     models: {
       id: string;
       name: string;
@@ -656,6 +742,7 @@ export class ConversationManager {
     efforts: NonNullable<Conversation["effort"]>[];
     fetchedAt?: string;
   }> {
+    const registration = this.#requireAgentRegistration(agent);
     if (agent === "codex") {
       await this.#loadCodexModelsIfNeeded();
       return {
@@ -673,6 +760,7 @@ export class ConversationManager {
         ...(this.#codexModelFetchedAt ? { fetchedAt: this.#codexModelFetchedAt } : {}),
       };
     }
+    if (agent !== "claude") return this.#loadGenericModels(agent, registration);
     await this.#loadClaudeModelsIfNeeded();
     return {
       agent,
@@ -689,6 +777,55 @@ export class ConversationManager {
       ),
       efforts: [...this.#claudeModelList.efforts],
       ...(this.#claudeModelFetchedAt ? { fetchedAt: this.#claudeModelFetchedAt } : {}),
+    };
+  }
+
+  async capabilities(agent: string): Promise<{ capabilities: AgentCapabilities }> {
+    const { capabilities } = this.#requireAgentRegistration(agent);
+    return { capabilities: { ...capabilities } };
+  }
+
+  async #loadGenericModels(
+    agent: string,
+    registration: AgentAdapterRegistration,
+  ): Promise<{
+    agent: string;
+    models: {
+      id: string;
+      name: string;
+      aliases?: string[];
+      isDefault?: boolean;
+      efforts?: NonNullable<Conversation["effort"]>[];
+      defaultEffort?: NonNullable<Conversation["effort"]>;
+      supportsFast: boolean;
+    }[];
+    efforts: NonNullable<Conversation["effort"]>[];
+  }> {
+    const active = [...this.#active.values()].find((entry) => entry.agent === agent);
+    let modelList: AdapterModelList | undefined;
+    try {
+      if (active) {
+        await active.startPromise;
+        modelList = await active.adapter.getModels?.();
+      }
+      if (!modelList?.models.length && registration.loadModels)
+        modelList = await registration.loadModels(os.homedir());
+    } catch {
+      // A lista vazia representa um agente registrado sem catálogo disponível.
+    }
+    return {
+      agent,
+      models:
+        modelList?.models.map((model) => ({
+          id: model.id,
+          name: model.name,
+          ...(model.aliases ? { aliases: [...model.aliases] } : {}),
+          ...(model.isDefault ? { isDefault: true } : {}),
+          efforts: [...model.efforts],
+          ...(model.defaultEffort ? { defaultEffort: model.defaultEffort } : {}),
+          supportsFast: model.supportsFast,
+        })) ?? [],
+      efforts: [...(modelList?.efforts ?? reasoningEffortSchema.options)],
     };
   }
 
@@ -774,6 +911,30 @@ export class ConversationManager {
     }
   }
 
+  #cacheSkills(agent: string, cwd: string, skills: ComposerSkill[]): void {
+    this.#skillCache.set(skillCacheKey(agent, cwd), {
+      cachedAt: Date.now(),
+      skills: cloneSkills(skills),
+    });
+    while (this.#skillCache.size > 32) {
+      const oldest = this.#skillCache.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.#skillCache.delete(oldest);
+    }
+  }
+
+  #requireAgentRegistration(agent: string): AgentAdapterRegistration {
+    const registration = this.#agentRegistrations.get(agent);
+    if (!registration)
+      throw new ServiceError("invalid_request", "Esse agente não está registrado para atalhos.");
+    return registration;
+  }
+
+  #createAdapter(conversation: Conversation, emit: (event: AdapterEvent) => void): AgentAdapter {
+    const registration = this.#requireAgentRegistration(conversation.agent);
+    return (this.#adapterFactoryOverride ?? registration.factory)(conversation, emit);
+  }
+
   async close(): Promise<void> {
     this.#closing = true;
     const adapters = [...this.#active.values()];
@@ -800,6 +961,8 @@ export class ConversationManager {
     text: string,
     plan?: boolean,
     attachments: ConversationAttachment[] = [],
+    skills: Array<Pick<ComposerSkill, "name" | "path">> = [],
+    operation: "send" | "compact" = "send",
   ): Promise<void> {
     conversation = this.#requireConversation(conversation.id);
     addMessage(this.#db, message);
@@ -819,7 +982,7 @@ export class ConversationManager {
       const previousSession = getAgentSession(this.#db, conversation.id);
       const sessionId = previousSession ?? randomUUID();
       let activeRef: ActiveConversation;
-      const adapter = this.#factory(conversation, (event) => {
+      const adapter = this.#createAdapter(conversation, (event) => {
         if (activeRef.removed || this.#deletingAll) return;
         activeRef.eventQueue = activeRef.eventQueue
           .then(() => this.#handleAdapterEvent(conversation.id, event))
@@ -878,7 +1041,12 @@ export class ConversationManager {
       await active.startPromise;
       if (active.stopRequested || active.removed) return;
       active.turnStarted = true;
-      await active.adapter.send(text, plan, attachments);
+      if (operation === "compact") {
+        if (!active.adapter.compact) throw new Error("Este agente não oferece compactação.");
+        await active.adapter.compact();
+      } else {
+        await active.adapter.send(text, plan, attachments, skills);
+      }
     } catch (error) {
       if (message.status === "streaming" && !this.#closing && !active.removed) {
         const kind = error instanceof AgentCliError ? error.errorType : "failed";
@@ -1519,4 +1687,12 @@ function buildBranchContext(messages: readonly ConversationMessage[]): string {
 
 function withBranchContext(text: string, context: string | null): string {
   return context ? `${context}\n\nMensagem nova do usuário:\n${text}` : text;
+}
+
+function skillCacheKey(agent: string, cwd: string): string {
+  return `${agent}\0${cwd}`;
+}
+
+function cloneSkills(skills: ComposerSkill[]): ComposerSkill[] {
+  return skills.map((skill) => ({ ...skill }));
 }

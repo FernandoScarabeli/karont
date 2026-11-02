@@ -1,4 +1,10 @@
-import type { Conversation, ConversationAttachment, MessagePart } from "@karont/contract";
+import type {
+  AgentCapabilities,
+  ComposerSkill,
+  Conversation,
+  ConversationAttachment,
+  MessagePart,
+} from "@karont/contract";
 
 export type AdapterEvent =
   | { kind: "part"; part: MessagePart }
@@ -53,15 +59,29 @@ export interface AgentAdapter {
     sourceSessionId: string,
     branchPoint: CodexBranchPoint,
   ): Promise<string>;
-  send(text: string, plan?: boolean, attachments?: ConversationAttachment[]): Promise<void>;
+  send(
+    text: string,
+    plan?: boolean,
+    attachments?: ConversationAttachment[],
+    skills?: Array<Pick<ComposerSkill, "name" | "path">>,
+  ): Promise<void>;
+  compact?(): Promise<void>;
   setFastEnabled?(enabled: boolean): void;
   respond(partId: string, response: AdapterResponse): Promise<void>;
   interrupt(): Promise<void>;
   dispose(): Promise<void>;
   getModels?(): Promise<AdapterModelList>;
+  getSkills?(): Promise<ComposerSkill[]>;
 }
 
 export type AdapterFactory = (
   conversation: Conversation,
   emit: (event: AdapterEvent) => void,
 ) => AgentAdapter;
+
+export type AgentAdapterRegistration = {
+  factory: AdapterFactory;
+  capabilities: AgentCapabilities;
+  loadSkills?: (cwd: string) => Promise<ComposerSkill[]>;
+  loadModels?: (cwd: string) => Promise<AdapterModelList>;
+};

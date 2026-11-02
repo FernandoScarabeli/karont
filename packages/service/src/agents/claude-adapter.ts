@@ -2,6 +2,7 @@ import { type ChildProcess, spawn as nodeSpawn, type SpawnOptions } from "node:c
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import {
+  type ComposerSkill,
   type Conversation,
   type ConversationAttachment,
   describeAgentError,
@@ -17,6 +18,7 @@ import type {
   AdapterResponse,
   AdapterStartOptions,
   AgentAdapter,
+  AgentAdapterRegistration,
 } from "./adapter.ts";
 import { resolveAgentCommand } from "./detect.ts";
 import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
@@ -82,6 +84,7 @@ export class ClaudeAdapter implements AgentAdapter {
   readonly #taskIds = new Map<string, string>();
   readonly #parts = new Map<string, MessagePart>();
   #models: AdapterModelList = { models: [], efforts: [] };
+  #skills: ComposerSkill[] = [];
   readonly #controlRequests = new Map<string, ControlRequest>();
   #child: ChildProcess | undefined;
   #conversation: Conversation | undefined;
@@ -139,6 +142,7 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#child = undefined;
     this.#disposed = false;
     this.#conversation = conversation;
+    this.#skills = [];
     this.#sessionId = sessionId;
     this.#resumeSession = resume;
     this.#forkSessionPending = resume && options.forkSession === true;
@@ -285,6 +289,7 @@ export class ClaudeAdapter implements AgentAdapter {
     text: string,
     plan = false,
     attachments: ConversationAttachment[] = [],
+    skills: Array<Pick<ComposerSkill, "name" | "path">> = [],
   ): Promise<void> {
     if (!this.#child || this.#child.exitCode !== null || this.#child.signalCode !== null) {
       if (!this.#conversation || !this.#sessionId)
@@ -295,6 +300,8 @@ export class ClaudeAdapter implements AgentAdapter {
     }
     const conversation = this.#conversation;
     if (!conversation) throw new AgentCliError("failed", "A conversa Claude não foi iniciada.");
+    if (skills.length > 1)
+      throw new AgentCliError("failed", "O Claude Code aceita uma skill por mensagem.");
     await this.#ensurePermissionMode(plan ? "plan" : permissionModeFor(conversation));
     this.#turnOpen = true;
     this.#stopRequested = false;
@@ -302,9 +309,10 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#activeThinkingPartId = undefined;
     this.#todosPartId = undefined;
     this.#todos = [];
+    const prompt = skills[0] ? `/${skills[0].name}${text ? ` ${text}` : ""}` : text;
     const content = attachments.length
       ? [
-          { type: "text", text },
+          { type: "text", text: prompt },
           ...attachments.map((attachment) =>
             attachment.kind === "image"
               ? {
@@ -318,8 +326,12 @@ export class ClaudeAdapter implements AgentAdapter {
               : { type: "text", text: formatTextAttachment(attachment) },
           ),
         ]
-      : text;
+      : prompt;
     await this.#write({ type: "user", message: { role: "user", content } });
+  }
+
+  async compact(): Promise<void> {
+    await this.send("/compact");
   }
 
   async getModels(): Promise<AdapterModelList> {
@@ -332,6 +344,10 @@ export class ClaudeAdapter implements AgentAdapter {
       })),
       efforts: [...this.#models.efforts],
     };
+  }
+
+  async getSkills(): Promise<ComposerSkill[]> {
+    return this.#skills.map((skill) => ({ ...skill }));
   }
 
   async respond(partId: string, response: AdapterResponse): Promise<void> {
@@ -538,6 +554,7 @@ export class ClaudeAdapter implements AgentAdapter {
       if (control?.request_id === "karont-initialize" && control.subtype === "success") {
         const response = control.response as Record<string, unknown> | undefined;
         if (Array.isArray(response?.models)) this.#models = mapClaudeModels(response.models);
+        if (Array.isArray(response?.commands)) this.#skills = mapClaudeSkills(response.commands);
         this.#initResolve?.();
       } else if (typeof control?.request_id === "string") {
         const pending = this.#controlRequests.get(control.request_id);
@@ -1022,6 +1039,25 @@ export const createClaudeAdapterFactory =
   (_conversation, emit) =>
     new ClaudeAdapter(emit, options);
 
+export function createClaudeAdapterRegistration(
+  options: ClaudeAdapterOptions = {},
+): AgentAdapterRegistration {
+  return {
+    factory: createClaudeAdapterFactory(options),
+    capabilities: {
+      skills: true,
+      compact: true,
+      fileMentions: true,
+      fastMode: false,
+      plan: true,
+      fork: true,
+      maxSkillsPerMessage: 1,
+    },
+    loadSkills: createClaudeSkillLoader(options),
+    loadModels: createClaudeModelLoader(options),
+  };
+}
+
 export function createClaudeModelLoader(
   options: ClaudeAdapterOptions = {},
 ): (cwd: string) => Promise<AdapterModelList> {
@@ -1048,6 +1084,35 @@ export function createClaudeModelLoader(
       if (modelList.models.length === 0)
         throw new Error("Claude Code não devolveu a lista de modelos.");
       return modelList;
+    } finally {
+      await adapter.dispose();
+    }
+  };
+}
+
+export function createClaudeSkillLoader(
+  options: ClaudeAdapterOptions = {},
+): (cwd: string) => Promise<ComposerSkill[]> {
+  return async (cwd) => {
+    const now = new Date().toISOString();
+    const conversation: Conversation = {
+      id: randomUUID(),
+      agent: "claude",
+      title: "Lista de skills",
+      cwd,
+      mode: "edit",
+      fast: false,
+      pinnedAt: null,
+      archivedAt: null,
+      unreadAt: null,
+      state: "idle",
+      createdAt: now,
+      updatedAt: now,
+    };
+    const adapter = new ClaudeAdapter(() => undefined, options);
+    try {
+      await adapter.start(conversation, randomUUID(), false);
+      return await adapter.getSkills();
     } finally {
       await adapter.dispose();
     }
@@ -1126,6 +1191,22 @@ function mapClaudeModels(rawModels: unknown[]): AdapterModelList {
     models,
     efforts,
   };
+}
+
+function mapClaudeSkills(rawCommands: unknown[]): ComposerSkill[] {
+  return rawCommands.flatMap((command) => {
+    if (!isRecord(command) || command.builtin === true) return [];
+    const name = typeof command.name === "string" ? command.name : "";
+    if (!name) return [];
+    return [
+      {
+        name,
+        description: typeof command.description === "string" ? command.description : "",
+        ...(typeof command.argumentHint === "string" ? { argumentHint: command.argumentHint } : {}),
+        source: "claude",
+      },
+    ];
+  });
 }
 
 function modelNameFromResolvedModel(modelId: string): string {

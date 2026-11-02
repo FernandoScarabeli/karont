@@ -1,0 +1,16 @@
+[
+  {
+    "name": "project-helper",
+    "description": "Executa uma tarefa de exemplo no Projeto.",
+    "argumentHint": "[arquivo]",
+    "aliases": [],
+    "builtin": false
+  },
+  {
+    "name": "internal-helper",
+    "description": "Comando interno de exemplo.",
+    "argumentHint": "",
+    "aliases": [],
+    "builtin": true
+  }
+]

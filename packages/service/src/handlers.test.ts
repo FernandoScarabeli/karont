@@ -9,7 +9,7 @@ import {
   type ParsedRequest,
   parseRequest,
 } from "@karont/contract";
-import type { AdapterFactory, AgentAdapter } from "./agents/adapter.ts";
+import type { AdapterFactory, AgentAdapter, AgentAdapterRegistration } from "./agents/adapter.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
 import { openDatabase, recordRecentFolder } from "./db.ts";
 import type { HandlerConnection } from "./handlers.ts";
@@ -67,6 +67,19 @@ test("service.shutdown agenda o encerramento depois da resposta", async (context
 test("ping, info e settings usam contrato e banco", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ks-"));
   const db = openDatabase(path.join(root, "karont.db"));
+  const testAgentRegistration: AgentAdapterRegistration = {
+    factory: () => {
+      throw new Error("A fábrica de teste não deve iniciar uma conversa.");
+    },
+    capabilities: {
+      skills: false,
+      compact: false,
+      fileMentions: true,
+      fastMode: false,
+      plan: false,
+      fork: false,
+    },
+  };
   const handlers = createHandlers({
     db,
     startedAt: "2026-10-31T00:00:00.000Z",
@@ -74,6 +87,7 @@ test("ping, info e settings usam contrato e banco", async () => {
     emit: async () => undefined,
     env: { PATH: "" },
     homeDir: root,
+    agentRegistrations: { teste: testAgentRegistration },
   });
   const conn = connection([]);
   const ping = (await handlers.handle(request("system.ping", {}), conn)) as {
@@ -107,6 +121,24 @@ test("ping, info e settings usam contrato e banco", async () => {
     key: "test.value",
     value: [1, "two"],
   });
+  const capabilities = (await handlers.handle(
+    request("agent.capabilities", { agent: "teste" }),
+    conn,
+  )) as { capabilities: AgentAdapterRegistration["capabilities"] };
+  assert.deepEqual(capabilities, {
+    capabilities: {
+      skills: false,
+      compact: false,
+      fileMentions: true,
+      fastMode: false,
+      plan: false,
+      fork: false,
+    },
+  });
+  assert.deepEqual(
+    await handlers.handle(request("composer.skills", { agent: "teste", cwd: root }), conn),
+    { skills: [] },
+  );
   db.close();
 });
 
