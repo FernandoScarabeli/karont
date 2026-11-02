@@ -102,6 +102,8 @@
   --k-duration-fast: 120ms;
   --k-duration-spring: 260ms;
   --k-duration-cursor-blink: 500ms;
+  --k-duration-caret-blink: 1s;
+  --k-duration-caret-fade: 240ms;
   --k-duration-highlight: 1.2s;
   --k-duration-status-pulse-slow: 2.4s;
   --k-duration-status-pulse-medium: 1.6s;

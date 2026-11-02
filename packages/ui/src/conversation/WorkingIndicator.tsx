@@ -43,6 +43,8 @@ export const WorkingIndicator = memo(function WorkingIndicator({
   }, [active, onExitComplete, wasActive]);
 
   if (!active && !wasActive) return null;
+  // Enquanto o texto da resposta é digitado, o cursor já indica o estado.
+  if (active && !stopping && lastPart?.type === "text") return null;
 
   const label = deriveWorkingLabel(lastPart, actions, stopping);
 
