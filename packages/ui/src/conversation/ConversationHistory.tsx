@@ -13,7 +13,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
-import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
 import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./ConversationHistory.module.css";
@@ -156,7 +155,7 @@ export const ConversationHistory = memo(function ConversationHistory({
             <div
               aria-label={t.conversationHistory.listAccessibleName}
               aria-multiselectable="false"
-              className={`${styles.popover} ${scrollAreaStyles.scrollArea}`}
+              className={styles.popover}
               data-has-items-above={hasItemsAbove}
               id={popoverId}
               ref={listRef}
