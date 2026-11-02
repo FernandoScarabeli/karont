@@ -661,7 +661,7 @@ test("Codex só recebe a faixa rápida quando o modelo a anuncia", async (t) => 
     }
   });
 
-  await t.test("app-server confirma tier padrão e o serviço desliga o modo rápido", async () => {
+  await t.test("tier não aplicado desliga o raio e a preferência sem criar mensagem", async () => {
     const harness = await createHarness("texto", {
       codexModelCache: modelCache(true),
       serviceTierReported: "default",
@@ -676,9 +676,8 @@ test("Codex só recebe a faixa rápida quando o modelo a anuncia", async (t) => 
 
       const current = harness.manager.get(conversation.id)?.conversation;
       assert.equal(current?.fast, false);
-      assert.equal(current?.fastEffective, "off");
-      assert.equal(current?.fastUnavailableReason, "service_tier_not_applied");
       assert.equal(getSetting(harness.db, "composer.codex.fast"), false);
+      assert.equal(harness.manager.get(conversation.id)?.messages.length, 2);
       const turnStart = harness.fakes[0]?.messages[0]?.find(
         (request) => request.method === "turn/start",
       );
@@ -689,7 +688,7 @@ test("Codex só recebe a faixa rápida quando o modelo a anuncia", async (t) => 
           (event) =>
             event.event === "conversation.stateChanged" &&
             event.payload.conversation.id === conversation.id &&
-            event.payload.conversation.fastEffective === "off",
+            event.payload.conversation.fast === false,
         ),
       );
     } finally {

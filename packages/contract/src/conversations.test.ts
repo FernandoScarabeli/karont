@@ -83,15 +83,7 @@ test("contratos da conversa validam criação, opções e resultados conhecidos 
   const parsedConversation = conversationSchema.safeParse(conversation);
   assert.equal(parsedConversation.success, true);
   if (parsedConversation.success) assert.equal(parsedConversation.data.fast, false);
-  assert.equal(
-    conversationSchema.safeParse({
-      ...conversation,
-      fast: false,
-      fastEffective: "off",
-      fastUnavailableReason: "extra_usage_disabled",
-    }).success,
-    true,
-  );
+  assert.equal(conversationSchema.safeParse({ ...conversation, fast: false }).success, true);
   assert.equal(
     methods["conversation.setOptions"].params.safeParse({
       id: "c1",
