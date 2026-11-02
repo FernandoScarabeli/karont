@@ -18,5 +18,6 @@ export function defaultModel(modelList: AgentModelList): AgentModel | undefined 
 }
 
 export function resolveModelId(modelList: AgentModelList, preferredId: string): string {
-  return findModelByIdOrAlias(modelList, preferredId)?.id ?? defaultModel(modelList)?.id ?? "";
+  if (!preferredId) return defaultModel(modelList)?.id ?? "";
+  return findModelByIdOrAlias(modelList, preferredId)?.id ?? preferredId;
 }

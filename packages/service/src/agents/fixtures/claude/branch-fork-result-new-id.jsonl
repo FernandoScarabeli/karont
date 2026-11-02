@@ -1,0 +1,4 @@
+{"direction":"out","stream":"stdin","line":"{\"type\":\"control_request\",\"request_id\":\"karont-initialize\",\"request\":{\"subtype\":\"initialize\"}}"}
+{"direction":"in","stream":"stdout","line":"{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"karont-initialize\",\"response\":{}}}"}
+{"direction":"out","stream":"stdin","line":"{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Primeiro turno do ramo.\"}}"}
+{"direction":"in","stream":"stdout","line":"{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"Feito\",\"session_id\":\"claude-forked-session\"}"}

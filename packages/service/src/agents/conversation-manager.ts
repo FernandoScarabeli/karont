@@ -9,6 +9,7 @@ import {
   type ConversationMessage,
   describeAgentError,
   type MessagePart,
+  reasoningEffortSchema,
 } from "@karont/contract";
 import { validateAttachments } from "../attachments.ts";
 import { DeltaCoalescer } from "../coalescer.ts";
@@ -55,8 +56,9 @@ import { createCodexAdapterFactory, createCodexModelLoader } from "./codex-adapt
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
 const CODEX_MODELS_SETTING = "agent.codex.models";
-const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 const BRANCH_CONTEXT_LIMIT = 24_000;
+const MAX_ATTACHMENT_CACHE_CONVERSATIONS = 3;
+const MAX_ATTACHMENT_CACHE_BYTES = 25 * 1024 * 1024;
 
 type ActiveConversation = {
   adapter: AgentAdapter;
@@ -105,13 +107,14 @@ export class ConversationManager {
   readonly #active = new Map<string, ActiveConversation>();
   readonly #latestUserAttachments = new Map<
     string,
-    { messageId: string; attachments: ConversationAttachment[] }
+    { messageId: string; attachments: ConversationAttachment[]; sizeBytes: number }
   >();
+  readonly #removedConversationIds = new Set<string>();
   readonly #pendingParts = new Map<string, { conversationId: string; messageId: string }>();
   readonly #titleRequests = new Map<string, { userMessage: string; attempted: boolean }>();
   #codexModelList: AdapterModelList = {
     models: [],
-    efforts: ["low", "medium", "high", "xhigh", "max"],
+    efforts: [...reasoningEffortSchema.options],
   };
   #codexModelFetchedAt: string | undefined;
   #codexModelLoadPromise: Promise<void> | undefined;
@@ -340,10 +343,7 @@ export class ConversationManager {
     };
     addMessage(this.#db, userMessage);
     if (validatedAttachments.data.length) {
-      this.#latestUserAttachments.set(id, {
-        messageId: userMessage.id,
-        attachments: validatedAttachments.data.map((attachment) => ({ ...attachment })),
-      });
+      this.#cacheLatestUserAttachments(id, userMessage.id, validatedAttachments.data);
     } else {
       this.#latestUserAttachments.delete(id);
     }
@@ -491,6 +491,53 @@ export class ConversationManager {
     conversation = this.#requireConversation(id);
     if (conversation.state === "working" || conversation.state === "waiting")
       throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
+    const selectedModelId = "model" in options ? options.model : conversation.model;
+    const supportsFast = modelSupportsFast(
+      this.#codexModelList,
+      conversation.agent,
+      selectedModelId,
+    );
+    let nextFast = conversation.fast;
+    if (options.fast === true) {
+      if (supportsFast) nextFast = true;
+      else {
+        nextFast = false;
+        console.warn("Modo rápido ignorado: o agente ou modelo selecionado não anuncia suporte.", {
+          agent: conversation.agent,
+          model: selectedModelId ?? null,
+        });
+      }
+    } else if (options.fast === false) {
+      nextFast = false;
+    } else if ("model" in options && conversation.fast && !supportsFast) {
+      nextFast = false;
+      console.warn("Modo rápido desligado após selecionar um modelo sem suporte.", {
+        agent: conversation.agent,
+        model: selectedModelId ?? null,
+      });
+    }
+    const nextModel =
+      "model" in options
+        ? options.model === null
+          ? undefined
+          : (options.model ?? conversation.model)
+        : conversation.model;
+    const nextEffort =
+      "effort" in options
+        ? options.effort === null
+          ? undefined
+          : (options.effort ?? conversation.effort)
+        : conversation.effort;
+    const nextMode = options.mode ?? conversation.mode;
+    const nextPlan = options.plan ?? conversation.plan;
+    if (
+      nextMode === conversation.mode &&
+      nextModel === conversation.model &&
+      nextEffort === conversation.effort &&
+      nextPlan === conversation.plan &&
+      nextFast === conversation.fast
+    )
+      return conversation;
     const active = this.#active.get(id);
     if (active) {
       if (active.idleTimer) clearTimeout(active.idleTimer);
@@ -500,40 +547,16 @@ export class ConversationManager {
       if (conversation.state === "working" || conversation.state === "waiting")
         throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
     }
-    const selectedModelId = "model" in options ? options.model : conversation.model;
-    const supportsFast = modelSupportsFast(
-      this.#codexModelList,
-      conversation.agent,
-      selectedModelId,
-    );
-    if (options.fast === true) {
-      if (supportsFast) conversation.fast = true;
-      else {
-        conversation.fast = false;
-        console.warn("Modo rápido ignorado: o agente ou modelo selecionado não anuncia suporte.", {
-          agent: conversation.agent,
-          model: selectedModelId ?? null,
-        });
-      }
-    } else if (options.fast === false) {
-      conversation.fast = false;
-    } else if ("model" in options && conversation.fast && !supportsFast) {
-      conversation.fast = false;
-      console.warn("Modo rápido desligado após selecionar um modelo sem suporte.", {
-        agent: conversation.agent,
-        model: selectedModelId ?? null,
-      });
-    }
-    if (options.mode) conversation.mode = options.mode;
+    conversation.mode = nextMode;
     if ("model" in options) {
       if (options.model === null) delete conversation.model;
       else if (options.model !== undefined) conversation.model = options.model;
     }
-    if ("effort" in options) {
-      if (options.effort === null) delete conversation.effort;
-      else if (options.effort !== undefined) conversation.effort = options.effort;
-    }
-    if (options.plan !== undefined) conversation.plan = options.plan;
+    if (nextEffort === undefined) delete conversation.effort;
+    else conversation.effort = nextEffort;
+    if (nextPlan === undefined) delete conversation.plan;
+    else conversation.plan = nextPlan;
+    conversation.fast = nextFast;
     conversation.updatedAt = this.#now();
     updateConversation(this.#db, conversation);
     await this.#stateEvent(conversation);
@@ -542,24 +565,29 @@ export class ConversationManager {
 
   async remove(id: string): Promise<boolean> {
     this.#assertNotDeletingAll();
-    const active = this.#active.get(id);
-    if (active) {
-      this.#markRemoved(id, active);
-      await this.#flushCoalescers(active);
-      await this.#disposeAdapter(active);
-      await active.eventQueue;
-      if (this.#active.get(id) === active) this.#active.delete(id);
-    } else {
-      this.#titleRequests.delete(id);
-      this.#latestUserAttachments.delete(id);
+    this.#removedConversationIds.add(id);
+    try {
+      const active = this.#active.get(id);
+      if (active) {
+        this.#markRemoved(id, active);
+        await this.#flushCoalescers(active);
+        await this.#disposeAdapter(active);
+        await active.eventQueue;
+        if (this.#active.get(id) === active) this.#active.delete(id);
+      } else {
+        this.#titleRequests.delete(id);
+        this.#latestUserAttachments.delete(id);
+      }
+      const deleted = deleteConversation(this.#db, id);
+      if (deleted) {
+        await this.#broadcast({ event: "conversation.removed", payload: { id } }).catch(
+          () => undefined,
+        );
+      }
+      return deleted;
+    } finally {
+      this.#removedConversationIds.delete(id);
     }
-    const deleted = deleteConversation(this.#db, id);
-    if (deleted) {
-      await this.#broadcast({ event: "conversation.removed", payload: { id } }).catch(
-        () => undefined,
-      );
-    }
-    return deleted;
   }
 
   async deleteAll(): Promise<number> {
@@ -625,7 +653,7 @@ export class ConversationManager {
       defaultEffort?: NonNullable<Conversation["effort"]>;
       supportsFast: boolean;
     }[];
-    efforts: ("low" | "medium" | "high" | "xhigh" | "max")[];
+    efforts: NonNullable<Conversation["effort"]>[];
     fetchedAt?: string;
   }> {
     if (agent === "codex") {
@@ -1292,11 +1320,46 @@ export class ConversationManager {
     if (
       conversationId &&
       (this.#deletingAll ||
-        this.#active.get(conversationId)?.removed ||
-        !getConversation(this.#db, conversationId))
+        this.#removedConversationIds.has(conversationId) ||
+        this.#active.get(conversationId)?.removed)
     )
       return;
     await this.#broadcast(event);
+  }
+
+  #cacheLatestUserAttachments(
+    conversationId: string,
+    messageId: string,
+    attachments: ConversationAttachment[],
+  ): void {
+    const sizeBytes = attachments.reduce(
+      (total, attachment) =>
+        total +
+        (attachment.kind === "image"
+          ? Buffer.byteLength(attachment.data, "base64")
+          : Buffer.byteLength(attachment.data, "utf8")),
+      0,
+    );
+    this.#latestUserAttachments.delete(conversationId);
+    this.#latestUserAttachments.set(conversationId, {
+      messageId,
+      attachments: attachments.map((attachment) => ({ ...attachment })),
+      sizeBytes,
+    });
+    let cachedBytes = [...this.#latestUserAttachments.values()].reduce(
+      (total, cached) => total + cached.sizeBytes,
+      0,
+    );
+    while (
+      this.#latestUserAttachments.size > MAX_ATTACHMENT_CACHE_CONVERSATIONS ||
+      cachedBytes > MAX_ATTACHMENT_CACHE_BYTES
+    ) {
+      const oldestConversationId = this.#latestUserAttachments.keys().next().value;
+      if (!oldestConversationId) break;
+      const oldest = this.#latestUserAttachments.get(oldestConversationId);
+      this.#latestUserAttachments.delete(oldestConversationId);
+      cachedBytes -= oldest?.sizeBytes ?? 0;
+    }
   }
 }
 
@@ -1306,8 +1369,8 @@ function codexTitleOptions(
 ): Pick<TitleGeneratorOptions, "codexModel" | "codexEffort"> {
   const modelId = conversation.model?.trim() || cheapestListedModel(modelList)?.id;
   const model = modelList.models.find((option) => option.id === modelId);
-  const minimumEffort = ["low", "medium", "high", "xhigh", "max"].find((effort) =>
-    model?.efforts.includes(effort as NonNullable<Conversation["effort"]>),
+  const minimumEffort = reasoningEffortSchema.options.find((effort) =>
+    model?.efforts.includes(effort),
   );
   return {
     ...(modelId ? { codexModel: modelId } : {}),
@@ -1341,7 +1404,7 @@ function modelSupportsFast(
 }
 
 function legacyClaudeModelList(): AdapterModelList {
-  const efforts = [...CLAUDE_EFFORTS];
+  const efforts = [...reasoningEffortSchema.options];
   return {
     models: [
       {

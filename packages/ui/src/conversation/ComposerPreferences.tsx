@@ -20,7 +20,7 @@ import { useRegisterFluidHoverItem } from "../components/FluidHover/FluidHover.t
 import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./ComposerPreferences.module.css";
-import { defaultModel, findModelByIdOrAlias, resolveModelId } from "./modelCatalog.ts";
+import { findModelByIdOrAlias, resolveModelId } from "./modelCatalog.ts";
 
 type AgentModelsResult = ResultOf<"agent.models">;
 export type AgentEffort = AgentModelsResult["efforts"][number];
@@ -69,7 +69,7 @@ export function initialEffortForModel(
 
 export function modelDisplayName(models: AgentModels | null, modelId: string | null): string {
   if (!modelId) return t.chat.model;
-  return findModelByIdOrAlias(models, modelId)?.name ?? defaultModel(models)?.name ?? modelId;
+  return findModelByIdOrAlias(models, modelId)?.name ?? modelId;
 }
 
 const modes: ConversationMode[] = ["read-only", "edit", "full"];
@@ -135,12 +135,12 @@ export function ComposerPreferences({
     selected: option.id === selectedModelId,
     onSelect: () => onModelChange(option.id),
   }));
-  if (model && !selectedModelId && !modelOptions.some((option) => option.id === model)) {
+  if (model && !modelOptions.some((option) => option.id === selectedModelId)) {
     modelOptions.unshift({
-      id: model,
-      content: <span className={styles.modelOption}>{model}</span>,
+      id: selectedModelId ?? model,
+      content: <span className={styles.modelOption}>{selectedModelId ?? model}</span>,
       selected: true,
-      onSelect: () => onModelChange(model),
+      onSelect: () => onModelChange(selectedModelId ?? model),
     });
   }
 

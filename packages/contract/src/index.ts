@@ -30,6 +30,7 @@ export {
   conversationSendParamsSchema,
   messagePartSchema,
   messageSchema,
+  reasoningEffortSchema,
 } from "./conversations.ts";
 export type {
   AuthFrame,

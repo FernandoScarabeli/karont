@@ -7,6 +7,7 @@ import {
   describeAgentError,
   MAX_FRAME_BYTES,
   type MessagePart,
+  reasoningEffortSchema,
 } from "@karont/contract";
 import { validateFolder } from "../folders.ts";
 import type {
@@ -23,7 +24,6 @@ import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
 const MAX_STDOUT_LINE_BYTES = 32 * 1024 * 1024;
 const CONTROL_REQUEST_TIMEOUT_MS = 10_000;
-const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 const READ_ONLY_ALLOWED_TOOLS = new Set([
   "Read",
   "Glob",
@@ -119,7 +119,9 @@ export class ClaudeAdapter implements AgentAdapter {
   #stdoutEnd: Promise<void> = Promise.resolve();
 
   constructor(emit: (event: AdapterEvent) => void, options: ClaudeAdapterOptions = {}) {
-    this.#emit = emit;
+    this.#emit = (event) => {
+      if (!this.#disposed) emit(event);
+    };
     this.#env = options.env ?? process.env;
     this.#spawn = options.spawn ?? nodeSpawn;
     this.#homeDir = options.homeDir ?? os.homedir();
@@ -147,6 +149,7 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#stdoutLineBytes = 0;
     this.#stdoutLineOverflow = false;
     const folder = await validateFolder(conversation.cwd);
+    this.#throwIfDisposed();
     if (!folder.exists || !folder.isDirectory) {
       throw new AgentCliError("failed", `A pasta do projeto não existe mais: ${conversation.cwd}`);
     }
@@ -158,6 +161,7 @@ export class ClaudeAdapter implements AgentAdapter {
         platform: this.#platform,
       })) ||
       "claude";
+    this.#throwIfDisposed();
     const args = [
       "-p",
       "--input-format",
@@ -177,20 +181,27 @@ export class ClaudeAdapter implements AgentAdapter {
     if (conversation.mode === "read-only") args.push("--tools", READ_ONLY_TOOLS);
     if (conversation.mode === "full")
       args.push(plan ? "--allow-dangerously-skip-permissions" : "--dangerously-skip-permissions");
-    if (conversation.model) args.push("--model", conversation.model);
+    if (conversation.model && conversation.model !== "default")
+      args.push("--model", conversation.model);
     if (conversation.effort) args.push("--effort", conversation.effort);
     args.push(resume ? "--resume" : "--session-id", sessionId);
     if (this.#forkSessionPending) args.push("--fork-session");
+    let child: ChildProcess;
     try {
-      this.#child = this.#spawn(command, args, {
+      child = this.#spawn(command, args, {
         cwd: conversation.cwd,
         env: this.#env,
         stdio: ["pipe", "pipe", "pipe"],
       });
+      this.#child = child;
+      if (this.#disposed) {
+        terminateSpawnedChild(child);
+        this.#child = undefined;
+        this.#throwIfDisposed();
+      }
     } catch (error) {
       throw classifyStartError(error, command);
     }
-    const child = this.#child;
     const stdout = child.stdout;
     const stderr = child.stderr;
     const stdin = child.stdin;
@@ -246,6 +257,7 @@ export class ClaudeAdapter implements AgentAdapter {
       request_id: "karont-initialize",
       request: { subtype: "initialize" },
     });
+    this.#throwIfDisposed();
     const timer = setTimeout(() => {
       const errorType = this.#stderrErrorType ?? "failed";
       const text =
@@ -255,6 +267,7 @@ export class ClaudeAdapter implements AgentAdapter {
     }, 15_000);
     try {
       await this.#initPromise;
+      this.#throwIfDisposed();
     } finally {
       clearTimeout(timer);
       this.#initResolve = undefined;
@@ -262,6 +275,10 @@ export class ClaudeAdapter implements AgentAdapter {
     }
     this.#resumeSession = true;
     if (!this.#forkSessionPending) this.#emit({ kind: "session", sessionId: this.#sessionId });
+  }
+
+  #throwIfDisposed(): void {
+    if (this.#disposed) throw new AgentCliError("failed", "A CLI Claude foi encerrada.");
   }
 
   async send(
@@ -544,6 +561,7 @@ export class ClaudeAdapter implements AgentAdapter {
           this.#sessionId = value.session_id;
           this.#resumeSession = true;
           this.#forkSessionPending = false;
+          this.#forkSessionSourceId = undefined;
           this.#emit({ kind: "session", sessionId: value.session_id });
         }
       }
@@ -604,13 +622,11 @@ export class ClaudeAdapter implements AgentAdapter {
       return;
     }
     if (type === "result") {
-      if (
-        typeof value.session_id === "string" &&
-        !this.#forkSessionPending &&
-        value.session_id !== this.#forkSessionSourceId
-      ) {
+      if (typeof value.session_id === "string" && value.session_id !== this.#forkSessionSourceId) {
         this.#sessionId = value.session_id;
         this.#resumeSession = true;
+        this.#forkSessionPending = false;
+        this.#forkSessionSourceId = undefined;
         this.#emit({ kind: "session", sessionId: value.session_id });
       }
       const errors = Array.isArray(value.errors)
@@ -1038,6 +1054,14 @@ export function createClaudeModelLoader(
   };
 }
 
+function terminateSpawnedChild(child: ChildProcess): void {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const timer = setTimeout(() => child.kill("SIGKILL"), 1_000);
+  timer.unref?.();
+  child.once("exit", () => clearTimeout(timer));
+  child.kill("SIGTERM");
+}
+
 function mapClaudeModels(rawModels: unknown[]): AdapterModelList {
   const groups = new Map<string, Array<Record<string, unknown> & { value: string }>>();
   for (const raw of rawModels) {
@@ -1054,7 +1078,7 @@ function mapClaudeModels(rawModels: unknown[]): AdapterModelList {
   const models: AdapterModelList["models"] = [];
   for (const [resolvedModel, group] of groups) {
     const defaultEntry = group.find((entry) => entry.value === "default");
-    const selected = defaultEntry ?? group[0];
+    const selected = group.find((entry) => entry.value !== "default") ?? defaultEntry ?? group[0];
     if (!selected) continue;
     const capability =
       (defaultEntry?.supportsEffort === true ? defaultEntry : undefined) ??
@@ -1062,13 +1086,19 @@ function mapClaudeModels(rawModels: unknown[]): AdapterModelList {
     const efforts =
       capability && Array.isArray(capability.supportedEffortLevels)
         ? [...new Set(capability.supportedEffortLevels)].filter(
-            (effort): effort is (typeof CLAUDE_EFFORTS)[number] =>
+            (effort): effort is (typeof reasoningEffortSchema.options)[number] =>
               typeof effort === "string" &&
-              CLAUDE_EFFORTS.includes(effort as (typeof CLAUDE_EFFORTS)[number]),
+              reasoningEffortSchema.options.includes(
+                effort as (typeof reasoningEffortSchema.options)[number],
+              ),
           )
         : [];
     const aliasNames = group.filter((entry) => entry !== selected);
-    const resolvedName = aliasNames.find((entry) => entry.displayName)?.displayName;
+    const aliases = aliasNames.map((entry) => entry.value);
+    if (selected.value === "default") aliases.push("default");
+    const resolvedName = group.find(
+      (entry) => entry.value !== "default" && typeof entry.displayName === "string",
+    )?.displayName;
     const name = defaultEntry
       ? (typeof resolvedName === "string"
           ? resolvedName
@@ -1080,9 +1110,9 @@ function mapClaudeModels(rawModels: unknown[]): AdapterModelList {
         ? selected.displayName
         : modelNameFromResolvedModel(resolvedModel);
     models.push({
-      id: selected.value,
+      id: selected.value === "default" ? resolvedModel : selected.value,
       name,
-      ...(aliasNames.length ? { aliases: aliasNames.map((entry) => entry.value) } : {}),
+      ...(aliases.length ? { aliases: [...new Set(aliases)] } : {}),
       ...(defaultEntry ? { isDefault: true } : {}),
       efforts,
       ...(efforts[0] ? { defaultEffort: efforts.includes("medium") ? "medium" : efforts[0] } : {}),
