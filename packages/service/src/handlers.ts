@@ -134,7 +134,10 @@ export function createHandlers({
       case "conversation.count":
         return { count: conversationManager.count() };
       case "conversation.get": {
-        const result = conversationManager.get(request.params.id);
+        const result = conversationManager.get(request.params.id, {
+          limit: request.params.limit ?? 40,
+          before: request.params.before,
+        });
         if (!result) throw new ServiceError("unavailable", "Conversa não encontrada.");
         return result;
       }

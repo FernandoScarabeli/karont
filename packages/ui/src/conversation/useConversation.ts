@@ -1,15 +1,17 @@
 import type { AnyEvent, Conversation, ConversationMessage, MessagePart } from "@karont/contract";
 import { BridgeError } from "@karont/contract";
-import { useCallback, useEffect, useMemo, useReducer } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { getBridge } from "../bridge/index.ts";
 import { t } from "../i18n/pt-BR.ts";
 import { cacheConversationSnapshot, getConversationSnapshot } from "./conversationCache.ts";
+import { INITIAL_MESSAGE_WINDOW_SIZE } from "./messageWindow.ts";
 
 export type State = {
   conversation: Conversation | null;
   messageIds: string[];
   messagesById: Record<string, ConversationMessage>;
   loading: boolean;
+  hasOlderMessages: boolean;
   error: string;
   liveText: string;
   responseFinishedId: string | null;
@@ -18,7 +20,13 @@ export type State = {
 export type Action =
   | { type: "conversation"; conversation: Conversation }
   | { type: "message"; message: ConversationMessage }
-  | { type: "loaded"; conversation: Conversation; messages: ConversationMessage[] }
+  | {
+      type: "loaded";
+      conversation: Conversation;
+      messages: ConversationMessage[];
+      hasOlderMessages: boolean;
+    }
+  | { type: "olderLoaded"; messages: ConversationMessage[]; hasOlderMessages: boolean }
   | { type: "event"; event: AnyEvent }
   | {
       type: "deltas";
@@ -38,6 +46,7 @@ const initialState: State = {
   messageIds: [],
   messagesById: {},
   loading: true,
+  hasOlderMessages: false,
   error: "",
   liveText: "",
   responseFinishedId: null,
@@ -53,11 +62,21 @@ export function useConversation(conversationId: string) {
         .filter((message): message is ConversationMessage => message !== undefined),
     [state.messageIds, state.messagesById],
   );
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const hasOlderMessagesRef = useRef(state.hasOlderMessages);
+  hasOlderMessagesRef.current = state.hasOlderMessages;
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
 
   useEffect(() => {
     if (!state.conversation) return;
-    cacheConversationSnapshot({ conversation: state.conversation, messages });
-  }, [messages, state.conversation]);
+    cacheConversationSnapshot({
+      conversation: state.conversation,
+      messages,
+      hasOlderMessages: state.hasOlderMessages,
+    });
+  }, [messages, state.conversation, state.hasOlderMessages]);
 
   useEffect(() => {
     const bridge = getBridge();
@@ -125,10 +144,15 @@ export function useConversation(conversationId: string) {
     });
 
     void bridge
-      .request("conversation.get", { id: conversationId })
+      .request("conversation.get", { id: conversationId, limit: INITIAL_MESSAGE_WINDOW_SIZE })
       .then((result) => {
         if (!mounted) return;
-        dispatch({ type: "loaded", conversation: result.conversation, messages: result.messages });
+        dispatch({
+          type: "loaded",
+          conversation: result.conversation,
+          messages: result.messages,
+          hasOlderMessages: result.hasOlderMessages,
+        });
         loaded = true;
         for (const event of queued) dispatchEvent(event);
         queued = [];
@@ -156,8 +180,69 @@ export function useConversation(conversationId: string) {
     (conversation: Conversation) => dispatch({ type: "conversation", conversation }),
     [],
   );
+  const fetchOlderMessages = useCallback(
+    async (before: string): Promise<number | null> => {
+      const bridge = getBridge();
+      if (!bridge) return null;
+      try {
+        const result = await bridge.request("conversation.get", {
+          id: conversationId,
+          limit: INITIAL_MESSAGE_WINDOW_SIZE,
+          before,
+        });
+        dispatch({
+          type: "olderLoaded",
+          messages: result.messages,
+          hasOlderMessages: result.hasOlderMessages,
+        });
+        return result.messages.length;
+      } catch {
+        return null;
+      }
+    },
+    [conversationId],
+  );
 
-  return { ...state, messages, addMessage, updateConversation };
+  const fetchAllOlderMessages = useCallback(async (): Promise<number | null> => {
+    const bridge = getBridge();
+    if (!bridge) return null;
+
+    let before = messagesRef.current[0]?.id;
+    let hasOlderMessages = hasOlderMessagesRef.current;
+    const olderMessages: ConversationMessage[] = [];
+
+    try {
+      while (before && hasOlderMessages) {
+        const result = await bridge.request("conversation.get", {
+          id: conversationId,
+          limit: 100,
+          before,
+        });
+        if (conversationIdRef.current !== conversationId) return null;
+        if (result.messages.length === 0) {
+          hasOlderMessages = false;
+          break;
+        }
+        olderMessages.unshift(...result.messages);
+        before = result.messages[0]?.id;
+        hasOlderMessages = result.hasOlderMessages;
+      }
+      if (conversationIdRef.current !== conversationId) return null;
+      dispatch({ type: "olderLoaded", messages: olderMessages, hasOlderMessages });
+      return olderMessages.length;
+    } catch {
+      return null;
+    }
+  }, [conversationId]);
+
+  return {
+    ...state,
+    messages,
+    addMessage,
+    updateConversation,
+    fetchOlderMessages,
+    fetchAllOlderMessages,
+  };
 }
 
 function createInitialState(conversationId: string): State {
@@ -174,6 +259,7 @@ function createInitialState(conversationId: string): State {
     conversation: snapshot.conversation,
     messageIds,
     messagesById,
+    hasOlderMessages: snapshot.hasOlderMessages,
   };
 }
 
@@ -181,19 +267,36 @@ export function reducer(state: State, action: Action): State {
   if (action.type === "message") return upsertMessage(state, action.message);
   if (action.type === "conversation") return { ...state, conversation: action.conversation };
   if (action.type === "loaded") {
-    const messagesById: Record<string, ConversationMessage> = {};
-    const messageIds: string[] = [];
-    for (const message of action.messages) {
-      messagesById[message.id] = message;
-      messageIds.push(message.id);
-    }
+    const sameConversation = state.conversation?.id === action.conversation.id;
+    const currentMessages = sameConversation
+      ? state.messageIds.flatMap((id) => {
+          const message = state.messagesById[id];
+          return message ? [message] : [];
+        })
+      : [];
+    const merged = mergeLatestMessages(currentMessages, action.messages);
     return {
       ...state,
       conversation: action.conversation,
-      messageIds,
-      messagesById,
+      messageIds: merged.map((message) => message.id),
+      messagesById: Object.fromEntries(merged.map((message) => [message.id, message])),
       loading: false,
+      hasOlderMessages: action.hasOlderMessages,
       error: "",
+    };
+  }
+
+  if (action.type === "olderLoaded") {
+    const currentMessages = state.messageIds.flatMap((id) => {
+      const message = state.messagesById[id];
+      return message ? [message] : [];
+    });
+    const merged = mergeOlderMessages(action.messages, currentMessages);
+    return {
+      ...state,
+      messageIds: merged.map((message) => message.id),
+      messagesById: Object.fromEntries(merged.map((message) => [message.id, message])),
+      hasOlderMessages: action.hasOlderMessages,
     };
   }
 
@@ -242,6 +345,40 @@ export function reducer(state: State, action: Action): State {
 
   const { state: next, liveText } = appendDeltaBatch(state, action.deltas);
   return { ...next, liveText };
+}
+
+function mergeLatestMessages(
+  current: ConversationMessage[],
+  latestPage: ConversationMessage[],
+): ConversationMessage[] {
+  if (current.length === 0) return latestPage;
+  const latestIds = new Set(latestPage.map((message) => message.id));
+  const overlapIndex = current.findIndex((message) => latestIds.has(message.id));
+  const preserved = overlapIndex < 0 ? [] : current.slice(0, overlapIndex);
+  return mergeInOrder(preserved, latestPage);
+}
+
+function mergeOlderMessages(
+  olderPage: ConversationMessage[],
+  current: ConversationMessage[],
+): ConversationMessage[] {
+  return mergeInOrder(olderPage, current);
+}
+
+function mergeInOrder(
+  earlier: ConversationMessage[],
+  later: ConversationMessage[],
+): ConversationMessage[] {
+  const messagesById = new Map<string, ConversationMessage>();
+  const ids: string[] = [];
+  for (const message of [...earlier, ...later]) {
+    if (!messagesById.has(message.id)) ids.push(message.id);
+    messagesById.set(message.id, message);
+  }
+  return ids.flatMap((id) => {
+    const message = messagesById.get(id);
+    return message ? [message] : [];
+  });
 }
 
 function upsertMessage(state: State, message: ConversationMessage): State {

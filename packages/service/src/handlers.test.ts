@@ -11,7 +11,7 @@ import {
 } from "@karont/contract";
 import type { AdapterFactory, AgentAdapter, AgentAdapterRegistration } from "./agents/adapter.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
-import { openDatabase, recordRecentFolder } from "./db.ts";
+import { addMessage, openDatabase, recordRecentFolder } from "./db.ts";
 import type { HandlerConnection } from "./handlers.ts";
 import { createHandlers, ServiceError } from "./handlers.ts";
 import type { TerminalPty } from "./terminals/manager.ts";
@@ -502,6 +502,61 @@ test("conversation.setPinned e setArchived persistem, notificam e arquivam sem p
   assert.equal(unpinned.conversation.pinnedAt, null);
   assert.equal(unpinned.conversation.updatedAt, created.conversation.updatedAt);
   db.close();
+});
+
+test("conversation.get usa 40 mensagens por padrão e aceita cursores anteriores", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-conversation-get-page-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  context.after(async () => {
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    env: { PATH: "" },
+    homeDir: root,
+  });
+  const created = (await handlers.handle(
+    request("conversation.create", { agent: "claude", cwd: root }),
+    connection([]),
+  )) as { conversation: { id: string } };
+  for (let index = 0; index < 45; index += 1) {
+    const timestamp = new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString();
+    addMessage(db, {
+      id: `message-${index}`,
+      conversationId: created.conversation.id,
+      author: "user",
+      status: "done",
+      parts: [{ id: `part-${index}`, type: "text", markdown: `Mensagem ${index}` }],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+  }
+
+  const latest = (await handlers.handle(
+    request("conversation.get", { id: created.conversation.id }),
+    connection([]),
+  )) as { messages: Array<{ id: string }>; hasOlderMessages: boolean };
+  assert.equal(latest.messages.length, 40);
+  assert.equal(latest.messages[0]?.id, "message-5");
+  assert.equal(latest.messages.at(-1)?.id, "message-44");
+  assert.equal(latest.hasOlderMessages, true);
+
+  const older = (await handlers.handle(
+    request("conversation.get", {
+      id: created.conversation.id,
+      before: latest.messages[0]?.id,
+    }),
+    connection([]),
+  )) as { messages: Array<{ id: string }>; hasOlderMessages: boolean };
+  assert.deepEqual(
+    older.messages.map((message) => message.id),
+    ["message-0", "message-1", "message-2", "message-3", "message-4"],
+  );
+  assert.equal(older.hasOlderMessages, false);
 });
 
 test("dev.streamTest é indisponível fora do modo dev", async () => {

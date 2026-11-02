@@ -1,9 +1,9 @@
-import type { ReactNode } from "react";
+import { memo, type ReactNode, useMemo } from "react";
 import styles from "./Tooltip.module.css";
 
 export type TooltipAlign = "center" | "start" | "end";
 
-export function Tooltip({
+export const Tooltip = memo(function Tooltip({
   children,
   label,
   align = "center",
@@ -18,17 +18,13 @@ export function Tooltip({
   open?: boolean;
   visible?: boolean;
 }) {
+  const classNames = useMemo(() => [styles.root, className].filter(Boolean).join(" "), [className]);
   return (
-    <span
-      className={[styles.root, className].filter(Boolean).join(" ")}
-      data-align={align}
-      data-open={open}
-      data-visible={visible}
-    >
+    <span className={classNames} data-align={align} data-open={open} data-visible={visible}>
       {children}
       <span aria-hidden="true" className={styles.bubble} role="tooltip">
         {label}
       </span>
     </span>
   );
-}
+});

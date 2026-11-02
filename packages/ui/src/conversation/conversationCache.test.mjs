@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   BoundedMemoryCache,
+  cacheConversationSnapshot,
   cacheGitInfo,
   conversationCacheLimits,
   getCachedGitInfo,
+  getConversationSnapshot,
   invalidateCachedGitInfo,
 } from "./conversationCache.ts";
 
@@ -39,4 +41,18 @@ test("permite invalidar uma pasta e limpar o cache", () => {
   assert.deepEqual(getCachedGitInfo(path), { branch: "main", detached: false });
   invalidateCachedGitInfo(path);
   assert.equal(getCachedGitInfo(path), undefined);
+});
+
+test("limita as mensagens mantidas em cada snapshot de conversa", () => {
+  const messages = Array.from({ length: 125 }, (_, index) => ({ id: `message-${index}` }));
+  cacheConversationSnapshot({
+    conversation: { id: "conversation-cache-bound" },
+    messages,
+    hasOlderMessages: false,
+  });
+
+  const snapshot = getConversationSnapshot("conversation-cache-bound");
+  assert.equal(snapshot.messages.length, conversationCacheLimits.messagesPerConversation);
+  assert.equal(snapshot.messages[0].id, "message-5");
+  assert.equal(snapshot.hasOlderMessages, true);
 });

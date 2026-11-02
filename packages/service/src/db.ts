@@ -288,6 +288,40 @@ export function listMessages(db: DatabaseSync, conversationId: string): Conversa
   ).map(mapMessage);
 }
 
+export function listMessagesPage(
+  db: DatabaseSync,
+  conversationId: string,
+  options: { limit: number; before?: string },
+): { messages: ConversationMessage[]; hasOlderMessages: boolean } {
+  const cursor = options.before
+    ? (db
+        .prepare("SELECT created_at,rowid FROM messages WHERE conversation_id=? AND id=?")
+        .get(conversationId, options.before) as { created_at: string; rowid: number } | undefined)
+    : undefined;
+  if (options.before && !cursor) return { messages: [], hasOlderMessages: false };
+
+  const rows = cursor
+    ? (db
+        .prepare(
+          "SELECT * FROM messages WHERE conversation_id=? AND (created_at<? OR (created_at=? AND rowid<?)) ORDER BY created_at DESC,rowid DESC LIMIT ?",
+        )
+        .all(
+          conversationId,
+          cursor.created_at,
+          cursor.created_at,
+          cursor.rowid,
+          options.limit + 1,
+        ) as MessageRow[])
+    : (db
+        .prepare(
+          "SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at DESC,rowid DESC LIMIT ?",
+        )
+        .all(conversationId, options.limit + 1) as MessageRow[]);
+  const hasOlderMessages = rows.length > options.limit;
+  const page = rows.slice(0, options.limit).reverse().map(mapMessage);
+  return { messages: page, hasOlderMessages };
+}
+
 export function deleteConversation(db: DatabaseSync, id: string): boolean {
   return db.prepare("DELETE FROM conversations WHERE id=?").run(id).changes > 0;
 }

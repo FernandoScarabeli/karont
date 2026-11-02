@@ -32,7 +32,7 @@ export function getBridge(): KarontBridge | null {
     bridge = window.karont;
     return bridge;
   }
-  if (!import.meta.env.DEV) return null;
+  if (!import.meta.env.DEV && import.meta.env.MODE !== "preview") return null;
   const token = document.querySelector<HTMLMetaElement>('meta[name="karont-dev-bridge"]')?.content;
   if (!token) return null;
   bridge = createWebBridge(token);

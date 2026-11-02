@@ -20,6 +20,7 @@ export type ConversationMessageListProps = {
   conversation: Conversation | null;
   messages: ConversationMessage[];
   totalMessageCount: number;
+  canLoadOlderMessages: boolean;
   loading: boolean;
   error: string;
   showSlowLoading: boolean;
@@ -48,6 +49,7 @@ export const ConversationMessageList = memo(function ConversationMessageList({
   conversation,
   messages,
   totalMessageCount,
+  canLoadOlderMessages,
   loading,
   error,
   showSlowLoading,
@@ -71,7 +73,6 @@ export const ConversationMessageList = memo(function ConversationMessageList({
   canRetry,
   canBranch,
 }: ConversationMessageListProps) {
-  const hasOlderMessages = totalMessageCount > messages.length;
   const latestMessageId = latestMessage?.id;
 
   return (
@@ -102,7 +103,7 @@ export const ConversationMessageList = memo(function ConversationMessageList({
           <span>{t.conversation.promptPlaceholder}</span>
         </div>
       ) : null}
-      {hasOlderMessages ? (
+      {canLoadOlderMessages ? (
         <>
           <div
             aria-hidden="true"

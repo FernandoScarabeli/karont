@@ -15,7 +15,7 @@ import {
   SquareTerminal,
   Trash2,
 } from "lucide-react";
-import { createRef, type RefObject, useEffect, useRef, useState } from "react";
+import { createRef, memo, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { getBridge } from "../bridge/index.ts";
 import { ActionMenu, type ActionMenuItem } from "../components/ActionMenu/ActionMenu.tsx";
@@ -30,7 +30,7 @@ import {
   useConversationIndex,
 } from "../conversation/useConversationIndex.ts";
 import { t } from "../i18n/pt-BR.ts";
-import { useNavigation } from "../navigation/NavigationContext.tsx";
+import { useNavigationActions, useNavigationState } from "../navigation/NavigationContext.tsx";
 import { TerminalCloseButton } from "../terminal/TerminalCloseButton.tsx";
 import {
   getTerminalDisplayDetails,
@@ -41,21 +41,173 @@ import { findPane, findPaneByConversation, paneCount } from "../workspace/layout
 import { ServiceStatus } from "./ServiceStatus.tsx";
 import styles from "./Sidebar.module.css";
 
+const conversationActionsIcon = <Ellipsis aria-hidden="true" size={17} strokeWidth={1.8} />;
+
 type MenuState =
   | { kind: "section" }
   | { kind: "conversation"; id: string; point?: { x: number; y: number } }
   | null;
 
+type ConversationRowProps = {
+  conversation: Conversation;
+  showArchived: boolean;
+  active: boolean;
+  openAndVisible: boolean;
+  editing: boolean;
+  menuOpen: boolean;
+  anchorPoint?: { x: number; y: number };
+  titleDraft: string;
+  saving: boolean;
+  actionRef: RefObject<HTMLButtonElement | null>;
+  renameInputRef: RefObject<HTMLInputElement | null>;
+  getMenuItems: (conversation: Conversation) => ActionMenuItem[];
+  onOpenConversation: (id: string) => void;
+  onRegisterConversationButton: (id: string, element: HTMLButtonElement | null) => void;
+  onContextMenu: (id: string, point: { x: number; y: number }) => void;
+  onMenuOpenChange: (id: string, open: boolean) => void;
+  onCancelRename: (restoreFocus?: boolean) => void;
+  onSaveRename: (conversation: Conversation) => void;
+  onDraftChange: (draft: string) => void;
+};
+
+const ConversationRow = memo(function ConversationRow({
+  conversation,
+  showArchived,
+  active,
+  openAndVisible,
+  editing,
+  menuOpen,
+  anchorPoint,
+  titleDraft,
+  saving,
+  actionRef,
+  renameInputRef,
+  getMenuItems,
+  onOpenConversation,
+  onRegisterConversationButton,
+  onContextMenu,
+  onMenuOpenChange,
+  onCancelRename,
+  onSaveRename,
+  onDraftChange,
+}: ConversationRowProps) {
+  const stateText =
+    conversation.state === "working"
+      ? t.chat.working
+      : conversation.state === "waiting"
+        ? t.chat.waiting
+        : conversation.state === "error"
+          ? t.shell.conversationError
+          : t.chat.idle;
+  const isUnread = Boolean(conversation.unreadAt) && !openAndVisible;
+  const stateDetails = [
+    stateText,
+    isUnread ? t.shell.unreadResponse : "",
+    conversation.pinnedAt ? t.shell.pinnedState : "",
+    showArchived ? t.shell.archivedState : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const statusClass =
+    conversation.state === "waiting"
+      ? styles.conversationStatusNeedsYou
+      : conversation.state === "working"
+        ? styles.conversationStatusWorking
+        : conversation.state === "error"
+          ? styles.conversationStatusError
+          : isUnread
+            ? styles.conversationStatusUnread
+            : "";
+  const registerButton = useCallback(
+    (element: HTMLButtonElement | null) => onRegisterConversationButton(conversation.id, element),
+    [conversation.id, onRegisterConversationButton],
+  );
+  const changeMenu = useCallback(
+    (open: boolean) => onMenuOpenChange(conversation.id, open),
+    [conversation.id, onMenuOpenChange],
+  );
+  const getItems = useCallback(() => getMenuItems(conversation), [conversation, getMenuItems]);
+
+  return (
+    <li
+      className={`${styles.conversationItem} ${menuOpen ? styles.conversationMenuOpen : ""}`}
+      onContextMenu={(event) => {
+        if (editing) return;
+        event.preventDefault();
+        onContextMenu(conversation.id, { x: event.clientX, y: event.clientY });
+      }}
+    >
+      {editing ? (
+        <input
+          aria-label={t.chat.renameTitleInput}
+          className={`${styles.conversationButton} ${styles.conversationTitleInput}`}
+          disabled={saving}
+          maxLength={240}
+          onBlur={() => {
+            const draft = titleDraft.trim();
+            if (!draft || draft === conversation.title) onCancelRename();
+            else onSaveRename(conversation);
+          }}
+          onChange={(event) => onDraftChange(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if (event.key === "Enter") {
+              event.preventDefault();
+              onSaveRename(conversation);
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              onCancelRename(true);
+            }
+          }}
+          ref={renameInputRef}
+          value={titleDraft}
+        />
+      ) : (
+        <button
+          aria-current={active ? "page" : undefined}
+          aria-description={stateDetails}
+          aria-label={conversation.title}
+          className={styles.conversationButton}
+          onClick={() => onOpenConversation(conversation.id)}
+          ref={registerButton}
+          title={`${conversation.title}, ${stateDetails}`}
+          type="button"
+        >
+          <AgentIcon agentId={conversation.agent} />
+          <span className={styles.conversationTitle}>{conversation.title}</span>
+          {conversation.pinnedAt && !showArchived ? (
+            <Pin aria-hidden="true" className={styles.pinnedMarker} size={13} />
+          ) : null}
+          {statusClass ? (
+            <span aria-hidden="true" className={`${styles.conversationStatusDot} ${statusClass}`} />
+          ) : null}
+        </button>
+      )}
+      {!editing ? (
+        <ActionMenu
+          anchorPoint={menuOpen ? anchorPoint : undefined}
+          items={getItems}
+          label={t.shell.conversationActions(conversation.title)}
+          onOpenChange={changeMenu}
+          open={menuOpen}
+          triggerClassName={styles.conversationActions}
+          triggerIcon={conversationActionsIcon}
+          triggerLabel={t.shell.conversationActions(conversation.title)}
+          triggerRef={actionRef}
+        />
+      ) : null}
+    </li>
+  );
+});
+
 export function Sidebar() {
+  const { view, layout, activePaneId } = useNavigationState();
   const {
     closeConversationWorkspacePanes,
     closeTerminalWorkspacePane,
     navigate,
     openConversationBeside,
-    view,
-    layout,
-    activePaneId,
-  } = useNavigation();
+  } = useNavigationActions();
   const bridge = getBridge();
   const activePane = findPane(layout, activePaneId);
   const navigationRef = useRef<HTMLElement>(null);
@@ -66,8 +218,12 @@ export function Sidebar() {
   });
   const { terminals, error } = useTerminals();
   const [showArchived, setShowArchived] = useState(false);
+  const showArchivedRef = useRef(showArchived);
+  showArchivedRef.current = showArchived;
   const conversationIndex = useConversationIndex(showArchived);
   const conversationList = conversationIndex.conversations;
+  const conversationListRef = useRef(conversationList);
+  conversationListRef.current = conversationList;
   const [documentVisible, setDocumentVisible] = useState(
     () => document.visibilityState === "visible",
   );
@@ -85,7 +241,13 @@ export function Sidebar() {
   const [menu, setMenu] = useState<MenuState>(null);
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
+  const titleDraftRef = useRef(titleDraft);
+  titleDraftRef.current = titleDraft;
   const [savingConversationId, setSavingConversationId] = useState<string | null>(null);
+  const savingConversationIdRef = useRef(savingConversationId);
+  savingConversationIdRef.current = savingConversationId;
+  const editingConversationIdRef = useRef(editingConversationId);
+  editingConversationIdRef.current = editingConversationId;
   const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -156,139 +318,154 @@ export function Sidebar() {
     }
   }
 
-  function conversationRemovalFocusTarget(conversationId: string) {
-    const index = conversationList.findIndex((conversation) => conversation.id === conversationId);
-    const target = conversationList[index + 1] ?? conversationList[index - 1];
+  const conversationRemovalFocusTarget = useCallback((conversationId: string) => {
+    const conversations = conversationListRef.current;
+    const index = conversations.findIndex((conversation) => conversation.id === conversationId);
+    const target = conversations[index + 1] ?? conversations[index - 1];
     return target
       ? (conversationButtonRefs.current.get(target.id) ?? null)
-      : showArchived
+      : showArchivedRef.current
         ? archivedBackRef.current
         : newLooseConversationRef.current;
-  }
+  }, []);
 
-  function focusAfterConversationRemoval(conversationId: string) {
-    const element = conversationRemovalFocusTarget(conversationId);
-    if (element) requestAnimationFrame(() => element.focus());
-  }
+  const focusAfterConversationRemoval = useCallback(
+    (conversationId: string) => {
+      const element = conversationRemovalFocusTarget(conversationId);
+      if (element) requestAnimationFrame(() => element.focus());
+    },
+    [conversationRemovalFocusTarget],
+  );
 
-  function getConversationActionRef(conversationId: string) {
+  const getConversationActionRef = useCallback((conversationId: string) => {
     let ref = conversationActionRefs.current.get(conversationId);
     if (!ref) {
       ref = createRef<HTMLButtonElement>();
       conversationActionRefs.current.set(conversationId, ref);
     }
     return ref;
-  }
+  }, []);
 
-  function beginConversationRename(conversation: Conversation) {
+  const beginConversationRename = useCallback((conversation: Conversation) => {
     setSidebarActionError("");
     setMenu(null);
     setTitleDraft(conversation.title);
     setEditingConversationId(conversation.id);
-  }
+  }, []);
 
-  function cancelConversationRename(restoreFocus = false) {
-    const id = editingConversationId;
+  const cancelConversationRename = useCallback((restoreFocus = false) => {
+    const id = editingConversationIdRef.current;
     setEditingConversationId(null);
     setTitleDraft("");
     if (restoreFocus && id) {
       requestAnimationFrame(() => conversationButtonRefs.current.get(id)?.focus());
     }
-  }
+  }, []);
 
-  async function saveConversationRename(conversation: Conversation) {
-    if (!bridge || savingConversationId === conversation.id) return;
-    const title = titleDraft.trim();
-    if (!title) {
-      setSidebarActionError(t.chat.titleRequired);
-      renameInputRef.current?.focus();
-      return;
-    }
-    if (title === conversation.title) {
-      cancelConversationRename(true);
-      return;
-    }
+  const saveConversationRename = useCallback(
+    async (conversation: Conversation) => {
+      if (!bridge || savingConversationIdRef.current === conversation.id) return;
+      const title = titleDraftRef.current.trim();
+      if (!title) {
+        setSidebarActionError(t.chat.titleRequired);
+        renameInputRef.current?.focus();
+        return;
+      }
+      if (title === conversation.title) {
+        cancelConversationRename(true);
+        return;
+      }
 
-    const optimistic = { ...conversation, title, updatedAt: new Date().toISOString() };
-    setSidebarActionError("");
-    setSavingConversationId(conversation.id);
-    upsertConversation(optimistic);
-    try {
-      const result = await bridge.request("conversation.rename", { id: conversation.id, title });
-      upsertConversation(result.conversation);
-      setEditingConversationId(null);
-      setTitleDraft("");
-    } catch (renameError) {
-      upsertConversation(conversation);
-      setSidebarActionError(
-        renameError instanceof BridgeError && renameError.message
-          ? renameError.message
-          : t.chat.renameTitleFailed,
-      );
-    } finally {
-      setSavingConversationId(null);
-    }
-  }
+      const optimistic = { ...conversation, title, updatedAt: new Date().toISOString() };
+      setSidebarActionError("");
+      savingConversationIdRef.current = conversation.id;
+      setSavingConversationId(conversation.id);
+      upsertConversation(optimistic);
+      try {
+        const result = await bridge.request("conversation.rename", { id: conversation.id, title });
+        upsertConversation(result.conversation);
+        setEditingConversationId(null);
+        setTitleDraft("");
+      } catch (renameError) {
+        upsertConversation(conversation);
+        setSidebarActionError(
+          renameError instanceof BridgeError && renameError.message
+            ? renameError.message
+            : t.chat.renameTitleFailed,
+        );
+      } finally {
+        savingConversationIdRef.current = null;
+        setSavingConversationId(null);
+      }
+    },
+    [bridge, cancelConversationRename],
+  );
 
-  async function togglePinned(conversation: Conversation) {
-    if (!bridge) return;
-    const pinned = conversation.pinnedAt === null;
-    const timestamp = new Date().toISOString();
-    const optimistic = {
-      ...conversation,
-      pinnedAt: pinned ? timestamp : null,
-    };
-    setSidebarActionError("");
-    upsertConversation(optimistic);
-    try {
-      const result = await bridge.request("conversation.setPinned", {
-        id: conversation.id,
-        pinned,
-      });
-      upsertConversation(result.conversation);
-    } catch (pinError) {
-      upsertConversation(conversation);
-      setSidebarActionError(
-        pinError instanceof BridgeError && pinError.message
-          ? pinError.message
-          : t.shell.conversationActionFailed,
-      );
-    }
-  }
+  const togglePinned = useCallback(
+    async (conversation: Conversation) => {
+      if (!bridge) return;
+      const pinned = conversation.pinnedAt === null;
+      const timestamp = new Date().toISOString();
+      const optimistic = {
+        ...conversation,
+        pinnedAt: pinned ? timestamp : null,
+      };
+      setSidebarActionError("");
+      upsertConversation(optimistic);
+      try {
+        const result = await bridge.request("conversation.setPinned", {
+          id: conversation.id,
+          pinned,
+        });
+        upsertConversation(result.conversation);
+      } catch (pinError) {
+        upsertConversation(conversation);
+        setSidebarActionError(
+          pinError instanceof BridgeError && pinError.message
+            ? pinError.message
+            : t.shell.conversationActionFailed,
+        );
+      }
+    },
+    [bridge],
+  );
 
-  async function setConversationArchived(conversation: Conversation, archived: boolean) {
-    if (!bridge) return;
-    const timestamp = new Date().toISOString();
-    const optimistic = {
-      ...conversation,
-      pinnedAt: null,
-      archivedAt: archived ? timestamp : null,
-    };
-    setSidebarActionError("");
-    upsertConversation(optimistic);
-    if (showArchived === !archived) focusAfterConversationRemoval(conversation.id);
-    try {
-      const result = await bridge.request("conversation.setArchived", {
-        id: conversation.id,
-        archived,
-      });
-      upsertConversation(result.conversation);
-      if (archived) closeConversationWorkspacePanes(conversation.id);
-    } catch (archiveError) {
-      upsertConversation(conversation);
-      setSidebarActionError(
-        archiveError instanceof BridgeError && archiveError.message
-          ? archiveError.message
-          : t.shell.conversationActionFailed,
-      );
-    }
-  }
+  const setConversationArchived = useCallback(
+    async (conversation: Conversation, archived: boolean) => {
+      if (!bridge) return;
+      const timestamp = new Date().toISOString();
+      const optimistic = {
+        ...conversation,
+        pinnedAt: null,
+        archivedAt: archived ? timestamp : null,
+      };
+      setSidebarActionError("");
+      upsertConversation(optimistic);
+      if (showArchivedRef.current === !archived) focusAfterConversationRemoval(conversation.id);
+      try {
+        const result = await bridge.request("conversation.setArchived", {
+          id: conversation.id,
+          archived,
+        });
+        upsertConversation(result.conversation);
+        if (archived) closeConversationWorkspacePanes(conversation.id);
+      } catch (archiveError) {
+        upsertConversation(conversation);
+        setSidebarActionError(
+          archiveError instanceof BridgeError && archiveError.message
+            ? archiveError.message
+            : t.shell.conversationActionFailed,
+        );
+      }
+    },
+    [bridge, closeConversationWorkspacePanes, focusAfterConversationRemoval],
+  );
 
-  function requestDeleteConversation(conversation: Conversation) {
+  const requestDeleteConversation = useCallback((conversation: Conversation) => {
     deleteReturnFocusRef.current = conversationButtonRefs.current.get(conversation.id) ?? null;
     setDeleteError("");
     setConversationToDelete(conversation);
-  }
+  }, []);
 
   async function deleteConversation() {
     if (!bridge || !conversationToDelete || isDeletingConversation) return;
@@ -331,186 +508,120 @@ export function Sidebar() {
     );
   }
 
-  function conversationMenuItems(conversation: Conversation): ActionMenuItem[] {
-    const items: ActionMenuItem[] = [];
-    if (!showArchived) {
-      items.push({
-        id: "pin",
-        label: conversation.pinnedAt ? t.shell.unpinConversation : t.shell.pinConversation,
-        icon: conversation.pinnedAt ? <PinOff size={15} /> : <Pin size={15} />,
-        onSelect: () => void togglePinned(conversation),
-      });
-    }
-    items.push(
-      {
-        id: "rename",
-        label: t.shell.renameConversation,
-        icon: <Pencil size={15} />,
-        onSelect: () => beginConversationRename(conversation),
-      },
-      {
-        id: "open-beside",
-        label: t.shell.openConversationBeside,
-        icon: <Columns2 size={15} />,
-        disabled: paneCount(layout) >= 6 && !findPaneByConversation(layout, conversation.id),
-        onSelect: () => {
-          setSidebarActionError("");
-          const paneId = openConversationBeside(conversation.id);
-          if (!paneId) setSidebarActionError(t.workspace.panelLimit);
+  const conversationMenuItems = useCallback(
+    (conversation: Conversation): ActionMenuItem[] => {
+      const items: ActionMenuItem[] = [];
+      if (!showArchivedRef.current) {
+        items.push({
+          id: "pin",
+          label: conversation.pinnedAt ? t.shell.unpinConversation : t.shell.pinConversation,
+          icon: conversation.pinnedAt ? <PinOff size={15} /> : <Pin size={15} />,
+          onSelect: () => void togglePinned(conversation),
+        });
+      }
+      items.push(
+        {
+          id: "rename",
+          label: t.shell.renameConversation,
+          icon: <Pencil size={15} />,
+          onSelect: () => beginConversationRename(conversation),
         },
-      },
-      { id: "main-separator", separator: true },
-      {
-        id: "archive",
-        label: showArchived ? t.shell.unarchiveConversation : t.shell.archiveConversation,
-        icon: showArchived ? <ArchiveRestore size={15} /> : <Archive size={15} />,
-        onSelect: () => void setConversationArchived(conversation, !showArchived),
-      },
-      {
-        id: "delete",
-        label: t.shell.deleteConversation,
-        icon: <Trash2 size={15} />,
-        danger: true,
-        onSelect: () => requestDeleteConversation(conversation),
-      },
-    );
-    return items;
-  }
-
-  function renderConversation(conversation: Conversation) {
-    const stateText =
-      conversation.state === "working"
-        ? t.chat.working
-        : conversation.state === "waiting"
-          ? t.chat.waiting
-          : conversation.state === "error"
-            ? t.shell.conversationError
-            : t.chat.idle;
-    const conversationOpenAndVisible =
-      documentVisible &&
-      view.name === "workspace" &&
-      findPaneByConversation(layout, conversation.id) !== undefined;
-    const isUnread = Boolean(conversation.unreadAt) && !conversationOpenAndVisible;
-    const stateDetails = [
-      stateText,
-      isUnread ? t.shell.unreadResponse : "",
-      conversation.pinnedAt ? t.shell.pinnedState : "",
-      showArchived ? t.shell.archivedState : "",
-    ]
-      .filter(Boolean)
-      .join(", ");
-    const statusClass =
-      conversation.state === "waiting"
-        ? styles.conversationStatusNeedsYou
-        : conversation.state === "working"
-          ? styles.conversationStatusWorking
-          : conversation.state === "error"
-            ? styles.conversationStatusError
-            : isUnread
-              ? styles.conversationStatusUnread
-              : "";
+        {
+          id: "open-beside",
+          label: t.shell.openConversationBeside,
+          icon: <Columns2 size={15} />,
+          disabled: paneCount(layout) >= 6 && !findPaneByConversation(layout, conversation.id),
+          onSelect: () => {
+            setSidebarActionError("");
+            const paneId = openConversationBeside(conversation.id);
+            if (!paneId) setSidebarActionError(t.workspace.panelLimit);
+          },
+        },
+        { id: "main-separator", separator: true },
+        {
+          id: "archive",
+          label: showArchivedRef.current
+            ? t.shell.unarchiveConversation
+            : t.shell.archiveConversation,
+          icon: showArchivedRef.current ? <ArchiveRestore size={15} /> : <Archive size={15} />,
+          onSelect: () => void setConversationArchived(conversation, !showArchivedRef.current),
+        },
+        {
+          id: "delete",
+          label: t.shell.deleteConversation,
+          icon: <Trash2 size={15} />,
+          danger: true,
+          onSelect: () => requestDeleteConversation(conversation),
+        },
+      );
+      return items;
+    },
+    [
+      beginConversationRename,
+      layout,
+      openConversationBeside,
+      requestDeleteConversation,
+      setConversationArchived,
+      togglePinned,
+    ],
+  );
+  const openConversation = useCallback(
+    (id: string) => navigate({ name: "conversation", id }),
+    [navigate],
+  );
+  const registerConversationButton = useCallback(
+    (id: string, element: HTMLButtonElement | null) => {
+      if (element) conversationButtonRefs.current.set(id, element);
+      else conversationButtonRefs.current.delete(id);
+      fluidHover.registerItem(`conversation:${id}`, element);
+    },
+    [fluidHover.registerItem],
+  );
+  const openConversationContextMenu = useCallback(
+    (id: string, point: { x: number; y: number }) => setMenu({ kind: "conversation", id, point }),
+    [],
+  );
+  const changeConversationMenu = useCallback((id: string, open: boolean) => {
+    setMenu((current) => {
+      if (open) return { kind: "conversation", id };
+      return current?.kind === "conversation" && current.id === id ? null : current;
+    });
+  }, []);
+  const changeTitleDraft = useCallback((draft: string) => setTitleDraft(draft), []);
+  const renderConversation = (conversation: Conversation) => {
+    const isOpen =
+      view.name === "workspace" && findPaneByConversation(layout, conversation.id) !== undefined;
     const active =
       view.name === "workspace" &&
       activePane?.view.kind === "chat" &&
       activePane.view.conversationId === conversation.id;
     const editing = editingConversationId === conversation.id;
     const menuOpen = menu?.kind === "conversation" && menu.id === conversation.id;
-    const actionRef = getConversationActionRef(conversation.id);
-
     return (
-      <li
-        className={`${styles.conversationItem} ${menuOpen ? styles.conversationMenuOpen : ""}`}
+      <ConversationRow
+        active={active}
+        actionRef={getConversationActionRef(conversation.id)}
+        anchorPoint={menuOpen && menu?.kind === "conversation" ? menu.point : undefined}
+        conversation={conversation}
+        editing={editing}
+        getMenuItems={conversationMenuItems}
         key={conversation.id}
-        onContextMenu={(event) => {
-          if (editing) return;
-          event.preventDefault();
-          setMenu({
-            kind: "conversation",
-            id: conversation.id,
-            point: { x: event.clientX, y: event.clientY },
-          });
-        }}
-      >
-        {editing ? (
-          <input
-            aria-label={t.chat.renameTitleInput}
-            className={`${styles.conversationButton} ${styles.conversationTitleInput}`}
-            disabled={savingConversationId === conversation.id}
-            maxLength={240}
-            onBlur={() => {
-              const draft = titleDraft.trim();
-              if (!draft || draft === conversation.title) cancelConversationRename();
-              else void saveConversationRename(conversation);
-            }}
-            onChange={(event) => setTitleDraft(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              event.stopPropagation();
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void saveConversationRename(conversation);
-              } else if (event.key === "Escape") {
-                event.preventDefault();
-                cancelConversationRename(true);
-              }
-            }}
-            ref={renameInputRef}
-            value={titleDraft}
-          />
-        ) : (
-          <button
-            aria-current={active ? "page" : undefined}
-            aria-description={stateDetails}
-            aria-label={conversation.title}
-            className={styles.conversationButton}
-            onClick={() => navigate({ name: "conversation", id: conversation.id })}
-            ref={(element) => {
-              if (element) {
-                conversationButtonRefs.current.set(conversation.id, element);
-                fluidHover.registerItem(`conversation:${conversation.id}`, element);
-              } else {
-                conversationButtonRefs.current.delete(conversation.id);
-                fluidHover.registerItem(`conversation:${conversation.id}`, null);
-              }
-            }}
-            title={`${conversation.title}, ${stateDetails}`}
-            type="button"
-          >
-            <AgentIcon agentId={conversation.agent} />
-            <span className={styles.conversationTitle}>{conversation.title}</span>
-            {conversation.pinnedAt && !showArchived ? (
-              <Pin aria-hidden="true" className={styles.pinnedMarker} size={13} />
-            ) : null}
-            {statusClass ? (
-              <span
-                aria-hidden="true"
-                className={`${styles.conversationStatusDot} ${statusClass}`}
-              />
-            ) : null}
-          </button>
-        )}
-        {!editing ? (
-          <ActionMenu
-            anchorPoint={menuOpen ? menu.point : undefined}
-            items={conversationMenuItems(conversation)}
-            label={t.shell.conversationActions(conversation.title)}
-            onOpenChange={(open) => {
-              setMenu((current) => {
-                if (open) return { kind: "conversation", id: conversation.id };
-                return current?.kind === "conversation" && current.id === conversation.id
-                  ? null
-                  : current;
-              });
-            }}
-            open={menuOpen}
-            triggerClassName={styles.conversationActions}
-            triggerIcon={<Ellipsis aria-hidden="true" size={17} strokeWidth={1.8} />}
-            triggerLabel={t.shell.conversationActions(conversation.title)}
-            triggerRef={actionRef}
-          />
-        ) : null}
-      </li>
+        menuOpen={menuOpen}
+        onCancelRename={cancelConversationRename}
+        onContextMenu={openConversationContextMenu}
+        onDraftChange={changeTitleDraft}
+        onMenuOpenChange={changeConversationMenu}
+        onOpenConversation={openConversation}
+        onRegisterConversationButton={registerConversationButton}
+        onSaveRename={saveConversationRename}
+        openAndVisible={documentVisible && isOpen}
+        renameInputRef={renameInputRef}
+        saving={savingConversationId === conversation.id}
+        showArchived={showArchived}
+        titleDraft={editing ? titleDraft : ""}
+      />
     );
-  }
+  };
 
   const pinnedRows = pinnedConversations.map(renderConversation);
   const recentRows = recentConversations.map(renderConversation);

@@ -1,4 +1,4 @@
-import type { ComponentPropsWithRef, ReactNode } from "react";
+import { type ComponentPropsWithRef, memo, type ReactNode, useMemo } from "react";
 import styles from "./IconButton.module.css";
 
 export type IconButtonVariant = "ghost" | "secondary";
@@ -16,7 +16,7 @@ export type IconButtonProps = Omit<
   className?: string;
 };
 
-export function IconButton({
+export const IconButton = memo(function IconButton({
   label,
   icon,
   variant = "ghost",
@@ -26,9 +26,10 @@ export function IconButton({
   className,
   ...props
 }: IconButtonProps) {
-  const classNames = [styles.button, styles[variant], styles[size], className]
-    .filter(Boolean)
-    .join(" ");
+  const classNames = useMemo(
+    () => [styles.button, styles[variant], styles[size], className].filter(Boolean).join(" "),
+    [className, size, variant],
+  );
 
   return (
     <button
@@ -44,4 +45,4 @@ export function IconButton({
       </span>
     </button>
   );
-}
+});

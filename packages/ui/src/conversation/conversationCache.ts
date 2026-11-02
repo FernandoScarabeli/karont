@@ -4,12 +4,14 @@ import type { AgentModels } from "./ComposerPreferences.tsx";
 export type ConversationSnapshot = {
   conversation: Conversation;
   messages: ConversationMessage[];
+  hasOlderMessages: boolean;
 };
 
 export type CachedGitInfo = { branch: string | null; detached: boolean };
 
 export const conversationCacheLimits = {
   conversations: 20,
+  messagesPerConversation: 120,
   agents: 4,
   folders: 20,
 } as const;
@@ -71,7 +73,13 @@ export function getConversationSnapshot(id: string): ConversationSnapshot | unde
 }
 
 export function cacheConversationSnapshot(snapshot: ConversationSnapshot): void {
-  conversations.set(snapshot.conversation.id, snapshot);
+  const maxMessages = conversationCacheLimits.messagesPerConversation;
+  const messages = snapshot.messages.slice(-maxMessages);
+  conversations.set(snapshot.conversation.id, {
+    ...snapshot,
+    messages,
+    hasOlderMessages: snapshot.hasOlderMessages || messages.length < snapshot.messages.length,
+  });
 }
 
 export function getCachedAgentModels(agent: AgentModels["agent"]): AgentModels | undefined {
