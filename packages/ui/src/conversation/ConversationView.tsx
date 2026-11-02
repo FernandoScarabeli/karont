@@ -65,7 +65,13 @@ import {
   OLDER_MESSAGE_LOAD_ROOT_MARGIN_PX,
   olderMessageCursor,
 } from "./messageWindow.ts";
-import { useConversation } from "./useConversation.ts";
+import {
+  ConversationTransitionMachine,
+  type ConversationTransitionStatus,
+  isComposerReadyForConversation,
+  isConversationForTarget,
+  useConversation,
+} from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
 import { getFinalRunningActions } from "./workingLabel.ts";
 
@@ -84,7 +90,6 @@ type ConversationTransitionSource = {
 };
 
 type TransitionSurface = "messages" | "composer" | "folder";
-type TransitionStatus = "waiting" | "blurring" | "blurred" | "revealing" | "done";
 
 export function ConversationView({
   id,
@@ -193,14 +198,9 @@ export function ConversationView({
   const composerControlsRef = useRef<HTMLDivElement>(null);
   const composerBelowRef = useRef<HTMLDivElement>(null);
   const transitionSourceRef = useRef<ConversationTransitionSource | null>(null);
-  const transitionInitializedRef = useRef(false);
-  const transitionStatusRef = useRef<Partial<Record<TransitionSurface, TransitionStatus>>>({});
-  const transitionTimerRefs = useRef<Partial<Record<TransitionSurface, number>>>({});
-  const transitionReadinessRef = useRef<Record<TransitionSurface, boolean>>({
-    messages: false,
-    composer: false,
-    folder: false,
-  });
+  const transitionMachineRefs = useRef<
+    Partial<Record<TransitionSurface, ConversationTransitionMachine>>
+  >({});
   const messageListRef = useRef<HTMLDivElement>(null);
   const olderMessagesSentinelRef = useRef<HTMLDivElement>(null);
   const olderMessagesObserverRef = useRef<IntersectionObserver | null>(null);
@@ -533,11 +533,9 @@ export function ConversationView({
     transitionSourceRef.current.gitInfoLoading = gitInfoLoading;
   }
 
-  const isTargetConversationLoaded = conversation?.id === id;
+  const isTargetConversationLoaded = isConversationForTarget(conversation, id);
   const transitionSource = transitionSourceRef.current;
-  const composerDataReady = Boolean(
-    isTargetConversationLoaded && (!agent || currentModels?.agent === agent),
-  );
+  const composerDataReady = isComposerReadyForConversation(conversation, id, currentModels?.agent);
   const folderDataReady = isTargetConversationLoaded && !gitInfoLoading;
   const composerConversation =
     transitionSource && !composerDataReady ? transitionSource.conversation : conversation;
@@ -557,12 +555,6 @@ export function ConversationView({
   const folderGitInfo = transitionSource && !folderDataReady ? transitionSource.gitInfo : gitInfo;
   const folderGitInfoLoading =
     transitionSource && !folderDataReady ? transitionSource.gitInfoLoading : gitInfoLoading;
-  transitionReadinessRef.current = {
-    messages: isTargetConversationLoaded,
-    composer: composerDataReady,
-    folder: folderDataReady,
-  };
-
   useLayoutEffect(() => {
     if (!transitionSource) return;
 
@@ -572,87 +564,50 @@ export function ConversationView({
       folder: composerBelowRef,
     };
 
-    const finish = (surface: TransitionSurface) => {
+    const onStatusChange = (surface: TransitionSurface, status: ConversationTransitionStatus) => {
       const element = refs[surface].current;
-      const status = transitionStatusRef.current[surface];
-      if (!element || !status || status === "done" || status === "revealing") return;
-      const timer = transitionTimerRefs.current[surface];
-      if (timer !== undefined) window.clearTimeout(timer);
-      delete transitionTimerRefs.current[surface];
-
-      if (status === "waiting" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        element.removeAttribute("data-conversation-blur");
-        element.inert = false;
-        element.removeAttribute("aria-hidden");
-        transitionStatusRef.current[surface] = "done";
-        return;
-      }
-
-      element.setAttribute("data-conversation-blur", "revealing");
-      transitionStatusRef.current[surface] = "revealing";
-      transitionTimerRefs.current[surface] = window.setTimeout(() => {
-        element.removeAttribute("data-conversation-blur");
-        element.inert = false;
-        element.removeAttribute("aria-hidden");
-        transitionStatusRef.current[surface] = "done";
-        delete transitionTimerRefs.current[surface];
-      }, MOTION_MS.conversationBlur);
-    };
-
-    if (!transitionInitializedRef.current) {
-      transitionInitializedRef.current = true;
-      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-      for (const surface of ["messages", "composer", "folder"] as const) {
-        const element = refs[surface].current;
-        if (!element) continue;
+      if (!element) return;
+      if (status === "waiting") {
         element.inert = true;
         element.setAttribute("aria-hidden", "true");
-        transitionStatusRef.current[surface] = "waiting";
-
-        if (reducedMotion) continue;
-        transitionTimerRefs.current[surface] = window.setTimeout(() => {
-          if (transitionStatusRef.current[surface] !== "waiting") return;
-          if (transitionReadinessRef.current[surface]) {
-            finish(surface);
-            return;
-          }
-          if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-            finish(surface);
-            return;
-          }
-
-          element.setAttribute("data-conversation-blur", "blurring");
-          transitionStatusRef.current[surface] = "blurring";
-          transitionTimerRefs.current[surface] = window.setTimeout(() => {
-            if (transitionStatusRef.current[surface] !== "blurring") return;
-            element.setAttribute("data-conversation-blur", "blurred");
-            transitionStatusRef.current[surface] = "blurred";
-            delete transitionTimerRefs.current[surface];
-          }, MOTION_MS.conversationBlur);
-        }, MOTION_DELAY_MS.conversationBlur);
+        element.removeAttribute("data-conversation-blur");
+        return;
       }
-    }
+      if (status === "done") {
+        element.removeAttribute("data-conversation-blur");
+        element.inert = false;
+        element.removeAttribute("aria-hidden");
+        return;
+      }
+      element.setAttribute("data-conversation-blur", status);
+    };
 
     for (const surface of ["messages", "composer", "folder"] as const) {
-      const ready =
-        surface === "messages"
-          ? isTargetConversationLoaded
-          : surface === "composer"
-            ? composerDataReady
-            : folderDataReady;
-      if (ready) finish(surface);
+      if (!refs[surface].current) continue;
+      const machine = new ConversationTransitionMachine({
+        delayMs: MOTION_DELAY_MS.conversationBlur,
+        durationMs: MOTION_MS.conversationBlur,
+        setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
+        clearTimeout: (timer) => window.clearTimeout(timer),
+        prefersReducedMotion: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+        onStatusChange: (status) => onStatusChange(surface, status),
+      });
+      transitionMachineRefs.current[surface] = machine;
+      machine.start();
     }
-  }, [transitionSource, composerDataReady, folderDataReady, isTargetConversationLoaded]);
 
-  useEffect(
-    () => () => {
-      for (const timer of Object.values(transitionTimerRefs.current)) {
-        if (timer !== undefined) window.clearTimeout(timer);
-      }
-    },
-    [],
-  );
+    return () => {
+      for (const machine of Object.values(transitionMachineRefs.current)) machine?.dispose();
+      transitionMachineRefs.current = {};
+    };
+  }, [transitionSource]);
+
+  useLayoutEffect(() => {
+    if (!transitionSource) return;
+    if (isTargetConversationLoaded) transitionMachineRefs.current.messages?.markReady();
+    if (composerDataReady) transitionMachineRefs.current.composer?.markReady();
+    if (folderDataReady) transitionMachineRefs.current.folder?.markReady();
+  }, [transitionSource, composerDataReady, folderDataReady, isTargetConversationLoaded]);
 
   useEffect(() => {
     if (previousConversationIdRef.current === id) return;
