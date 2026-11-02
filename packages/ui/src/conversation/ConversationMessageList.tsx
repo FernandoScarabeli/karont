@@ -82,6 +82,7 @@ export const ConversationMessageList = memo(function ConversationMessageList({
     <section
       aria-label={t.chat.messageList}
       className={`${styles.messageList} ${scrollAreaStyles.scrollArea}`}
+      data-k-chat-scroll
       data-follow={followState}
       data-reveal={revealLoadedData ? "true" : undefined}
       ref={messageListRef}

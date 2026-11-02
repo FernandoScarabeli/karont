@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_MESSAGE_SOURCES, messageSourceSchema } from "./sources.ts";
 
 export const conversationAgentSchema = z.enum(["claude", "codex"]);
 export const agentIdSchema = z
@@ -63,7 +64,12 @@ export const questionOptionSchema = z.strictObject({
   description: z.string().optional(),
 });
 export const messagePartSchema = z.discriminatedUnion("type", [
-  z.strictObject({ ...messagePartBase, type: z.literal("text"), markdown: z.string() }),
+  z.strictObject({
+    ...messagePartBase,
+    type: z.literal("text"),
+    markdown: z.string(),
+    sources: z.array(messageSourceSchema).max(MAX_MESSAGE_SOURCES).optional(),
+  }),
   z.strictObject({ ...messagePartBase, type: z.literal("thinking"), text: z.string() }),
   z.strictObject({
     ...messagePartBase,

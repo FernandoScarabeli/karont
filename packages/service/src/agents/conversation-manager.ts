@@ -11,6 +11,7 @@ import {
   type ConversationMessage,
   describeAgentError,
   type MessagePart,
+  type MessageSource,
   reasoningEffortSchema,
 } from "@karont/contract";
 import { validateAttachments } from "../attachments.ts";
@@ -81,6 +82,8 @@ type ActiveConversation = {
   turnStarted: boolean;
   coalescers: Map<string, DeltaCoalescer>;
   deltaTimes: Map<string, { startedAt: number; endedAt: number }>;
+  sources: MessageSource[];
+  sourcePartId?: string;
   pendingPartIds: Set<string>;
   eventQueue: Promise<void>;
 };
@@ -1014,6 +1017,7 @@ export class ConversationManager {
         startPromise: Promise.resolve(),
         coalescers: new Map(),
         deltaTimes: new Map(),
+        sources: [],
         pendingPartIds: new Set(),
         currentMessage: message,
         eventQueue: Promise.resolve(),
@@ -1052,6 +1056,8 @@ export class ConversationManager {
     } else {
       if (active.idleTimer) clearTimeout(active.idleTimer);
       active.idleTimer = undefined;
+      active.sources = [];
+      active.sourcePartId = undefined;
       active.currentMessage = message;
       await active.startPromise;
     }
@@ -1092,6 +1098,29 @@ export class ConversationManager {
     if (event.kind === "turn-id") {
       message.agentTurnId = event.turnId;
       setMessageAgentTurnId(this.#db, message.id, event.turnId);
+      return;
+    }
+    if (event.kind === "sources") {
+      active.sources = event.sources;
+      const textPart = active.sourcePartId
+        ? message.parts.find(
+            (part): part is Extract<MessagePart, { type: "text" }> =>
+              part.type === "text" && part.id === active.sourcePartId,
+          )
+        : [...message.parts]
+            .reverse()
+            .find((part): part is Extract<MessagePart, { type: "text" }> => part.type === "text");
+      if (textPart) {
+        active.sourcePartId = textPart.id;
+        const updatedPart = { ...textPart, sources: event.sources };
+        this.#upsertPart(message, updatedPart);
+        message.updatedAt = this.#now();
+        this.#flushMessageSave(active, message);
+        await this.#emit({
+          event: "conversation.partUpdated",
+          payload: { conversationId, messageId: message.id, kind: "upsert", part: updatedPart },
+        });
+      }
       return;
     }
     if (event.kind === "fast-tier-not-applied") {
@@ -1163,6 +1192,9 @@ export class ConversationManager {
                       id: event.partId,
                       type: "text",
                       markdown: "",
+                      ...(active.sources.length > 0 && !active.sourcePartId
+                        ? { sources: active.sources }
+                        : {}),
                       startedAt: times?.startedAt,
                       endedAt: times?.endedAt,
                     }
@@ -1174,6 +1206,7 @@ export class ConversationManager {
                       endedAt: times?.endedAt,
                     };
               message.parts.push(part);
+              if (part.type === "text" && part.sources?.length) active.sourcePartId = part.id;
               await this.#emit({
                 event: "conversation.partUpdated",
                 payload: { conversationId, messageId: message.id, kind: "upsert", part },

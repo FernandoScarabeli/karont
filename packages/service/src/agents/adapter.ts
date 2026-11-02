@@ -4,10 +4,12 @@ import type {
   Conversation,
   ConversationAttachment,
   MessagePart,
+  MessageSource,
 } from "@karont/contract";
 
 export type AdapterEvent =
   | { kind: "part"; part: MessagePart }
+  | { kind: "sources"; sources: MessageSource[] }
   | { kind: "turn-id"; turnId: string }
   | { kind: "fast-tier-not-applied" }
   | { kind: "text-delta"; partType: "text" | "thinking"; partId: string; delta: string }

@@ -294,6 +294,7 @@
 }
 
 .markdown {
+  container-type: inline-size;
   min-width: 0;
   color: var(--k-color-text-primary);
   font-size: var(--k-text-14);
