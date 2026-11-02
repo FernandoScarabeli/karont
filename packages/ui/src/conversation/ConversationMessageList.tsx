@@ -6,6 +6,7 @@ import { t } from "../i18n/pt-BR.ts";
 import { agentDisplayName } from "./ComposerPreferences.tsx";
 import { MessageRow, type ResponseInput } from "./ConversationParts.tsx";
 import styles from "./ConversationView.module.css";
+import type { FollowState } from "./followState.ts";
 import { areMessageListPropsEqual } from "./messageListMemo.ts";
 import { WorkingIndicator } from "./WorkingIndicator.tsx";
 
@@ -31,6 +32,7 @@ export type ConversationMessageListProps = {
   shouldShowWorkingIndicator: boolean;
   workingIndicatorProps: WorkingIndicatorProps;
   messageListRef: RefObject<HTMLDivElement | null>;
+  followState: FollowState;
   olderMessagesSentinelRef: RefObject<HTMLDivElement | null>;
   bottomSentinelRef: RefObject<HTMLDivElement | null>;
   onLoadOlderMessages: () => void;
@@ -60,6 +62,7 @@ export const ConversationMessageList = memo(function ConversationMessageList({
   shouldShowWorkingIndicator,
   workingIndicatorProps,
   messageListRef,
+  followState,
   olderMessagesSentinelRef,
   bottomSentinelRef,
   onLoadOlderMessages,
@@ -79,6 +82,7 @@ export const ConversationMessageList = memo(function ConversationMessageList({
     <section
       aria-label={t.chat.messageList}
       className={`${styles.messageList} ${scrollAreaStyles.scrollArea}`}
+      data-follow={followState}
       data-reveal={revealLoadedData ? "true" : undefined}
       ref={messageListRef}
     >

@@ -116,7 +116,10 @@
   padding: var(--k-space-4) var(--k-space-6);
   padding-block-end: calc(var(--k-space-4) + var(--history-navigation-space, 0px));
   scroll-behavior: auto;
-  /* A compensação manual mantém histórico e acompanhamento do fim sob o mesmo controle. */
+  overflow-anchor: auto;
+}
+
+.messageList[data-follow="following"] {
   overflow-anchor: none;
 }
 
@@ -154,12 +157,14 @@
 .bottomSentinel {
   min-height: var(--k-border-width);
   flex: 0 0 var(--k-border-width);
+  overflow-anchor: none;
 }
 
 .workingFallback {
   width: min(100%, var(--k-chat-content-max-width));
   flex: 0 0 auto;
   margin-inline: auto;
+  overflow-anchor: none;
 }
 
 .messageList[data-reveal="true"] > :not(.bottomSentinel) {
@@ -222,11 +227,13 @@
   font-family: var(--k-font-sans);
   font-size: var(--k-text-12);
   cursor: pointer;
+  overflow-anchor: none;
 }
 
 .olderMessagesSentinel {
   min-height: var(--k-border-width);
   flex: 0 0 var(--k-border-width);
+  overflow-anchor: none;
 }
 
 .olderMessages:hover,

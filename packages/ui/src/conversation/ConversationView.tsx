@@ -58,7 +58,6 @@ import {
   nextMessageWindowSize,
   olderMessageCursor,
 } from "./messageWindow.ts";
-import { adjustScrollTopForAnchor } from "./scrollAnchor.ts";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
 import { getFinalRunningActions } from "./workingLabel.ts";
@@ -70,8 +69,6 @@ type ConversationOptionsPatch = {
   fast?: Conversation["fast"];
   plan?: Conversation["plan"];
 };
-
-const OLDER_MESSAGE_ANCHOR_OFFSET_PX = 200;
 
 export function ConversationView({
   id,
@@ -185,13 +182,11 @@ export function ConversationView({
   const historyHighlightTimerRef = useRef<number | null>(null);
   const followScrollerRef = useRef<FollowScroller | null>(null);
   const followRef = useRef<FollowState>("following");
-  const previousScrollHeight = useRef(0);
-  const olderScrollAnchor = useRef<{ messageId: string; top: number } | null>(null);
+  const [followState, setFollowState] = useState<FollowState>("following");
   const olderMessageLoadInFlight = useRef(false);
-  const olderLoadNeedsUserScroll = useRef(false);
-  const restoreAfterOlder = useRef(false);
   const previousScrollVersion = useRef("");
   const previousOlderPageVersion = useRef(olderPageVersion);
+  const reobservedOlderPageVersion = useRef(olderPageVersion);
   const optimisticOptionsRef = useRef<ConversationOptionsPatch>({});
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const saveRevisionRef = useRef(0);
@@ -199,6 +194,11 @@ export function ConversationView({
   const sendPendingRef = useRef(false);
   const activeConversationIdRef = useRef(id);
   const optimisticConversationIdRef = useRef(id);
+  const updateFollowState = useCallback((state: FollowState) => {
+    if (followRef.current === state) return;
+    followRef.current = state;
+    setFollowState(state);
+  }, []);
   activeConversationIdRef.current = id;
   const agent = conversation?.agent;
   const currentModels =
@@ -306,47 +306,21 @@ export function ConversationView({
     });
   }, [fetchAllOlderMessages, hasOlderMessages, historyOpen]);
 
-  const captureOlderScrollAnchor = useCallback(() => {
-    const list = messageListRef.current;
-    if (!list) return;
-    const listRect = list.getBoundingClientRect();
-    const visibleMessages = Array.from(
-      list.querySelectorAll<HTMLElement>(":scope > article[data-message-id]"),
-    )
-      .map((element) => ({ element, rect: element.getBoundingClientRect() }))
-      .filter(({ rect }) => rect.bottom > listRect.top && rect.top < listRect.bottom);
-    const anchorMessage =
-      visibleMessages.find(
-        ({ rect }) =>
-          rect.top >= listRect.top + OLDER_MESSAGE_ANCHOR_OFFSET_PX &&
-          rect.bottom <= listRect.bottom,
-      ) ??
-      visibleMessages.find(
-        ({ rect }) => rect.top >= listRect.top && rect.bottom <= listRect.bottom,
-      ) ??
-      visibleMessages[0];
-    olderScrollAnchor.current = anchorMessage
-      ? {
-          messageId: anchorMessage.element.dataset.messageId ?? "",
-          top: anchorMessage.rect.top,
-        }
-      : null;
-    previousScrollHeight.current = list.scrollHeight;
-    restoreAfterOlder.current = true;
-  }, []);
+  const navigateToHistoryMessage = useCallback(
+    (messageId: string) => {
+      const currentMessages = orderedMessagesRef.current;
+      const messageIndex = currentMessages.findIndex((message) => message.id === messageId);
+      if (messageIndex < 0) return;
 
-  const navigateToHistoryMessage = useCallback((messageId: string) => {
-    const currentMessages = orderedMessagesRef.current;
-    const messageIndex = currentMessages.findIndex((message) => message.id === messageId);
-    if (messageIndex < 0) return;
-
-    followRef.current = "free";
-    followScrollerRef.current?.stop();
-    setPendingHistoryMessageId(messageId);
-    setVisibleMessageCount((count) =>
-      messageWindowSizeForTarget(currentMessages, count, messageId),
-    );
-  }, []);
+      updateFollowState("free");
+      followScrollerRef.current?.stop();
+      setPendingHistoryMessageId(messageId);
+      setVisibleMessageCount((count) =>
+        messageWindowSizeForTarget(currentMessages, count, messageId),
+      );
+    },
+    [updateFollowState],
+  );
   useLayoutEffect(() => {
     if (!pendingHistoryMessageId) return;
     const list = messageListRef.current;
@@ -396,7 +370,6 @@ export function ConversationView({
     if (!list || olderMessageLoadInFlight.current) return;
     olderMessageLoadInFlight.current = true;
     if (visibleMessageCountRef.current < orderedMessagesRef.current.length) {
-      captureOlderScrollAnchor();
       setVisibleMessageCount((count) =>
         nextMessageWindowSize(count, orderedMessagesRef.current.length, MESSAGE_WINDOW_INCREMENT),
       );
@@ -406,15 +379,11 @@ export function ConversationView({
     const before = olderMessageCursor(orderedMessagesRef.current, hasOlderMessagesRef.current);
     if (!before) {
       olderMessageLoadInFlight.current = false;
-      restoreAfterOlder.current = false;
-      olderScrollAnchor.current = null;
       return;
     }
-    const loadedCount = await fetchOlderMessages(before, captureOlderScrollAnchor);
+    const loadedCount = await fetchOlderMessages(before);
     if (loadedCount === null) {
       olderMessageLoadInFlight.current = false;
-      restoreAfterOlder.current = false;
-      olderScrollAnchor.current = null;
       setInteractionError(t.chat.loadFailed);
       return;
     }
@@ -424,9 +393,7 @@ export function ConversationView({
       return;
     }
     olderMessageLoadInFlight.current = false;
-    restoreAfterOlder.current = false;
-    olderScrollAnchor.current = null;
-  }, [captureOlderScrollAnchor, fetchOlderMessages]);
+  }, [fetchOlderMessages]);
 
   useEffect(() => {
     const list = messageListRef.current;
@@ -441,11 +408,7 @@ export function ConversationView({
     }
     const observer = new IntersectionObserver(
       (entries) => {
-        if (
-          followRef.current === "free" &&
-          !olderLoadNeedsUserScroll.current &&
-          entries.some((entry) => entry.isIntersecting)
-        ) {
+        if (followRef.current === "free" && entries.some((entry) => entry.isIntersecting)) {
           loadOlderMessages();
         }
       },
@@ -460,6 +423,16 @@ export function ConversationView({
       }
     };
   }, [canLoadOlderMessages, loadOlderMessages]);
+
+  useEffect(() => {
+    if (reobservedOlderPageVersion.current === olderPageVersion) return;
+    reobservedOlderPageVersion.current = olderPageVersion;
+    const observer = olderMessagesObserverRef.current;
+    const sentinel = olderMessagesSentinelRef.current;
+    if (!observer || !sentinel) return;
+    observer.unobserve(sentinel);
+    observer.observe(sentinel);
+  }, [olderPageVersion]);
   const isWorking = conversation?.state === "working";
   const isWaiting = conversation?.state === "waiting";
   const workingActive = isWorking || isStopping;
@@ -499,7 +472,7 @@ export function ConversationView({
   useEffect(() => {
     if (previousConversationIdRef.current === id) return;
     previousConversationIdRef.current = id;
-    followRef.current = "following";
+    updateFollowState("following");
     optimisticConversationIdRef.current = id;
     optimisticOptionsRef.current = {};
     setOptimisticOptions({});
@@ -513,16 +486,13 @@ export function ConversationView({
     setHighlightedMessageId(null);
     setVisibleMessageCount(INITIAL_MESSAGE_WINDOW_SIZE);
     olderMessageLoadInFlight.current = false;
-    olderLoadNeedsUserScroll.current = false;
-    restoreAfterOlder.current = false;
-    olderScrollAnchor.current = null;
     if (historyHighlightTimerRef.current !== null) {
       window.clearTimeout(historyHighlightTimerRef.current);
       historyHighlightTimerRef.current = null;
     }
     messageListRef.current?.style.removeProperty("--history-navigation-space");
     setActivePopover(null);
-  }, [id]);
+  }, [id, updateFollowState]);
 
   useEffect(() => {
     if (conversation && !isRenamingTitle) setTitleDraft(conversation.title);
@@ -549,7 +519,7 @@ export function ConversationView({
     followScrollerRef.current = scroller;
     const follow = (event: FollowEvent) => {
       const before = followRef.current;
-      followRef.current = nextFollowState(before, event);
+      updateFollowState(nextFollowState(before, event));
       // Rolar para cima para a mola na hora.
       if (before === "following" && followRef.current === "free") scroller.stop();
     };
@@ -559,23 +529,12 @@ export function ConversationView({
     let grabbingScrollbar = false;
     let scrollFrame: number | null = null;
     let scrollbarDragScrollPending = false;
-    const rearmOlderMessageObserver = () => {
-      if (!olderLoadNeedsUserScroll.current) return;
-      olderLoadNeedsUserScroll.current = false;
-      const sentinel = olderMessagesSentinelRef.current;
-      const observer = olderMessagesObserverRef.current;
-      if (!sentinel || !observer) return;
-      observer.unobserve(sentinel);
-      observer.observe(sentinel);
-    };
-
     const processScroll = () => {
       scrollFrame = null;
       const scrollTop = list.scrollTop;
       // Arrastar a barra de rolagem para cima é intenção do usuário.
       if (scrollbarDragScrollPending && scrollTop < lastScrollTop) {
         follow({ type: "userScrollUp" });
-        rearmOlderMessageObserver();
       }
       scrollbarDragScrollPending = false;
       lastScrollTop = scrollTop;
@@ -595,7 +554,6 @@ export function ConversationView({
     const onWheel = (event: WheelEvent) => {
       if (event.deltaY < 0) {
         follow({ type: "userScrollUp" });
-        rearmOlderMessageObserver();
       }
     };
     const onTouchStart = (event: TouchEvent) => {
@@ -607,14 +565,12 @@ export function ConversationView({
       // Dedo descendo = conteúdo subindo.
       if (lastTouchY !== null && y > lastTouchY) {
         follow({ type: "userScrollUp" });
-        rearmOlderMessageObserver();
       }
       lastTouchY = y;
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "PageUp" || event.key === "ArrowUp" || event.key === "Home") {
         follow({ type: "userScrollUp" });
-        rearmOlderMessageObserver();
       }
     };
     const onPointerDown = (event: PointerEvent) => {
@@ -647,7 +603,7 @@ export function ConversationView({
       scroller.dispose();
       followScrollerRef.current = null;
     };
-  }, []);
+  }, [updateFollowState]);
 
   // Rede de segurança para outros crescimentos (imagens, realce, blocos fechados).
   useEffect(() => {
@@ -670,29 +626,10 @@ export function ConversationView({
     previousScrollVersion.current = scrollVersion;
     const olderPageCommitted = previousOlderPageVersion.current !== olderPageVersion;
     previousOlderPageVersion.current = olderPageVersion;
-    if (olderPageCommitted && restoreAfterOlder.current) {
-      const anchor = olderScrollAnchor.current;
-      const target = anchor?.messageId
-        ? Array.from(list.querySelectorAll<HTMLElement>(":scope > article[data-message-id]")).find(
-            (element) => element.dataset.messageId === anchor.messageId,
-          )
-        : undefined;
-      if (anchor && target) {
-        list.scrollTop = adjustScrollTopForAnchor(
-          list.scrollTop,
-          anchor.top,
-          target.getBoundingClientRect().top,
-        );
-      } else {
-        list.scrollTop += list.scrollHeight - previousScrollHeight.current;
-      }
-      olderScrollAnchor.current = null;
-      restoreAfterOlder.current = false;
+    if (olderPageCommitted) {
       olderMessageLoadInFlight.current = false;
-      // Uma nova página só pode carregar depois de outra rolagem real para cima.
-      // Assim o sentinela não encadeia páginas se continuar dentro da margem.
-      olderLoadNeedsUserScroll.current = true;
-    } else if (followRef.current === "following" && contentChanged) {
+    }
+    if (followRef.current === "following" && contentChanged) {
       followScrollerRef.current?.kick();
     }
   }, [olderPageVersion, scrollVersion]);
@@ -739,7 +676,7 @@ export function ConversationView({
         return;
       const conversationId = id;
       messageListRef.current?.style.removeProperty("--history-navigation-space");
-      followRef.current = nextFollowState(followRef.current, { type: "newMessage" });
+      updateFollowState(nextFollowState(followRef.current, { type: "newMessage" }));
       const sendRevision = ++sendRevisionRef.current;
       sendPendingRef.current = true;
       setInteractionError("");
@@ -792,6 +729,7 @@ export function ConversationView({
       isSending,
       isWaiting,
       isWorking,
+      updateFollowState,
     ],
   );
 
@@ -1252,6 +1190,7 @@ export function ConversationView({
             latestMessage={latestMessage}
             loading={loading}
             messageListRef={messageListRef}
+            followState={followState}
             messages={visibleMessages}
             canLoadOlderMessages={canLoadOlderMessages}
             olderMessagesSentinelRef={olderMessagesSentinelRef}
