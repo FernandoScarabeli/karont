@@ -9,11 +9,11 @@ Leia antes de qualquer tarefa: [docs/SPEC.md](docs/SPEC.md) (o que construir) e,
 
 ## Regras invariantes (mudar só com o ok do dono)
 
-1. Nunca ler, guardar ou reutilizar credenciais/tokens das CLIs de IA, nem ler as pastas de configuração delas.
+1. Nunca ler, guardar ou reutilizar credenciais/tokens das CLIs de IA, nem ler as pastas de configuração delas. Única exceção: importar o que o usuário escolher, como skills e histórico, por ação explícita dele e nunca credenciais (M11).
 2. Electron com `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` e CSP restrita. Nunca `--no-sandbox`. A interface só fala com a ponte validada.
 3. A interface só mostra o que é real. Nada de métrica inventada.
 4. Pasta de projeto não é sandbox: nunca prometa isolamento.
-5. Vocabulário da interface: **Agente, Terminal, Workspace, Projeto, Conversa, Mensagem, Tarefa**.
+5. Vocabulário da interface: **Dot, Agente, Terminal, Workspace, Projeto, Conversa, Mensagem, Tarefa**.
 6. Dependência nova só com motivo escrito e ok do dono.
 7. Interface, docs e commits em português do Brasil; identificadores em inglês.
 8. CSS com escopo e tokens; nenhuma regra global em elementos (`header`, `h1`, `button`, `select`…); nenhuma cor/medida solta fora dos tokens.

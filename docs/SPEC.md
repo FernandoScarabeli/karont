@@ -1,6 +1,6 @@
 # Karont — Especificação do v1
 
-Versão 1.0 · 2026-10-31 · Aprovada pelo dono do projeto (Fernando Scarabeli) para começar do zero.
+Versão 1.1 · 2026-11-07 · Aprovada pelo dono do projeto (Fernando Scarabeli). A versão 1.0 é de 2026-10-31; a 1.1 refaz os marcos (seção 8).
 
 Esta spec substitui tudo o que existiu antes. Não há código, decisão ou documento anterior que valha: o repositório foi recriado sem histórico. Onde esta spec não decidir algo, quem implementa propõe e o dono aprova.
 
@@ -8,7 +8,7 @@ Esta spec substitui tudo o que existiu antes. Não há código, decisão ou docu
 
 Um app de desktop, bonito e open source, para **conversar com os agentes de IA de linha de comando que você já usa** (Claude Code, Codex e outros), **ver o que eles fazem nos seus projetos** e, mais adiante, **orquestrar vários deles ao mesmo tempo**.
 
-O app não tem IA própria e não guarda credenciais: ele roda as CLIs que já estão instaladas e logadas no computador.
+O app não tem IA própria e não guarda credenciais: ele roda as CLIs que já estão instaladas e logadas no computador. O Dot também trabalha por essas CLIs. Modelos locais entram como opção no M12.
 
 ## 2. Para quem
 
@@ -25,6 +25,7 @@ Idioma da interface no v1: **português do Brasil**. Código, identificadores e 
 
 | Termo         | O que é                                                                                                                             |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Dot**       | O companheiro do usuário, com nome, visual, personalidade e memória. Trabalha por meio de um Agente e continua o mesmo ao trocar de Agente. |
 | **Agente**    | Uma CLI de IA instalada no computador (Claude Code, Codex, Gemini CLI…). Detectada sozinha ou adicionada pelo usuário pelo comando. |
 | **Terminal**  | Um shell comum do usuário, sem IA. Também aparece no seletor.                                                                       |
 | **Workspace** | Uma área que agrupa projetos (ex.: Pessoal, Trabalho). Aparece como aba no topo.                                                    |
@@ -33,7 +34,7 @@ Idioma da interface no v1: **português do Brasil**. Código, identificadores e 
 | **Mensagem**  | Do usuário ou do agente. A do agente tem partes: texto, ações (leu arquivo, editou, rodou comando) e erros.                         |
 | **Tarefa**    | Item do quadro (A fazer, Em andamento, Revisão, Feito).                                                                             |
 
-Não usar outros nomes para essas coisas na interface ("Dot", "Run", "sessão" etc. não aparecem para o usuário).
+Não usar outros nomes para essas coisas na interface ("Run", "sessão" etc. não aparecem para o usuário).
 
 ## 4. Fluxos do v1
 
@@ -50,7 +51,7 @@ O onboarding pode ser reaberto pelas configurações.
 ### 4.2 Conversar com um agente (o fluxo principal)
 
 1. "Nova conversa" (na sidebar, no Início ou num projeto) abre uma conversa vazia, sem modal.
-2. No composer, o usuário escolhe o **agente** (seletor) e o **modo** (ver 4.6). O padrão é o último usado.
+2. No composer, o usuário escolhe o **agente** (seletor) e o **modo** (ver 4.6). O padrão é o agente padrão do projeto; sem ele, o último usado.
 3. Escreve e aperta **Enter** (Shift+Enter quebra linha). A mensagem aparece como balão do usuário.
 4. A resposta do agente aparece **no próprio chat**, chegando ao vivo: texto formatado (markdown: títulos, listas, código com destaque, tabelas, links) e, entre os trechos de texto, **blocos de ação** discretos e recolhíveis ("Leu `src/app.ts`", "Editou 2 arquivos", "Rodou `npm test`" com a saída).
 5. Enquanto o agente trabalha: indicador "trabalhando…" e botão **Parar**.
@@ -61,6 +62,7 @@ O onboarding pode ser reaberto pelas configurações.
 ### 4.3 Projetos
 
 - Criar projeto: modal com **nome, ícone e pasta**. Só isso.
+- Agente padrão: cada projeto pode ter o seu, e a conversa pode trocar.
 - Projeto com Git: depois de uma resposta que mudou arquivos, o chat mostra "N arquivos alterados · ver mudanças · desfazer". "Ver mudanças" abre o diff; "desfazer" volta os arquivos ao estado de antes daquela mensagem (ver 6.4).
 - Projeto sem Git: o agente trabalha direto na pasta; o chat avisa, uma vez, que não há "desfazer".
 - Conversa sem projeto: roda na pasta pessoal (`~`), com o mesmo aviso.
@@ -71,13 +73,14 @@ O onboarding pode ser reaberto pelas configurações.
 - Sidebar: Nova conversa, Tarefas, Projetos (com as conversas de cada um), Conversas soltas, rodapé com o perfil e a engrenagem.
 - **Tela do workspace:** resumo do dia, composer com escolha de projeto, cartões de projeto (conversas, última atividade, agentes trabalhando), contagem de tarefas.
 - **Início:** tudo junto — o que precisa de você, cartões de workspace, tarefas de todos.
+- **Caixa de entrada única:** aprovações, dúvidas, PRs e erros num lugar só, cada item resolvido com um toque.
 
 ### 4.5 Vários agentes ao mesmo tempo
 
 - O usuário pode ter várias conversas com agentes trabalhando em paralelo (projetos diferentes ou o mesmo).
 - Limite configurável (padrão 4). Acima do limite, a nova mensagem fica **na fila**, com aviso visível ("na fila: 4 agentes trabalhando").
 - Abas, sidebar e Início mostram onde há agente trabalhando e onde algo precisa do usuário.
-- No mesmo projeto, dois agentes ao mesmo tempo podem pisar um no outro: o app avisa antes de começar o segundo.
+- No mesmo projeto, dois agentes ao mesmo tempo podem pisar um no outro: antes de começar o segundo, o app avisa e oferece uma cópia separada (git worktree).
 
 ### 4.6 Modos e aprovações
 
@@ -91,6 +94,8 @@ O onboarding pode ser reaberto pelas configurações.
 
 ### 4.8 Tarefas (kanban)
 
+Entra no M9, junto com o que depende dela na sidebar, no workspace e no Início.
+
 - Quadro com quatro colunas, filtro por projeto e workspace.
 - Criar tarefa (título, descrição, projeto). Mensagem do chat → tarefa. Tarefa → "abrir conversa com agente" já com o texto da tarefa.
 
@@ -102,13 +107,13 @@ O onboarding pode ser reaberto pelas configurações.
 - Aparência: tema escuro (v1); claro depois.
 - Diagnóstico: versões, caminhos, estado do serviço, CLIs encontradas.
 
-### 4.10 Depois do v1 (fora do escopo agora)
+### 4.10 O que vem depois
 
-Orquestração (um agente que divide trabalho para outros, com página de acompanhamento em linha do tempo/fluxo), aprovações no chat, bloco de notas, agentes personalizados (com papel/prompt), macOS/Windows, tema claro, tradução.
+A seção 8 lista o que cada marco entrega. Quem implementa detalha os fluxos do marco e confirma com o dono antes de começar.
 
 ## 5. Princípios não negociáveis
 
-1. **Credenciais:** o app nunca lê, guarda, copia ou reutiliza tokens/credenciais das CLIs, nem lê as pastas de configuração delas. Ele só executa a CLI.
+1. **Credenciais:** o app nunca lê, guarda, copia ou reutiliza tokens/credenciais das CLIs, nem lê as pastas de configuração delas. Ele só executa a CLI. Única exceção: no M11, importar o que o usuário escolher, como skills e histórico, por ação explícita dele e nunca credenciais.
 2. **Segurança do Electron:** `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, CSP restrita, nada de `--no-sandbox`. A interface não acessa o sistema; tudo passa por uma ponte validada.
 3. **Honestidade da interface:** só mostrar o que é real. Nada de números inventados; dados de exemplo só em telas de design, marcados.
 4. **Sem promessa falsa de isolamento:** pasta de projeto não é sandbox; o modo "Liberado" avisa isso.
@@ -133,7 +138,7 @@ Electron (janela)                Serviço local (daemon Node)
 ### 6.2 Ponte UI ↔ serviço
 
 - **Um canal genérico** de requisição (`request(method, params)`) validado no main pelo schema do contrato, mais um canal de **eventos** (o serviço empurra: mensagens chegando, estado dos agentes, fila). Diálogos nativos têm canais próprios.
-- Socket local (Unix domain socket na pasta de runtime do usuário, permissão 0700), autenticado com segredo por sessão (HMAC) — só o mesmo usuário conecta.
+- Socket local (Unix domain socket na pasta de runtime do usuário, permissão 0700), autenticado com segredo por sessão (HMAC) — só o mesmo usuário conecta. O acesso de outra máquina (M10) usa login próprio e seguro, sem abrir o serviço direto na internet.
 - **Feito para streaming:** respeita _backpressure_ (espera o `drain`, nunca derruba o cliente por buffer cheio), limite por mensagem (não por buffer), e o serviço **junta** pedaços de texto (ex.: a cada 50 ms) antes de enviar.
 
 ### 6.3 Executores de agente
@@ -153,7 +158,7 @@ Electron (janela)                Serviço local (daemon Node)
 - Antes de cada mensagem num projeto com Git, o serviço guarda um **ponto de restauração** sem mexer na branch nem no stash do usuário (ex.: `git stash create` + ref própria em `refs/karont/…`, ou árvore temporária equivalente).
 - Depois da resposta: lista os arquivos alterados desde o ponto; "ver mudanças" mostra o diff; "desfazer" restaura os arquivos alterados para o ponto (com confirmação e aviso se o usuário mexeu nos mesmos arquivos depois).
 - Sem Git: sem ponto de restauração, com aviso.
-- Cópia separada (git worktree) para dois agentes no mesmo projeto fica para depois do v1.
+- Cópia separada (git worktree) para dois agentes no mesmo projeto entra no M3.
 
 ### 6.5 Dados
 
@@ -188,19 +193,28 @@ Node 24 · TypeScript · Electron (última estável) · React 19 · Vite · zod 
 ## 7. Qualidade e testes
 
 - **Rápidos (toda tarefa):** `typecheck`, lint, testes do serviço com **CLIs falsas** que imitam o modo JSON do Claude e do Codex (a partir de fixtures), e **1 E2E de fumaça**: abrir o app → nova conversa → mensagem → resposta aparece no chat.
-- **Completos (antes de juntar na `main`):** E2E dos fluxos do v1 (onboarding, chat com cada adaptador, projeto com/sem Git, ver mudanças/desfazer, fila, terminal, tarefas).
+- **Completos (antes de juntar na `main`):** E2E dos fluxos já entregues (onboarding, chat com cada adaptador, projeto com/sem Git, ver mudanças/desfazer, fila, terminal, tarefas e os dos marcos seguintes).
 - **Real:** o dono testa com Claude/Codex de verdade no preview a cada marco.
 - CI no GitHub Actions rodando os rápidos e os completos.
 
 ## 8. Marcos
 
-| Marco | Entrega                                                                                                                               | Pronto quando                                                          |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| M0    | Esqueleto: Electron seguro, serviço, socket com streaming, contrato, banco, ponte de canal único, preview web, tokens e moldura vazia | App abre; preview abre; teste de fumaça do esqueleto passa no CI       |
-| M1    | Agentes: detecção, adicionar CLI, Terminal                                                                                            | Configurações listam as CLIs reais; Terminal abre                      |
-| M2    | **Chat de verdade** com Claude Code e Codex (streaming, ações, continuar sessão, parar, erros)                                        | O dono conversa com os dois no preview e as respostas aparecem no chat |
-| M3    | Projetos (pasta, Git opcional, ver mudanças, desfazer) + fila de agentes                                                              | Desfazer funciona num projeto Git real                                 |
-| M4    | Workspaces, Início, sidebar, busca                                                                                                    | Navegação completa                                                     |
-| M5    | Onboarding, perfil, configurações                                                                                                     | Primeira abertura guiada                                               |
-| M6    | Tarefas                                                                                                                               | Quadro com os fluxos de 4.8                                            |
-| M7    | Release 0.1.0 (AppImage/deb)                                                                                                          | Instala e roda num Ubuntu limpo                                        |
+O lançamento é o último marco: o instalador só sai com tudo até o M13 pronto.
+
+| Marco | Entrega | Pronto quando |
+| ----- | ------- | ------------- |
+| M0 Esqueleto | Electron seguro, serviço, socket com streaming, contrato, banco, ponte de canal único, preview web, tokens e moldura vazia | App abre; preview abre; teste de fumaça do esqueleto passa no CI |
+| M1 Agentes | Detecção, adicionar CLI, Terminal | Configurações listam as CLIs reais; Terminal abre |
+| M2 Chat | **Chat de verdade** com Claude Code e Codex (streaming, ações, continuar sessão, parar, erros) | O dono conversa com os dois no preview e as respostas aparecem no chat |
+| M3 Projetos | Pasta, Git opcional, ver mudanças, desfazer, fila de agentes, worktrees e agente padrão por projeto | Desfazer funciona num projeto Git real; dois agentes trabalham no mesmo projeto em worktrees separadas |
+| M4 Navegação | Workspaces, Início, sidebar, busca e caixa de entrada única | Navegação completa; o que precisa do usuário aparece e se resolve na caixa de entrada |
+| M5 Primeira abertura | Onboarding, perfil, configurações e diagnóstico | Primeira abertura guiada |
+| M6 Dot | Identidade, personalidade que evolui, memória que o usuário aprova, salinha, crachá de permissões, bom dia e boa noite | O Dot mantém nome e memória ao trocar de Agente; nenhuma memória entra sem aprovação |
+| M7 Memória | Linha do tempo do projeto e mapa do cérebro | "Por que fizemos assim?" mostra conversa, decisão e commit; o usuário corrige ou apaga qualquer lembrança no mapa |
+| M8 Equipe | Subagentes, canvas ao vivo, coordenador parado, supervisor sem IA, reunião de Dots, Dot revisor, especialidades e painel de custos | O coordenador só acorda quando o subagente termina, trava ou precisa de decisão; o canvas mostra o trabalho sem gastar tokens; custos só com números reais |
+| M9 Fluxo de trabalho | Tarefas (4.8), da ideia ao PR, preview ao vivo, comparar modelos, modo foco e vários projetos juntos | Uma ideia vira PR num caminho só, acompanhado dentro do Karont |
+| M10 Em qualquer lugar | Karont em qualquer máquina, celular, Telegram e WhatsApp, voz e Rotinas | O usuário aprova e responde do celular um agente rodando em outra máquina; uma Rotina roda com a janela fechada |
+| M11 Comunidade | Bibliotecas de skills e MCPs, integrações, importar de outras ferramentas, plugins e roupinhas | Uma skill ou MCP instalada uma vez vale para todos os agentes; um plugin funciona sem mexer no núcleo |
+| M12 Modelos e segurança | Outros harnesses (ex.: DeepSeek), harness nativo, modelos locais, roteador de modelos e sandbox | O usuário escolhe harness por projeto; um agente roda num contêiner isolado |
+| M13 Times | Workspaces compartilhados, conhecimento do time e regras da empresa com auditoria | A equipe vê o trabalho dos agentes sem expor conversas privadas |
+| M14 Lançamento | Instalador (AppImage/deb) e primeira versão pública | Instala e roda num Ubuntu limpo, com os fluxos de todos os marcos |
