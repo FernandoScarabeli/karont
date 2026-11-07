@@ -52,7 +52,7 @@ Later: orchestration (one agent splitting work across others), in-chat approvals
 
 ## Privacy and security
 
-- **Your credentials stay with your CLIs.** Karont only runs the agent commands. It never reads, stores or reuses their tokens or config folders.
+- **Your credentials stay with your CLIs.** Karont only runs the agent commands. It never reads, stores or reuses their tokens, and it only touches their config folders when you choose to import skills or history.
 - **Local only.** Conversations live in a SQLite file in your user data folder. Nothing is sent anywhere by Karont itself; your agents talk to their own providers as they normally do.
 - **Locked-down app.** Electron runs with context isolation, sandbox and a strict content security policy. The UI cannot touch your system directly; everything goes through a validated bridge to a local service that only your user can reach.
 - **No false promises.** A project folder is not a sandbox. When you give an agent full access, Karont tells you so before it starts.
@@ -77,16 +77,23 @@ npm run preview:web    # UI in the browser with live reload, talking to the real
 
 ## Roadmap
 
-| Milestone            | What you get                                                        |
-| -------------------- | ------------------------------------------------------------------- |
-| **M0** Skeleton      | Secure app shell, local service, streaming bridge, browser preview  |
-| **M1** Agents        | Automatic CLI detection, add any CLI, built-in terminal             |
-| **M2** Real chat     | Streaming answers from Claude Code and Codex, actions, resume, stop |
-| **M3** Projects      | Folders with optional Git, review changes, undo, agent queue        |
-| **M4** Navigation    | Workspaces, home, sidebar, search                                   |
-| **M5** First run     | Onboarding, profile, settings                                       |
-| **M6** Tasks         | Board linked to conversations                                       |
-| **M7** Release 0.1.0 | AppImage / .deb                                                     |
+| Milestone | What you get |
+| --------- | ------------ |
+| **M0** Skeleton | Secure app shell, local service, streaming bridge, browser preview |
+| **M1** Agents | Automatic CLI detection, add any CLI, built-in terminal |
+| **M2** Real chat | Streaming answers from Claude Code and Codex, actions, resume, stop |
+| **M3** Projects | Folders with optional Git, review changes, undo, agent queue, worktrees, default agent per project |
+| **M4** Navigation | Workspaces, home, sidebar, search, single inbox |
+| **M5** First run | Onboarding, profile, settings, diagnostics |
+| **M6** Dot | Identity, evolving personality, memory you approve, Dot's room, permission badge, morning and evening recaps |
+| **M7** Memory | Project timeline and brain map |
+| **M8** Team | Subagents, live canvas, Dot meetings, Dot reviewer, specialties, cost panel |
+| **M9** Workflow | Tasks, idea to PR, live preview, model comparison, focus mode, multi-project changes |
+| **M10** Anywhere | Run on any machine, mobile, Telegram and WhatsApp, voice, Routines |
+| **M11** Community | Skill and MCP libraries, integrations, import from other tools, plugins, outfits |
+| **M12** Models and safety | More harnesses, local models, model router, sandbox |
+| **M13** Teams | Shared workspaces, team knowledge, company rules with audit log |
+| **M14** Release | AppImage / .deb, first public version |
 
 The full plan is in [docs/SPEC.md](docs/SPEC.md).
 

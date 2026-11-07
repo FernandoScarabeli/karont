@@ -68,6 +68,14 @@ Repositório recriado do zero em 2026-10-31.
 
 20. **Planejar** (decisão do orquestrador na ausência do dono, 2026-10-31, revisável): botão "Planejar" no composer. Com ele ligado, o agente só planeja (Claude `plan`, Codex `collaborationMode: plan`); o cartão de plano tem Aprovar (executa no modo de acesso escolhido) e Ajustar.
 
+21. **Marcos refeitos** (2026-11-07), ver SPEC seção 8:
+    - Agora são M0 a M14, com as ideias do dono (Dot, Memória, Equipe, Fluxo de trabalho, Em qualquer lugar, Comunidade, Modelos e segurança, Times).
+    - **O instalador é o último marco (M14):** o dono quer lançar com tudo pronto, sem versão pública antes. Isso substitui a recomendação de lançar uma 0.1 cedo.
+    - "Dot" volta para a interface (substitui parte da decisão 3); "Agente" continua sendo a CLI.
+    - "Sem IA própria" continua: o Dot roda pelas CLIs, e modelos locais entram como opção no M12.
+    - Importar de outras ferramentas (M11): só o que o usuário escolher, por ação explícita, nunca credenciais.
+    - Acesso de outra máquina (M10): login próprio e seguro, sem abrir o serviço direto na internet.
+
 ## M2 — estado em 2026-10-31 (fim da sessão sem o dono)
 Branch `m2-chat` (sem PR). Feito e testado com as CLIs reais no preview (Haiku / GPT-5.6-Luna):
 - Chat com Claude Code (processo aberto, `stream-json`, `--permission-prompts host --permission-prompt-tool stdio`) e Codex (`codex app-server --stdio`).
