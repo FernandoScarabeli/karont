@@ -386,6 +386,7 @@ export class ConversationManager {
       agent: source.agent,
       title: branchTitle,
       cwd: source.cwd,
+      ...(source.projectId ? { projectId: source.projectId } : {}),
       mode: source.mode,
       ...(source.model ? { model: source.model } : {}),
       ...(source.effort ? { effort: source.effort } : {}),

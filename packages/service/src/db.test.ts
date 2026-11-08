@@ -8,19 +8,25 @@ import {
   addCustomAgent,
   addMessage,
   createConversation,
+  createProject,
+  getAgentSession,
   getConversation,
   getSetting,
   listConversations,
   listCustomAgents,
   listMessages,
   listMessagesPage,
+  listProjects,
   listRecentFolderRecords,
   migrations,
   openDatabase,
   recordRecentFolder,
   removeCustomAgent,
+  removeProject,
+  setAgentSession,
   setConversationTitle,
   setSetting,
+  updateProject,
 } from "./db.ts";
 
 test("listMessagesPage retorna as mensagens recentes e caminha para trás sem pular empates", async () => {
@@ -72,7 +78,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    13,
+    14,
   );
   assert.equal(
     (
@@ -133,7 +139,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    13,
+    14,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();
@@ -347,4 +353,103 @@ test("recusa banco criado por versão mais nova", async () => {
   db.exec("PRAGMA user_version = 99");
   db.close();
   assert.throws(() => openDatabase(dbPath), /versão mais nova do Karont/);
+});
+
+test("migra um banco na versão 13 mantendo a conversa solta, sem projectId", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-v13-"));
+  const dbPath = path.join(root, "karont.db");
+  const legacyDb = new DatabaseSync(dbPath);
+  for (const migration of migrations.filter((entry) => entry.version <= 13)) {
+    legacyDb.exec(migration.up);
+    legacyDb.exec(`PRAGMA user_version = ${migration.version}`);
+  }
+  legacyDb
+    .prepare(
+      "INSERT INTO conversations (id,agent,title,cwd,mode,state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
+    )
+    .run(
+      "v13-1",
+      "claude",
+      "Antes dos projetos",
+      "/tmp/projeto",
+      "edit",
+      "idle",
+      "2026-11-01T10:00:00.000Z",
+      "2026-11-01T10:00:00.000Z",
+    );
+  legacyDb.close();
+
+  const db = openDatabase(dbPath);
+  try {
+    assert.equal(
+      (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+      14,
+    );
+    const conversation = getConversation(db, "v13-1");
+    assert.equal(conversation?.title, "Antes dos projetos");
+    assert.equal("projectId" in (conversation ?? {}), false);
+    assert.deepEqual(listProjectsForTest(db), []);
+  } finally {
+    db.close();
+  }
+});
+
+function listProjectsForTest(db: DatabaseSync): unknown[] {
+  return db.prepare("SELECT * FROM projects").all();
+}
+
+test("CRUD de projetos: path único, atualização sem mudar a pasta e remoção solta as conversas", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-projects-db-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  try {
+    const beta = createProject(db, { name: "beta", icon: "folder", path: "/tmp/beta" });
+    const alpha = createProject(db, {
+      name: "Alfa",
+      icon: "code",
+      path: "/tmp/alfa",
+      defaultAgent: "codex",
+    });
+    assert.equal(beta.defaultAgent, null);
+    assert.throws(() => createProject(db, { name: "x", icon: "x", path: "/tmp/beta" }));
+    assert.deepEqual(
+      listProjects(db).map((project) => project.name),
+      ["Alfa", "beta"],
+    );
+
+    const updated = updateProject(db, alpha.id, { name: "Alfa 2", defaultAgent: null });
+    assert.equal(updated?.name, "Alfa 2");
+    assert.equal(updated?.icon, "code");
+    assert.equal(updated?.defaultAgent, null);
+    assert.equal(updated?.path, "/tmp/alfa");
+    assert.equal(updateProject(db, "nao-existe", { name: "x" }), null);
+
+    const conversation = createConversation(db, {
+      agent: "claude",
+      title: "Dentro",
+      cwd: "/tmp/alfa",
+      mode: "edit",
+      projectId: alpha.id,
+    });
+    assert.equal(getConversation(db, conversation.id)?.projectId, alpha.id);
+    addMessage(db, {
+      id: "m1",
+      conversationId: conversation.id,
+      author: "user",
+      status: "done",
+      parts: [],
+      createdAt: "2026-11-01T10:00:00.000Z",
+      updatedAt: "2026-11-01T10:00:00.000Z",
+    });
+    setAgentSession(db, conversation.id, "sessao-1");
+
+    assert.equal(removeProject(db, alpha.id), true);
+    assert.equal(removeProject(db, alpha.id), false);
+    const loose = getConversation(db, conversation.id);
+    assert.ok(loose);
+    assert.equal("projectId" in loose, false);
+    assert.equal(listMessages(db, conversation.id).length, 1);
+    assert.equal(getAgentSession(db, conversation.id), "sessao-1");
+  } finally {
+    db.close();
+  }
 });

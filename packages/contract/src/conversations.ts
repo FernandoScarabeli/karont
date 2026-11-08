@@ -31,6 +31,7 @@ export const conversationSchema = z.strictObject({
   agent: conversationAgentSchema,
   title: z.string().min(1).max(240),
   cwd: z.string().min(1).max(4_096),
+  projectId: z.string().min(1).optional(),
   mode: conversationModeSchema,
   model: z.string().min(1).max(80).optional(),
   effort: reasoningEffortSchema.optional(),

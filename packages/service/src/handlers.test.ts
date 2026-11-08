@@ -877,6 +877,178 @@ test("falha ao gravar pasta recente não transforma terminals.open em erro", asy
   await handlers.closeTerminals();
 });
 
+function projectHandlers(root: string, events: AnyEvent[]) {
+  const db = openDatabase(path.join(root, "karont.db"));
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void events.push(event),
+    env: { PATH: "" },
+    homeDir: root,
+  });
+  return { db, handlers };
+}
+
+test("projects: CRUD, pasta duplicada, pasta inexistente e evento projects.changed", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-projects-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, "app");
+  await mkdir(folder);
+  const file = path.join(root, "arquivo.txt");
+  await writeFile(file, "x");
+  const events: AnyEvent[] = [];
+  const { db, handlers } = projectHandlers(root, events);
+  context.after(() => db.close());
+
+  const created = (await handlers.handle(
+    request("projects.create", { name: "App", icon: "folder", path: `${folder}/../app` }),
+    connection([]),
+  )) as { project: { id: string; path: string; defaultAgent: string | null } };
+  assert.equal(created.project.path, folder);
+  assert.equal(created.project.defaultAgent, null);
+  assert.deepEqual(
+    events.map((event) => event.event),
+    ["projects.changed"],
+  );
+
+  await assert.rejects(
+    handlers.handle(
+      request("projects.create", { name: "Outro", icon: "x", path: folder }),
+      connection([]),
+    ),
+    (error) =>
+      error instanceof ServiceError &&
+      error.code === "invalid_request" &&
+      error.message === "Esta pasta já pertence a outro projeto.",
+  );
+  await assert.rejects(
+    handlers.handle(
+      request("projects.create", { name: "Sumiu", icon: "x", path: path.join(root, "nada") }),
+      connection([]),
+    ),
+    (error) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+  await assert.rejects(
+    handlers.handle(
+      request("projects.create", { name: "Arquivo", icon: "x", path: file }),
+      connection([]),
+    ),
+    (error) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+  assert.equal(events.length, 1);
+
+  const updated = (await handlers.handle(
+    request("projects.update", { id: created.project.id, name: "App 2", defaultAgent: "codex" }),
+    connection([]),
+  )) as { project: { name: string; path: string; defaultAgent: string | null } };
+  assert.equal(updated.project.name, "App 2");
+  assert.equal(updated.project.defaultAgent, "codex");
+  assert.equal(updated.project.path, folder);
+  assert.equal(events.length, 2);
+  const changed = events.at(-1);
+  assert.equal(changed?.event === "projects.changed" && changed.payload.projects[0]?.name, "App 2");
+
+  const withPath = parseRequest({
+    type: "request",
+    id: "1",
+    method: "projects.update",
+    params: { id: created.project.id, path: root },
+  });
+  assert.equal(withPath.ok, false);
+  await assert.rejects(
+    handlers.handle(request("projects.update", { id: "nao-existe", name: "x" }), connection([])),
+    (error) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+  assert.equal(events.length, 2);
+
+  const listed = (await handlers.handle(request("projects.list", {}), connection([]))) as {
+    projects: unknown[];
+  };
+  assert.equal(listed.projects.length, 1);
+
+  assert.deepEqual(
+    await handlers.handle(request("projects.remove", { id: created.project.id }), connection([])),
+    { removed: true },
+  );
+  assert.equal(events.length, 3);
+  const afterRemove = events.at(-1);
+  assert.deepEqual(afterRemove?.event === "projects.changed" && afterRemove.payload.projects, []);
+  assert.equal((await stat(folder)).isDirectory(), true);
+  await assert.rejects(
+    handlers.handle(request("projects.remove", { id: created.project.id }), connection([])),
+    (error) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+});
+
+test("conversation.create valida projectId; branch preserva; remover projeto solta a conversa", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-project-conv-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, "app");
+  const elsewhere = path.join(root, "worktree");
+  await mkdir(folder);
+  await mkdir(elsewhere);
+  const events: AnyEvent[] = [];
+  const { db, handlers } = projectHandlers(root, events);
+  context.after(() => db.close());
+
+  const { project } = (await handlers.handle(
+    request("projects.create", { name: "App", icon: "folder", path: folder }),
+    connection([]),
+  )) as { project: { id: string } };
+
+  await assert.rejects(
+    handlers.handle(
+      request("conversation.create", { agent: "claude", cwd: folder, projectId: "nao-existe" }),
+      connection([]),
+    ),
+    (error) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+
+  const { conversation } = (await handlers.handle(
+    request("conversation.create", { agent: "claude", cwd: elsewhere, projectId: project.id }),
+    connection([]),
+  )) as { conversation: Conversation };
+  assert.equal(conversation.projectId, project.id);
+  assert.equal(conversation.cwd, elsewhere);
+
+  const now = new Date().toISOString();
+  addMessage(db, {
+    id: "agent-1",
+    conversationId: conversation.id,
+    author: "agent",
+    status: "done",
+    parts: [{ id: "p1", type: "text", markdown: "Oi" }],
+    createdAt: now,
+    updatedAt: now,
+  });
+  db.prepare(
+    "INSERT INTO agent_sessions (conversation_id,session_id,updated_at) VALUES (?,?,?)",
+  ).run(conversation.id, "sessao-1", now);
+
+  const branched = (await handlers.handle(
+    request("conversation.branch", { id: conversation.id, messageId: "agent-1" }),
+    connection([]),
+  )) as { conversation: Conversation };
+  assert.equal(branched.conversation.projectId, project.id);
+
+  await handlers.handle(request("projects.remove", { id: project.id }), connection([]));
+  for (const id of [conversation.id, branched.conversation.id]) {
+    const got = (await handlers.handle(request("conversation.get", { id }), connection([]))) as {
+      conversation: Conversation;
+      messages: unknown[];
+    };
+    assert.equal("projectId" in got.conversation, false);
+    assert.equal(got.messages.length, 1);
+  }
+  const session = db
+    .prepare("SELECT session_id FROM agent_sessions WHERE conversation_id=?")
+    .get(conversation.id) as { session_id: string } | undefined;
+  assert.equal(session?.session_id, "sessao-1");
+  await handlers.closeAgents();
+});
+
 class TestPty implements TerminalPty {
   readonly #exitListeners: Array<(event: { exitCode: number; signal?: number }) => void> = [];
 

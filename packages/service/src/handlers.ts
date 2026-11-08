@@ -12,7 +12,17 @@ import { ConversationManager } from "./agents/conversation-manager.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
 import { AgentRegistry } from "./agents/registry.ts";
 import { DeltaCoalescer } from "./coalescer.ts";
-import { getSetting, recordRecentFolder, setSetting } from "./db.ts";
+import {
+  createProject,
+  getProject,
+  getProjectByPath,
+  getSetting,
+  listProjects,
+  recordRecentFolder,
+  removeProject,
+  setSetting,
+  updateProject,
+} from "./db.ts";
 import { ServiceError } from "./errors.ts";
 import { gitInfo, listRecentFolders, validateFolder } from "./folders.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
@@ -120,6 +130,9 @@ export function createHandlers({
             "invalid_request",
             `O caminho do projeto não é uma pasta: ${folder.path}`,
           );
+        }
+        if (request.params.projectId && !getProject(db, request.params.projectId)) {
+          throw new ServiceError("invalid_request", "O projeto não existe.");
         }
         return {
           conversation: conversationManager.create({
@@ -250,6 +263,56 @@ export function createHandlers({
         return validateFolder(request.params.path);
       case "folders.gitInfo":
         return gitInfo(request.params.path);
+      case "projects.list":
+        return { projects: listProjects(db) };
+      case "projects.create": {
+        const folder = await validateFolder(request.params.path);
+        if (!folder.exists) {
+          throw new ServiceError(
+            "invalid_request",
+            `A pasta do projeto não existe: ${folder.path}`,
+          );
+        }
+        if (!folder.isDirectory) {
+          throw new ServiceError(
+            "invalid_request",
+            `O caminho do projeto não é uma pasta: ${folder.path}`,
+          );
+        }
+        if (getProjectByPath(db, folder.path)) {
+          throw new ServiceError("invalid_request", "Esta pasta já pertence a outro projeto.");
+        }
+        let project: ReturnType<typeof createProject>;
+        try {
+          project = createProject(db, {
+            name: request.params.name,
+            icon: request.params.icon,
+            path: folder.path,
+            defaultAgent: request.params.defaultAgent ?? null,
+          });
+        } catch (error) {
+          if (getProjectByPath(db, folder.path)) {
+            throw new ServiceError("invalid_request", "Esta pasta já pertence a outro projeto.");
+          }
+          throw error;
+        }
+        await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
+        return { project };
+      }
+      case "projects.update": {
+        const { id, ...changes } = request.params;
+        const project = updateProject(db, id, changes);
+        if (!project) throw new ServiceError("invalid_request", "O projeto não existe.");
+        await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
+        return { project };
+      }
+      case "projects.remove": {
+        if (!removeProject(db, request.params.id)) {
+          throw new ServiceError("invalid_request", "O projeto não existe.");
+        }
+        await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
+        return { removed: true };
+      }
       case "terminals.list":
         return terminalManager.list();
       case "terminals.open": {

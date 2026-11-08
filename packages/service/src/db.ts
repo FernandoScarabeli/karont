@@ -8,6 +8,7 @@ import type {
   ConversationMessage,
   JsonValue,
   MessagePart,
+  Project,
   RecentFolder,
 } from "@karont/contract";
 
@@ -89,6 +90,15 @@ export const migrations: { version: number; up: string }[] = [
       window_tokens INTEGER NOT NULL CHECK (window_tokens > 0)
     ) STRICT;`,
   },
+  {
+    version: 14,
+    up: `CREATE TABLE projects (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT NOT NULL, path TEXT NOT NULL UNIQUE,
+      default_agent TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    ALTER TABLE conversations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+    CREATE INDEX conversations_project ON conversations(project_id);`,
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -111,6 +121,7 @@ export type NewConversation = Pick<Conversation, "agent" | "title" | "cwd" | "mo
       | "branchedFromId"
       | "branchedFromMessageId"
       | "branchContext"
+      | "projectId"
     >
   >;
 
@@ -129,7 +140,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     updatedAt: now,
   };
   db.prepare(
-    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,fast,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at,branched_from_id,branched_from_message_id,branch_context_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,fast,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at,branched_from_id,branched_from_message_id,branch_context_enabled,project_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     conversation.id,
     conversation.agent,
@@ -150,6 +161,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     conversation.branchedFromId ?? null,
     conversation.branchedFromMessageId ?? null,
     conversation.branchContext ? 1 : 0,
+    conversation.projectId ?? null,
   );
   return conversation;
 }
@@ -484,6 +496,7 @@ type ConversationRow = {
   branched_from_id: string | null;
   branched_from_message_id: string | null;
   branch_context_enabled: number;
+  project_id: string | null;
   state: Conversation["state"];
   created_at: string;
   updated_at: string;
@@ -507,6 +520,7 @@ function mapConversation(row: ConversationRow): Conversation {
     agent: row.agent,
     title: row.title,
     cwd: row.cwd,
+    ...(row.project_id ? { projectId: row.project_id } : {}),
     mode: row.mode,
     ...(row.model ? { model: row.model } : {}),
     ...(row.effort ? { effort: row.effort } : {}),
@@ -653,6 +667,94 @@ export function listRecentFolderRecords(db: DatabaseSync): RecentFolderRecord[] 
     .prepare("SELECT path, used_at FROM recent_folders ORDER BY used_at DESC, rowid DESC LIMIT 50")
     .all() as { path: string; used_at: string }[];
   return rows.map(({ path, used_at }) => ({ path, usedAt: used_at }));
+}
+
+type ProjectRow = {
+  id: string;
+  name: string;
+  icon: string;
+  path: string;
+  default_agent: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapProject(row: ProjectRow): Project {
+  return {
+    id: row.id,
+    name: row.name,
+    icon: row.icon,
+    path: row.path,
+    defaultAgent: row.default_agent,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createProject(
+  db: DatabaseSync,
+  input: { name: string; icon: string; path: string; defaultAgent?: string | null },
+): Project {
+  const now = new Date().toISOString();
+  const project: Project = {
+    id: randomUUID(),
+    name: input.name,
+    icon: input.icon,
+    path: input.path,
+    defaultAgent: input.defaultAgent ?? null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  db.prepare(
+    "INSERT INTO projects (id,name,icon,path,default_agent,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+  ).run(project.id, project.name, project.icon, project.path, project.defaultAgent, now, now);
+  return project;
+}
+
+export function listProjects(db: DatabaseSync): Project[] {
+  const rows = db
+    .prepare("SELECT * FROM projects ORDER BY name COLLATE NOCASE ASC, name ASC, rowid ASC")
+    .all() as ProjectRow[];
+  return rows.map(mapProject);
+}
+
+export function getProject(db: DatabaseSync, id: string): Project | null {
+  const row = db.prepare("SELECT * FROM projects WHERE id=?").get(id) as ProjectRow | undefined;
+  return row ? mapProject(row) : null;
+}
+
+export function getProjectByPath(db: DatabaseSync, projectPath: string): Project | null {
+  const row = db.prepare("SELECT * FROM projects WHERE path=?").get(projectPath) as
+    | ProjectRow
+    | undefined;
+  return row ? mapProject(row) : null;
+}
+
+/** Atualiza nome, ícone e agente padrão. A pasta nunca muda depois de criada. */
+export function updateProject(
+  db: DatabaseSync,
+  id: string,
+  changes: { name?: string; icon?: string; defaultAgent?: string | null },
+): Project | null {
+  const current = getProject(db, id);
+  if (!current) return null;
+  const next = {
+    name: changes.name ?? current.name,
+    icon: changes.icon ?? current.icon,
+    defaultAgent: changes.defaultAgent === undefined ? current.defaultAgent : changes.defaultAgent,
+  };
+  db.prepare("UPDATE projects SET name=?,icon=?,default_agent=?,updated_at=? WHERE id=?").run(
+    next.name,
+    next.icon,
+    next.defaultAgent,
+    new Date().toISOString(),
+    id,
+  );
+  return getProject(db, id);
+}
+
+export function removeProject(db: DatabaseSync, id: string): boolean {
+  return db.prepare("DELETE FROM projects WHERE id=?").run(id).changes > 0;
 }
 
 function readUserVersion(db: DatabaseSync): number {
