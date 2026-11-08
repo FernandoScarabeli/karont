@@ -4,7 +4,7 @@ export const MAX_PANES = 6;
 export const MIN_PANE_SIZE = 15;
 
 export type PaneView =
-  | { kind: "new-conversation" }
+  | { kind: "new-conversation"; projectId?: string }
   | { kind: "terminal"; terminalId: string }
   | { kind: "chat"; conversationId: string };
 
@@ -27,7 +27,7 @@ export type SplitSide = "before" | "after";
 export type PaneEdge = "left" | "right" | "top" | "bottom";
 
 const paneViewSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("new-conversation") }),
+  z.object({ kind: z.literal("new-conversation"), projectId: z.string().min(1).optional() }),
   z.object({ kind: z.literal("terminal"), terminalId: z.string().min(1) }),
   z.object({ kind: z.literal("chat"), conversationId: z.string().min(1) }),
 ]);

@@ -1,8 +1,10 @@
-import { BridgeError, type Conversation, type TerminalInfo } from "@karont/contract";
+import { BridgeError, type Conversation, type Project, type TerminalInfo } from "@karont/contract";
 import {
   Archive,
   ArchiveRestore,
   ArrowLeft,
+  ChevronDown,
+  ChevronRight,
   Columns2,
   Ellipsis,
   ListTodo,
@@ -31,6 +33,10 @@ import {
 } from "../conversation/useConversationIndex.ts";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigationActions, useNavigationState } from "../navigation/NavigationContext.tsx";
+import { ProjectDialog } from "../projects/ProjectDialog.tsx";
+import { groupConversations } from "../projects/projectGroups.ts";
+import { getProjectIcon } from "../projects/projectIcons.ts";
+import { removeProjectFromStore, upsertProject, useProjects } from "../projects/useProjects.ts";
 import { TerminalCloseButton } from "../terminal/TerminalCloseButton.tsx";
 import {
   getTerminalDisplayDetails,
@@ -42,11 +48,15 @@ import { ServiceStatus } from "./ServiceStatus.tsx";
 import styles from "./Sidebar.module.css";
 
 const conversationActionsIcon = <Ellipsis aria-hidden="true" size={17} strokeWidth={1.8} />;
+const COLLAPSED_PROJECTS_SETTING = "sidebar.collapsedProjects";
 
 type MenuState =
   | { kind: "section" }
   | { kind: "conversation"; id: string; point?: { x: number; y: number } }
+  | { kind: "project"; id: string }
   | null;
+
+type ProjectDialogState = { project: Project | null } | null;
 
 type ConversationRowProps = {
   conversation: Conversation;
@@ -221,18 +231,40 @@ export function Sidebar() {
   const showArchivedRef = useRef(showArchived);
   showArchivedRef.current = showArchived;
   const conversationIndex = useConversationIndex(showArchived);
+  const projectsState = useProjects();
   const conversationList = conversationIndex.conversations;
-  const conversationListRef = useRef(conversationList);
-  conversationListRef.current = conversationList;
+  const groups = groupConversations(
+    conversationList,
+    projectsState.projects,
+    projectsState.loading,
+  );
+  // Fora das arquivadas, a seção Conversas mostra só as soltas.
+  const visibleConversations = showArchived ? conversationList : groups.loose;
+  const focusScopeRef = useRef({ visibleConversations, groups, showArchived });
+  focusScopeRef.current = { visibleConversations, groups, showArchived };
+  const [collapsedProjects, setCollapsedProjects] = useState<string[]>([]);
+  const collapsedProjectsRef = useRef(collapsedProjects);
+  collapsedProjectsRef.current = collapsedProjects;
+  const collapsedTouchedRef = useRef(false);
+  const [projectDialog, setProjectDialog] = useState<ProjectDialogState>(null);
+  const [projectToRemove, setProjectToRemove] = useState<Project | null>(null);
+  const [isRemovingProject, setIsRemovingProject] = useState(false);
+  const [removeProjectError, setRemoveProjectError] = useState("");
+  const projectButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const projectActionRefs = useRef(new Map<string, RefObject<HTMLButtonElement | null>>());
+  const newProjectRef = useRef<HTMLButtonElement>(null);
+  const projectDialogReturnFocusRef = useRef<HTMLElement>(null);
+  const removeProjectCancelRef = useRef<HTMLButtonElement>(null);
+  const removeProjectReturnFocusRef = useRef<HTMLElement>(null);
   const [documentVisible, setDocumentVisible] = useState(
     () => document.visibilityState === "visible",
   );
   const pinnedConversations = showArchived
     ? []
-    : conversationList.filter((conversation) => conversation.pinnedAt !== null);
+    : visibleConversations.filter((conversation) => conversation.pinnedAt !== null);
   const recentConversations = showArchived
-    ? conversationList
-    : conversationList.filter((conversation) => conversation.pinnedAt === null);
+    ? visibleConversations
+    : visibleConversations.filter((conversation) => conversation.pinnedAt === null);
   const terminalTitles = getTerminalDisplayTitles(terminals);
   const [terminalToClose, setTerminalToClose] = useState<TerminalInfo | null>(null);
   const [isClosing, setIsClosing] = useState(false);
@@ -269,6 +301,23 @@ export function Sidebar() {
     document.addEventListener("visibilitychange", updateDocumentVisibility);
     return () => document.removeEventListener("visibilitychange", updateDocumentVisibility);
   }, []);
+
+  useEffect(() => {
+    if (!bridge) return;
+    let mounted = true;
+    void bridge
+      .request("settings.get", { key: COLLAPSED_PROJECTS_SETTING })
+      .then(({ value }) => {
+        if (!mounted || collapsedTouchedRef.current || !Array.isArray(value)) return;
+        setCollapsedProjects(value.filter((id): id is string => typeof id === "string"));
+      })
+      .catch(() => {
+        // Sem a preferência salva, os grupos ficam abertos.
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [bridge]);
 
   useEffect(() => {
     if (!editingConversationId) return;
@@ -319,14 +368,28 @@ export function Sidebar() {
   }
 
   const conversationRemovalFocusTarget = useCallback((conversationId: string) => {
-    const conversations = conversationListRef.current;
-    const index = conversations.findIndex((conversation) => conversation.id === conversationId);
-    const target = conversations[index + 1] ?? conversations[index - 1];
-    return target
-      ? (conversationButtonRefs.current.get(target.id) ?? null)
-      : showArchivedRef.current
-        ? archivedBackRef.current
-        : newLooseConversationRef.current;
+    const {
+      visibleConversations: loose,
+      groups: current,
+      showArchived: archived,
+    } = focusScopeRef.current;
+    let siblings = loose;
+    let projectId: string | null = null;
+    if (!archived) {
+      for (const [id, conversations] of current.byProject) {
+        if (conversations.some((conversation) => conversation.id === conversationId)) {
+          siblings = conversations;
+          projectId = id;
+          break;
+        }
+      }
+    }
+    const index = siblings.findIndex((conversation) => conversation.id === conversationId);
+    const target = siblings[index + 1] ?? siblings[index - 1];
+    const targetButton = target ? conversationButtonRefs.current.get(target.id) : undefined;
+    if (targetButton) return targetButton;
+    if (projectId) return projectButtonRefs.current.get(projectId) ?? null;
+    return archived ? archivedBackRef.current : newLooseConversationRef.current;
   }, []);
 
   const focusAfterConversationRemoval = useCallback(
@@ -473,13 +536,14 @@ export function Sidebar() {
     setDeleteError("");
     setSidebarActionError("");
     setIsDeletingConversation(true);
+    const focusTarget = conversationRemovalFocusTarget(conversation.id);
     removeConversationFromIndex(conversation.id);
     try {
       await bridge.request("conversation.delete", { id: conversation.id });
       removeConversationFromIndex(conversation.id);
       closeConversationWorkspacePanes(conversation.id);
       conversationActionRefs.current.delete(conversation.id);
-      deleteReturnFocusRef.current = conversationRemovalFocusTarget(conversation.id);
+      deleteReturnFocusRef.current = focusTarget;
       setConversationToDelete(null);
     } catch (removeError) {
       upsertConversation(conversation);
@@ -626,6 +690,208 @@ export function Sidebar() {
   const pinnedRows = pinnedConversations.map(renderConversation);
   const recentRows = recentConversations.map(renderConversation);
 
+  const getProjectActionRef = (projectId: string) => {
+    let ref = projectActionRefs.current.get(projectId);
+    if (!ref) {
+      ref = createRef<HTMLButtonElement>();
+      projectActionRefs.current.set(projectId, ref);
+    }
+    return ref;
+  };
+
+  const saveCollapsedProjects = (next: string[]) => {
+    collapsedTouchedRef.current = true;
+    setCollapsedProjects(next);
+    if (!bridge) return;
+    void bridge
+      .request("settings.set", { key: COLLAPSED_PROJECTS_SETTING, value: next })
+      .catch(() => {
+        setSidebarActionError(t.shell.projectsSaveFailed);
+      });
+  };
+
+  const toggleProject = (projectId: string) => {
+    const current = collapsedProjectsRef.current;
+    const known = new Set(projectsState.projects.map((project) => project.id));
+    const next = current.includes(projectId)
+      ? current.filter((id) => id !== projectId)
+      : [...current, projectId];
+    saveCollapsedProjects(next.filter((id) => known.has(id)));
+  };
+
+  const openProjectDialog = (project: Project | null) => {
+    setMenu(null);
+    setSidebarActionError("");
+    projectDialogReturnFocusRef.current = project
+      ? (getProjectActionRef(project.id).current ??
+        projectButtonRefs.current.get(project.id) ??
+        null)
+      : newProjectRef.current;
+    setProjectDialog({ project });
+  };
+
+  const handleProjectSaved = (project: Project, mode: "create" | "edit") => {
+    upsertProject(project);
+    setProjectDialog(null);
+    if (mode === "create") {
+      if (collapsedProjectsRef.current.includes(project.id)) {
+        saveCollapsedProjects(collapsedProjectsRef.current.filter((id) => id !== project.id));
+      }
+      navigate({ name: "new-conversation", projectId: project.id });
+    }
+  };
+
+  const requestRemoveProject = (project: Project) => {
+    setMenu(null);
+    setRemoveProjectError("");
+    removeProjectReturnFocusRef.current =
+      getProjectActionRef(project.id).current ?? projectButtonRefs.current.get(project.id) ?? null;
+    setProjectToRemove(project);
+  };
+
+  const cancelRemoveProject = () => {
+    if (isRemovingProject) return;
+    setProjectToRemove(null);
+    setRemoveProjectError("");
+  };
+
+  async function removeProject() {
+    if (!bridge || !projectToRemove || isRemovingProject) return;
+    const project = projectToRemove;
+    setRemoveProjectError("");
+    setIsRemovingProject(true);
+    try {
+      await bridge.request("projects.remove", { id: project.id });
+      projectActionRefs.current.delete(project.id);
+      removeProjectReturnFocusRef.current = newProjectRef.current;
+      removeProjectFromStore(project.id);
+      setProjectToRemove(null);
+    } catch (removeError) {
+      setRemoveProjectError(
+        removeError instanceof BridgeError && removeError.message
+          ? removeError.message
+          : t.projects.removeFailed,
+      );
+    } finally {
+      setIsRemovingProject(false);
+    }
+  }
+
+  const projectMenuItems = (project: Project): ActionMenuItem[] => [
+    {
+      id: "edit",
+      label: t.shell.editProject,
+      icon: <Pencil size={15} />,
+      onSelect: () => openProjectDialog(project),
+    },
+    {
+      id: "remove",
+      label: t.shell.removeProject,
+      icon: <Trash2 size={15} />,
+      danger: true,
+      onSelect: () => requestRemoveProject(project),
+    },
+  ];
+
+  const renderProject = (project: Project) => {
+    const conversations = groups.byProject.get(project.id) ?? [];
+    const expanded = !collapsedProjects.includes(project.id);
+    const hasWaiting = conversations.some((conversation) => conversation.state === "waiting");
+    const hasWorking = conversations.some((conversation) => conversation.state === "working");
+    const statusClass = expanded
+      ? ""
+      : hasWaiting
+        ? styles.conversationStatusNeedsYou
+        : hasWorking
+          ? styles.conversationStatusWorking
+          : "";
+    const statusText = expanded
+      ? ""
+      : hasWaiting
+        ? t.shell.projectStatusWaiting
+        : hasWorking
+          ? t.shell.projectStatusWorking
+          : "";
+    const menuOpen = menu?.kind === "project" && menu.id === project.id;
+    const ProjectIcon = getProjectIcon(project.icon);
+    const Chevron = expanded ? ChevronDown : ChevronRight;
+    const listId = `sidebar-project-${project.id}`;
+    return (
+      <li className={styles.projectItem} key={project.id}>
+        <div
+          className={`${styles.conversationItem} ${menuOpen ? styles.conversationMenuOpen : ""}`}
+        >
+          <button
+            aria-controls={expanded ? listId : undefined}
+            aria-description={t.shell.projectDescription(conversations.length, statusText)}
+            aria-expanded={expanded}
+            className={styles.conversationButton}
+            onClick={() => toggleProject(project.id)}
+            ref={(element) => {
+              if (element) projectButtonRefs.current.set(project.id, element);
+              else projectButtonRefs.current.delete(project.id);
+              fluidHover.registerItem(`project:${project.id}`, element);
+            }}
+            title={project.path}
+            type="button"
+          >
+            <Chevron
+              aria-hidden="true"
+              className={styles.projectChevron}
+              size={16}
+              strokeWidth={1.8}
+            />
+            <ProjectIcon aria-hidden="true" size={15} strokeWidth={1.8} />
+            <span className={styles.conversationTitle}>{project.name}</span>
+            {statusClass ? (
+              <span
+                aria-hidden="true"
+                className={`${styles.conversationStatusDot} ${statusClass}`}
+              />
+            ) : null}
+          </button>
+          <div className={styles.projectActions}>
+            <IconButton
+              icon={<Plus aria-hidden="true" size={16} strokeWidth={1.8} />}
+              label={t.shell.newConversationInProject(project.name)}
+              onClick={() => navigate({ name: "new-conversation", projectId: project.id })}
+              size="sm"
+            />
+            <ActionMenu
+              items={() => projectMenuItems(project)}
+              label={t.shell.projectActions(project.name)}
+              onOpenChange={(open) => {
+                setMenu((current) => {
+                  if (open) return { kind: "project", id: project.id };
+                  return current?.kind === "project" && current.id === project.id ? null : current;
+                });
+              }}
+              open={menuOpen}
+              triggerIcon={conversationActionsIcon}
+              triggerLabel={t.shell.projectActions(project.name)}
+              triggerRef={getProjectActionRef(project.id)}
+            />
+          </div>
+        </div>
+        {expanded ? (
+          conversations.length > 0 ? (
+            <ul
+              aria-label={t.shell.projectConversations(project.name)}
+              className={`${styles.conversationList} ${styles.projectConversations}`}
+              id={listId}
+            >
+              {conversations.map(renderConversation)}
+            </ul>
+          ) : (
+            <p className={`${styles.emptyList} ${styles.projectEmpty}`} id={listId}>
+              <span>{t.shell.projectNoConversations}</span>
+            </p>
+          )
+        ) : null}
+      </li>
+    );
+  };
+
   return (
     <aside aria-label={t.shell.sidebar} className={styles.sidebar}>
       <nav
@@ -637,7 +903,9 @@ export function Sidebar() {
         <div className={styles.primaryActions}>
           <Button
             aria-current={
-              view.name === "workspace" && activePane?.view.kind === "new-conversation"
+              view.name === "workspace" &&
+              activePane?.view.kind === "new-conversation" &&
+              !activePane.view.projectId
                 ? "page"
                 : undefined
             }
@@ -661,23 +929,36 @@ export function Sidebar() {
           </Button>
         </div>
 
-        <section aria-labelledby="sidebar-projects-title" className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle} id="sidebar-projects-title">
-              {t.shell.projects}
-            </h2>
-            <IconButton
-              aria-description={t.shell.availableSoon}
-              disabled
-              icon={<Plus aria-hidden="true" size={16} strokeWidth={1.8} />}
-              label={t.shell.newProject}
-              size="sm"
-            />
-          </div>
-          <p className={styles.emptyList}>
-            <span>{t.shell.noProjects}</span>
-          </p>
-        </section>
+        {showArchived ? null : (
+          <section aria-labelledby="sidebar-projects-title" className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <h2 className={styles.sectionTitle} id="sidebar-projects-title">
+                {t.shell.projects}
+              </h2>
+              <IconButton
+                icon={<Plus aria-hidden="true" size={16} strokeWidth={1.8} />}
+                label={t.shell.newProject}
+                onClick={() => openProjectDialog(null)}
+                ref={newProjectRef}
+                size="sm"
+              />
+            </div>
+            {projectsState.error ? (
+              <p className={styles.emptyList} role="status">
+                <span>{t.shell.projectsLoadError}</span>
+              </p>
+            ) : null}
+            {projectsState.projects.length > 0 ? (
+              <ul aria-label={t.shell.projectList} className={styles.conversationList}>
+                {projectsState.projects.map(renderProject)}
+              </ul>
+            ) : projectsState.loading || projectsState.error ? null : (
+              <p className={styles.emptyList}>
+                <span>{t.shell.noProjects}</span>
+              </p>
+            )}
+          </section>
+        )}
 
         <section aria-labelledby="sidebar-conversations-title" className={styles.section}>
           <div className={styles.sectionHeader}>
@@ -774,7 +1055,8 @@ export function Sidebar() {
           ) : null}
           {!showArchived &&
           !conversationIndex.loading &&
-          conversationList.length === 0 &&
+          !projectsState.loading &&
+          groups.loose.length === 0 &&
           terminals.length === 0 ? (
             <p className={styles.emptyList}>
               <span>{t.shell.noConversations}</span>
@@ -917,6 +1199,47 @@ export function Sidebar() {
         {deleteError ? (
           <p className={styles.closeError} role="alert">
             {deleteError}
+          </p>
+        ) : null}
+      </Dialog>
+      <ProjectDialog
+        onClose={() => setProjectDialog(null)}
+        onSaved={handleProjectSaved}
+        open={projectDialog !== null}
+        project={projectDialog?.project ?? null}
+        returnFocusRef={projectDialogReturnFocusRef}
+      />
+      <Dialog
+        description={t.projects.removeDescription}
+        footer={
+          <>
+            <Button
+              disabled={isRemovingProject}
+              onClick={cancelRemoveProject}
+              ref={removeProjectCancelRef}
+              variant="secondary"
+            >
+              {t.projects.cancel}
+            </Button>
+            <Button
+              disabled={isRemovingProject}
+              onClick={() => void removeProject()}
+              variant="danger"
+            >
+              <Trash2 aria-hidden="true" size={15} />
+              {isRemovingProject ? t.projects.removing : t.projects.removeAction}
+            </Button>
+          </>
+        }
+        initialFocusRef={removeProjectCancelRef as RefObject<HTMLElement | null>}
+        onClose={cancelRemoveProject}
+        open={projectToRemove !== null}
+        returnFocusRef={removeProjectReturnFocusRef}
+        title={t.projects.removeTitle(projectToRemove?.name ?? "")}
+      >
+        {removeProjectError ? (
+          <p className={styles.closeError} role="alert">
+            {removeProjectError}
           </p>
         ) : null}
       </Dialog>

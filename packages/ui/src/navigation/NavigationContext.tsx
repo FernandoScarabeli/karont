@@ -38,7 +38,7 @@ export type View =
 
 export type NavigationTarget =
   | View
-  | { name: "new-conversation" }
+  | { name: "new-conversation"; projectId?: string }
   | { name: "conversation"; id: string }
   | { name: "terminal"; id: string };
 
@@ -166,7 +166,10 @@ export function NavigationProvider({ children }: PropsWithChildren) {
   const navigate = useCallback((target: NavigationTarget) => {
     const { layout: currentLayout, activePaneId: currentPaneId } = navigationRef.current;
     if (target.name === "new-conversation") {
-      setLayout((current) => setPaneView(current, currentPaneId, { kind: "new-conversation" }));
+      const view: PaneView = target.projectId
+        ? { kind: "new-conversation", projectId: target.projectId }
+        : { kind: "new-conversation" };
+      setLayout((current) => setPaneView(current, currentPaneId, view));
       setView((current) => (current.name === "workspace" ? current : { name: "workspace" }));
       return;
     }

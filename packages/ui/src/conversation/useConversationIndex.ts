@@ -118,21 +118,29 @@ function connect() {
       removeConversationFromIndex(event.payload.id);
       return;
     }
+    if (event.event === "projects.changed") {
+      pruneRemovedProjects(new Set(event.payload.projects.map((project) => project.id)));
+      return;
+    }
     if (event.event !== "conversation.stateChanged") return;
     applyConversationStateChange(event.payload.conversation);
   });
   loadBucket("active");
 }
 
+export function subscribeConversationIndex(bucket: Bucket, listener: () => void) {
+  listeners[bucket].add(listener);
+  connect();
+  if (bucket === "archived") loadBucket("archived");
+  return () => {
+    listeners[bucket].delete(listener);
+  };
+}
+
 export function useConversationIndex(archived = false) {
   const bucket: Bucket = archived ? "archived" : "active";
   return useSyncExternalStore(
-    (listener) => {
-      listeners[bucket].add(listener);
-      connect();
-      if (archived) loadBucket("archived");
-      return () => listeners[bucket].delete(listener);
-    },
+    (listener) => subscribeConversationIndex(bucket, listener),
     () => snapshots[bucket],
     () => snapshots[bucket],
   );
@@ -187,6 +195,36 @@ export function removeConversationFromIndex(id: string) {
     const conversations = current.conversations.filter((conversation) => conversation.id !== id);
     if (conversations.length === current.conversations.length) continue;
     snapshots[bucket] = { ...current, conversations };
+    notify(bucket);
+  }
+}
+
+function withoutProjectId(conversation: Conversation): Conversation {
+  const { projectId: _removed, ...rest } = conversation;
+  return rest;
+}
+
+/**
+ * Remover um projeto não emite `conversation.stateChanged` e o `updatedAt` não muda,
+ * então recarregar a lista não corrigiria a cópia local. Tiramos o `projectId` que
+ * não existe mais, sem mexer em `updatedAt`.
+ */
+export function pruneRemovedProjects(existingProjectIds: ReadonlySet<string>) {
+  const isStale = (conversation: Conversation) =>
+    conversation.projectId !== undefined && !existingProjectIds.has(conversation.projectId);
+
+  for (const [id, conversation] of latestConversations) {
+    if (isStale(conversation)) latestConversations.set(id, withoutProjectId(conversation));
+  }
+  for (const bucket of ["active", "archived"] as const) {
+    const current = snapshots[bucket];
+    if (!current.conversations.some(isStale)) continue;
+    snapshots[bucket] = {
+      ...current,
+      conversations: current.conversations.map((conversation) =>
+        isStale(conversation) ? withoutProjectId(conversation) : conversation,
+      ),
+    };
     notify(bucket);
   }
 }

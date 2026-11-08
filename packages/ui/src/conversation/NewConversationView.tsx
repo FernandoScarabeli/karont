@@ -21,6 +21,7 @@ import {
   useState,
 } from "react";
 import { AgentIcon } from "../agents/AgentIcon.tsx";
+import { findChatAgents } from "../agents/chatAgents.ts";
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
 import { Composer, type ComposerAutocompleteOption } from "../components/Composer/Composer.tsx";
@@ -29,6 +30,9 @@ import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { TextField } from "../components/TextField/TextField.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
+import { resolveInitialAgent, TERMINAL_CHOICE } from "../projects/initialAgent.ts";
+import { getProjectIcon } from "../projects/projectIcons.ts";
+import { useProject } from "../projects/useProjects.ts";
 import {
   AttachmentChips,
   AttachmentPicker,
@@ -62,7 +66,6 @@ type ComposerFile = ResultOf<"composer.files">["files"][number];
 
 const LAST_AGENT_SETTING = "newConversation.lastAgent";
 const LAST_FOLDER_SETTING = "newConversation.lastFolder";
-const TERMINAL_CHOICE = "terminal";
 const PERSONAL_FOLDER = "~";
 
 type AgentChoice = typeof TERMINAL_CHOICE | string;
@@ -70,7 +73,10 @@ export function NewConversationView({
   titleRef,
   headerActions,
   dragHandleProps,
+  projectId,
 }: {
+  /** Projeto da nova conversa. Se ele não existir mais, a tela vira conversa solta. */
+  projectId?: string;
   titleRef?: RefObject<HTMLHeadingElement | null>;
   headerActions?: ReactNode;
   dragHandleProps?: {
@@ -82,8 +88,11 @@ export function NewConversationView({
 }) {
   const bridge = getBridge();
   const { navigate } = useNavigation();
+  const { project, loading: projectsLoading } = useProject(projectId);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [choice, setChoice] = useState<AgentChoice>(TERMINAL_CHOICE);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
+  const [manualChoice, setManualChoice] = useState<AgentChoice | null>(null);
+  const [lastUsedAgent, setLastUsedAgent] = useState<string | null>(null);
   const [folderPath, setFolderPath] = useState(PERSONAL_FOLDER);
   const [homePath, setHomePath] = useState<string>();
   const [command, setCommand] = useState("");
@@ -115,8 +124,8 @@ export function NewConversationView({
     hour: new Date().getHours(),
     sample: Math.random(),
   }));
-  const choiceTouchedRef = useRef(false);
   const folderTouchedRef = useRef(false);
+  const hasProjectRef = useRef(Boolean(projectId));
   const titleId = useId();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const composerSectionRef = useRef<HTMLElement>(null);
@@ -160,21 +169,17 @@ export function NewConversationView({
         if (!mounted) return;
 
         if (agentsResult.status === "fulfilled") {
-          const foundAgents = agentsResult.value.agents.filter(
-            (agent) => agent.found && (agent.id === "claude" || agent.id === "codex"),
-          );
-          setAgents(foundAgents);
-          if (
-            !choiceTouchedRef.current &&
-            agentSettingResult.status === "fulfilled" &&
-            typeof agentSettingResult.value.value === "string" &&
-            (agentSettingResult.value.value === TERMINAL_CHOICE ||
-              foundAgents.some((agent) => agent.id === agentSettingResult.value.value))
-          ) {
-            setChoice(agentSettingResult.value.value);
-          }
+          setAgents(findChatAgents(agentsResult.value.agents));
+          setAgentsLoaded(true);
         } else {
           setAgentsError(true);
+        }
+
+        if (
+          agentSettingResult.status === "fulfilled" &&
+          typeof agentSettingResult.value.value === "string"
+        ) {
+          setLastUsedAgent(agentSettingResult.value.value);
         }
 
         if (systemInfoResult.status === "fulfilled") {
@@ -208,11 +213,14 @@ export function NewConversationView({
 
         if (mounted) {
           updateFolderPath(PERSONAL_FOLDER);
-          saveSetting(
-            LAST_FOLDER_SETTING,
-            PERSONAL_FOLDER,
-            t.conversation.settingsFolderSaveFailed,
-          );
+          // Dentro de um projeto a pasta salva não é usada nem mexida.
+          if (!hasProjectRef.current) {
+            saveSetting(
+              LAST_FOLDER_SETTING,
+              PERSONAL_FOLDER,
+              t.conversation.settingsFolderSaveFailed,
+            );
+          }
         }
       },
     );
@@ -222,6 +230,12 @@ export function NewConversationView({
     };
   }, [bridge, saveSetting, updateFolderPath]);
 
+  const choice = resolveInitialAgent({
+    manualChoice,
+    projectDefault: project?.defaultAgent,
+    lastUsed: lastUsedAgent,
+    foundAgentIds: agentsLoaded ? agents.map((agent) => agent.id) : null,
+  });
   const selectedAgent = agents.find((agent) => agent.id === choice);
   const selectedAgentForShortcuts = selectedAgent?.id;
   const selectedTitle = selectedAgent?.name ?? t.conversation.terminal;
@@ -235,14 +249,17 @@ export function NewConversationView({
     canAttachFiles,
     choice === TERMINAL_CHOICE ? "terminal" : "agent",
   );
-  const gitPath = folderPath === PERSONAL_FOLDER ? homePath : folderPath;
-  const suggestionCwd = folderPath === PERSONAL_FOLDER ? homePath : folderPath;
+  // Com projeto carregado, a pasta é a dele e não dá para trocar.
+  const workingPath = project ? project.path : folderPath;
+  const gitPath = workingPath === PERSONAL_FOLDER ? homePath : workingPath;
+  const suggestionCwd = workingPath === PERSONAL_FOLDER ? homePath : workingPath;
   const { info: gitInfo } = useGitInfo(gitPath, "new-conversation");
-  const isPersonalFolderSelected = folderPath === PERSONAL_FOLDER || folderPath === homePath;
-  const folderName = isPersonalFolderSelected ? PERSONAL_FOLDER : getFolderName(folderPath);
+  const isPersonalFolderSelected =
+    !project && (folderPath === PERSONAL_FOLDER || folderPath === homePath);
+  const folderName = isPersonalFolderSelected ? PERSONAL_FOLDER : getFolderName(workingPath);
   const accessibleFolderPath = isPersonalFolderSelected
     ? (homePath ?? PERSONAL_FOLDER)
-    : folderPath;
+    : workingPath;
   const folderButtonLabel = `${t.conversation.folderAccessibleName(accessibleFolderPath)}`;
 
   const selectedAgentId =
@@ -470,9 +487,9 @@ export function NewConversationView({
   }, [bridge, saveSetting, selectedAgentId]);
 
   function chooseAgent(option: AgentChoice) {
-    choiceTouchedRef.current = true;
     if (option === TERMINAL_CHOICE) composerAttachments.clear();
-    setChoice(option);
+    setManualChoice(option);
+    setLastUsedAgent(option);
     setShortcutTrigger(null);
     setActivePopover(null);
     setError("");
@@ -618,7 +635,7 @@ export function NewConversationView({
       const result = await bridge.request("terminals.open", {
         cols: 80,
         rows: 24,
-        ...(folderPath === PERSONAL_FOLDER ? {} : { cwd: folderPath }),
+        ...(workingPath === PERSONAL_FOLDER ? {} : { cwd: workingPath }),
         ...(cleanCommand ? { command: cleanCommand } : {}),
       });
       navigate({ name: "terminal", id: result.terminal.id });
@@ -652,12 +669,13 @@ export function NewConversationView({
     let created: Conversation | null = null;
     try {
       const cwd =
-        folderPath === PERSONAL_FOLDER
+        workingPath === PERSONAL_FOLDER
           ? (homePath ?? (await bridge.request("system.info", {})).homeDir)
-          : folderPath;
+          : workingPath;
       const result = await bridge.request("conversation.create", {
         agent: selectedAgent.id,
         cwd,
+        ...(project ? { projectId: project.id } : {}),
         mode,
         title: t.conversation.title,
         ...(modelListAvailable && currentModel ? { model: currentModel } : {}),
@@ -743,7 +761,11 @@ export function NewConversationView({
     else if (shortcutCommand === "access") setActivePopover("config");
     else if (shortcutCommand === "new") {
       composerAttachments.clear();
-      navigate({ name: "new-conversation" });
+      navigate(
+        project
+          ? { name: "new-conversation", projectId: project.id }
+          : { name: "new-conversation" },
+      );
     }
   }
 
@@ -857,16 +879,29 @@ export function NewConversationView({
           }
           below={
             <div className={styles.folderStrip}>
-              <button
-                aria-label={folderButtonLabel}
-                className={styles.folderButton}
-                onClick={() => void openFolderChooser()}
-                title={folderButtonLabel}
-                type="button"
-              >
-                <Folder aria-hidden="true" size={16} strokeWidth={1.8} />
-                <span>{folderName}</span>
-              </button>
+              {project ? (
+                // biome-ignore lint/a11y/useSemanticElements: o nome acessível exige role explícito num contêiner.
+                <div
+                  aria-label={t.projects.stripAccessibleName(project.name, project.path)}
+                  className={styles.projectLabel}
+                  role="group"
+                  title={project.path}
+                >
+                  <ProjectStripIcon name={project.icon} />
+                  <span>{project.name}</span>
+                </div>
+              ) : (
+                <button
+                  aria-label={folderButtonLabel}
+                  className={styles.folderButton}
+                  onClick={() => void openFolderChooser()}
+                  title={folderButtonLabel}
+                  type="button"
+                >
+                  <Folder aria-hidden="true" size={16} strokeWidth={1.8} />
+                  <span>{folderName}</span>
+                </button>
+              )}
               <span className={styles.branchSlot}>
                 <GitBranchLabel info={gitInfo} />
               </span>
@@ -896,6 +931,7 @@ export function NewConversationView({
           submitDisabled={
             !bridge ||
             isOpening ||
+            (Boolean(projectId) && projectsLoading) ||
             composerAttachments.isPreparing ||
             (choice !== TERMINAL_CHOICE &&
               (!selectedAgent ||
@@ -972,6 +1008,11 @@ export function NewConversationView({
       </Dialog>
     </div>
   );
+}
+
+function ProjectStripIcon({ name }: { name: string }) {
+  const Icon = getProjectIcon(name);
+  return <Icon aria-hidden="true" size={16} strokeWidth={1.8} />;
 }
 
 function getFolderName(path: string): string {
