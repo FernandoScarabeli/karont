@@ -17,11 +17,15 @@ Você é o Claude Code que vai construir o Karont do zero a partir da [SPEC.md](
 - Ciclo de testes: na tarefa, só os rápidos (typecheck, lint, `node:test`, 1 E2E de fumaça). Completos só antes do merge do marco. Medir o tempo; se passar de ~3 min por rodada, simplificar.
 - Registre decisões do dono em `docs/PROGRESSO.md` (numeradas) e problemas fora do escopo em `docs/DIVIDAS.md`.
 
+### Executor no M3
+
+No M3 o executor é um subagente Claude Sonnet 5.5 (decisão 22 do `PROGRESSO.md`), uma tarefa por vez, numa worktree própria. O comando abaixo vale quando o Codex for o executor; nesse caso, use o esforço `high`.
+
 ### Comando do executor (Codex)
 
 ```bash
 W=~/karont-worktrees/<tarefa>
-cd "$W" && codex exec -m gpt-6-luna -c model_reasoning_effort="xhigh" -c service_tier="fast" \
+cd "$W" && codex exec -m gpt-6-luna -c model_reasoning_effort="high" -c service_tier="fast" \
   -c approval_policy="never" -C "$W" -s workspace-write \
   --add-dir "<repo>/.git/worktrees/<tarefa>" \
   -o <ref>/resposta.md - < <ref>/tarefa.md > <ref>/codex.log 2>&1

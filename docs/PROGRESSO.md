@@ -76,6 +76,19 @@ Repositório recriado do zero em 2026-10-31.
     - Importar de outras ferramentas (M11): só o que o usuário escolher, por ação explícita, nunca credenciais.
     - Acesso de outra máquina (M10): login próprio e seguro, sem abrir o serviço direto na internet.
 
+22. **Executor do M3** (2026-11-08): subagentes **Claude Sonnet 5.5**, uma tarefa por vez, numa worktree própria. Substitui o Codex `gpt-6-luna` (decisão 10 e briefing original do M3) neste marco.
+
+23. **Regras do M3** (aprovadas em 2026-11-08):
+    - Ordem das tarefas: B1, F1, B3, F3, B2a, B2b, F2, B4a, B4b, F4 e fechamento. A fila vem antes do desfazer porque o ponto de restauração é criado quando a mensagem sai da fila.
+    - Agente esperando permissão ou resposta ocupa vaga. Plano aguardando aprovação não ocupa, porque o turno já acabou.
+    - Parar tira a mensagem da fila. Se o serviço reiniciar, ela fica interrompida, com "tentar de novo", e nunca roda sozinha.
+    - Conversa solta em pasta Git também tem ver mudanças e desfazer. A pasta pessoal nunca tem, mesmo que seja um repositório.
+    - Ficam os últimos 50 pontos de restauração por conversa, e apagar a conversa apaga os dela. Worktree só é removida com clique do usuário.
+    - Os pontos aparecem como commits no `git log --all`; aceito.
+    - Se o agente fez commit, desfazer volta os arquivos e o commit fica, com aviso antes.
+    - Trazer de volta: as mudanças não commitadas viram commit na branch da própria worktree, e depois vem o merge, só com o clique.
+    - Remover projeto não apaga a pasta, e as conversas dele viram soltas.
+
 ## M2 — estado em 2026-10-31 (fim da sessão sem o dono)
 Branch `m2-chat` (sem PR). Feito e testado com as CLIs reais no preview (Haiku / GPT-5.6-Luna):
 - Chat com Claude Code (processo aberto, `stream-json`, `--permission-prompts host --permission-prompt-tool stdio`) e Codex (`codex app-server --stdio`).
