@@ -153,6 +153,7 @@ export const t = {
     nameRequired: "Informe um nome para o projeto.",
     nameTooLong: "O nome pode ter até 80 caracteres.",
     iconLabel: "Ícone",
+    iconTriggerAccessibleName: (icon: string) => `Ícone: ${icon}`,
     iconNames: {
       folder: "Pasta de arquivos",
       code: "Código",

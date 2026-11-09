@@ -46,7 +46,19 @@ test("projetos: criar, agrupar conversas, fechar o grupo, remover e erro de past
     const dialog = window.getByRole("dialog", { name: "Novo projeto" });
     await expect(dialog.getByLabel("Nome")).toBeFocused();
     await dialog.getByLabel("Nome").fill("Projeto Teste");
-    await dialog.getByRole("radio", { name: "Foguete" }).check({ force: true });
+    // O menu de ícones: Esc fecha só o menu, e clicar escolhe e fecha.
+    const iconTrigger = dialog.getByRole("button", { name: /^Ícone: / });
+    const rocket = dialog.getByRole("radio", { name: "Foguete" });
+    await iconTrigger.click();
+    await expect(rocket).toBeVisible();
+    await window.keyboard.press("Escape");
+    await expect(rocket).toBeHidden();
+    await expect(dialog).toBeVisible();
+    await expect(iconTrigger).toBeFocused();
+    await iconTrigger.click();
+    await rocket.click();
+    await expect(rocket).toBeHidden();
+    await expect(iconTrigger).toHaveAccessibleName("Ícone: Foguete");
     await dialog.getByRole("textbox", { name: "Pasta", exact: true }).fill(projectFolder);
     await dialog.getByRole("button", { name: "Criar projeto" }).click();
     await expect(dialog).toBeHidden();

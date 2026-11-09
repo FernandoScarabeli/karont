@@ -17,7 +17,8 @@ import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { TextField } from "../components/TextField/TextField.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./ProjectDialog.module.css";
-import { DEFAULT_PROJECT_ICON, PROJECT_ICONS } from "./projectIcons.ts";
+import { ProjectIconPicker } from "./ProjectIconPicker.tsx";
+import { DEFAULT_PROJECT_ICON } from "./projectIcons.ts";
 
 const MAX_NAME_LENGTH = 80;
 /** Valor do radio "Último usado"; não é um id de agente. */
@@ -53,7 +54,6 @@ export function ProjectDialog({
   const nameRef = useRef<HTMLInputElement>(null);
   const pathRef = useRef<HTMLInputElement>(null);
   const formId = useId();
-  const iconGroupName = useId();
   const agentGroupName = useId();
 
   // Começa o formulário do zero cada vez que o diálogo abre.
@@ -227,42 +227,20 @@ export function ProjectDialog({
       title={editing ? t.projects.editTitle : t.projects.createTitle}
     >
       <form className={styles.form} id={formId} onSubmit={(event) => void submit(event)}>
-        <TextField
-          autoComplete="off"
-          label={t.projects.nameLabel}
-          maxLength={MAX_NAME_LENGTH}
-          onChange={(event) => {
-            setName(event.currentTarget.value);
-            setError("");
-          }}
-          ref={nameRef}
-          value={name}
-        />
-
-        <fieldset className={styles.group}>
-          <legend className={styles.legend}>{t.projects.iconLabel}</legend>
-          <div className={styles.iconGrid}>
-            {PROJECT_ICONS.map(({ name: iconName, Icon }) => {
-              const label = t.projects.iconNames[iconName] ?? iconName;
-              return (
-                <label className={styles.iconOption} key={iconName} title={label}>
-                  <input
-                    aria-label={label}
-                    checked={icon === iconName}
-                    className={styles.choiceInput}
-                    name={iconGroupName}
-                    onChange={() => setIcon(iconName)}
-                    type="radio"
-                    value={iconName}
-                  />
-                  <span className={styles.iconFace}>
-                    <Icon aria-hidden="true" size={16} strokeWidth={1.8} />
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
+        <div className={styles.identityRow}>
+          <ProjectIconPicker onChange={setIcon} value={icon} />
+          <TextField
+            autoComplete="off"
+            label={t.projects.nameLabel}
+            maxLength={MAX_NAME_LENGTH}
+            onChange={(event) => {
+              setName(event.currentTarget.value);
+              setError("");
+            }}
+            ref={nameRef}
+            value={name}
+          />
+        </div>
 
         {editing ? (
           <TextField
