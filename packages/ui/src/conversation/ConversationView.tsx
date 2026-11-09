@@ -81,6 +81,8 @@ import {
   olderMessageCursor,
 } from "./messageWindow.ts";
 import { queueLabel } from "./queueLabel.ts";
+import { RestoreChangesPanel } from "./RestoreChangesPanel.tsx";
+import { closeRestorePanel, setRestoreBusy, useRestorePanelMessage } from "./restorePanelStore.ts";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
 import { useQueueStatus } from "./useQueueStatus.ts";
@@ -724,6 +726,23 @@ export function ConversationView({
   const adjustQueueLimit = useCallback(() => {
     navigate({ name: "settings", section: "general" });
   }, [navigate]);
+  const restorePanelMessageId = useRestorePanelMessage(id);
+  const restoreBusy = isWorking || isQueued || isWaiting;
+  useEffect(() => {
+    setRestoreBusy(id, restoreBusy);
+    return () => setRestoreBusy(id, false);
+  }, [id, restoreBusy]);
+  const closeRestoreChanges = useCallback(() => {
+    const messageId = restorePanelMessageId;
+    closeRestorePanel(id);
+    if (!messageId) return;
+    // O botão "Ver mudanças" que abriu o painel recebe o foco de volta.
+    window.requestAnimationFrame(() => {
+      messageRegionRef.current
+        ?.querySelector<HTMLElement>(`[data-restore-changes-for="${CSS.escape(messageId)}"]`)
+        ?.focus({ preventScroll: true });
+    });
+  }, [id, restorePanelMessageId]);
   const workingActive = isWorking || (isStopping && !isQueued);
   const shouldShowWorkingIndicator =
     !isWaiting &&
@@ -1685,6 +1704,14 @@ export function ConversationView({
           />
         </FollowBottomContext>
         {historyOpen ? <div aria-hidden="true" className={styles.historyBackdrop} /> : null}
+        {restorePanelMessageId ? (
+          <RestoreChangesPanel
+            conversationId={id}
+            key={restorePanelMessageId}
+            messageId={restorePanelMessageId}
+            onClose={closeRestoreChanges}
+          />
+        ) : null}
       </div>
 
       <section

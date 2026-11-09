@@ -1,0 +1,96 @@
+.line {
+  display: flex;
+  min-height: var(--k-control-height-sm);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1);
+  margin-block-start: var(--k-chat-message-action-gap);
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}
+
+.text {
+  padding-inline-end: var(--k-space-1);
+}
+
+.separator {
+  color: var(--k-color-text-muted);
+}
+
+.action {
+  min-height: var(--k-control-height-sm);
+  padding-inline: var(--k-space-2);
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-12);
+  cursor: pointer;
+}
+
+.action:hover:not(:disabled) {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
+.action:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-chat-focus-outline-offset);
+}
+
+.action:disabled {
+  opacity: var(--k-opacity-disabled);
+  cursor: not-allowed;
+}
+
+.note {
+  margin: var(--k-chat-message-action-gap) 0 0;
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}
+
+.error,
+.dialogError {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin: var(--k-space-2) 0 0;
+  color: var(--k-color-danger);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}
+
+.warnings {
+  display: grid;
+  gap: var(--k-space-2);
+}
+
+.warning {
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+.pathList {
+  max-height: calc(var(--k-control-height-md) * 3);
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  overflow: auto;
+  border: var(--k-border-width) solid var(--k-color-border);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.pathList:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}

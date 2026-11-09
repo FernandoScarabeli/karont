@@ -75,6 +75,7 @@ import { cleanMarkdownPreview, formatConversationText } from "./displayText.ts";
 import { getAllowedExternalUrl } from "./externalLinks.ts";
 import { FollowBottomContext } from "./followBottom.ts";
 import { splitMarkdownBlocks } from "./markdownBlocks.ts";
+import { RestoreSummary } from "./RestoreSummary.tsx";
 import { rehypeCaret } from "./rehypeCaret.ts";
 import { SourceCitationBadge } from "./SourceCitationBadge.tsx";
 import type { ConversationMessage, MessagePart } from "./useConversation.ts";
@@ -510,6 +511,9 @@ export const MessageRow = memo(function MessageRow({
           ) : null}
         </>
       )}
+      {message.author === "agent" && message.status !== "streaming" ? (
+        <RestoreSummary conversationId={message.conversationId} messageId={message.id} />
+      ) : null}
       <div className={styles.messageOptions}>
         <div className={styles.messageOptionsInner}>
           <div className={styles.messageOptionsMeta}>
@@ -1775,12 +1779,15 @@ function formatCommandDuration(milliseconds: number): string {
   return `${minutes} min ${seconds} s`;
 }
 
-const DiffFilePanel = memo(function DiffFilePanel({
+export const DiffFilePanel = memo(function DiffFilePanel({
   change,
   open,
+  showHeader = true,
 }: {
   change: { path: string; diff: string };
   open: boolean;
+  /** Falso quando quem usa já mostra o caminho e os números acima do diff. */
+  showHeader?: boolean;
 }) {
   const lines = useMemo(() => getDiffDisplayLines(change.diff), [change.diff]);
   const displayLines = useMemo(() => {
@@ -1822,18 +1829,20 @@ const DiffFilePanel = memo(function DiffFilePanel({
 
   return (
     <section aria-label={change.path} className={styles.diffPanel}>
-      <div className={styles.diffHeader}>
-        <Code aria-hidden="true" className={styles.diffHeaderIcon} size={14} />
-        <span className={styles.diffPath} title={change.path}>
-          {change.path}
-        </span>
-        {stats ? (
-          <span className={styles.diffStats}>
-            {added > 0 ? <span className={styles.diffStatsAdded}>+{added}</span> : null}
-            {removed > 0 ? <span className={styles.diffStatsRemoved}>−{removed}</span> : null}
+      {showHeader ? (
+        <div className={styles.diffHeader}>
+          <Code aria-hidden="true" className={styles.diffHeaderIcon} size={14} />
+          <span className={styles.diffPath} title={change.path}>
+            {change.path}
           </span>
-        ) : null}
-      </div>
+          {stats ? (
+            <span className={styles.diffStats}>
+              {added > 0 ? <span className={styles.diffStatsAdded}>+{added}</span> : null}
+              {removed > 0 ? <span className={styles.diffStatsRemoved}>−{removed}</span> : null}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {contentVisible ? (
         // biome-ignore lint/a11y/noNoninteractiveTabindex: área de rolagem acessível por teclado.
         <section aria-label={scrollLabel} className={scrollClassName} tabIndex={0}>
