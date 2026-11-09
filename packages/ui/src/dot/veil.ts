@@ -35,7 +35,8 @@ const FLARE_LIFT = 0.1;
 const SIDE_TOP_FOLLOW = 0.1;
 const SIDE_LOW_FOLLOW = 0.55;
 
-const n = (v: number) => v.toFixed(2);
+/* uma casa decimal: o olho não vê menos que um décimo de unidade, e a string é menor */
+const n = (v: number) => v.toFixed(1);
 
 /* lean: quanto a barra foi arrastada para o lado, em unidades (positivo = direita)
    wave: a fase da ondulação, em radianos

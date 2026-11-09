@@ -11,6 +11,7 @@ import {
   conversationSendParamsSchema,
   messageSchema,
 } from "./conversations.ts";
+import { dotMethods } from "./dot.ts";
 import { inboxMethods } from "./inbox.ts";
 import { restoreMethods } from "./restore.ts";
 import { searchMethods } from "./search.ts";
@@ -201,6 +202,7 @@ const agentCommandSchema = z
   );
 
 export const methods = {
+  ...dotMethods,
   "system.ping": {
     params: emptyParamsSchema,
     result: z.strictObject({ pong: z.literal(true), at: isoDateTimeSchema }),

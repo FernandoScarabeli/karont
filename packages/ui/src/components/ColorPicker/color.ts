@@ -26,11 +26,20 @@ const FALLBACK_DARK = "#000000";
 
 /* Contraste mínimo do texto normal (WCAG AA). */
 export const MIN_EYE_CONTRAST = 4.5;
-/* Abaixo disso o corpo quase some no fundo do app e ganha contorno.
-   Um grafite sobre o fundo escuro dá cerca de 1,2:1 e um azul elétrico passa de 5:1;
-   2:1 pega os cinzas e azuis-marinho escuros (até uns #4a4a4d) sem marcar corpos médios.
-   Pede menos que os 3:1 de um gráfico porque o corpo é grande e tem olhos. */
-export const OUTLINE_BELOW_CONTRAST = 2;
+/* A borda do corpo, em qualquer cor, nunca fica abaixo disto contra o corpo.
+   1,5:1 é pouco, de propósito: é um traço fino que separa a forma do fundo,
+   não um texto. Com o grafite dá algo em torno de #404043. */
+export const OUTLINE_MIN_CONTRAST = 1.5;
+/* A luminância em que o corpo deixa de ser "escuro" para a borda: é o ponto em
+   que branco e preto contrastam igual (cerca de 0,179), arredondado. Abaixo, a
+   borda sobe a luminosidade; acima, desce. */
+const DARK_BODY_BELOW = 0.18;
+/* O passo da busca da borda, na luminosidade HSL (0..1). */
+const OUTLINE_STEP = 0.005;
+/* Em corpo claro a borda ganha um pouco de saturação para não ficar suja. */
+const OUTLINE_SATURATE = 0.1;
+/* Abaixo disto o corpo é cinza e continua cinza (não inventa matiz). */
+const GRAY_BELOW = 0.04;
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
@@ -154,7 +163,64 @@ export function pickEyeColor(
   return fallback ?? { color: FALLBACK_DARK, ratio: 21 };
 }
 
-/* O corpo some no fundo do app? Então ganha um contorno sutil. */
-export function needsOutline(body: string, background: string): boolean {
-  return contrastRatio(body, background) < OUTLINE_BELOW_CONTRAST;
+type Hsl = { h: number; s: number; l: number };
+
+function rgbToHsl({ r, g, b }: Rgb): Hsl {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d === 0) return { h: 0, s: 0, l };
+  const s = d / (1 - Math.abs(2 * l - 1));
+  let h: number;
+  if (max === rn) h = ((gn - bn) / d) % 6;
+  else if (max === gn) h = (bn - rn) / d + 2;
+  else h = (rn - gn) / d + 4;
+  h *= 60;
+  return { h: h < 0 ? h + 360 : h, s, l };
+}
+
+function hslToHex({ h, s, l }: Hsl): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const sector = Math.floor((((h % 360) + 360) % 360) / 60);
+  const [r, g, b] =
+    sector === 0
+      ? [c, x, 0]
+      : sector === 1
+        ? [x, c, 0]
+        : sector === 2
+          ? [0, c, x]
+          : sector === 3
+            ? [0, x, c]
+            : sector === 4
+              ? [x, 0, c]
+              : [c, 0, x];
+  return rgbToHex({ r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 });
+}
+
+/* A borda do corpo, calculada da cor dele e nunca um cinza fixo. Mantém o
+   matiz. Em corpo escuro sobe a luminosidade, em corpo claro desce (e satura
+   um pouco, para não ficar suja), no menor passo que chega a
+   OUTLINE_MIN_CONTRAST contra o corpo. Preto e branco puros também ganham
+   borda: sobem e descem até um cinza. */
+export function pickOutlineColor(body: string): string {
+  const rgb = hexToRgb(body) ?? hexToRgb(DEFAULT_COLOR);
+  if (!rgb) return DEFAULT_COLOR;
+  const base = rgbToHex(rgb);
+  const hsl = rgbToHsl(rgb);
+  const dark = relativeLuminance(base) < DARK_BODY_BELOW;
+  const sat = !dark && hsl.s >= GRAY_BELOW ? Math.min(1, hsl.s + OUTLINE_SATURATE) : hsl.s;
+  const dir = dark ? 1 : -1;
+  for (let step = OUTLINE_STEP; step <= 1; step += OUTLINE_STEP) {
+    const l = clamp(hsl.l + dir * step, 0, 1);
+    const candidate = hslToHex({ h: hsl.h, s: sat, l });
+    if (contrastRatio(base, candidate) >= OUTLINE_MIN_CONTRAST) return candidate;
+    if (l === 0 || l === 1) break;
+  }
+  return dark ? FALLBACK_LIGHT : FALLBACK_DARK;
 }

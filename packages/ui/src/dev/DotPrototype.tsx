@@ -9,7 +9,13 @@ const moodOptions: readonly { value: DotMood; label: string }[] = [
   { value: "working", label: "Trabalhando" },
   { value: "needs-you", label: "Precisa de você" },
   { value: "sleeping", label: "Dormindo" },
-  { value: "done", label: "Terminou" },
+  { value: "happy", label: "Feliz" },
+  { value: "sad", label: "Triste" },
+  { value: "dancing", label: "Dançando" },
+  { value: "surprised", label: "Surpreso" },
+  { value: "angry", label: "Bravo" },
+  { value: "confused", label: "Confuso" },
+  { value: "love", label: "Apaixonado" },
 ];
 
 const chatSampleName = "Dot · via Codex";
@@ -95,7 +101,7 @@ export function DotPrototype() {
 
         <section aria-labelledby="dot-compare" className={styles.section}>
           <h2 className={styles.title} id="dot-compare">
-            Os cinco humores
+            Os onze humores
           </h2>
           <div className={styles.compare}>
             {moodOptions.map((option) => (

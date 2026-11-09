@@ -3,15 +3,19 @@ import { DotPrototype } from "./dev/DotPrototype.tsx";
 import { Showcase } from "./dev/Showcase.tsx";
 import { AppShell } from "./shell/AppShell.tsx";
 
+/* o protótipo do Dot também abre no modo "preview" (build de produção para medir) */
+const prototypeRoute = import.meta.env.DEV || import.meta.env.MODE === "preview";
+
 function readDevRoute(hash: string) {
-  return import.meta.env.DEV && (hash === "#vitrine" || hash === "#dot") ? hash : "";
+  if (import.meta.env.DEV && hash === "#vitrine") return hash;
+  return prototypeRoute && hash === "#dot" ? hash : "";
 }
 
 export function App() {
   const [devRoute, setDevRoute] = useState(() => readDevRoute(window.location.hash));
 
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
+    if (!prototypeRoute) return;
 
     const syncDevRoute = () => {
       setDevRoute(readDevRoute(window.location.hash));

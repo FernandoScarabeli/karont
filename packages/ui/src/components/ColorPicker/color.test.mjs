@@ -7,9 +7,10 @@ import {
   hexToRgb,
   hsvToHex,
   hsvToRgb,
-  needsOutline,
   normalizeHex,
+  OUTLINE_MIN_CONTRAST,
   pickEyeColor,
+  pickOutlineColor,
   relativeLuminance,
   rgbToHex,
   rgbToHsv,
@@ -18,7 +19,6 @@ import {
 
 const IVORY = "#f3eee3";
 const INK = "#141415";
-const APP_BG = "#0f0f10";
 
 test("normalizeHex: aceita #rgb e #rrggbb, com ou sem #, e devolve minúsculas", () => {
   assert.equal(normalizeHex("#FFF"), "#ffffff");
@@ -115,12 +115,59 @@ test("pickEyeColor: se as duas candidatas falham, cai para branco ou preto puro"
   assert.ok(color === "#ffffff" || color === "#000000");
 });
 
-test("needsOutline: o grafite some no fundo escuro, o azul elétrico não", () => {
-  assert.equal(needsOutline(DEFAULT_COLOR, APP_BG), true);
-  assert.equal(needsOutline("#000000", APP_BG), true);
-  assert.equal(needsOutline("#5b8cff", APP_BG), false);
-  assert.equal(needsOutline("#f3eee3", APP_BG), false);
-  /* no tema claro é o contrário: o marfim some no fundo claro */
-  assert.equal(needsOutline("#f3eee3", "#f4f4f2"), true);
-  assert.equal(needsOutline(DEFAULT_COLOR, "#f4f4f2"), false);
+test("pickOutlineColor: o grafite ganha uma borda perto de #3a3a3d", () => {
+  const outline = pickOutlineColor(DEFAULT_COLOR);
+  const { r, g, b } = hexToRgb(outline);
+  /* cinza quase neutro, um pouco mais claro que o corpo e perto do que o dono gostou */
+  assert.ok(r >= 0x38 && r <= 0x48, outline);
+  assert.ok(Math.abs(r - g) <= 4 && Math.abs(b - r) <= 6, outline);
+});
+
+test("pickOutlineColor: pelo menos 1,5:1 contra o corpo, em qualquer cor", () => {
+  const cores = [
+    ...SWATCHES.map((s) => s.hex),
+    "#000000",
+    "#ffffff",
+    "#808080",
+    "#7f7f7f",
+    "#5a5a5a",
+    "#b0b0b0",
+    "#0a0a3a",
+    "#fff3a0",
+  ];
+  for (let v = 0; v <= 255; v += 15) cores.push(rgbToHex({ r: v, g: v, b: v }));
+  for (let h = 0; h < 360; h += 20) {
+    for (const s of [0.3, 0.7, 1]) {
+      for (const v of [0.15, 0.4, 0.7, 1]) cores.push(hsvToHex({ h, s, v }));
+    }
+  }
+  for (const body of cores) {
+    const outline = pickOutlineColor(body);
+    assert.match(outline, /^#[0-9a-f]{6}$/);
+    assert.ok(contrastRatio(body, outline) >= OUTLINE_MIN_CONTRAST, `${body} -> ${outline}`);
+  }
+});
+
+test("pickOutlineColor: em corpo escuro sobe, em corpo claro desce", () => {
+  for (const body of [DEFAULT_COLOR, "#000000", "#0a0a3a", "#1a0f0f"]) {
+    assert.ok(relativeLuminance(pickOutlineColor(body)) > relativeLuminance(body), body);
+  }
+  for (const body of ["#f3eee3", "#ffffff", "#c6f135", "#2dd4c4", "#808080", "#ff7a59"]) {
+    assert.ok(relativeLuminance(pickOutlineColor(body)) < relativeLuminance(body), body);
+  }
+});
+
+test("pickOutlineColor: mantém o matiz das cores com cor", () => {
+  const hue = (hex) => hexToHsv(hex).h;
+  for (const { hex } of SWATCHES.filter((s) => s.id !== "graphite")) {
+    const d = Math.abs(hue(pickOutlineColor(hex)) - hue(hex));
+    assert.ok(Math.min(d, 360 - d) < 8, `${hex} -> ${pickOutlineColor(hex)}`);
+  }
+});
+
+test("pickOutlineColor: em corpo claro satura um pouco, em corpo escuro e cinza não inventa matiz", () => {
+  assert.ok(hexToHsv(pickOutlineColor("#f3eee3")).s > hexToHsv("#f3eee3").s);
+  const gray = hexToRgb(pickOutlineColor("#808080"));
+  assert.ok(gray.r === gray.g && gray.g === gray.b);
+  assert.equal(pickOutlineColor("não é cor"), pickOutlineColor(DEFAULT_COLOR));
 });

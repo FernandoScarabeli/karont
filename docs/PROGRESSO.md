@@ -132,6 +132,12 @@ Repositório recriado do zero em 2026-10-31.
     - Bom dia e boa noite: cartões no Início, com dados reais e frases prontas no tom do Dot, sem IA. Bom dia na primeira abertura do dia; boa noite depois das 20h. Só com o app aberto.
     - Teste real no fechamento: Codex `gpt-6-luna` em `low` e, com o ok do dono, 1 ou 2 mensagens curtas no Claude com Haiku, em banco temporário, para comprovar a troca de Agente.
 
+37. **O Dot é uma alminha** (2026-11-09, substitui parte da decisão 36):
+    - Forma **Véu**: fantasminha grafite com dois olhinhos, em referência a Caronte. O dono rejeitou os personagens Ponto, Lua e Pixel.
+    - Olhos e corpo seguem o ponteiro, com base no Eye tracker do Bencho (MIT, © 2026 Lorenzo Cabra; o aviso fica no arquivo). O BoopFace (MIT) é só inspiração de comportamento e não entra como dependência.
+    - A pessoa escolhe a cor do Dot num seletor completo, feito no app sem dependência nova, no modelo do color picker do BoardUI. A cor dos olhos se ajusta sozinha pelo contraste. Isso substitui "na cor de destaque".
+    - **A salinha fica de lado por enquanto**: o dono não gostou do quarto nem quis a barquinha. Mesmo com a SPEC ainda citando a salinha no M6, ela não faz parte da entrega. Sem ela, nome, cor, personalidade e memórias ficam numa seção **Dot** das Configurações.
+
 ## M5 — estado
 Branch `m5-primeira-abertura`, a partir da `main` com o M4. Feito, nesta ordem: B1 (migração 21, `KARONT_SKIP_ONBOARDING`, `system.diagnostics`), F1 (Perfil: nome, foto e botão no rodapé), F2 (Aparência e rodapé enxuto), F3 (Diagnóstico), F4 (primeira abertura, "Abrir de novo" e ajustes finais do rodapé). Depois, o contador de uso (decisões 32 a 34): B2 e B3 (serviço), F5, F6 e F7 (tela). Juntado na `main` (PR #7).
 
@@ -275,3 +281,11 @@ Branch `m2-chat` (sem PR; o dono testa no preview antes de juntar na `main`). De
 - O serviço destacado é iniciado por um `bash` mínimo que fecha os descritores herdados acima de 2. O Chromium deixa caches da GPU e sockets internos sem CLOEXEC, e o serviço os seguraria por horas (isso também travava o `app.close()` do Playwright).
 - `node-pty` 1.1.0 usa N-API: o mesmo binário roda no Node 24 e no Electron (`ELECTRON_RUN_AS_NODE`). O npm 12 bloqueia scripts de instalação; `node-pty` está liberado em `allowScripts` no `package.json` da raiz (precisa de python3, make e g++).
 - Terminal e CSP: o xterm 6 injeta `<style>` (Viewport, DomRenderer) e um `setAttribute("style")`. Com `style-src 'self'` isso é bloqueado. `packages/ui/src/terminal/cspStyles.ts` desvia esses estilos para `adoptedStyleSheets` (não passam pelo `style-src`) sem afrouxar a CSP. Validado no Electron: zero violações. Ao atualizar o xterm, refazer essa checagem.
+
+## Retomada M6-F0d — 2026-11-09
+
+A pedido do dono, Codex retomou as alterações interrompidas do Claude de borda, fluidez e expressões. Worktree `.worktrees/m6-f0d-retomada`, branch `m6-f0d-retomada`, a partir de `93b56e3`; original preservado. Borda derivada da cor, sete expressões novas (onze humores), laço sem limite de 30/20 fps e revisão de movimento reduzido/desenhos estáticos. Typecheck, lint, testes da interface (49 arquivos), testes focados (25) e build normal/preview passaram. Testes completos esbarram em EPERM de subprocessos Git e sockets; Electron/E2E, avaliação visual e desempenho real pendentes fora do sandbox. Nenhum merge/push. Detalhes e reprodução em [RELATORIO-M6-F0D.md](RELATORIO-M6-F0D.md).
+
+## M6 B1/F1 — identidade persistente e Configurações (2026-11-09)
+
+Implementados migração 22, contratos `dot.get`/`dot.update`, evento `dot.updated`, nome/cor/ativação/personalidade persistentes e Configurações › Dot com preview, Salvar, Cancelar e confirmação de descarte. Sem salinha (decisão 37). Tipos, lint, 50 arquivos de testes da UI e build passaram; testes focados de persistência, migração, contrato e atualização entre janelas passaram. Electron/E2E/visual/desempenho pendentes fora do sandbox; a rodada completa mantém os bloqueios EPERM documentados. Relatório: [RELATORIO-M6-B1-F1.md](RELATORIO-M6-B1-F1.md). Próxima tarefa: B2/F2, ligar identidade, personalidade e ativação ao chat real. Nenhuma memória ou personalização de prompt nesta entrega.
