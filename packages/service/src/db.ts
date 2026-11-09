@@ -880,6 +880,19 @@ export function countBusyWorktreeConversations(db: DatabaseSync, worktreeId: str
   return row.count;
 }
 
+/** Pastas de trabalho das conversas ocupadas (na fila, trabalhando ou esperando). */
+export function busyConversationCwds(db: DatabaseSync): string[] {
+  const rows = db
+    .prepare("SELECT cwd FROM conversations WHERE state IN ('queued','working','waiting')")
+    .all() as { cwd: string | null }[];
+  return rows.flatMap((row) => (row.cwd ? [row.cwd] : []));
+}
+
+export function markWorktreeMerged(db: DatabaseSync, id: string): Worktree | null {
+  db.prepare("UPDATE worktrees SET merged_at=? WHERE id=?").run(new Date().toISOString(), id);
+  return getWorktree(db, id);
+}
+
 export type RestorePointRecord = {
   messageId: string;
   conversationId: string;

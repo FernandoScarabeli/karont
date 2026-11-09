@@ -28,7 +28,13 @@ import {
 } from "./db.ts";
 import { ServiceError } from "./errors.ts";
 import { gitInfo, listRecentFolders, validateFolder } from "./folders.ts";
-import { createWorktree, removeWorktree, worktreeStatus } from "./git/worktrees.ts";
+import {
+  createWorktree,
+  mergeWorktree,
+  removeWorktree,
+  worktreeMergePreview,
+  worktreeStatus,
+} from "./git/worktrees.ts";
 import { resolvePaths } from "./paths.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
 import { getSystemUserName } from "./user-name.ts";
@@ -370,6 +376,21 @@ export function createHandlers({
       }
       case "worktrees.status":
         return worktreeStatus(db, request.params.id);
+      case "worktrees.mergePreview":
+        return worktreeMergePreview(db, request.params.id);
+      case "worktrees.merge": {
+        const { worktree, commit, targetBranch } = await mergeWorktree(db, request.params.id);
+        if (worktree.projectId) {
+          await broadcast({
+            event: "worktrees.changed",
+            payload: {
+              projectId: worktree.projectId,
+              worktrees: listWorktrees(db, worktree.projectId),
+            },
+          });
+        }
+        return { merged: true, commit, targetBranch };
+      }
       case "worktrees.remove": {
         const { worktree, branchKept } = await removeWorktree(db, request.params.id, {
           dataDir,

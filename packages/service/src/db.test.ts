@@ -7,6 +7,7 @@ import { test } from "node:test";
 import {
   addCustomAgent,
   addMessage,
+  busyConversationCwds,
   createConversation,
   createProject,
   createRestorePoint,
@@ -26,6 +27,7 @@ import {
   listRecentFolderRecords,
   listRestorePoints,
   markRestorePointsConcurrent,
+  markWorktreeMerged,
   migrations,
   openDatabase,
   recordRecentFolder,
@@ -626,6 +628,22 @@ test("migra um banco na versão 16 sem perder dados e cria worktrees e conversat
       branch: "karont/p-123456",
       baseCommit: "abc",
     });
+    // Trazer: grava merged_at; conversas ocupadas aparecem por pasta.
+    assert.equal(second.mergedAt, null);
+    const merged = markWorktreeMerged(db, second.id);
+    assert.notEqual(merged?.mergedAt, null);
+    assert.equal(getWorktree(db, second.id)?.mergedAt, merged?.mergedAt);
+    assert.equal(markWorktreeMerged(db, "nao-existe"), null);
+    const busy = createConversation(db, {
+      agent: "claude",
+      title: "o",
+      cwd: "/tmp/p/sub",
+      mode: "edit",
+    });
+    assert.deepEqual(busyConversationCwds(db), []);
+    db.prepare("UPDATE conversations SET state='waiting' WHERE id=?").run(busy.id);
+    assert.deepEqual(busyConversationCwds(db), ["/tmp/p/sub"]);
+    db.prepare("UPDATE conversations SET state='idle' WHERE id=?").run(busy.id);
     removeProject(db, project.id);
     assert.equal(getWorktree(db, second.id)?.projectId, null);
     assert.throws(() =>

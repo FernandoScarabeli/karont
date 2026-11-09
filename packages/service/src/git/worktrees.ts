@@ -3,21 +3,36 @@ import { realpath, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import type { Worktree, WorktreeStatus } from "@karont/contract";
+import type {
+  Worktree,
+  WorktreeMergeBlocked,
+  WorktreeMergePreview,
+  WorktreeStatus,
+} from "@karont/contract";
 import {
+  busyConversationCwds,
   countBusyWorktreeConversations,
   createWorktreeRecord,
   deleteWorktreeRecord,
   getProject,
   getWorktree,
+  markWorktreeMerged,
 } from "../db.ts";
 import { ServiceError } from "../errors.ts";
 import { ensurePrivateDir } from "../paths.ts";
-import { Deadline, GitFailure, resolveRepository, runGit } from "./restore-points.ts";
+import {
+  createSnapshot,
+  Deadline,
+  GitFailure,
+  resolveRepository,
+  runGit,
+} from "./restore-points.ts";
 
 export const WORKTREE_CREATE_TIMEOUT_MS = 120_000;
 export const WORKTREE_REMOVE_TIMEOUT_MS = 30_000;
 export const WORKTREE_STATUS_TIMEOUT_MS = 15_000;
+export const WORKTREE_MERGE_PREVIEW_TIMEOUT_MS = 30_000;
+export const WORKTREE_MERGE_TIMEOUT_MS = 60_000;
 
 const MAX_SLUG_LENGTH = 40;
 const MAX_BRANCH_ATTEMPTS = 5;
@@ -366,4 +381,350 @@ export async function removeWorktree(
   }
   deleteWorktreeRecord(db, worktree.id);
   return { worktree, branchKept };
+}
+
+/** Raízes de repositório com um "trazer" em andamento: um de cada vez, para não pisar no merge do outro. */
+const mergesInProgress = new Set<string>();
+
+const KARONT_IDENTITY = { name: "Karont", email: "karont@localhost" };
+
+function porcelainPaths(output: string): string[] {
+  const entries = output.split("\0").filter((entry) => entry.length > 0);
+  const paths: string[] = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index] ?? "";
+    paths.push(entry.slice(3));
+    if (entry.slice(0, 2).includes("R") || entry.slice(0, 2).includes("C")) index += 1;
+  }
+  return paths;
+}
+
+async function normalizedPath(target: string): Promise<string> {
+  return realpath(target).catch(() => path.resolve(target));
+}
+
+async function hasBusyConversationIn(db: DatabaseSync, root: string): Promise<boolean> {
+  const cwds = busyConversationCwds(db);
+  if (cwds.length === 0) return false;
+  const realRoot = await normalizedPath(root);
+  for (const cwd of cwds) {
+    for (const candidate of [path.resolve(cwd), await normalizedPath(cwd)]) {
+      if (
+        candidate === realRoot ||
+        candidate === path.resolve(root) ||
+        isInside(realRoot, candidate)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Só preenche o que falta: a configuração do usuário vale. */
+async function identityEnvironment(cwd: string, deadline: Deadline): Promise<NodeJS.ProcessEnv> {
+  const read = async (key: string) =>
+    (await runGit(["config", "--get", key], { cwd, deadline, okExitCodes: [1] })).trim();
+  const env: NodeJS.ProcessEnv = {};
+  if (!(await read("user.name"))) {
+    env.GIT_AUTHOR_NAME = KARONT_IDENTITY.name;
+    env.GIT_COMMITTER_NAME = KARONT_IDENTITY.name;
+  }
+  if (!(await read("user.email"))) {
+    env.GIT_AUTHOR_EMAIL = KARONT_IDENTITY.email;
+    env.GIT_COMMITTER_EMAIL = KARONT_IDENTITY.email;
+  }
+  return env;
+}
+
+/** Prévia do "trazer": só lê. Não mexe em working tree, index, HEAD, stash nem na cópia. */
+async function computeMergePreview(
+  db: DatabaseSync,
+  worktree: Worktree,
+  deadline: Deadline,
+): Promise<WorktreeMergePreview> {
+  const preview: WorktreeMergePreview = {
+    targetBranch: null,
+    commits: 0,
+    uncommittedFiles: 0,
+    changedFiles: 0,
+    conflicts: [],
+    blocked: null,
+    targetDirtyFiles: [],
+  };
+  const block = (blocked: WorktreeMergeBlocked): WorktreeMergePreview => ({ ...preview, blocked });
+  const root = worktree.repoRoot;
+
+  if (!(await pathExists(worktree.path))) return block("missing");
+  if (countBusyWorktreeConversations(db, worktree.id) > 0) return block("busy");
+  if (await hasBusyConversationIn(db, root)) return block("target-busy");
+
+  const targetBranch = (
+    await runGit(["symbolic-ref", "-q", "--short", "HEAD"], {
+      cwd: root,
+      deadline,
+      okExitCodes: [1],
+    })
+  ).trim();
+  if (!targetBranch) return block("detached");
+  preview.targetBranch = targetBranch;
+
+  if (await refExists(root, "MERGE_HEAD", deadline)) return block("target-merging");
+
+  const targetStatus = await runGit(["status", "--porcelain", "-z", "--untracked-files=no"], {
+    cwd: root,
+    deadline,
+  });
+  const targetDirty = porcelainPaths(targetStatus);
+  if (targetDirty.length > 0) {
+    preview.targetDirtyFiles = targetDirty;
+    return block("target-dirty");
+  }
+
+  let tip: string;
+  try {
+    tip = (
+      await runGit(["rev-parse", "-q", "--verify", `refs/heads/${worktree.branch}`], {
+        cwd: root,
+        deadline,
+      })
+    ).trim();
+  } catch (error) {
+    if (error instanceof GitFailure && error.kind === "exit") {
+      throw new ServiceError(
+        "invalid_request",
+        `A branch ${worktree.branch} da cópia não existe mais.`,
+      );
+    }
+    throw error;
+  }
+
+  const copyStatus = await runGit(["status", "--porcelain", "-z", "--untracked-files=all"], {
+    cwd: worktree.path,
+    deadline,
+  });
+  preview.uncommittedFiles = countPorcelainEntries(copyStatus);
+
+  let source = tip;
+  if (preview.uncommittedFiles > 0) {
+    const snapshot = await createSnapshot(worktree.path, deadline.signal, deadline.remaining(), {
+      parent: tip,
+    });
+    if ("unavailable" in snapshot) {
+      throw new ServiceError(
+        "unavailable",
+        snapshot.unavailable === "timeout"
+          ? "O Git demorou demais para ler as mudanças da cópia."
+          : "Não foi possível ler as mudanças da cópia.",
+      );
+    }
+    source = snapshot.commit;
+  }
+
+  const target = `refs/heads/${targetBranch}`;
+  const count = await runGit(["rev-list", "--count", `${target}..${source}`], {
+    cwd: root,
+    deadline,
+  });
+  preview.commits = Number.parseInt(count.trim(), 10) || 0;
+  if (preview.commits === 0) return block("nothing");
+
+  const changed = await runGit(["diff", "--name-only", "-z", `${target}...${source}`], {
+    cwd: root,
+    deadline,
+  });
+  preview.changedFiles = changed.split("\0").filter((entry) => entry.length > 0).length;
+
+  const mergeTree = await runGit(
+    ["merge-tree", "--write-tree", "--name-only", "-z", target, source],
+    {
+      cwd: root,
+      deadline,
+      okExitCodes: [1],
+    },
+  );
+  // Código 1 (conflito): "<tree>\0<arquivo>\0...<arquivo>\0\0<mensagens>". Código 0: só "<tree>\0".
+  const parts = mergeTree.split("\0");
+  const conflicts: string[] = [];
+  for (const entry of parts.slice(1)) {
+    if (entry === "") break;
+    conflicts.push(entry);
+  }
+  preview.conflicts = [...new Set(conflicts)];
+  return preview;
+}
+
+export async function worktreeMergePreview(
+  db: DatabaseSync,
+  id: string,
+  signal: AbortSignal = new AbortController().signal,
+): Promise<WorktreeMergePreview> {
+  const worktree = getWorktree(db, id);
+  if (!worktree) throw new ServiceError("invalid_request", "A cópia não existe.");
+  const deadline = new Deadline(signal, WORKTREE_MERGE_PREVIEW_TIMEOUT_MS);
+  try {
+    return await computeMergePreview(db, worktree, deadline);
+  } catch (error) {
+    throw gitUnavailable(error, "preparar o que será trazido");
+  } finally {
+    deadline.dispose();
+  }
+}
+
+function blockedMessage(preview: WorktreeMergePreview, worktree: Worktree): string | null {
+  const target = preview.targetBranch ?? "do projeto";
+  switch (preview.blocked) {
+    case "missing":
+      return "A pasta da cópia não está mais no disco. Não dá para trazer.";
+    case "busy":
+      return "Há conversa trabalhando nesta cópia. Espere terminar ou pare o agente antes de trazer.";
+    case "target-busy":
+      return "Há conversa trabalhando na pasta do projeto. Espere terminar ou pare o agente antes de trazer.";
+    case "detached":
+      return "A pasta do projeto não está em nenhuma branch (HEAD solto). Escolha uma branch antes de trazer.";
+    case "target-merging":
+      return `A branch ${target} está no meio de um merge. Conclua ou cancele antes de trazer.`;
+    case "target-dirty": {
+      const files = preview.targetDirtyFiles;
+      const list = files.slice(0, 5).join(", ");
+      const more = files.length > 5 ? ` e mais ${files.length - 5}` : "";
+      return `A branch ${target} tem alterações não salvas (${list}${more}). Salve ou descarte antes de trazer.`;
+    }
+    case "nothing":
+      return `Não há nada novo em ${worktree.branch} para trazer.`;
+    default:
+      break;
+  }
+  if (preview.conflicts.length > 0) {
+    const files = preview.conflicts.slice(0, 5).join(", ");
+    const more = preview.conflicts.length > 5 ? ` e mais ${preview.conflicts.length - 5}` : "";
+    return `Há conflito em ${plural(preview.conflicts.length, "arquivo", "arquivos")} (${files}${more}). O Karont não resolve conflitos sozinho.`;
+  }
+  return null;
+}
+
+function mergeFailure(error: unknown): ServiceError {
+  if (error instanceof ServiceError) return error;
+  if (error instanceof GitFailure && error.kind === "exit") {
+    const lines = error.message.split("\n").slice(1);
+    const overwritten = lines.findIndex((line) =>
+      /untracked working tree files would be overwritten/.test(line),
+    );
+    if (overwritten >= 0) {
+      const files = lines
+        .slice(overwritten + 1)
+        .filter((line) => line.startsWith("\t"))
+        .map((line) => line.trim());
+      return new ServiceError(
+        "invalid_request",
+        `Há arquivos na pasta do projeto que ainda não estão no Git e seriam sobrescritos (${files.join(", ")}). Mova ou salve esses arquivos e tente de novo. Nada foi trazido.`,
+      );
+    }
+    const detail = lines
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(" ");
+    return new ServiceError(
+      "invalid_request",
+      `O Git não conseguiu trazer as mudanças.${detail ? ` ${detail}` : ""} A pasta do projeto ficou como estava.`,
+    );
+  }
+  return gitUnavailable(error, "trazer as mudanças");
+}
+
+/** Cancela um merge que ficou pela metade, para o repositório principal voltar a como estava. */
+async function abortUnfinishedMerge(root: string): Promise<void> {
+  const deadline = new Deadline(new AbortController().signal, WORKTREE_REMOVE_TIMEOUT_MS);
+  try {
+    if (await refExists(root, "MERGE_HEAD", deadline)) {
+      await runGit(["merge", "--abort"], { cwd: root, deadline });
+    }
+  } catch {
+    // Melhor esforço: o erro principal já vai para o usuário.
+  } finally {
+    deadline.dispose();
+  }
+}
+
+/**
+ * Traz a cópia de volta para a branch do usuário. Só roda por clique. Mudanças não commitadas viram
+ * commit na branch da cópia; conflito ou sujeira no destino param tudo sem mexer em nada.
+ */
+export async function mergeWorktree(
+  db: DatabaseSync,
+  id: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<{ worktree: Worktree; commit: string; targetBranch: string }> {
+  const found = getWorktree(db, id);
+  if (!found) throw new ServiceError("invalid_request", "A cópia não existe.");
+  if (mergesInProgress.has(found.repoRoot)) {
+    throw new ServiceError(
+      "invalid_request",
+      "Já há uma cópia sendo trazida para este projeto. Espere terminar.",
+    );
+  }
+  mergesInProgress.add(found.repoRoot);
+  const deadline = new Deadline(
+    options.signal ?? new AbortController().signal,
+    WORKTREE_MERGE_TIMEOUT_MS,
+  );
+  try {
+    const root = found.repoRoot;
+    let preview: WorktreeMergePreview;
+    try {
+      preview = await computeMergePreview(db, found, deadline);
+    } catch (error) {
+      throw gitUnavailable(error, "preparar o que será trazido");
+    }
+    const message = blockedMessage(preview, found);
+    if (message || !preview.targetBranch) {
+      throw new ServiceError("invalid_request", message ?? "Não foi possível trazer.");
+    }
+    const targetBranch = preview.targetBranch;
+
+    try {
+      if (preview.uncommittedFiles > 0) {
+        const env = await identityEnvironment(found.path, deadline);
+        await runGit(["add", "-A"], { cwd: found.path, deadline });
+        await runGit(["commit", "-q", "--no-verify", "-m", "karont: mudanças da cópia separada"], {
+          cwd: found.path,
+          deadline,
+          env,
+        });
+      }
+    } catch (error) {
+      throw gitUnavailable(error, "guardar as mudanças da cópia");
+    }
+
+    try {
+      const env = await identityEnvironment(root, deadline);
+      await runGit(
+        [
+          "merge",
+          "--no-edit",
+          "--no-verify",
+          "-m",
+          `karont: traz ${found.branch}`,
+          `refs/heads/${found.branch}`,
+        ],
+        { cwd: root, deadline, env },
+      );
+    } catch (error) {
+      await abortUnfinishedMerge(root);
+      throw mergeFailure(error);
+    }
+
+    let commit: string;
+    try {
+      commit = (await runGit(["rev-parse", "HEAD"], { cwd: root, deadline })).trim();
+    } catch (error) {
+      throw gitUnavailable(error, "ler o resultado do merge");
+    }
+    const worktree = markWorktreeMerged(db, found.id) ?? found;
+    return { worktree, commit, targetBranch };
+  } finally {
+    deadline.dispose();
+    mergesInProgress.delete(found.repoRoot);
+  }
 }

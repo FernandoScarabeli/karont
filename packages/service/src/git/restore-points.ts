@@ -121,6 +121,8 @@ export function runGit(
     maxBuffer?: number;
     /** Saída acima de `maxBuffer` devolve o que coube em vez de falhar. */
     truncateOverflow?: boolean;
+    /** Códigos de saída que não são erro: a saída é devolvida (ex.: `merge-tree` devolve 1 com conflito). */
+    okExitCodes?: readonly number[];
   },
 ): Promise<string> {
   const { deadline } = options;
@@ -159,6 +161,10 @@ export function runGit(
           return;
         }
         const code = (error as NodeJS.ErrnoException).code;
+        if (typeof code === "number" && options.okExitCodes?.includes(code)) {
+          resolve(stdout);
+          return;
+        }
         if (typeof code === "string") {
           reject(new GitFailure(code === "ETIMEDOUT" ? "timeout" : "spawn", error.message));
           return;
@@ -221,6 +227,7 @@ export async function createSnapshot(
   root: string,
   signal: AbortSignal,
   timeoutMs: number = DEFAULT_RESTORE_TIMEOUT_MS,
+  options: { parent?: string } = {},
 ): Promise<SnapshotResult> {
   const deadline = new Deadline(signal, timeoutMs);
   let tempDir: string | undefined;
@@ -246,16 +253,27 @@ export async function createSnapshot(
     await runGit(["add", "-A"], { cwd: root, deadline, env });
     const tree = (await runGit(["write-tree"], { cwd: root, deadline, env })).trim();
     const commit = (
-      await runGit(["commit-tree", tree, "-m", SNAPSHOT_MESSAGE], {
-        cwd: root,
-        deadline,
-        env: {
-          GIT_AUTHOR_NAME: "Karont",
-          GIT_AUTHOR_EMAIL: "karont@localhost",
-          GIT_COMMITTER_NAME: "Karont",
-          GIT_COMMITTER_EMAIL: "karont@localhost",
+      await runGit(
+        [
+          "commit-tree",
+          tree,
+          ...(options.parent && /^[0-9a-f]{40,64}$/.test(options.parent)
+            ? ["-p", options.parent]
+            : []),
+          "-m",
+          SNAPSHOT_MESSAGE,
+        ],
+        {
+          cwd: root,
+          deadline,
+          env: {
+            GIT_AUTHOR_NAME: "Karont",
+            GIT_AUTHOR_EMAIL: "karont@localhost",
+            GIT_COMMITTER_NAME: "Karont",
+            GIT_COMMITTER_EMAIL: "karont@localhost",
+          },
         },
-      })
+      )
     ).trim();
     let head: string | null = null;
     try {

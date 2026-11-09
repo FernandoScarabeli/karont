@@ -1467,6 +1467,61 @@ test("worktrees.*: métodos, eventos, vínculo da conversa e remoção mantém a
   );
 });
 
+test("worktrees.mergePreview e worktrees.merge: contrato, evento com merged_at e erro em português", async (context) => {
+  const { repo, git, events, handlers, conn, call, project } = await worktreeScenario(context);
+  const { worktree } = (await call("worktrees.create", { projectId: project.id })) as {
+    worktree: { id: string; path: string };
+  };
+  const changedEvents = () => events.filter((event) => event.event === "worktrees.changed");
+
+  const nothing = (await call("worktrees.mergePreview", { id: worktree.id })) as {
+    blocked: string | null;
+  };
+  assert.equal(nothing.blocked, "nothing");
+  await assert.rejects(
+    handlers.handle(request("worktrees.merge", { id: worktree.id }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+  assert.equal(changedEvents().length, 1);
+
+  await writeFile(path.join(worktree.path, "trazido.txt"), "trazido\n");
+  const preview = await call("worktrees.mergePreview", { id: worktree.id });
+  assert.deepEqual(preview, {
+    targetBranch: "main",
+    commits: 1,
+    uncommittedFiles: 1,
+    changedFiles: 1,
+    conflicts: [],
+    blocked: null,
+    targetDirtyFiles: [],
+  });
+  assert.equal(changedEvents().length, 1, "a prévia não emite evento");
+
+  const merged = (await call("worktrees.merge", { id: worktree.id })) as {
+    merged: true;
+    commit: string;
+    targetBranch: string;
+  };
+  assert.equal(merged.targetBranch, "main");
+  assert.equal(merged.commit, git(repo, "rev-parse", "HEAD").trim());
+  assert.equal(await readFile(path.join(repo, "trazido.txt"), "utf8"), "trazido\n");
+  assert.equal(changedEvents().length, 2);
+  const listed = changedEvents()[1]?.payload.worktrees as { id: string; mergedAt: string | null }[];
+  assert.notEqual(listed.find((entry) => entry.id === worktree.id)?.mergedAt, null);
+  assert.equal(
+    (
+      (await call("worktrees.list", { projectId: project.id })) as {
+        worktrees: { mergedAt: string | null }[];
+      }
+    ).worktrees[0]?.mergedAt,
+    listed[0]?.mergedAt,
+  );
+  await assert.rejects(
+    handlers.handle(request("worktrees.mergePreview", { id: "nada" }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+});
+
 test("worktrees.remove: conversa ocupada bloqueia mesmo com force e erros chegam em português", async (context) => {
   const { db, handlers, conn, call, project } = await worktreeScenario(context);
   const { worktree } = (await call("worktrees.create", { projectId: project.id })) as {

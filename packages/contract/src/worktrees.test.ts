@@ -20,6 +20,8 @@ test("worktrees.*: pedidos e resultados seguem o contrato", () => {
     ["worktrees.create", { projectId: "p" }],
     ["worktrees.status", { id: "w1" }],
     ["worktrees.remove", { id: "w1", force: true }],
+    ["worktrees.mergePreview", { id: "w1" }],
+    ["worktrees.merge", { id: "w1" }],
     ["conversation.create", { agent: "claude", cwd: "/x", worktreeId: "w1" }],
   ] as const) {
     assert.equal(parseRequest({ type: "request", id: "1", method, params }).ok, true, method);
@@ -41,6 +43,30 @@ test("worktrees.*: pedidos e resultados seguem o contrato", () => {
   );
   assert.equal(parseResult("worktrees.remove", { removed: true, branchKept: true }).ok, true);
   assert.equal(parseResult("worktrees.remove", { removed: false, branchKept: true }).ok, false);
+  const preview = {
+    targetBranch: "main",
+    commits: 2,
+    uncommittedFiles: 1,
+    changedFiles: 3,
+    conflicts: ["a.txt"],
+    blocked: null,
+    targetDirtyFiles: [],
+  };
+  assert.equal(parseResult("worktrees.mergePreview", preview).ok, true);
+  assert.equal(
+    parseResult("worktrees.mergePreview", { ...preview, blocked: "target-dirty" }).ok,
+    true,
+  );
+  assert.equal(parseResult("worktrees.mergePreview", { ...preview, blocked: "outro" }).ok, false);
+  assert.equal(parseResult("worktrees.mergePreview", { ...preview, targetBranch: null }).ok, true);
+  assert.equal(
+    parseResult("worktrees.merge", { merged: true, commit: "abc", targetBranch: "main" }).ok,
+    true,
+  );
+  assert.equal(
+    parseResult("worktrees.merge", { merged: false, commit: "abc", targetBranch: "main" }).ok,
+    false,
+  );
 });
 
 test("worktrees.changed: evento com projeto e lista", () => {
