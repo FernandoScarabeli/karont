@@ -24,7 +24,7 @@
 - **Letra duplicada ao nomear workspace:** uma vez o E2E digitou "Trabalho" e a aba mostrou "Trabalhoo". Não se repetiu em mais de 25 rodadas; causa desconhecida (olhar o `WorkspaceDialog`).
 - **Busca abre a conversa, mas não rola até a mensagem encontrada**: não existe mecanismo para isso.
 - **Conversa solta não muda de workspace:** só projetos têm "Mover para".
-- **Composer em painel estreito:** o botão de enviar desce para outra linha quando "Acesso total" está visível.
+- **Dividir remonta o painel que já existia:** ele nasce no mesmo tamanho e não pisca, mas evitar o remonte exige reestruturar a árvore de painéis (portais ou chave estável do `Group`).
 
 ## Do M3
 - **Desfazer e outra conversa no mesmo repositório:** o desfazer recusa se já há turno rodando no repositório, mas um turno de outra conversa que comece *durante* o desfazer pode fotografar os arquivos pela metade. Janela curta; um bloqueio por repositório resolve.
