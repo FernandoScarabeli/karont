@@ -166,3 +166,56 @@ test("worktrees.changed tira o worktreeId só das conversas daquele projeto, sem
   assert.equal(notified, 1, "sem mudança não notifica");
   unsubscribe();
 });
+
+test("conversations.workspaceMoved troca o workspace das conversas locais sem requisição nem updatedAt", () => {
+  const inA1 = projectConversation("mover-a1", "projeto-m1", { workspaceId: "ws-a" });
+  const inA2 = projectConversation("mover-a2", undefined, { workspaceId: "ws-a" });
+  const inB = projectConversation("mover-b", "projeto-m2", { workspaceId: "ws-b" });
+  const inC = projectConversation("mover-c", "projeto-m1", { workspaceId: "ws-c" });
+  for (const item of [inA1, inA2, inB, inC]) applyConversationStateChange(item);
+  let notified = 0;
+  const unsubscribe = subscribeConversationIndex("active", () => {
+    notified += 1;
+  });
+  const requestsBefore = listRequests.length;
+  notified = 0;
+
+  // Apagar o workspace A: tudo que era dele vai para B.
+  for (const handler of bridgeHandlers) {
+    handler({
+      event: "conversations.workspaceMoved",
+      payload: { workspaceId: "ws-b", fromWorkspaceId: "ws-a" },
+    });
+  }
+  assert.equal(getConversationIndexEntry("mover-a1").workspaceId, "ws-b");
+  assert.equal(getConversationIndexEntry("mover-a2").workspaceId, "ws-b");
+  assert.equal(getConversationIndexEntry("mover-a1").updatedAt, inA1.updatedAt);
+  assert.equal(getConversationIndexEntry("mover-b"), inB);
+  assert.equal(getConversationIndexEntry("mover-c"), inC);
+  assert.equal(notified, 1);
+
+  // Mover o projeto m1 para o workspace D: só as conversas dele trocam.
+  for (const handler of bridgeHandlers) {
+    handler({
+      event: "conversations.workspaceMoved",
+      payload: { workspaceId: "ws-d", projectId: "projeto-m1" },
+    });
+  }
+  assert.equal(getConversationIndexEntry("mover-a1").workspaceId, "ws-d");
+  assert.equal(getConversationIndexEntry("mover-c").workspaceId, "ws-d");
+  assert.equal(getConversationIndexEntry("mover-a2").workspaceId, "ws-b");
+  assert.equal(getConversationIndexEntry("mover-b"), inB);
+  assert.equal(getConversationIndexEntry("mover-c").updatedAt, inC.updatedAt);
+  assert.equal(notified, 2);
+  assert.equal(listRequests.length, requestsBefore);
+
+  // Repetir o evento não muda nada nem notifica.
+  for (const handler of bridgeHandlers) {
+    handler({
+      event: "conversations.workspaceMoved",
+      payload: { workspaceId: "ws-d", projectId: "projeto-m1" },
+    });
+  }
+  assert.equal(notified, 2);
+  unsubscribe();
+});

@@ -34,6 +34,7 @@ import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { resolveInitialAgent, TERMINAL_CHOICE } from "../projects/initialAgent.ts";
 import { getProjectIcon } from "../projects/projectIcons.ts";
 import { useProject } from "../projects/useProjects.ts";
+import { getActiveWorkspaceId } from "../projects/useWorkspaces.ts";
 import { upsertWorktree } from "../projects/useWorktrees.ts";
 import { shouldOfferSeparateCopy } from "../projects/worktreeOffer.ts";
 import {
@@ -640,12 +641,16 @@ export function NewConversationView({
     setError("");
     setIsOpening(true);
     const cleanCommand = value.trim();
+    const activeWorkspaceId = getActiveWorkspaceId();
     try {
       const result = await bridge.request("terminals.open", {
         cols: 80,
         rows: 24,
         ...(workingPath === PERSONAL_FOLDER ? {} : { cwd: workingPath }),
         ...(cleanCommand ? { command: cleanCommand } : {}),
+        // Dentro de um projeto, o terminal fica no projeto; o workspace é o ativo.
+        ...(project ? { projectId: project.id } : {}),
+        ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
       });
       navigate({ name: "terminal", id: result.terminal.id });
     } catch (openError) {
@@ -694,6 +699,7 @@ export function NewConversationView({
     setError("");
     setIsOpening(true);
     let created: Conversation | null = null;
+    const activeWorkspaceId = getActiveWorkspaceId();
     try {
       const cwd =
         options.worktree?.path ??
@@ -704,6 +710,7 @@ export function NewConversationView({
         agent: selectedAgent.id,
         cwd,
         ...(project ? { projectId: project.id } : {}),
+        ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
         ...(options.worktree ? { worktreeId: options.worktree.id } : {}),
         mode,
         title: t.conversation.title,

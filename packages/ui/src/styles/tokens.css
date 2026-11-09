@@ -190,6 +190,8 @@
   --k-topbar-brand-gap: 8px;
   --k-topbar-tab-height: 40px;
   --k-topbar-tab-padding: 12px;
+  --k-topbar-tab-min-width: 76px;
+  --k-topbar-tab-max-width: 200px;
   --k-topbar-search-gap: 8px;
   --k-section-heading-height: 28px;
   --k-service-status-gap: 8px;

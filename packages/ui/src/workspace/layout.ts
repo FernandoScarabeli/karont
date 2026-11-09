@@ -49,6 +49,15 @@ export function createInitialLayout(): PaneNode {
   return { type: "pane", id: "pane-1", view: { kind: "new-conversation" } };
 }
 
+/** Layout vazio compartilhado: workspace que ainda não tem layout próprio. */
+export const EMPTY_LAYOUT: PaneNode = createInitialLayout();
+
+/** O painel ativo salvo, se ainda existir; senão o primeiro. */
+export function resolveActivePaneId(layout: LayoutNode, saved: string | undefined): string {
+  if (saved && findPane(layout, saved)) return saved;
+  return listPanes(layout)[0]?.id ?? EMPTY_LAYOUT.id;
+}
+
 export function paneCount(tree: LayoutNode): number {
   return tree.type === "pane"
     ? 1

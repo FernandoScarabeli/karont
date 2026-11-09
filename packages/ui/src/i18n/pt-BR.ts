@@ -102,10 +102,20 @@ export const t = {
     projectList: "Projetos",
     projectConversations: (name: string) => `Conversas de ${name}`,
     projectNoConversations: "Nenhuma conversa",
-    projectDescription: (conversationCount: number, status: string) =>
-      [conversationCount === 1 ? "1 conversa" : `${conversationCount} conversas`, status]
+    projectDescription: (conversationCount: number, status: string, terminalCount = 0) =>
+      [
+        conversationCount === 1 ? "1 conversa" : `${conversationCount} conversas`,
+        terminalCount === 0
+          ? ""
+          : terminalCount === 1
+            ? "1 terminal"
+            : `${terminalCount} terminais`,
+        status,
+      ]
         .filter(Boolean)
         .join(", "),
+    moveProjectTo: (name: string) => `Mover para ${name}`,
+    moveProjectFailed: "Não foi possível mover o projeto.",
     projectStatusWorking: "com conversa trabalhando",
     projectStatusQueued: "com conversa na fila",
     projectStatusWaiting: "com conversa esperando você",
@@ -146,6 +156,31 @@ export const t = {
     exited: "Encerrado",
     settings: "Configurações",
     availableSoon: "Disponível em breve",
+  },
+  workspaces: {
+    createTitle: "Novo workspace",
+    editTitle: "Renomear workspace",
+    createDescription: "Um workspace agrupa projetos, conversas e terminais.",
+    nameLabel: "Nome",
+    nameRequired: "Informe um nome para o workspace.",
+    nameTooLong: "O nome pode ter até 80 caracteres.",
+    cancel: "Cancelar",
+    create: "Criar",
+    creating: "Criando…",
+    save: "Salvar",
+    saving: "Salvando…",
+    saveFailed: "Não foi possível salvar o workspace.",
+    noBridge: "A conexão com o serviço não está disponível.",
+    tabActions: (name: string) => `Ações do workspace ${name}`,
+    rename: "Renomear",
+    remove: "Apagar",
+    removeTitle: (name: string) => `Apagar o workspace ${name}?`,
+    removeDescription: (name: string, target: string) =>
+      `Os projetos, conversas e terminais de ${name} passam para ${target}.`,
+    removeAction: "Apagar workspace",
+    removing: "Apagando…",
+    removeFailed: "Não foi possível apagar o workspace.",
+    loadError: "Não foi possível carregar os workspaces.",
   },
   projects: {
     createTitle: "Novo projeto",

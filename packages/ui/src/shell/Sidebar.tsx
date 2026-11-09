@@ -3,6 +3,7 @@ import {
   Archive,
   ArchiveRestore,
   ArrowLeft,
+  ArrowRightLeft,
   ChevronDown,
   ChevronRight,
   Columns2,
@@ -38,7 +39,9 @@ import { ProjectDialog } from "../projects/ProjectDialog.tsx";
 import { groupConversations } from "../projects/projectGroups.ts";
 import { getProjectIcon } from "../projects/projectIcons.ts";
 import { removeProjectFromStore, upsertProject, useProjects } from "../projects/useProjects.ts";
+import { useWorkspaces } from "../projects/useWorkspaces.ts";
 import { useWorktrees } from "../projects/useWorktrees.ts";
+import { filterByWorkspace, groupTerminals } from "../projects/workspaceState.ts";
 import { TerminalCloseButton } from "../terminal/TerminalCloseButton.tsx";
 import {
   getTerminalDisplayDetails,
@@ -236,18 +239,22 @@ export function Sidebar() {
     isItemDisabled: (element) => element.matches(":disabled"),
     gapClick: false,
   });
-  const { terminals, error } = useTerminals();
+  const { terminals: allTerminals, error } = useTerminals();
+  const { workspaces, activeId: activeWorkspaceId, loading: workspacesLoading } = useWorkspaces();
   const [showArchived, setShowArchived] = useState(false);
   const showArchivedRef = useRef(showArchived);
   showArchivedRef.current = showArchived;
   const conversationIndex = useConversationIndex(showArchived);
   const projectsState = useProjects();
-  const conversationList = conversationIndex.conversations;
-  const groups = groupConversations(
-    conversationList,
-    projectsState.projects,
-    projectsState.loading,
-  );
+  // A sidebar mostra só o workspace ativo; em Início, o último que esteve ativo.
+  // Enquanto a lista de workspaces carrega não há ativo: não mostramos tudo para depois encolher.
+  const scoped = <T extends { workspaceId: string }>(items: readonly T[]) =>
+    workspacesLoading ? [] : filterByWorkspace(items, activeWorkspaceId);
+  const conversationList = scoped(conversationIndex.conversations);
+  const workspaceProjects = scoped(projectsState.projects);
+  const terminals = scoped(allTerminals);
+  const groups = groupConversations(conversationList, workspaceProjects, projectsState.loading);
+  const terminalGroups = groupTerminals(terminals, workspaceProjects, projectsState.loading);
   // Fora das arquivadas, a seção Conversas mostra só as soltas.
   const visibleConversations = showArchived ? conversationList : groups.loose;
   const focusScopeRef = useRef({ visibleConversations, groups, showArchived });
@@ -276,7 +283,7 @@ export function Sidebar() {
   const recentConversations = showArchived
     ? visibleConversations
     : visibleConversations.filter((conversation) => conversation.pinnedAt === null);
-  const terminalTitles = getTerminalDisplayTitles(terminals);
+  const terminalTitles = getTerminalDisplayTitles(allTerminals);
   const [terminalToClose, setTerminalToClose] = useState<TerminalInfo | null>(null);
   const [isClosing, setIsClosing] = useState(false);
   const [closeError, setCloseError] = useState("");
@@ -788,24 +795,107 @@ export function Sidebar() {
     }
   }
 
-  const projectMenuItems = (project: Project): ActionMenuItem[] => [
-    {
-      id: "edit",
-      label: t.shell.editProject,
-      icon: <Pencil size={15} />,
-      onSelect: () => openProjectDialog(project),
-    },
-    {
-      id: "remove",
-      label: t.shell.removeProject,
-      icon: <Trash2 size={15} />,
-      danger: true,
-      onSelect: () => requestRemoveProject(project),
-    },
-  ];
+  async function moveProject(project: Project, workspaceId: string) {
+    if (!bridge) return;
+    setSidebarActionError("");
+    try {
+      const result = await bridge.request("projects.update", { id: project.id, workspaceId });
+      upsertProject(result.project);
+    } catch (moveError) {
+      setSidebarActionError(
+        moveError instanceof BridgeError && moveError.message
+          ? moveError.message
+          : t.shell.moveProjectFailed,
+      );
+    }
+  }
+
+  const projectMenuItems = (project: Project): ActionMenuItem[] => {
+    const otherWorkspaces = workspaces.filter((workspace) => workspace.id !== project.workspaceId);
+    return [
+      {
+        id: "edit",
+        label: t.shell.editProject,
+        icon: <Pencil size={15} />,
+        onSelect: () => openProjectDialog(project),
+      },
+      ...(otherWorkspaces.length > 0
+        ? [
+            { id: "move-separator", separator: true as const },
+            ...otherWorkspaces.map((workspace) => ({
+              id: `move-${workspace.id}`,
+              label: t.shell.moveProjectTo(workspace.name),
+              icon: <ArrowRightLeft size={15} />,
+              onSelect: () => void moveProject(project, workspace.id),
+            })),
+            { id: "remove-separator", separator: true as const },
+          ]
+        : []),
+      {
+        id: "remove",
+        label: t.shell.removeProject,
+        icon: <Trash2 size={15} />,
+        danger: true,
+        onSelect: () => requestRemoveProject(project),
+      },
+    ];
+  };
+
+  const renderTerminal = (terminal: TerminalInfo) => {
+    const details = getTerminalDisplayDetails(terminal);
+    const title = terminalTitles.get(terminal.id) ?? details.shortTitle;
+    const terminalState = terminal.exited ? t.shell.exited : t.terminal.running;
+    const accessibleName = t.terminal.sidebarAccessibleName(title, terminalState);
+    return (
+      <li
+        className={`${styles.conversationItem} ${styles.terminalConversationItem}`}
+        key={terminal.id}
+      >
+        <button
+          aria-current={
+            view.name === "workspace" &&
+            activePane?.view.kind === "terminal" &&
+            activePane.view.terminalId === terminal.id
+              ? "page"
+              : undefined
+          }
+          aria-label={accessibleName}
+          className={styles.conversationButton}
+          onClick={() =>
+            navigate({ name: "terminal", id: terminal.id, workspaceId: terminal.workspaceId })
+          }
+          ref={(element) => {
+            if (element) {
+              terminalButtonRefs.current.set(terminal.id, element);
+              fluidHover.registerItem(`terminal:${terminal.id}`, element);
+            } else {
+              terminalButtonRefs.current.delete(terminal.id);
+              fluidHover.registerItem(`terminal:${terminal.id}`, null);
+            }
+          }}
+          title={accessibleName}
+          type="button"
+        >
+          <SquareTerminal aria-hidden="true" size={15} strokeWidth={1.8} />
+          <span className={styles.conversationTitle}>{title}</span>
+          {terminal.exited ? (
+            <span className={styles.exitedMarker}>{t.shell.exited}</span>
+          ) : (
+            <span aria-hidden="true" className={styles.runningMarker} />
+          )}
+        </button>
+        <TerminalCloseButton
+          className={styles.endTerminalButton}
+          label={title}
+          onRequestClose={() => requestClose(terminal)}
+        />
+      </li>
+    );
+  };
 
   const renderProject = (project: Project) => {
     const conversations = groups.byProject.get(project.id) ?? [];
+    const projectTerminals = terminalGroups.byProject.get(project.id) ?? [];
     const expanded = !collapsedProjects.includes(project.id);
     const hasWaiting = conversations.some((conversation) => conversation.state === "waiting");
     const hasWorking = conversations.some((conversation) => conversation.state === "working");
@@ -839,7 +929,11 @@ export function Sidebar() {
         >
           <button
             aria-controls={expanded ? listId : undefined}
-            aria-description={t.shell.projectDescription(conversations.length, statusText)}
+            aria-description={t.shell.projectDescription(
+              conversations.length,
+              statusText,
+              projectTerminals.length,
+            )}
             aria-expanded={expanded}
             className={styles.conversationButton}
             onClick={() => toggleProject(project.id)}
@@ -890,13 +984,14 @@ export function Sidebar() {
           </div>
         </div>
         {expanded ? (
-          conversations.length > 0 ? (
+          conversations.length > 0 || projectTerminals.length > 0 ? (
             <ul
               aria-label={t.shell.projectConversations(project.name)}
               className={`${styles.conversationList} ${styles.projectConversations}`}
               id={listId}
             >
               {conversations.map(renderConversation)}
+              {projectTerminals.map(renderTerminal)}
             </ul>
           ) : (
             <p className={`${styles.emptyList} ${styles.projectEmpty}`} id={listId}>
@@ -964,11 +1059,11 @@ export function Sidebar() {
                 <span>{t.shell.projectsLoadError}</span>
               </p>
             ) : null}
-            {projectsState.projects.length > 0 ? (
+            {workspaceProjects.length > 0 ? (
               <ul aria-label={t.shell.projectList} className={styles.conversationList}>
-                {projectsState.projects.map(renderProject)}
+                {workspaceProjects.map(renderProject)}
               </ul>
-            ) : projectsState.loading || projectsState.error ? null : (
+            ) : projectsState.loading || projectsState.error || workspacesLoading ? null : (
               <p className={styles.emptyList}>
                 <span>{t.shell.noProjects}</span>
               </p>
@@ -1073,62 +1168,14 @@ export function Sidebar() {
           !conversationIndex.loading &&
           !projectsState.loading &&
           groups.loose.length === 0 &&
-          terminals.length === 0 ? (
+          terminalGroups.loose.length === 0 ? (
             <p className={styles.emptyList}>
               <span>{t.shell.noConversations}</span>
             </p>
           ) : null}
-          {!showArchived && terminals.length > 0 ? (
+          {!showArchived && terminalGroups.loose.length > 0 ? (
             <ul aria-label={t.shell.conversations} className={styles.conversationList}>
-              {terminals.map((terminal) => {
-                const details = getTerminalDisplayDetails(terminal);
-                const title = terminalTitles.get(terminal.id) ?? details.shortTitle;
-                const terminalState = terminal.exited ? t.shell.exited : t.terminal.running;
-                const accessibleName = t.terminal.sidebarAccessibleName(title, terminalState);
-                return (
-                  <li
-                    className={`${styles.conversationItem} ${styles.terminalConversationItem}`}
-                    key={terminal.id}
-                  >
-                    <button
-                      aria-current={
-                        view.name === "workspace" &&
-                        activePane?.view.kind === "terminal" &&
-                        activePane.view.terminalId === terminal.id
-                          ? "page"
-                          : undefined
-                      }
-                      aria-label={accessibleName}
-                      className={styles.conversationButton}
-                      onClick={() => navigate({ name: "terminal", id: terminal.id })}
-                      ref={(element) => {
-                        if (element) {
-                          terminalButtonRefs.current.set(terminal.id, element);
-                          fluidHover.registerItem(`terminal:${terminal.id}`, element);
-                        } else {
-                          terminalButtonRefs.current.delete(terminal.id);
-                          fluidHover.registerItem(`terminal:${terminal.id}`, null);
-                        }
-                      }}
-                      title={accessibleName}
-                      type="button"
-                    >
-                      <SquareTerminal aria-hidden="true" size={15} strokeWidth={1.8} />
-                      <span className={styles.conversationTitle}>{title}</span>
-                      {terminal.exited ? (
-                        <span className={styles.exitedMarker}>{t.shell.exited}</span>
-                      ) : (
-                        <span aria-hidden="true" className={styles.runningMarker} />
-                      )}
-                    </button>
-                    <TerminalCloseButton
-                      className={styles.endTerminalButton}
-                      label={title}
-                      onRequestClose={() => requestClose(terminal)}
-                    />
-                  </li>
-                );
-              })}
+              {terminalGroups.loose.map(renderTerminal)}
             </ul>
           ) : null}
         </section>

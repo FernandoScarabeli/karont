@@ -34,10 +34,126 @@
 
 .areas {
   display: flex;
+  flex: 0 1 auto;
   align-items: end;
   align-self: stretch;
   gap: var(--k-space-1);
   min-width: 0;
+}
+
+.homeTab {
+  flex: 0 0 auto;
+}
+
+/* Muitas abas encolhem com reticências e, passando disso, rolam na horizontal. */
+.tabScroller {
+  display: flex;
+  min-width: 0;
+  align-items: end;
+  align-self: stretch;
+  gap: var(--k-space-1);
+  overflow: auto hidden;
+  scrollbar-width: none;
+}
+
+.tabItem {
+  position: relative;
+  display: flex;
+  min-width: var(--k-topbar-tab-min-width);
+  max-width: var(--k-topbar-tab-max-width);
+  flex: 0 1 auto;
+}
+
+.tabButton {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.tabLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.newWorkspace {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.tabActions {
+  position: absolute;
+  z-index: var(--k-layer-menu);
+  top: 50%;
+  inset-inline-end: var(--k-space-1);
+  background: var(--k-color-bg-raised);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity var(--k-motion-fast) var(--k-ease);
+}
+
+.tabItemActive .tabActions {
+  background: var(--k-color-bg-sheet);
+}
+
+.tabItem:hover .tabActions,
+.tabItem:focus-within .tabActions,
+.tabActions[aria-expanded="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Mesmas cores da sidebar: trabalhando pulsa, precisa de você fica fixo. */
+.statusDot {
+  width: var(--k-status-dot-size-small);
+  height: var(--k-status-dot-size-small);
+  flex: 0 0 auto;
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-full);
+}
+
+.statusWorking {
+  background: var(--k-color-status-working);
+  animation: statusPulse var(--k-duration-status-pulse-slow) ease-in-out infinite;
+}
+
+.statusNeedsYou {
+  background: var(--k-color-status-needs-you);
+}
+
+.removeError {
+  margin: 0;
+  color: var(--k-color-danger);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+@keyframes statusPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Sem animação, "trabalhando" vira um anel: o estado não depende só da cor. */
+@media (prefers-reduced-motion: reduce) {
+  .statusWorking {
+    border-color: var(--k-color-status-working);
+    background: transparent;
+    animation: none;
+  }
+}
+
+@media (hover: none) {
+  .tabActions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .activeArea {
@@ -96,6 +212,11 @@
   z-index: 1;
   outline: var(--k-focus-ring-width) solid var(--k-color-focus);
   outline-offset: var(--k-focus-ring-offset);
+}
+
+/* Dentro da faixa rolável o anel por fora seria cortado: fica por dentro. */
+.tabButton:focus-visible {
+  outline-offset: calc(var(--k-focus-ring-width) * -1);
 }
 
 .activeArea svg {
