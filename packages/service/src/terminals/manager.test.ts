@@ -124,7 +124,12 @@ test("replay mantém os últimos 256 KiB sem cortar caracteres e seq cresce", as
     homeDir: root,
     isExecutable: async () => true,
   });
-  const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24 });
+  const { terminal } = await manager.open({
+    workspaceId: "ws-test",
+    cwd: root,
+    cols: 80,
+    rows: 24,
+  });
   const pty = created[0];
   assert.ok(pty);
   const output = `${"x".repeat(MAX_REPLAY_BYTES - 3)}🙂${"z".repeat(20)}`;
@@ -167,7 +172,12 @@ test("pausa o pty enquanto o envio aguarda drain e retoma depois", async (contex
     homeDir: root,
     isExecutable: async () => true,
   });
-  const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24 });
+  const { terminal } = await manager.open({
+    workspaceId: "ws-test",
+    cwd: root,
+    cols: 80,
+    rows: 24,
+  });
   const pty = created[0];
   assert.ok(pty);
   pty.emitData("x".repeat(MAX_REPLAY_BYTES));
@@ -193,10 +203,10 @@ test("limita a 16 terminais, rejeita escrita após saída e emite changed", asyn
   });
   const opened = [];
   for (let index = 0; index < 16; index += 1) {
-    opened.push(await manager.open({ cwd: root, cols: 80, rows: 24 }));
+    opened.push(await manager.open({ workspaceId: "ws-test", cwd: root, cols: 80, rows: 24 }));
   }
   await assert.rejects(
-    manager.open({ cwd: root, cols: 80, rows: 24 }),
+    manager.open({ workspaceId: "ws-test", cwd: root, cols: 80, rows: 24 }),
     (error: unknown) => error instanceof ServiceError && error.code === "unavailable",
   );
   const exited = opened[0];
@@ -210,7 +220,7 @@ test("limita a 16 terminais, rejeita escrita após saída e emite changed", asyn
     () => manager.write(exited.terminal.id, "x"),
     (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
   );
-  await manager.open({ cwd: root, cols: 80, rows: 24 });
+  await manager.open({ workspaceId: "ws-test", cwd: root, cols: 80, rows: 24 });
   assert.equal(manager.list().terminals.length, 17);
   await manager.close(exited.terminal.id);
   assert.equal(manager.list().terminals.length, 16);
@@ -244,7 +254,7 @@ test("reserva vagas antes dos awaits em aberturas simultâneas", async (context)
   });
 
   const attempts = Array.from({ length: 17 }, () =>
-    manager.open({ cwd: root, cols: 80, rows: 24 }),
+    manager.open({ workspaceId: "ws-test", cwd: root, cols: 80, rows: 24 }),
   );
   const allResults = Promise.allSettled(attempts);
   await waitUntil(() => executableChecks === 16);
@@ -288,7 +298,12 @@ test("seleciona SHELL válido, usa fallback para SHELL relativo ou ausente", asy
       homeDir: root,
       isExecutable: async (filePath) => item.executable.includes(filePath),
     });
-    const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24 });
+    const { terminal } = await manager.open({
+      workspaceId: "ws-test",
+      cwd: root,
+      cols: 80,
+      rows: 24,
+    });
     assert.deepEqual(captured, { shell: item.expected, args: item.args });
     await manager.close(terminal.id);
   }
@@ -315,7 +330,12 @@ test("ambiente do shell remove variáveis do Karont e Electron", async (context)
     homeDir: root,
     isExecutable: async () => true,
   });
-  const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24 });
+  const { terminal } = await manager.open({
+    workspaceId: "ws-test",
+    cwd: root,
+    cols: 80,
+    rows: 24,
+  });
   assert.equal(shellEnv?.PATH, "/usr/bin");
   assert.equal(shellEnv?.LANG, "pt_BR.UTF-8");
   assert.equal(shellEnv?.TERM, "xterm-256color");
@@ -342,14 +362,19 @@ test("valida a pasta de trabalho e redimensiona terminal", async (context) => {
     isExecutable: async () => true,
   });
   await assert.rejects(
-    manager.open({ cwd: path.join(root, "missing"), cols: 80, rows: 24 }),
+    manager.open({ workspaceId: "ws-test", cwd: path.join(root, "missing"), cols: 80, rows: 24 }),
     (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
   );
   await assert.rejects(
-    manager.open({ cwd: file, cols: 80, rows: 24 }),
+    manager.open({ workspaceId: "ws-test", cwd: file, cols: 80, rows: 24 }),
     (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
   );
-  const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24 });
+  const { terminal } = await manager.open({
+    workspaceId: "ws-test",
+    cwd: root,
+    cols: 80,
+    rows: 24,
+  });
   assert.deepEqual(manager.resize(terminal.id, 100, 32), { ok: true });
   assert.deepEqual(created[0]?.sizes, [[100, 32]]);
   await manager.close(terminal.id);
@@ -370,7 +395,13 @@ test("escreve o comando inicial 150 ms depois da última saída do shell", async
   });
 
   const command = "echo karont-$((2+3))";
-  const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24, command });
+  const { terminal } = await manager.open({
+    workspaceId: "ws-test",
+    cwd: root,
+    cols: 80,
+    rows: 24,
+    command,
+  });
   const pty = created[0];
   assert.ok(pty);
   assert.deepEqual(pty.writes, []);
@@ -405,7 +436,13 @@ test("envia o comando inicial após 2 s se o shell não produzir saída", async 
   });
 
   const command = "echo pronto";
-  const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24, command });
+  const { terminal } = await manager.open({
+    workspaceId: "ws-test",
+    cwd: root,
+    cols: 80,
+    rows: 24,
+    command,
+  });
   const pty = created[0];
   assert.ok(pty);
   timers.advanceBy(1_999);
@@ -431,6 +468,7 @@ test("não envia o comando inicial se o terminal sair ou for fechado antes", asy
       schedule: timers.schedule,
     });
     const { terminal } = await manager.open({
+      workspaceId: "ws-test",
       cwd: root,
       cols: 80,
       rows: 24,
@@ -464,7 +502,13 @@ test("pty real espera o prompt e executa o comando inicial uma vez", {
     homeDir: root,
   });
   const command = "echo karont-$((2+3)) && pwd";
-  const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24, command });
+  const { terminal } = await manager.open({
+    workspaceId: "ws-test",
+    cwd: root,
+    cols: 80,
+    rows: 24,
+    command,
+  });
   await waitUntil(() => outputs.join("").includes("karont-5"), 5_000);
   const output = outputs.join("");
   assert.equal(output.split(command).length - 1, 1);

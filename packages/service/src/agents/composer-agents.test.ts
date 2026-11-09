@@ -19,6 +19,7 @@ const testSkillPath = "/tmp/projeto/.agents/skills/project-helper/SKILL.md";
 function conversation(agent: Conversation["agent"]): Conversation {
   const now = new Date().toISOString();
   return {
+    workspaceId: "ws-test",
     id: `conversation-${agent}`,
     agent,
     title: "Conversa de teste",

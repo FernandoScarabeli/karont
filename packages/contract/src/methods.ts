@@ -81,8 +81,28 @@ const projectNameSchema = z
   .refine((name) => name.trim().length > 0, "O nome do projeto não pode ter só espaços.");
 const projectIconSchema = z.string().regex(/^[a-z0-9-]{1,40}$/);
 
+const workspaceNameSchema = z
+  .string()
+  .min(1)
+  .max(80)
+  .refine((name) => name.trim().length > 0, "O nome do workspace não pode ter só espaços.");
+const workspaceIconSchema = z.string().regex(/^[a-z0-9-]{1,40}$/);
+const workspaceIdSchema = z.string().min(1);
+
+export const workspaceSchema = z.strictObject({
+  id: workspaceIdSchema,
+  name: workspaceNameSchema,
+  icon: workspaceIconSchema,
+  position: z.number().int().nonnegative(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
+});
+
+export type Workspace = z.infer<typeof workspaceSchema>;
+
 export const projectSchema = z.strictObject({
   id: z.string().min(1),
+  workspaceId: workspaceIdSchema,
   name: projectNameSchema,
   icon: projectIconSchema,
   path: z.string().min(1).max(4_096),
@@ -97,6 +117,8 @@ export const terminalInfoSchema = z.strictObject({
   id: z.string().min(1),
   title: z.string(),
   cwd: z.string(),
+  projectId: z.string().min(1).optional(),
+  workspaceId: workspaceIdSchema,
   shell: z.string(),
   cols: z.number().int().min(2).max(1_000),
   rows: z.number().int().min(2).max(500),
@@ -197,6 +219,7 @@ export const methods = {
       agent: z.enum(["claude", "codex"]),
       cwd: z.string().min(1).max(4_096),
       projectId: z.string().min(1).optional(),
+      workspaceId: workspaceIdSchema.optional(),
       worktreeId: z.string().min(1).optional(),
       mode: z.enum(["read-only", "edit", "full"]).default("edit"),
       title: z.string().min(1).max(240).optional(),
@@ -359,6 +382,7 @@ export const methods = {
       name: projectNameSchema,
       icon: projectIconSchema,
       path: folderPathSchema,
+      workspaceId: workspaceIdSchema.optional(),
       defaultAgent: agentIdSchema.optional(),
     }),
     result: z.strictObject({ project: projectSchema }),
@@ -369,12 +393,40 @@ export const methods = {
       name: projectNameSchema.optional(),
       icon: projectIconSchema.optional(),
       defaultAgent: agentIdSchema.nullable().optional(),
+      workspaceId: workspaceIdSchema.optional(),
     }),
     result: z.strictObject({ project: projectSchema }),
   },
   "projects.remove": {
     params: z.strictObject({ id: z.string().min(1) }),
     result: z.strictObject({ removed: z.literal(true) }),
+  },
+  "workspaces.list": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ workspaces: z.array(workspaceSchema) }),
+  },
+  "workspaces.create": {
+    params: z.strictObject({
+      name: workspaceNameSchema,
+      icon: workspaceIconSchema.optional(),
+    }),
+    result: z.strictObject({ workspace: workspaceSchema }),
+  },
+  "workspaces.update": {
+    params: z.strictObject({
+      id: workspaceIdSchema,
+      name: workspaceNameSchema.optional(),
+      icon: workspaceIconSchema.optional(),
+    }),
+    result: z.strictObject({ workspace: workspaceSchema }),
+  },
+  "workspaces.remove": {
+    params: z.strictObject({ id: workspaceIdSchema }),
+    result: z.strictObject({ removed: z.literal(true) }),
+  },
+  "workspaces.reorder": {
+    params: z.strictObject({ ids: z.array(workspaceIdSchema).min(1).max(200) }),
+    result: z.strictObject({ workspaces: z.array(workspaceSchema) }),
   },
   ...restoreMethods,
   ...worktreeMethods,
@@ -386,6 +438,8 @@ export const methods = {
     params: terminalSizeSchema.extend({
       cwd: terminalCwdSchema.optional(),
       command: terminalCommandSchema.optional(),
+      projectId: z.string().min(1).optional(),
+      workspaceId: workspaceIdSchema.optional(),
     }),
     result: z.strictObject({ terminal: terminalInfoSchema }),
   },

@@ -256,6 +256,7 @@ test("conversation.markSeen limpa uma vez, persiste e não emite ao repetir", as
       request("conversation.create", { agent: "claude", cwd: root }),
       connection([]),
     )) as { conversation: { id: string; updatedAt: string } };
+    events.length = 0;
     const unreadAt = "2026-11-01T12:00:00.000Z";
     db.prepare("UPDATE conversations SET unread_at=? WHERE id=?").run(
       unreadAt,
@@ -878,13 +879,13 @@ test("falha ao gravar pasta recente não transforma terminals.open em erro", asy
     env: { SHELL: "/bin/bash" },
     homeDir: root,
   });
-  db.close();
   const afterResponse: Array<() => void | Promise<void>> = [];
 
   const result = (await handlers.handle(
     request("terminals.open", { cwd: root, cols: 80, rows: 24 }),
     connection([], afterResponse),
   )) as { terminal: { id: string } };
+  db.close();
   assert.ok(result.terminal.id);
   await assert.rejects(Promise.resolve().then(() => afterResponse[0]?.()));
   await handlers.closeTerminals();
@@ -1060,6 +1061,453 @@ test("conversation.create valida projectId; branch preserva; remover projeto sol
     .get(conversation.id) as { session_id: string } | undefined;
   assert.equal(session?.session_id, "sessao-1");
   await handlers.closeAgents();
+});
+
+type WorkspaceLike = { id: string; name: string; icon: string; position: number };
+
+async function callWs<T>(
+  handlers: ReturnType<typeof createHandlers>,
+  method: string,
+  params: unknown,
+): Promise<T> {
+  return (await handlers.handle(request(method, params), connection([]))) as T;
+}
+
+async function ws2(
+  handlers: ReturnType<typeof createHandlers>,
+  name: string,
+): Promise<WorkspaceLike> {
+  return (await callWs<{ workspace: WorkspaceLike }>(handlers, "workspaces.create", { name }))
+    .workspace;
+}
+
+function rejectsInvalid(promise: Promise<unknown>) {
+  return assert.rejects(
+    promise,
+    (error) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+}
+
+test("workspaces: Pessoal padrão, CRUD, nome aparado, nomes repetidos e eventos", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-ws-crud-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const events: AnyEvent[] = [];
+  const { db, handlers } = projectHandlers(root, events);
+  context.after(() => db.close());
+
+  const first = await callWs<{ workspaces: WorkspaceLike[] }>(handlers, "workspaces.list", {});
+  assert.equal(first.workspaces.length, 1);
+  assert.equal(first.workspaces[0]?.name, "Pessoal");
+  assert.equal(first.workspaces[0]?.position, 0);
+
+  const work = await ws2(handlers, "  Trabalho  ");
+  assert.equal(work.name, "Trabalho");
+  assert.equal(work.position, 1);
+  const twin = await ws2(handlers, "Trabalho");
+  assert.equal(twin.name, "Trabalho");
+  assert.notEqual(twin.id, work.id);
+  assert.equal(events.filter((event) => event.event === "workspaces.changed").length, 2);
+
+  const blank = parseRequest({
+    type: "request",
+    id: "1",
+    method: "workspaces.update",
+    params: { id: work.id, name: "   " },
+  });
+  assert.equal(blank.ok, false);
+  await rejectsInvalid(callWs(handlers, "workspaces.update", { id: "nao-existe", name: "x" }));
+  const renamed = await callWs<{ workspace: WorkspaceLike }>(handlers, "workspaces.update", {
+    id: work.id,
+    name: " Casa ",
+    icon: "briefcase",
+  });
+  assert.equal(renamed.workspace.name, "Casa");
+  assert.equal(renamed.workspace.icon, "briefcase");
+  const last = events.at(-1);
+  assert.equal(last?.event === "workspaces.changed" && last.payload.workspaces.length, 3);
+});
+
+test("workspaces.reorder exige todos os ids, sem repetir nem inventar", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-ws-reorder-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const events: AnyEvent[] = [];
+  const { db, handlers } = projectHandlers(root, events);
+  context.after(() => db.close());
+  const [pessoal] = (await callWs<{ workspaces: WorkspaceLike[] }>(handlers, "workspaces.list", {}))
+    .workspaces;
+  assert.ok(pessoal);
+  const b = await ws2(handlers, "B");
+  const c = await ws2(handlers, "C");
+  events.length = 0;
+
+  await rejectsInvalid(callWs(handlers, "workspaces.reorder", { ids: [pessoal.id, b.id] }));
+  await rejectsInvalid(callWs(handlers, "workspaces.reorder", { ids: [pessoal.id, b.id, b.id] }));
+  await rejectsInvalid(
+    callWs(handlers, "workspaces.reorder", { ids: [pessoal.id, b.id, "nao-existe"] }),
+  );
+  assert.equal(events.length, 0);
+
+  const done = await callWs<{ workspaces: WorkspaceLike[] }>(handlers, "workspaces.reorder", {
+    ids: [c.id, pessoal.id, b.id],
+  });
+  assert.deepEqual(
+    done.workspaces.map((workspace) => [workspace.id, workspace.position]),
+    [
+      [c.id, 0],
+      [pessoal.id, 1],
+      [b.id, 2],
+    ],
+  );
+  assert.equal(events.filter((event) => event.event === "workspaces.changed").length, 1);
+  // O padrão para coisas novas passa a ser o de menor position.
+  const folder = path.join(root, "app");
+  await mkdir(folder);
+  const { project } = await callWs<{ project: { workspaceId: string } }>(
+    handlers,
+    "projects.create",
+    { name: "App", icon: "folder", path: folder },
+  );
+  assert.equal(project.workspaceId, c.id);
+});
+
+test("workspaces: padrões, projeto manda na conversa, ramo herda e workspace inexistente é recusado", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-ws-defaults-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, "app");
+  await mkdir(folder);
+  const events: AnyEvent[] = [];
+  const { db, handlers } = projectHandlers(root, events);
+  context.after(() => db.close());
+  const [pessoal] = (await callWs<{ workspaces: WorkspaceLike[] }>(handlers, "workspaces.list", {}))
+    .workspaces;
+  assert.ok(pessoal);
+  const trabalho = await ws2(handlers, "Trabalho");
+
+  await rejectsInvalid(
+    callWs(handlers, "conversation.create", { agent: "claude", cwd: root, workspaceId: "nope" }),
+  );
+  await rejectsInvalid(
+    callWs(handlers, "projects.create", {
+      name: "App",
+      icon: "folder",
+      path: folder,
+      workspaceId: "nope",
+    }),
+  );
+
+  type Conv = { conversation: Conversation };
+  const loose = await callWs<Conv>(handlers, "conversation.create", { agent: "claude", cwd: root });
+  assert.equal(loose.conversation.workspaceId, pessoal.id);
+  const looseWork = await callWs<Conv>(handlers, "conversation.create", {
+    agent: "claude",
+    cwd: root,
+    workspaceId: trabalho.id,
+  });
+  assert.equal(looseWork.conversation.workspaceId, trabalho.id);
+
+  const { project } = await callWs<{ project: { id: string; workspaceId: string } }>(
+    handlers,
+    "projects.create",
+    { name: "App", icon: "folder", path: folder, workspaceId: trabalho.id },
+  );
+  assert.equal(project.workspaceId, trabalho.id);
+  const inProject = await callWs<Conv>(handlers, "conversation.create", {
+    agent: "claude",
+    cwd: folder,
+    projectId: project.id,
+  });
+  assert.equal(inProject.conversation.workspaceId, trabalho.id);
+  const conflicting = await callWs<Conv>(handlers, "conversation.create", {
+    agent: "claude",
+    cwd: folder,
+    projectId: project.id,
+    workspaceId: pessoal.id,
+  });
+  assert.equal(conflicting.conversation.workspaceId, trabalho.id);
+
+  const now = new Date().toISOString();
+  addMessage(db, {
+    id: "agent-ws",
+    conversationId: looseWork.conversation.id,
+    author: "agent",
+    status: "done",
+    parts: [{ id: "p1", type: "text", markdown: "Oi" }],
+    createdAt: now,
+    updatedAt: now,
+  });
+  const branched = await callWs<Conv>(handlers, "conversation.branch", {
+    id: looseWork.conversation.id,
+    messageId: "agent-ws",
+  });
+  assert.equal(branched.conversation.workspaceId, trabalho.id);
+});
+
+test("conversation.create emite conversation.stateChanged com a conversa nova", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-ws-create-event-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const events: AnyEvent[] = [];
+  const { db, handlers } = projectHandlers(root, events);
+  context.after(() => db.close());
+  const { conversation } = await callWs<{ conversation: Conversation }>(
+    handlers,
+    "conversation.create",
+    { agent: "claude", cwd: root },
+  );
+  const changed = events.filter((event) => event.event === "conversation.stateChanged");
+  assert.equal(changed.length, 1);
+  const payload = changed[0]?.event === "conversation.stateChanged" ? changed[0].payload : null;
+  assert.equal(payload?.conversation.id, conversation.id);
+  assert.equal(payload?.conversation.workspaceId, conversation.workspaceId);
+});
+
+test("projects.update move o projeto e as conversas dele; remover projeto mantém o workspace", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-ws-move-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, "app");
+  await mkdir(folder);
+  const events: AnyEvent[] = [];
+  const { db, handlers } = projectHandlers(root, events);
+  context.after(() => db.close());
+  const [pessoal] = (await callWs<{ workspaces: WorkspaceLike[] }>(handlers, "workspaces.list", {}))
+    .workspaces;
+  assert.ok(pessoal);
+  const trabalho = await ws2(handlers, "Trabalho");
+  const { project } = await callWs<{ project: { id: string } }>(handlers, "projects.create", {
+    name: "App",
+    icon: "folder",
+    path: folder,
+  });
+  type Conv = { conversation: Conversation };
+  const inProject = await callWs<Conv>(handlers, "conversation.create", {
+    agent: "claude",
+    cwd: folder,
+    projectId: project.id,
+  });
+  const loose = await callWs<Conv>(handlers, "conversation.create", { agent: "claude", cwd: root });
+
+  await rejectsInvalid(
+    callWs(handlers, "projects.update", { id: project.id, workspaceId: "nope" }),
+  );
+  const moved = await callWs<{ project: { workspaceId: string } }>(handlers, "projects.update", {
+    id: project.id,
+    workspaceId: trabalho.id,
+  });
+  assert.equal(moved.project.workspaceId, trabalho.id);
+  const workspaceOf = (id: string) =>
+    (
+      db.prepare("SELECT workspace_id FROM conversations WHERE id=?").get(id) as {
+        workspace_id: string;
+      }
+    ).workspace_id;
+  assert.equal(workspaceOf(inProject.conversation.id), trabalho.id);
+  assert.equal(workspaceOf(loose.conversation.id), pessoal.id);
+
+  await callWs(handlers, "projects.remove", { id: project.id });
+  const afterRemove = await callWs<Conv>(handlers, "conversation.get", {
+    id: inProject.conversation.id,
+  });
+  assert.equal(afterRemove.conversation.projectId, undefined);
+  assert.equal(afterRemove.conversation.workspaceId, trabalho.id);
+  assert.equal((await stat(folder)).isDirectory(), true);
+});
+
+test("workspaces.remove move projetos e conversas para o de menor position e recusa o último", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-ws-remove-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, "app");
+  await mkdir(folder);
+  const events: AnyEvent[] = [];
+  const { db, handlers } = projectHandlers(root, events);
+  context.after(() => db.close());
+  const [pessoal] = (await callWs<{ workspaces: WorkspaceLike[] }>(handlers, "workspaces.list", {}))
+    .workspaces;
+  assert.ok(pessoal);
+  const trabalho = await ws2(handlers, "Trabalho");
+  const { project } = await callWs<{ project: { id: string } }>(handlers, "projects.create", {
+    name: "App",
+    icon: "folder",
+    path: folder,
+    workspaceId: trabalho.id,
+  });
+  type Conv = { conversation: Conversation };
+  const inProject = await callWs<Conv>(handlers, "conversation.create", {
+    agent: "claude",
+    cwd: folder,
+    projectId: project.id,
+  });
+  const loose = await callWs<Conv>(handlers, "conversation.create", {
+    agent: "claude",
+    cwd: root,
+    workspaceId: trabalho.id,
+  });
+  events.length = 0;
+
+  await rejectsInvalid(callWs(handlers, "workspaces.remove", { id: "nope" }));
+  assert.deepEqual(await callWs(handlers, "workspaces.remove", { id: trabalho.id }), {
+    removed: true,
+  });
+  assert.ok(events.some((event) => event.event === "workspaces.changed"));
+  assert.ok(events.some((event) => event.event === "projects.changed"));
+  const projects = await callWs<{ projects: Array<{ workspaceId: string }> }>(
+    handlers,
+    "projects.list",
+    {},
+  );
+  assert.equal(projects.projects[0]?.workspaceId, pessoal.id);
+  for (const id of [inProject.conversation.id, loose.conversation.id]) {
+    const got = await callWs<Conv>(handlers, "conversation.get", { id });
+    assert.equal(got.conversation.workspaceId, pessoal.id);
+  }
+  assert.equal(
+    (await callWs<{ workspaces: unknown[] }>(handlers, "workspaces.list", {})).workspaces.length,
+    1,
+  );
+
+  const error = await callWs(handlers, "workspaces.remove", { id: pessoal.id }).catch(
+    (caught: unknown) => caught,
+  );
+  assert.ok(error instanceof ServiceError);
+  assert.equal(error.code, "invalid_request");
+  assert.equal(error.message, "Não dá para apagar o último workspace.");
+});
+
+test("terminals.open guarda projectId e workspaceId com as mesmas regras de padrão", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-ws-terminal-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, "app");
+  await mkdir(folder);
+  const db = openDatabase(path.join(root, "karont.db"));
+  context.after(() => db.close());
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    ptyFactory: () => new TestPty(),
+    env: { SHELL: "/bin/bash" },
+    homeDir: root,
+  });
+  context.after(() => handlers.closeTerminals());
+  const [pessoal] = (await callWs<{ workspaces: WorkspaceLike[] }>(handlers, "workspaces.list", {}))
+    .workspaces;
+  assert.ok(pessoal);
+  const trabalho = await ws2(handlers, "Trabalho");
+  const { project } = await callWs<{ project: { id: string } }>(handlers, "projects.create", {
+    name: "App",
+    icon: "folder",
+    path: folder,
+    workspaceId: trabalho.id,
+  });
+  type Open = { terminal: { workspaceId: string; projectId?: string } };
+  const open = (extra: object) =>
+    callWs<Open>(handlers, "terminals.open", { cwd: root, cols: 80, rows: 24, ...extra });
+
+  const plain = await open({});
+  assert.equal(plain.terminal.workspaceId, pessoal.id);
+  assert.equal(plain.terminal.projectId, undefined);
+  const inWork = await open({ workspaceId: trabalho.id });
+  assert.equal(inWork.terminal.workspaceId, trabalho.id);
+  const inProject = await open({ projectId: project.id, workspaceId: pessoal.id });
+  assert.equal(inProject.terminal.workspaceId, trabalho.id);
+  assert.equal(inProject.terminal.projectId, project.id);
+  await rejectsInvalid(open({ workspaceId: "nope" }));
+  await rejectsInvalid(open({ projectId: "nope" }));
+  const listed = await callWs<{ terminals: Array<{ workspaceId: string }> }>(
+    handlers,
+    "terminals.list",
+    {},
+  );
+  assert.equal(listed.terminals.length, 3);
+});
+
+test("terminais abertos acompanham workspace apagado, projeto movido e projeto removido", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-ws-term-follow-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, "app");
+  await mkdir(folder);
+  const events: AnyEvent[] = [];
+  const db = openDatabase(path.join(root, "karont.db"));
+  context.after(() => db.close());
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void events.push(event),
+    ptyFactory: () => new TestPty(),
+    env: { SHELL: "/bin/bash" },
+    homeDir: root,
+  });
+  context.after(() => handlers.closeTerminals());
+  const [pessoal] = (await callWs<{ workspaces: WorkspaceLike[] }>(handlers, "workspaces.list", {}))
+    .workspaces;
+  assert.ok(pessoal);
+  const a = await ws2(handlers, "A");
+  const b = await ws2(handlers, "B");
+  const { project } = await callWs<{ project: { id: string } }>(handlers, "projects.create", {
+    name: "App",
+    icon: "folder",
+    path: folder,
+    workspaceId: a.id,
+  });
+  type Open = { terminal: { id: string } };
+  const open = (extra: object) =>
+    callWs<Open>(handlers, "terminals.open", { cwd: root, cols: 80, rows: 24, ...extra });
+  const inProject = await open({ projectId: project.id });
+  const loose = await open({ workspaceId: b.id });
+  const listTerminals = async () =>
+    (
+      await callWs<{
+        terminals: Array<{ id: string; workspaceId: string; projectId?: string }>;
+      }>(handlers, "terminals.list", {})
+    ).terminals;
+  const find = async (id: string) => (await listTerminals()).find((terminal) => terminal.id === id);
+  const changedCount = () => events.filter((event) => event.event === "terminals.changed").length;
+  const moved = () => events.filter((event) => event.event === "conversations.workspaceMoved");
+
+  // Mover o projeto leva o terminal dele; o solto fica.
+  events.length = 0;
+  await callWs(handlers, "projects.update", { id: project.id, workspaceId: b.id });
+  assert.equal((await find(inProject.terminal.id))?.workspaceId, b.id);
+  assert.equal(changedCount(), 1);
+  const movedProject = moved()[0];
+  assert.deepEqual(movedProject?.payload, { workspaceId: b.id, projectId: project.id });
+  // Sem mudança de workspace: nada de evento novo.
+  events.length = 0;
+  await callWs(handlers, "projects.update", { id: project.id, name: "Outro nome" });
+  assert.equal(changedCount(), 0);
+  assert.equal(moved().length, 0);
+
+  // Apagar o workspace B move os dois terminais para o de menor position (Pessoal).
+  events.length = 0;
+  await callWs(handlers, "workspaces.remove", { id: b.id });
+  assert.equal((await find(inProject.terminal.id))?.workspaceId, pessoal.id);
+  assert.equal((await find(loose.terminal.id))?.workspaceId, pessoal.id);
+  assert.equal(changedCount(), 1);
+  assert.deepEqual(moved()[0]?.payload, { workspaceId: pessoal.id, fromWorkspaceId: b.id });
+  const order = events.map((event) => event.event);
+  assert.ok(order.indexOf("conversations.workspaceMoved") < order.indexOf("workspaces.changed"));
+
+  // Remover o projeto tira o projectId e mantém o workspace.
+  events.length = 0;
+  await callWs(handlers, "projects.remove", { id: project.id });
+  const afterRemove = await find(inProject.terminal.id);
+  assert.equal(afterRemove?.projectId, undefined);
+  assert.equal(afterRemove?.workspaceId, pessoal.id);
+  assert.equal(changedCount(), 1);
+  // Remover de novo algo sem terminais não emite terminals.changed.
+  const { project: other } = await callWs<{ project: { id: string } }>(
+    handlers,
+    "projects.create",
+    {
+      name: "Vazio",
+      icon: "folder",
+      path: root,
+    },
+  );
+  events.length = 0;
+  await callWs(handlers, "projects.remove", { id: other.id });
+  assert.equal(changedCount(), 0);
 });
 
 class TestPty implements TerminalPty {

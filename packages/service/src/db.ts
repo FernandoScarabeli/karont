@@ -10,6 +10,7 @@ import type {
   MessagePart,
   Project,
   RecentFolder,
+  Workspace,
   Worktree,
 } from "@karont/contract";
 
@@ -130,7 +131,36 @@ export const migrations: { version: number; up: string }[] = [
     ALTER TABLE conversations ADD COLUMN worktree_id TEXT REFERENCES worktrees(id) ON DELETE SET NULL;
     CREATE INDEX conversations_worktree ON conversations(worktree_id);`,
   },
+  {
+    version: 18,
+    up: `CREATE TABLE workspaces (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT NOT NULL,
+      position INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    INSERT INTO workspaces (id,name,icon,position,created_at,updated_at)
+      VALUES (lower(hex(randomblob(16))),'Pessoal','house',0,
+        strftime('%Y-%m-%dT%H:%M:%fZ','now'),strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+    ALTER TABLE projects ADD COLUMN workspace_id TEXT REFERENCES workspaces(id);
+    ALTER TABLE conversations ADD COLUMN workspace_id TEXT REFERENCES workspaces(id);
+    UPDATE projects SET workspace_id=(SELECT id FROM workspaces ORDER BY position LIMIT 1);
+    UPDATE conversations SET workspace_id=(SELECT id FROM workspaces ORDER BY position LIMIT 1);
+    CREATE INDEX projects_workspace ON projects(workspace_id);
+    CREATE INDEX conversations_workspace ON conversations(workspace_id);`,
+  },
 ];
+
+/** Roda `work` numa transação; desfaz tudo se ela lançar. */
+export function inTransaction<T>(db: DatabaseSync, work: () => T): T {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = work();
+    db.exec("COMMIT");
+    return result;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
 
@@ -153,15 +183,22 @@ export type NewConversation = Pick<Conversation, "agent" | "title" | "cwd" | "mo
       | "branchedFromMessageId"
       | "branchContext"
       | "projectId"
+      | "workspaceId"
       | "worktreeId"
     >
   >;
 
 export function createConversation(db: DatabaseSync, input: NewConversation): Conversation {
   const now = new Date().toISOString();
+  // A conversa de um projeto sempre fica no workspace do projeto; a solta, no pedido ou no primeiro.
+  const workspaceId =
+    (input.projectId ? getProject(db, input.projectId)?.workspaceId : undefined) ??
+    input.workspaceId ??
+    defaultWorkspaceId(db);
   const conversation: Conversation = {
     id: randomUUID(),
     ...input,
+    workspaceId,
     plan: input.plan ?? false,
     fast: input.fast ?? false,
     pinnedAt: null,
@@ -172,7 +209,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     updatedAt: now,
   };
   db.prepare(
-    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,fast,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at,branched_from_id,branched_from_message_id,branch_context_enabled,project_id,worktree_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,fast,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at,branched_from_id,branched_from_message_id,branch_context_enabled,project_id,worktree_id,workspace_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     conversation.id,
     conversation.agent,
@@ -195,6 +232,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     conversation.branchContext ? 1 : 0,
     conversation.projectId ?? null,
     conversation.worktreeId ?? null,
+    conversation.workspaceId,
   );
   return conversation;
 }
@@ -539,6 +577,7 @@ type ConversationRow = {
   branch_context_enabled: number;
   project_id: string | null;
   worktree_id: string | null;
+  workspace_id: string;
   state: Conversation["state"];
   created_at: string;
   updated_at: string;
@@ -563,6 +602,7 @@ function mapConversation(row: ConversationRow): Conversation {
     title: row.title,
     cwd: row.cwd,
     ...(row.project_id ? { projectId: row.project_id } : {}),
+    workspaceId: row.workspace_id,
     ...(row.worktree_id ? { worktreeId: row.worktree_id } : {}),
     mode: row.mode,
     ...(row.model ? { model: row.model } : {}),
@@ -718,6 +758,7 @@ type ProjectRow = {
   icon: string;
   path: string;
   default_agent: string | null;
+  workspace_id: string;
   created_at: string;
   updated_at: string;
 };
@@ -725,6 +766,7 @@ type ProjectRow = {
 function mapProject(row: ProjectRow): Project {
   return {
     id: row.id,
+    workspaceId: row.workspace_id,
     name: row.name,
     icon: row.icon,
     path: row.path,
@@ -736,11 +778,18 @@ function mapProject(row: ProjectRow): Project {
 
 export function createProject(
   db: DatabaseSync,
-  input: { name: string; icon: string; path: string; defaultAgent?: string | null },
+  input: {
+    name: string;
+    icon: string;
+    path: string;
+    defaultAgent?: string | null;
+    workspaceId?: string;
+  },
 ): Project {
   const now = new Date().toISOString();
   const project: Project = {
     id: randomUUID(),
+    workspaceId: input.workspaceId ?? defaultWorkspaceId(db),
     name: input.name,
     icon: input.icon,
     path: input.path,
@@ -749,8 +798,17 @@ export function createProject(
     updatedAt: now,
   };
   db.prepare(
-    "INSERT INTO projects (id,name,icon,path,default_agent,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
-  ).run(project.id, project.name, project.icon, project.path, project.defaultAgent, now, now);
+    "INSERT INTO projects (id,name,icon,path,default_agent,workspace_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
+  ).run(
+    project.id,
+    project.name,
+    project.icon,
+    project.path,
+    project.defaultAgent,
+    project.workspaceId,
+    now,
+    now,
+  );
   return project;
 }
 
@@ -773,11 +831,14 @@ export function getProjectByPath(db: DatabaseSync, projectPath: string): Project
   return row ? mapProject(row) : null;
 }
 
-/** Atualiza nome, ícone e agente padrão. A pasta nunca muda depois de criada. */
+/**
+ * Atualiza nome, ícone, agente padrão e workspace. A pasta nunca muda depois de criada.
+ * Mover o projeto de workspace move, na mesma transação, as conversas dele.
+ */
 export function updateProject(
   db: DatabaseSync,
   id: string,
-  changes: { name?: string; icon?: string; defaultAgent?: string | null },
+  changes: { name?: string; icon?: string; defaultAgent?: string | null; workspaceId?: string },
 ): Project | null {
   const current = getProject(db, id);
   if (!current) return null;
@@ -786,14 +847,126 @@ export function updateProject(
     icon: changes.icon ?? current.icon,
     defaultAgent: changes.defaultAgent === undefined ? current.defaultAgent : changes.defaultAgent,
   };
-  db.prepare("UPDATE projects SET name=?,icon=?,default_agent=?,updated_at=? WHERE id=?").run(
-    next.name,
-    next.icon,
-    next.defaultAgent,
+  const workspaceId = changes.workspaceId ?? current.workspaceId;
+  inTransaction(db, () => {
+    db.prepare(
+      "UPDATE projects SET name=?,icon=?,default_agent=?,workspace_id=?,updated_at=? WHERE id=?",
+    ).run(next.name, next.icon, next.defaultAgent, workspaceId, new Date().toISOString(), id);
+    if (workspaceId !== current.workspaceId) {
+      db.prepare("UPDATE conversations SET workspace_id=? WHERE project_id=?").run(workspaceId, id);
+    }
+  });
+  return getProject(db, id);
+}
+
+type WorkspaceRow = {
+  id: string;
+  name: string;
+  icon: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapWorkspace(row: WorkspaceRow): Workspace {
+  return {
+    id: row.id,
+    name: row.name,
+    icon: row.icon,
+    position: row.position,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function listWorkspaces(db: DatabaseSync): Workspace[] {
+  const rows = db
+    .prepare("SELECT * FROM workspaces ORDER BY position ASC, rowid ASC")
+    .all() as WorkspaceRow[];
+  return rows.map(mapWorkspace);
+}
+
+export function getWorkspace(db: DatabaseSync, id: string): Workspace | null {
+  const row = db.prepare("SELECT * FROM workspaces WHERE id=?").get(id) as WorkspaceRow | undefined;
+  return row ? mapWorkspace(row) : null;
+}
+
+/** O workspace de menor `position`; a migração 18 garante que sempre existe um. */
+export function defaultWorkspaceId(db: DatabaseSync): string {
+  const row = db
+    .prepare("SELECT id FROM workspaces ORDER BY position ASC, rowid ASC LIMIT 1")
+    .get() as { id: string } | undefined;
+  if (!row) throw new Error("Não existe nenhum workspace.");
+  return row.id;
+}
+
+export function createWorkspace(
+  db: DatabaseSync,
+  input: { name: string; icon: string },
+): Workspace {
+  const now = new Date().toISOString();
+  const next = db
+    .prepare("SELECT COALESCE(MAX(position) + 1, 0) AS position FROM workspaces")
+    .get() as {
+    position: number;
+  };
+  const workspace: Workspace = {
+    id: randomUUID(),
+    name: input.name,
+    icon: input.icon,
+    position: next.position,
+    createdAt: now,
+    updatedAt: now,
+  };
+  db.prepare(
+    "INSERT INTO workspaces (id,name,icon,position,created_at,updated_at) VALUES (?,?,?,?,?,?)",
+  ).run(workspace.id, workspace.name, workspace.icon, workspace.position, now, now);
+  return workspace;
+}
+
+export function updateWorkspace(
+  db: DatabaseSync,
+  id: string,
+  changes: { name?: string; icon?: string },
+): Workspace | null {
+  const current = getWorkspace(db, id);
+  if (!current) return null;
+  db.prepare("UPDATE workspaces SET name=?,icon=?,updated_at=? WHERE id=?").run(
+    changes.name ?? current.name,
+    changes.icon ?? current.icon,
     new Date().toISOString(),
     id,
   );
-  return getProject(db, id);
+  return getWorkspace(db, id);
+}
+
+/** Grava a nova ordem (`ids` já validado pelo chamador) numa transação. */
+export function reorderWorkspaces(db: DatabaseSync, ids: string[]): void {
+  inTransaction(db, () => {
+    const update = db.prepare("UPDATE workspaces SET position=? WHERE id=?");
+    ids.forEach((id, position) => {
+      update.run(position, id);
+    });
+  });
+}
+
+/**
+ * Apaga o workspace; projetos e conversas dele vão, na mesma transação, para o
+ * workspace restante de menor `position`. Devolve o id de destino, `false` se não
+ * existe e `null` se for o último.
+ */
+export function removeWorkspace(db: DatabaseSync, id: string): string | false | null {
+  if (!getWorkspace(db, id)) return false;
+  return inTransaction(db, () => {
+    const target = db
+      .prepare("SELECT id FROM workspaces WHERE id<>? ORDER BY position ASC, rowid ASC LIMIT 1")
+      .get(id) as { id: string } | undefined;
+    if (!target) return null;
+    db.prepare("UPDATE projects SET workspace_id=? WHERE workspace_id=?").run(target.id, id);
+    db.prepare("UPDATE conversations SET workspace_id=? WHERE workspace_id=?").run(target.id, id);
+    db.prepare("DELETE FROM workspaces WHERE id=?").run(id);
+    return target.id;
+  });
 }
 
 export function removeProject(db: DatabaseSync, id: string): boolean {

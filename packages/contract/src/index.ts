@@ -78,6 +78,7 @@ export type {
   ResultOf,
   SettingKey,
   TerminalInfo,
+  Workspace,
 } from "./methods.ts";
 export {
   agentSchema,
@@ -92,6 +93,7 @@ export {
   recentFolderSchema,
   settingKeySchema,
   terminalInfoSchema,
+  workspaceSchema,
 } from "./methods.ts";
 export type { RestoreFileChange, RestorePointSummary } from "./restore.ts";
 export {

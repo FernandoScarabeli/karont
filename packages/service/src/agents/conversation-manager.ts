@@ -309,6 +309,13 @@ export class ConversationManager {
     return createConversation(this.#db, input);
   }
 
+  /** Cria e avisa as outras janelas pelo mesmo evento do ramo e das demais mudanças. */
+  async createAnnounced(input: NewConversation): Promise<Conversation> {
+    const conversation = this.create(input);
+    await this.#stateEvent(conversation);
+    return conversation;
+  }
+
   count(): number {
     return countConversations(this.#db);
   }
@@ -503,6 +510,7 @@ export class ConversationManager {
       title: branchTitle,
       cwd: source.cwd,
       ...(source.projectId ? { projectId: source.projectId } : {}),
+      workspaceId: source.workspaceId,
       ...(source.worktreeId ? { worktreeId: source.worktreeId } : {}),
       mode: source.mode,
       ...(source.model ? { model: source.model } : {}),
@@ -2361,7 +2369,11 @@ export class ConversationManager {
   }
 
   async #stateEvent(conversation: Conversation, message?: ConversationMessage): Promise<void> {
-    const current = this.#ignoreClaudeFast(conversation);
+    const stored = getConversation(this.#db, conversation.id);
+    // Um turno longo segura o objeto antigo; o workspace atual vem do banco.
+    const current = this.#ignoreClaudeFast(
+      stored ? { ...conversation, workspaceId: stored.workspaceId } : conversation,
+    );
     try {
       await this.#emit({
         event: "conversation.stateChanged",

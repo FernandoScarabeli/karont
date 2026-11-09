@@ -19,15 +19,19 @@ import type {
 import {
   addMessage,
   createConversation as createConversationRecord,
+  createProject,
+  createWorkspace,
   getAgentSession,
   getMessage,
   getRestorePoint,
   isBranchForkPending,
   listRestorePoints,
   openDatabase,
+  removeWorkspace,
   setAgentSession,
   setSetting,
   updateConversation,
+  updateProject,
 } from "../db.ts";
 import { ServiceError } from "../errors.ts";
 import {
@@ -108,7 +112,7 @@ async function createHarness(
     planDecision?: "approve" | "adjust";
     initializeGate?: { started: () => void; released: Promise<void> };
     largeImageBytes?: number;
-    messageCreatedGate?: { started: () => void; released: Promise<void> };
+    messageCreatedGate?: { started: () => void; released: Promise<void>; onlyNth?: number };
     titleGenerator?: (
       agent: Conversation["agent"],
       userMessage: string,
@@ -132,6 +136,7 @@ async function createHarness(
       fetchedAt: new Date().toISOString(),
     });
   }
+  let createdSoFar = 0;
   const events: AnyEvent[] = [];
   const listeners = new Set<(event: AnyEvent) => void>();
   const spawnArgs: string[][] = [];
@@ -157,8 +162,12 @@ async function createHarness(
       events.push(event);
       for (const listener of listeners) listener(event);
       if (event.event === "conversation.messageCreated" && fakeOptions.messageCreatedGate) {
-        fakeOptions.messageCreatedGate.started();
-        await fakeOptions.messageCreatedGate.released;
+        createdSoFar += 1;
+        const gate = fakeOptions.messageCreatedGate;
+        if (gate.onlyNth === undefined || gate.onlyNth === createdSoFar) {
+          gate.started();
+          await gate.released;
+        }
       }
     },
     adapterFactory:
@@ -1889,6 +1898,7 @@ test("Claude não abre processo se for descartado enquanto valida a pasta", asyn
   });
   const timestamp = new Date().toISOString();
   const conversation: Conversation = {
+    workspaceId: "ws-test",
     id: "dispose-before-spawn-claude",
     agent: "claude",
     title: "Abertura cancelada",
@@ -1940,6 +1950,7 @@ test("Claude mata o processo se dispose acontecer dentro do spawn", async () => 
   });
   const timestamp = new Date().toISOString();
   const conversation: Conversation = {
+    workspaceId: "ws-test",
     id: "dispose-during-spawn-claude",
     agent: "claude",
     title: "Abertura cancelada",
@@ -2515,6 +2526,7 @@ test("Claude distingue pasta do projeto apagada de CLI ausente", async (context)
   await rm(cwd, { recursive: true, force: true });
   const timestamp = new Date().toISOString();
   const conversation: Conversation = {
+    workspaceId: "ws-test",
     id: "missing-folder-claude",
     agent: "claude",
     title: "Pasta apagada",
@@ -3891,4 +3903,107 @@ test("desfazer: bloqueado com conversa ocupada, turno no mesmo repositório e du
   } finally {
     await rig.harness.close();
   }
+});
+
+async function finalWorkspaceAfterMove(
+  move: (harness: Harness, conversation: Conversation) => string,
+  options: { inProject?: boolean } = {},
+): Promise<{ emitted: Array<string | undefined>; expected: string; stored: string }> {
+  // O envio segura o objeto da conversa enquanto a mensagem é emitida: movemos nesse intervalo.
+  let announceMessage!: () => void;
+  let releaseMessage!: () => void;
+  const messageCreated = new Promise<void>((resolve) => {
+    announceMessage = resolve;
+  });
+  const messageEmission = new Promise<void>((resolve) => {
+    releaseMessage = resolve;
+  });
+  // A 2ª mensagem criada é a do agente: o envio já leu a conversa e segura esse objeto.
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async () => emit({ kind: "turn-end", status: "done" }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory,
+      messageCreatedGate: { started: announceMessage, released: messageEmission, onlyNth: 2 },
+    },
+  );
+  try {
+    const other = createWorkspace(harness.db, { name: "Outro", icon: "folder" });
+    const project = options.inProject
+      ? createProject(harness.db, {
+          name: "P",
+          icon: "folder",
+          path: "/tmp/ws-move-project",
+          workspaceId: other.id,
+        })
+      : null;
+    const conversation = harness.manager.create({
+      agent: "claude",
+      title: "Em andamento",
+      cwd: os.tmpdir(),
+      mode: "edit",
+      workspaceId: other.id,
+      ...(project ? { projectId: project.id } : {}),
+    });
+    assert.equal(conversation.workspaceId, other.id);
+    const sending = harness.manager.send(conversation.id, "Trabalhe.");
+    await messageCreated;
+    const expected = move(harness, conversation);
+    harness.events.length = 0;
+    releaseMessage();
+    await sending;
+    await waitForState(harness, conversation.id, "idle");
+    const emitted = harness.events.flatMap((event) =>
+      event.event === "conversation.stateChanged" &&
+      event.payload.conversation.id === conversation.id
+        ? [event.payload.conversation.workspaceId]
+        : [],
+    );
+    return {
+      emitted,
+      expected,
+      stored: (
+        harness.db
+          .prepare("SELECT workspace_id FROM conversations WHERE id=?")
+          .get(conversation.id) as { workspace_id: string }
+      ).workspace_id,
+    };
+  } finally {
+    releaseMessage();
+    await harness.close();
+  }
+}
+
+test("turno ativo: apagar o workspace durante o turno emite e grava o workspace novo", async () => {
+  const result = await finalWorkspaceAfterMove((harness, conversation) => {
+    const target = removeWorkspace(harness.db, conversation.workspaceId);
+    assert.equal(typeof target, "string");
+    return target as string;
+  });
+  assert.ok(result.emitted.length > 0);
+  assert.deepEqual(new Set(result.emitted), new Set([result.expected]));
+  assert.equal(result.stored, result.expected);
+});
+
+test("turno ativo: mover o projeto durante o turno emite e grava o workspace novo", async () => {
+  const result = await finalWorkspaceAfterMove(
+    (harness, conversation) => {
+      const destination = createWorkspace(harness.db, { name: "Destino", icon: "folder" });
+      updateProject(harness.db, conversation.projectId as string, {
+        workspaceId: destination.id,
+      });
+      return destination.id;
+    },
+    { inProject: true },
+  );
+  assert.ok(result.emitted.length > 0);
+  assert.deepEqual(new Set(result.emitted), new Set([result.expected]));
+  assert.equal(result.stored, result.expected);
 });

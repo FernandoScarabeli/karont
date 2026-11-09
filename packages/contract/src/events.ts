@@ -10,6 +10,7 @@ import {
   queueStatusSchema,
   recentFolderSchema,
   terminalInfoSchema,
+  workspaceSchema,
 } from "./methods.ts";
 import { restorePointSummarySchema } from "./restore.ts";
 import { worktreeSchema } from "./worktrees.ts";
@@ -54,6 +55,17 @@ export const events = {
     worktrees: z.array(worktreeSchema),
   }),
   "projects.changed": z.strictObject({ projects: z.array(projectSchema) }),
+  "workspaces.changed": z.strictObject({ workspaces: z.array(workspaceSchema) }),
+  "conversations.workspaceMoved": z
+    .strictObject({
+      workspaceId: z.string().min(1),
+      fromWorkspaceId: z.string().min(1).optional(),
+      projectId: z.string().min(1).optional(),
+    })
+    .refine(
+      (payload) => (payload.fromWorkspaceId === undefined) !== (payload.projectId === undefined),
+      "Informe exatamente um entre fromWorkspaceId e projectId.",
+    ),
   "conversation.messageCreated": z.strictObject({
     conversationId: z.string(),
     message: messageSchema,

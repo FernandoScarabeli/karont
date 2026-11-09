@@ -85,6 +85,7 @@ test("eventos do terminal validam saída, encerramento e lista", () => {
     id: "t1",
     title: "bash · ~",
     cwd: "/tmp",
+    workspaceId: "w1",
     shell: "/bin/bash",
     cols: 80,
     rows: 24,
