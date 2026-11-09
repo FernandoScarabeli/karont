@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { type ChildProcess, execFileSync, type SpawnOptions } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -29,7 +29,12 @@ import {
   setSetting,
   updateConversation,
 } from "../db.ts";
-import type { RestoreSnapshotOutcome, RestoreSnapshotRequest } from "../git/restore-points.ts";
+import { ServiceError } from "../errors.ts";
+import {
+  type RestoreSnapshotOutcome,
+  type RestoreSnapshotRequest,
+  takeRestorePoint,
+} from "../git/restore-points.ts";
 import type {
   AdapterEvent,
   AdapterFactory,
@@ -3549,6 +3554,340 @@ test("restauração com Git de verdade: fotos antes e depois, limite de 50 e lim
     }
     assert.equal(await rig.harness.manager.remove(conversation.id), true);
     await rig.until(() => refs().length === 0, "refs apagadas com a conversa", 500);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Ver mudanças e desfazer (M3-B2b)
+// ---------------------------------------------------------------------------
+
+type RestoreChangedEvent = Extract<AnyEvent, { event: "restore.changed" }>;
+
+function restoreEvents(rig: { harness: Harness }): RestoreChangedEvent["payload"][] {
+  return rig.harness.events
+    .filter((event): event is RestoreChangedEvent => event.event === "restore.changed")
+    .map((event) => event.payload);
+}
+
+async function pathExists(target: string): Promise<boolean> {
+  return stat(target).then(
+    () => true,
+    () => false,
+  );
+}
+
+/** Turno completo com o agente falso mexendo em arquivos; devolve quando o ponto está pronto. */
+async function runUndoableTurn(
+  rig: Awaited<ReturnType<typeof createRestoreRig>>,
+  conversationId: string,
+  text = "mexe nos arquivos",
+) {
+  const { agentMessage } = await rig.harness.manager.send(conversationId, text);
+  rig.finish(conversationId);
+  await rig.until(
+    () => rig.harness.manager.restoreList(conversationId).points.at(-1)?.state === "ready",
+    "ponto pronto",
+    500,
+  );
+  await rig.until(() => rig.stateOf(conversationId) === "idle", "conversa parada");
+  return agentMessage.id;
+}
+
+test("desfazer: lista, diff, prévia e desfazer em repositório real, com eventos", async () => {
+  const repo = await createTestRepo();
+  await writeFile(path.join(repo, "modificado.txt"), "guardado\n");
+  git(repo, "add", "-A");
+  git(repo, "commit", "-q", "-m", "mais arquivos");
+  await writeFile(path.join(repo, "modificado.txt"), "guardado\n");
+  await writeFile(path.join(repo, "apagado.txt"), "apagado\n");
+  await writeFile(path.join(repo, "com espaço.txt"), "espaço\n");
+  await writeFile(path.join(repo, "estrela*.txt"), "estrela\n");
+  await writeFile(path.join(repo, "binario.bin"), Buffer.from([0, 1, 2, 0]));
+  git(repo, "add", "-A");
+  git(repo, "commit", "-q", "-m", "arquivos");
+  await writeFile(path.join(repo, "base.txt"), "guardado no stash\n");
+  git(repo, "stash", "push", "-q", "-m", "do usuário");
+  const before = {
+    status: git(repo, "status", "--porcelain"),
+    head: git(repo, "rev-parse", "HEAD"),
+    heads: git(repo, "for-each-ref", "refs/heads"),
+    stash: git(repo, "stash", "list"),
+    index: git(repo, "ls-files", "--stage"),
+  };
+  const originals = new Map<string, Buffer>();
+  for (const name of [
+    "modificado.txt",
+    "apagado.txt",
+    "com espaço.txt",
+    "estrela*.txt",
+    "binario.bin",
+  ])
+    originals.set(name, await readFile(path.join(repo, name)));
+
+  const rig = await createRestoreRig({
+    onSend: async () => {
+      await rm(path.join(repo, "apagado.txt"));
+      await rename(path.join(repo, "com espaço.txt"), path.join(repo, "novo espaço.txt"));
+      await writeFile(path.join(repo, "modificado.txt"), "do agente\n");
+      await writeFile(path.join(repo, "estrela*.txt"), "estrela do agente\n");
+      await writeFile(path.join(repo, "binario.bin"), Buffer.from([7, 0, 7]));
+      await mkdir(path.join(repo, "pasta", "funda"), { recursive: true });
+      await writeFile(path.join(repo, "pasta", "funda", "novo.txt"), "novo\n");
+    },
+  });
+  try {
+    const conversation = rig.create(repo);
+    const messageId = await runUndoableTurn(rig, conversation.id);
+    const { manager } = rig.harness;
+
+    const listed = manager.restoreList(conversation.id).points;
+    assert.deepEqual(listed, [
+      { messageId, state: "ready", changedFiles: 6, concurrent: false, headMoved: false },
+    ]);
+    const events = restoreEvents(rig);
+    assert.equal(events.at(-1)?.conversationId, conversation.id);
+    assert.deepEqual(events.at(-1)?.point, listed[0]);
+
+    const changes = await manager.restoreChanges(conversation.id, messageId);
+    assert.equal(changes.truncated, false);
+    assert.deepEqual(changes.files.map((file) => file.path).sort(), [
+      "apagado.txt",
+      "binario.bin",
+      "estrela*.txt",
+      "modificado.txt",
+      "novo espaço.txt",
+      "pasta/funda/novo.txt",
+    ]);
+    assert.equal(changes.files.find((file) => file.path === "binario.bin")?.binary, true);
+    const renamed = changes.files.find((file) => file.path === "novo espaço.txt");
+    assert.equal(renamed?.status, "renamed");
+    assert.equal(renamed?.oldPath, "com espaço.txt");
+    const diff = await manager.restoreDiff(conversation.id, messageId, "estrela*.txt");
+    assert.match(diff.patch, /^\+estrela do agente$/m);
+    await assert.rejects(
+      manager.restoreDiff(conversation.id, messageId, "base.txt"),
+      (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+    );
+    await assert.rejects(
+      manager.restoreChanges(conversation.id, "mensagem-que-nao-existe"),
+      (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+    );
+
+    // O usuário mexe num dos arquivos do ponto e num que não é do ponto.
+    await writeFile(path.join(repo, "modificado.txt"), "do usuário depois\n");
+    await writeFile(path.join(repo, "base.txt"), "base mexida pelo usuário\n");
+    const preview = await manager.undoPreview(conversation.id, messageId);
+    assert.deepEqual(preview, {
+      files: 7,
+      userChanged: ["modificado.txt"],
+      headMoved: false,
+      concurrent: false,
+      submodulesSkipped: [],
+    });
+    const eventsBefore = restoreEvents(rig).length;
+    const result = await manager.undo(conversation.id, messageId);
+    assert.deepEqual(result, { restored: 5, removed: 2 });
+
+    for (const [name, content] of originals) {
+      assert.deepEqual(await readFile(path.join(repo, name)), content, name);
+    }
+    assert.equal(await readFile(path.join(repo, "base.txt"), "utf8"), "base mexida pelo usuário\n");
+    assert.equal(await pathExists(path.join(repo, "pasta")), false);
+    assert.equal(await pathExists(path.join(repo, "novo espaço.txt")), false);
+    assert.deepEqual(
+      {
+        head: git(repo, "rev-parse", "HEAD"),
+        heads: git(repo, "for-each-ref", "refs/heads"),
+        stash: git(repo, "stash", "list"),
+        index: git(repo, "ls-files", "--stage"),
+      },
+      { head: before.head, heads: before.heads, stash: before.stash, index: before.index },
+    );
+    assert.equal(git(repo, "status", "--porcelain"), " M base.txt\n");
+
+    const row = getRestorePoint(rig.harness.db, messageId);
+    assert.ok(row?.undoneAt);
+    assert.ok(row?.undoCommit);
+    const undoRefName = `refs/karont/restore/${conversation.id}/${messageId}/undo`;
+    assert.equal(git(repo, "rev-parse", undoRefName).trim(), row?.undoCommit);
+    assert.equal(git(repo, "show", `${undoRefName}:modificado.txt`), "do usuário depois\n");
+    assert.equal(manager.restoreList(conversation.id).points[0]?.state, "undone");
+    const emitted = restoreEvents(rig);
+    assert.equal(emitted.length, eventsBefore + 1);
+    assert.equal(emitted.at(-1)?.point.state, "undone");
+
+    await assert.rejects(manager.undo(conversation.id, messageId), /já foi desfeita/);
+    await assert.rejects(manager.undoPreview(conversation.id, messageId), /já foi desfeita/);
+
+    // Apagar a conversa apaga as três refs, inclusive a do desfazer.
+    assert.equal(await manager.remove(conversation.id), true);
+    const refs = () =>
+      git(repo, "for-each-ref", "--format=%(refname)", "refs/karont").split("\n").filter(Boolean);
+    await rig.until(() => refs().length === 0, "refs apagadas com a conversa", 500);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("desfazer: restore.list só lê o banco e ponto sem mudança tem changedFiles 0", async () => {
+  const repo = await createTestRepo();
+  const rig = await createRestoreRig();
+  try {
+    const conversation = rig.create(repo);
+    const messageId = await runUndoableTurn(rig, conversation.id, "só conversa");
+    assert.deepEqual(rig.harness.manager.restoreList(conversation.id).points, [
+      { messageId, state: "ready", changedFiles: 0, concurrent: false, headMoved: false },
+    ]);
+    const changes = await rig.harness.manager.restoreChanges(conversation.id, messageId);
+    assert.deepEqual(changes, { files: [], truncated: false });
+    // Sem o repositório, a lista continua saindo do banco; só ler as mudanças falha.
+    await rm(repo, { recursive: true, force: true });
+    assert.equal(rig.harness.manager.restoreList(conversation.id).points.length, 1);
+    await assert.rejects(rig.harness.manager.restoreChanges(conversation.id, messageId), Error);
+    assert.throws(() => rig.harness.manager.restoreList("conversa-inexistente"), /não encontrada/);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("desfazer: estados unavailable (com motivo), incomplete e undone bloqueiam o desfazer", async () => {
+  const plain = await mkdtemp(path.join(os.tmpdir(), "karont-undo-nogit-"));
+  const repo = await createTestRepo();
+  const rig = await createRestoreRig({
+    restoreSnapshot: async (request) => {
+      if (request.phase === "after") return { repoRoot: request.repoRoot, unavailable: "failed" };
+      return takeRestorePoint(request);
+    },
+  });
+  try {
+    const noGit = rig.create(plain);
+    const first = await rig.harness.manager.send(noGit.id, "oi");
+    assert.deepEqual(rig.harness.manager.restoreList(noGit.id).points, [
+      {
+        messageId: first.agentMessage.id,
+        state: "unavailable",
+        reason: "no-git",
+        changedFiles: 0,
+        concurrent: false,
+        headMoved: false,
+      },
+    ]);
+    assert.equal(restoreEvents(rig).at(-1)?.point.state, "unavailable");
+    assert.equal(restoreEvents(rig).at(-1)?.point.reason, "no-git");
+    await assert.rejects(
+      rig.harness.manager.undo(noGit.id, first.agentMessage.id),
+      /não tem ponto/,
+    );
+    await assert.rejects(
+      rig.harness.manager.restoreChanges(noGit.id, first.agentMessage.id),
+      /não tem ponto/,
+    );
+
+    const gitted = rig.create(repo);
+    const second = await rig.harness.manager.send(gitted.id, "oi");
+    rig.finish(gitted.id);
+    await rig.until(() => rig.stateOf(gitted.id) === "idle", "parada");
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    assert.equal(rig.harness.manager.restoreList(gitted.id).points[0]?.state, "incomplete");
+    await assert.rejects(
+      rig.harness.manager.undo(gitted.id, second.agentMessage.id),
+      /por completo/,
+    );
+    await assert.rejects(
+      rig.harness.manager.undoPreview(gitted.id, second.agentMessage.id),
+      /por completo/,
+    );
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("desfazer: agente que fez commit marca headMoved e o commit continua na branch", async () => {
+  const repo = await createTestRepo();
+  const rig = await createRestoreRig({
+    onSend: async () => {
+      await writeFile(path.join(repo, "base.txt"), "commitada pelo agente\n");
+      await writeFile(path.join(repo, "extra.txt"), "extra\n");
+      git(repo, "add", "-A");
+      git(repo, "commit", "-q", "-m", "do agente");
+    },
+  });
+  try {
+    const conversation = rig.create(repo);
+    const messageId = await runUndoableTurn(rig, conversation.id);
+    const head = git(repo, "rev-parse", "HEAD");
+    const point = rig.harness.manager.restoreList(conversation.id).points[0];
+    assert.equal(point?.headMoved, true);
+    assert.equal(
+      (await rig.harness.manager.undoPreview(conversation.id, messageId)).headMoved,
+      true,
+    );
+    await rig.harness.manager.undo(conversation.id, messageId);
+    assert.equal(await readFile(path.join(repo, "base.txt"), "utf8"), "base\n");
+    assert.equal(await pathExists(path.join(repo, "extra.txt")), false);
+    assert.equal(git(repo, "rev-parse", "HEAD"), head);
+    assert.match(git(repo, "log", "--format=%s", "main"), /do agente/);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("desfazer: bloqueado com conversa ocupada, turno no mesmo repositório e durante outro desfazer", async () => {
+  const repo = await createTestRepo();
+  const rig = await createRestoreRig({
+    onSend: async () => {
+      await writeFile(path.join(repo, "base.txt"), `${Math.random()}\n`);
+    },
+  });
+  try {
+    const a = rig.create(repo);
+    const b = rig.create(repo);
+    const messageId = await runUndoableTurn(rig, a.id);
+    const { manager } = rig.harness;
+
+    // Conversa ocupada.
+    const second = await manager.send(a.id, "outra");
+    await assert.rejects(manager.undo(a.id, messageId), /Espere a conversa terminar/);
+    await assert.rejects(manager.undoPreview(a.id, messageId), /Espere a conversa terminar/);
+
+    // Outra conversa do mesmo repositório começa enquanto a primeira ainda trabalha.
+    await manager.send(b.id, "trabalhando");
+    rig.finish(a.id);
+    await rig.until(() => rig.stateOf(a.id) === "idle", "a parada");
+    await rig.until(
+      () => manager.restoreList(a.id).points.every((point) => point.state === "ready"),
+      "a pronta",
+      500,
+    );
+    await assert.rejects(manager.undo(a.id, messageId), /trabalhando neste repositório/);
+    await assert.rejects(manager.undoPreview(a.id, messageId), /trabalhando neste repositório/);
+    rig.finish(b.id);
+    await rig.until(() => rig.stateOf(b.id) === "idle", "b parada");
+    await rig.until(
+      () => manager.restoreList(b.id).points.every((point) => point.state === "ready"),
+      "b pronta",
+      500,
+    );
+    // Os dois turnos se sobrepuseram: o aviso de concorrência chega na prévia.
+    const preview = await manager.undoPreview(a.id, second.agentMessage.id);
+    assert.equal(preview.concurrent, true);
+    assert.equal(manager.restoreList(a.id).points[1]?.concurrent, true);
+    assert.equal(manager.restoreList(a.id).points[0]?.concurrent, false);
+
+    // Durante o desfazer: um filtro lento do Git segura a foto de segurança.
+    await writeFile(path.join(repo, ".gitattributes"), "*.lento filter=lento\n");
+    await writeFile(path.join(repo, "x.lento"), "lento\n");
+    git(repo, "config", "filter.lento.clean", "sleep 1; cat");
+    const undoing = manager.undo(a.id, messageId);
+    await assert.rejects(manager.send(a.id, "durante"), /Espere o desfazer terminar/);
+    await assert.rejects(manager.retry(a.id), /Espere o desfazer terminar/);
+    await assert.rejects(manager.undo(a.id, messageId), /desfazer em andamento/);
+    await undoing;
+    assert.equal(manager.restoreList(a.id).points[0]?.state, "undone");
+    await manager.send(a.id, "depois"); // liberado de novo
+    rig.finish(a.id);
   } finally {
     await rig.harness.close();
   }

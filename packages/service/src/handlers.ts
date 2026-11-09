@@ -254,6 +254,26 @@ export function createHandlers({
           .catch((error: unknown) => {
             throw conversationError(error);
           });
+      case "restore.list":
+        return conversationManager.restoreList(request.params.conversationId);
+      case "restore.changes":
+        return conversationManager.restoreChanges(
+          request.params.conversationId,
+          request.params.messageId,
+        );
+      case "restore.diff":
+        return conversationManager.restoreDiff(
+          request.params.conversationId,
+          request.params.messageId,
+          request.params.path,
+        );
+      case "restore.undoPreview":
+        return conversationManager.undoPreview(
+          request.params.conversationId,
+          request.params.messageId,
+        );
+      case "restore.undo":
+        return conversationManager.undo(request.params.conversationId, request.params.messageId);
       case "agent.models":
         return conversationManager.models(request.params.agent);
       case "agent.capabilities":

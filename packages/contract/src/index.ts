@@ -93,6 +93,15 @@ export {
   settingKeySchema,
   terminalInfoSchema,
 } from "./methods.ts";
+export type { RestoreFileChange, RestorePointSummary } from "./restore.ts";
+export {
+  MAX_RESTORE_CHANGED_FILES,
+  MAX_RESTORE_PATCH_BYTES,
+  restoreFileChangeSchema,
+  restorePointSummarySchema,
+  restoreStateSchema,
+  restoreUnavailableReasonSchema,
+} from "./restore.ts";
 export type { MessageSource } from "./sources.ts";
 export {
   MAX_MESSAGE_SOURCES,

@@ -11,6 +11,7 @@ import {
   recentFolderSchema,
   terminalInfoSchema,
 } from "./methods.ts";
+import { restorePointSummarySchema } from "./restore.ts";
 
 export const events = {
   "dev.streamTest.delta": z.strictObject({
@@ -43,6 +44,10 @@ export const events = {
   }),
   "folders.changed": z.strictObject({ folders: z.array(recentFolderSchema).max(8) }),
   "queue.changed": queueStatusSchema,
+  "restore.changed": z.strictObject({
+    conversationId: z.string().min(1),
+    point: restorePointSummarySchema,
+  }),
   "projects.changed": z.strictObject({ projects: z.array(projectSchema) }),
   "conversation.messageCreated": z.strictObject({
     conversationId: z.string(),

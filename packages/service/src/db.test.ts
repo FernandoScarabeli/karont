@@ -32,6 +32,8 @@ import {
   setAgentSession,
   setConversationTitle,
   setRestorePointAfter,
+  setRestorePointUndoCommit,
+  setRestorePointUndone,
   setSetting,
   updateProject,
 } from "./db.ts";
@@ -85,7 +87,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    15,
+    16,
   );
   assert.equal(
     (
@@ -146,7 +148,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    15,
+    16,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();
@@ -390,7 +392,7 @@ test("migra um banco na versão 13 mantendo a conversa solta, sem projectId", as
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      15,
+      16,
     );
     const conversation = getConversation(db, "v13-1");
     assert.equal(conversation?.title, "Antes dos projetos");
@@ -502,11 +504,57 @@ test("migra um banco na versão 14 sem perder dados e cria restore_points", asyn
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      15,
+      16,
     );
     assert.equal(getConversation(db, "v14-1")?.title, "Antes");
     assert.equal(listMessages(db, "v14-1").length, 1);
     assert.deepEqual(listRestorePoints(db, "v14-1"), []);
+  } finally {
+    db.close();
+  }
+});
+
+test("migra um banco na versão 15 sem perder dados e acrescenta as colunas do desfazer", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-v15-"));
+  const dbPath = path.join(root, "karont.db");
+  const legacyDb = new DatabaseSync(dbPath);
+  for (const migration of migrations.filter((entry) => entry.version <= 15)) {
+    legacyDb.exec(migration.up);
+    legacyDb.exec(`PRAGMA user_version = ${migration.version}`);
+  }
+  const stamp = "2026-11-01T10:00:00.000Z";
+  legacyDb
+    .prepare(
+      "INSERT INTO conversations (id,agent,title,cwd,mode,state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
+    )
+    .run("v15-1", "claude", "Antes", "/tmp/p", "edit", "idle", stamp, stamp);
+  legacyDb
+    .prepare(
+      "INSERT INTO messages (id,conversation_id,author,status,parts,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+    )
+    .run("m-15", "v15-1", "agent", "done", "[]", stamp, stamp);
+  legacyDb
+    .prepare(
+      `INSERT INTO restore_points
+        (message_id,conversation_id,repo_root,before_commit,after_commit,head_before,head_after,concurrent,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    )
+    .run("m-15", "v15-1", "/repo", "antes", "depois", "h1", "h2", 1, stamp, stamp);
+  legacyDb.close();
+
+  const db = openDatabase(dbPath);
+  try {
+    assert.equal(
+      (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+      16,
+    );
+    const point = getRestorePoint(db, "m-15");
+    assert.equal(point?.beforeCommit, "antes");
+    assert.equal(point?.afterCommit, "depois");
+    assert.equal(point?.concurrent, true);
+    assert.equal(point?.changedFiles, 0);
+    assert.equal(point?.undoneAt, null);
+    assert.equal(point?.undoCommit, null);
   } finally {
     db.close();
   }
@@ -552,6 +600,18 @@ test("restore_points: cria, atualiza o depois, marca concorrência, lista excede
     );
     assert.equal(setRestorePointAfter(db, "nada", "x", null, "2026-11-01T11:00:00.000Z"), false);
     assert.equal(getRestorePoint(db, "m1")?.afterCommit, "after-m1");
+    assert.equal(getRestorePoint(db, "m1")?.changedFiles, 0);
+    assert.equal(getRestorePoint(db, "m1")?.undoneAt, null);
+    assert.equal(
+      setRestorePointAfter(db, "m2", "after-m2", null, "2026-11-01T11:00:00.000Z", 7),
+      true,
+    );
+    assert.equal(getRestorePoint(db, "m2")?.changedFiles, 7);
+    assert.equal(setRestorePointUndoCommit(db, "m2", "undo-m2", "2026-11-01T12:00:00.000Z"), true);
+    assert.equal(setRestorePointUndone(db, "m2", "2026-11-01T12:01:00.000Z"), true);
+    assert.equal(setRestorePointUndone(db, "nada", "2026-11-01T12:01:00.000Z"), false);
+    assert.equal(getRestorePoint(db, "m2")?.undoCommit, "undo-m2");
+    assert.equal(getRestorePoint(db, "m2")?.undoneAt, "2026-11-01T12:01:00.000Z");
     markRestorePointsConcurrent(db, ["m1", "m2"], "2026-11-01T11:00:00.000Z");
     assert.deepEqual(
       listRestorePoints(db, conversation.id).map((point) => [point.messageId, point.concurrent]),

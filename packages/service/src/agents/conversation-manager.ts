@@ -17,7 +17,10 @@ import {
   type MessagePart,
   type MessageSource,
   type PayloadOf,
+  type RestorePointSummary,
+  type ResultOf,
   reasoningEffortSchema,
+  restoreUnavailableReasonSchema,
 } from "@karont/contract";
 import { validateAttachments } from "../attachments.ts";
 import { DeltaCoalescer } from "../coalescer.ts";
@@ -49,6 +52,7 @@ import {
   markConversationSeen,
   markRestorePointsConcurrent,
   type NewConversation,
+  type RestorePointRecord,
   saveMessage,
   setAgentSession,
   setBranchContextPending,
@@ -57,10 +61,21 @@ import {
   setConversationTitle,
   setMessageAgentTurnId,
   setRestorePointAfter,
+  setRestorePointUndoCommit,
+  setRestorePointUndone,
   setSetting,
   updateConversation,
 } from "../db.ts";
 import { ServiceError } from "../errors.ts";
+import {
+  applyUndo,
+  countRestoreChanges,
+  listRestoreChanges,
+  previewUndo,
+  RestoreError,
+  readRestorePatch,
+  saveUndoSafety,
+} from "../git/restore-diff.ts";
 import {
   DEFAULT_RESTORE_TIMEOUT_MS,
   deleteRestoreRefs,
@@ -69,6 +84,7 @@ import {
   restoreRef,
   restoreRefs,
   takeRestorePoint,
+  undoRef,
 } from "../git/restore-points.ts";
 import type {
   AdapterEvent,
@@ -135,6 +151,44 @@ function isBusyState(state: Conversation["state"]): boolean {
   return state === "queued" || state === "working" || state === "waiting";
 }
 
+type RestoreCommits = {
+  root: string;
+  conversationId: string;
+  messageId: string;
+  before: string;
+  after: string;
+};
+
+function summarizeRestorePoint(row: RestorePointRecord): RestorePointSummary {
+  const state: RestorePointSummary["state"] = !row.beforeCommit
+    ? "unavailable"
+    : row.undoneAt
+      ? "undone"
+      : !row.afterCommit
+        ? "incomplete"
+        : "ready";
+  const reason = restoreUnavailableReasonSchema.safeParse(row.unavailableReason);
+  return {
+    messageId: row.messageId,
+    state,
+    ...(state === "unavailable" ? { reason: reason.success ? reason.data : "failed" } : {}),
+    changedFiles: row.changedFiles,
+    concurrent: row.concurrent,
+    headMoved: row.afterCommit !== null && row.headBefore !== row.headAfter,
+  };
+}
+
+function restoreServiceError(error: unknown): Error {
+  if (error instanceof ServiceError) return error;
+  if (error instanceof RestoreError) {
+    return new ServiceError(
+      error.kind === "not-in-list" ? "invalid_request" : "unavailable",
+      error.message,
+    );
+  }
+  return error instanceof Error ? error : new Error("A operação de restauração falhou.");
+}
+
 export type ConversationManagerOptions = {
   db: DatabaseSync;
   broadcast: (event: AnyEvent) => Promise<void>;
@@ -184,6 +238,7 @@ export class ConversationManager {
   readonly #restoreChains = new Map<string, Promise<void>>();
   readonly #afterSnapshotsInFlight = new Set<string>();
   readonly #repoTurns = new Map<string, Set<string>>();
+  readonly #undoing = new Set<string>();
   readonly #repoByMessage = new Map<string, string>();
   readonly #pendingParts = new Map<string, { conversationId: string; messageId: string }>();
   readonly #titleRequests = new Map<string, { userMessage: string; attempted: boolean }>();
@@ -507,6 +562,7 @@ export class ConversationManager {
   ): Promise<{ userMessage: ConversationMessage; agentMessage: ConversationMessage }> {
     const validatedAttachments = validateAttachments(attachments);
     const conversation = this.#requireConversation(id);
+    if (this.#undoing.has(id)) throw new Error("Espere o desfazer terminar.");
     if (isBusyState(conversation.state)) throw new Error("A conversa já está em andamento.");
     const now = this.#now();
     if (
@@ -584,6 +640,7 @@ export class ConversationManager {
 
   async #retry(id: string, messageId?: string): Promise<ConversationMessage> {
     const conversation = this.#requireConversation(id);
+    if (this.#undoing.has(id)) throw new Error("Espere o desfazer terminar.");
     if (isBusyState(conversation.state)) throw new Error("A conversa já está em andamento.");
     const messages = listMessages(this.#db, id);
     const failed = messageId
@@ -1759,6 +1816,208 @@ export class ConversationManager {
     if (active?.currentMessage?.id === message.id) active.currentMessage = undefined;
   }
 
+  #emitRestoreChanged(conversationId: string, messageId: string): Promise<void> {
+    if (this.#closing || this.#deletingAll || this.#removedConversationIds.has(conversationId))
+      return Promise.resolve();
+    const row = getRestorePoint(this.#db, messageId);
+    if (!row || row.conversationId !== conversationId) return Promise.resolve();
+    return this.#broadcast({
+      event: "restore.changed",
+      payload: { conversationId, point: summarizeRestorePoint(row) },
+    }).catch(() => undefined);
+  }
+
+  /** Lista os pontos da conversa só com o que está no banco: nunca chama o Git. */
+  restoreList(conversationId: string): { points: RestorePointSummary[] } {
+    this.#assertNotDeletingAll();
+    this.#requireRestoreConversation(conversationId);
+    return { points: listRestorePoints(this.#db, conversationId).map(summarizeRestorePoint) };
+  }
+
+  async restoreChanges(
+    conversationId: string,
+    messageId: string,
+  ): Promise<ResultOf<"restore.changes">> {
+    this.#assertNotDeletingAll();
+    const { commits } = this.#requireViewablePoint(conversationId, messageId);
+    try {
+      return await this.#runRestoreOperation(conversationId, (signal) =>
+        listRestoreChanges(commits.root, commits, signal),
+      );
+    } catch (error) {
+      throw restoreServiceError(error);
+    }
+  }
+
+  async restoreDiff(
+    conversationId: string,
+    messageId: string,
+    filePath: string,
+  ): Promise<ResultOf<"restore.diff">> {
+    this.#assertNotDeletingAll();
+    const { commits } = this.#requireViewablePoint(conversationId, messageId);
+    try {
+      return await this.#runRestoreOperation(conversationId, (signal) =>
+        readRestorePatch(commits.root, commits, filePath, signal),
+      );
+    } catch (error) {
+      throw restoreServiceError(error);
+    }
+  }
+
+  async undoPreview(
+    conversationId: string,
+    messageId: string,
+  ): Promise<ResultOf<"restore.undoPreview">> {
+    this.#assertNotDeletingAll();
+    const { row, commits } = this.#requireUndoablePoint(conversationId, messageId);
+    try {
+      const preview = await this.#runRestoreOperation(conversationId, (signal) =>
+        previewUndo(commits.root, commits, signal),
+      );
+      return {
+        ...preview,
+        headMoved: summarizeRestorePoint(row).headMoved,
+        concurrent: row.concurrent,
+      };
+    } catch (error) {
+      throw restoreServiceError(error);
+    }
+  }
+
+  async undo(conversationId: string, messageId: string): Promise<ResultOf<"restore.undo">> {
+    this.#assertNotDeletingAll();
+    const { row, commits } = this.#requireUndoablePoint(conversationId, messageId);
+    // Marca já, antes de qualquer espera: send/retry e um segundo desfazer passam a falhar.
+    this.#undoing.add(conversationId);
+    return this.#trackAgentOperation(this.#undo(conversationId, row, commits));
+  }
+
+  async #undo(
+    conversationId: string,
+    row: RestorePointRecord,
+    commits: RestoreCommits,
+  ): Promise<ResultOf<"restore.undo">> {
+    const messageId = row.messageId;
+    try {
+      return await this.#runRestoreOperation(conversationId, async (signal) => {
+        const undoCommit = await saveUndoSafety(commits.root, commits, signal);
+        if (!setRestorePointUndoCommit(this.#db, messageId, undoCommit, this.#now())) {
+          throw new RestoreError("gone");
+        }
+        let outcome: { restored: number; removed: number };
+        try {
+          outcome = await applyUndo(commits.root, commits, signal);
+        } catch (error) {
+          if (error instanceof RestoreError && error.kind !== "gone") {
+            throw new RestoreError(
+              error.kind,
+              `${error.message} O que havia antes do desfazer está guardado em ${undoRef(conversationId, messageId)}.`,
+            );
+          }
+          throw error;
+        }
+        setRestorePointUndone(this.#db, messageId, this.#now());
+        await this.#emitRestoreChanged(conversationId, messageId);
+        return outcome;
+      });
+    } catch (error) {
+      throw restoreServiceError(error);
+    } finally {
+      this.#undoing.delete(conversationId);
+    }
+  }
+
+  #requireRestoreConversation(conversationId: string): void {
+    if (!getConversation(this.#db, conversationId)) {
+      throw new ServiceError("unavailable", "Conversa não encontrada.");
+    }
+  }
+
+  #requireRestorePoint(conversationId: string, messageId: string): RestorePointRecord {
+    this.#requireRestoreConversation(conversationId);
+    const row = getRestorePoint(this.#db, messageId);
+    if (!row || row.conversationId !== conversationId) {
+      throw new ServiceError("invalid_request", "Ponto de restauração não encontrado.");
+    }
+    return row;
+  }
+
+  #requireViewablePoint(
+    conversationId: string,
+    messageId: string,
+  ): { row: RestorePointRecord; commits: RestoreCommits } {
+    const row = this.#requireRestorePoint(conversationId, messageId);
+    if (!row.repoRoot || !row.beforeCommit) {
+      throw new ServiceError("unavailable", "Esta mensagem não tem ponto de restauração.");
+    }
+    if (!row.afterCommit) {
+      throw new ServiceError(
+        "unavailable",
+        "As mudanças desta mensagem ainda não foram registradas.",
+      );
+    }
+    return {
+      row,
+      commits: {
+        root: row.repoRoot,
+        conversationId,
+        messageId,
+        before: row.beforeCommit,
+        after: row.afterCommit,
+      },
+    };
+  }
+
+  /** Regras de segurança do desfazer; vale também para a prévia. */
+  #requireUndoablePoint(
+    conversationId: string,
+    messageId: string,
+  ): { row: RestorePointRecord; commits: RestoreCommits } {
+    const conversation = this.#requireConversation(conversationId);
+    const row = this.#requireRestorePoint(conversationId, messageId);
+    const state = summarizeRestorePoint(row).state;
+    if (state === "undone") throw new ServiceError("unavailable", "Esta mensagem já foi desfeita.");
+    if (state === "unavailable") {
+      throw new ServiceError("unavailable", "Esta mensagem não tem ponto de restauração.");
+    }
+    if (state === "incomplete") {
+      throw new ServiceError(
+        "unavailable",
+        "As mudanças desta mensagem não foram registradas por completo. Não dá para desfazer.",
+      );
+    }
+    if (this.#undoing.has(conversationId)) {
+      throw new ServiceError("unavailable", "Já existe um desfazer em andamento nesta conversa.");
+    }
+    if (isBusyState(conversation.state)) {
+      throw new ServiceError(
+        "unavailable",
+        "Espere a conversa terminar para desfazer. O agente ainda está trabalhando.",
+      );
+    }
+    const viewable = this.#requireViewablePoint(conversationId, messageId);
+    if ((this.#repoTurns.get(viewable.commits.root)?.size ?? 0) > 0) {
+      throw new ServiceError(
+        "unavailable",
+        "Há um agente trabalhando neste repositório. Espere ele terminar para desfazer.",
+      );
+    }
+    return viewable;
+  }
+
+  /** Operação de Git ligada à conversa: apagar a conversa ou fechar o serviço a interrompe. */
+  #runRestoreOperation<T>(
+    conversationId: string,
+    operation: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    const controller = new AbortController();
+    this.#restoreOps.set(controller, conversationId);
+    return this.#trackAgentOperation(
+      operation(controller.signal).finally(() => this.#restoreOps.delete(controller)),
+    );
+  }
+
   #restoreTimeoutMs(): number {
     const configured = Number(this.#env.KARONT_RESTORE_TIMEOUT_MS);
     return Number.isFinite(configured) && configured > 0
@@ -1841,6 +2100,8 @@ export class ConversationManager {
     if ("commit" in outcome) {
       this.#registerRepoTurn(outcome.repoRoot, message.id);
       this.#pruneRestorePoints(conversationId);
+    } else {
+      this.#emitRestoreChanged(conversationId, message.id);
     }
     return true;
   }
@@ -1967,16 +2228,34 @@ export class ConversationManager {
           { phase: "after", cwd: conversation.cwd, repoRoot, conversationId, messageId },
           controller.signal,
         );
-        if (!("commit" in outcome)) return;
+        if (!("commit" in outcome)) {
+          // A tela precisa saber que esta resposta ficou sem desfazer.
+          void this.#emitRestoreChanged(conversationId, messageId);
+          return;
+        }
+        let changedFiles = 0;
+        try {
+          changedFiles = await countRestoreChanges(
+            repoRoot,
+            row.beforeCommit as string,
+            outcome.commit,
+            controller.signal,
+            this.#restoreTimeoutMs(),
+          );
+        } catch {
+          // Sem a contagem a tela mostra 0; o ponto continua utilizável.
+        }
         const saved = setRestorePointAfter(
           this.#db,
           messageId,
           outcome.commit,
           outcome.head,
           this.#now(),
+          changedFiles,
         );
         // A conversa foi apagada durante a foto: a ref ficaria órfã.
         if (!saved) this.#deleteRefsInBackground(repoRoot, restoreRefs(conversationId, messageId));
+        else this.#emitRestoreChanged(conversationId, messageId);
       })
       .catch(() => undefined)
       .finally(() => {

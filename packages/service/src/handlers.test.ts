@@ -1,5 +1,17 @@
 import assert from "node:assert/strict";
-import { access, chmod, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import {
+  access,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -8,6 +20,7 @@ import {
   type Conversation,
   type ParsedRequest,
   parseRequest,
+  parseResult,
 } from "@karont/contract";
 import type { AdapterFactory, AgentAdapter, AgentAdapterRegistration } from "./agents/adapter.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
@@ -1154,4 +1167,138 @@ test("fila: queue.status bate com queue.changed e settings.set do limite drena a
     running: 2,
     queuedConversationIds: [],
   });
+});
+
+test("restore.*: lista, mudanças, diff, prévia e desfazer pelos métodos, com evento e erros claros", async (context) => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "ks-restore-")));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const repo = path.join(root, "repo");
+  await mkdir(repo);
+  const git = (...args: string[]) => {
+    const env = { ...process.env };
+    for (const name of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"]) delete env[name];
+    return execFileSync("git", args, { cwd: repo, env, encoding: "utf8" });
+  };
+  git("init", "-q", "-b", "main");
+  git("config", "user.name", "Teste");
+  git("config", "user.email", "teste@example.com");
+  await writeFile(path.join(repo, "antigo.txt"), "antigo\n");
+  git("add", "-A");
+  git("commit", "-q", "-m", "inicial");
+
+  const events: AnyEvent[] = [];
+  const db = openDatabase(path.join(root, "karont.db"));
+  const emitters = new Map<string, Parameters<AdapterFactory>[1]>();
+  let agentWrote = false;
+  const adapterFactory: AdapterFactory = (conversation, emit) => {
+    emitters.set(conversation.id, emit);
+    return {
+      start: async () => undefined,
+      send: async () => {
+        await writeFile(path.join(repo, "antigo.txt"), "mudado\n");
+        await writeFile(path.join(repo, "criado.txt"), "criado\n");
+        agentWrote = true;
+        emit({ kind: "state", state: "working" });
+      },
+      respond: async () => undefined,
+      interrupt: async () => undefined,
+      dispose: async () => undefined,
+    };
+  };
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void events.push(event),
+    env: { PATH: process.env.PATH ?? "", KARONT_DISABLE_AGENT_DETECTION: "1" },
+    homeDir: root,
+    adapterFactory,
+  });
+  context.after(async () => {
+    await handlers.closeAgents();
+    db.close();
+  });
+  const conn = connection([]);
+  const call = async <M extends Parameters<typeof parseResult>[0]>(method: M, params: unknown) => {
+    const result = await handlers.handle(request(method, params), conn);
+    const parsed = parseResult(method, result);
+    assert.equal(parsed.ok, true, `${method} devolve o formato do contrato`);
+    return result as never;
+  };
+  const created = (await handlers.handle(
+    request("conversation.create", { agent: "claude", cwd: repo, mode: "edit", title: "R" }),
+    conn,
+  )) as { conversation: Conversation };
+  const conversationId = created.conversation.id;
+  const sent = (await handlers.handle(
+    request("conversation.send", { id: conversationId, text: "mexa" }),
+    conn,
+  )) as { agentMessage: { id: string } };
+  const messageId = sent.agentMessage.id;
+  for (let attempt = 0; attempt < 300 && !agentWrote; attempt += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(agentWrote, true);
+  emitters.get(conversationId)?.({ kind: "turn-end", status: "done" });
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    const listed = (await call("restore.list", { conversationId })) as {
+      points: Array<{ state: string }>;
+    };
+    if (listed.points[0]?.state === "ready") break;
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  const changedEvent = events.find((event) => event.event === "restore.changed");
+  assert.equal(changedEvent?.payload.point.messageId, messageId);
+  assert.equal(changedEvent?.payload.point.state, "ready");
+  assert.equal(changedEvent?.payload.point.changedFiles, 2);
+
+  const changes = (await call("restore.changes", { conversationId, messageId })) as {
+    files: Array<{ path: string }>;
+  };
+  assert.deepEqual(changes.files.map((file) => file.path).sort(), ["antigo.txt", "criado.txt"]);
+  const diff = (await call("restore.diff", {
+    conversationId,
+    messageId,
+    path: "antigo.txt",
+  })) as { patch: string };
+  assert.match(diff.patch, /\+mudado/);
+  await assert.rejects(
+    handlers.handle(request("restore.diff", { conversationId, messageId, path: "fora.txt" }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+  await assert.rejects(
+    handlers.handle(request("restore.changes", { conversationId, messageId: "nada" }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+  await assert.rejects(
+    handlers.handle(request("restore.list", { conversationId: "nada" }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "unavailable",
+  );
+  const preview = await call("restore.undoPreview", { conversationId, messageId });
+  assert.deepEqual(preview, {
+    files: 2,
+    userChanged: [],
+    headMoved: false,
+    concurrent: false,
+    submodulesSkipped: [],
+  });
+  assert.deepEqual(await call("restore.undo", { conversationId, messageId }), {
+    restored: 1,
+    removed: 1,
+  });
+  assert.equal(await readFile(path.join(repo, "antigo.txt"), "utf8"), "antigo\n");
+  assert.equal(
+    await stat(path.join(repo, "criado.txt")).then(
+      () => true,
+      () => false,
+    ),
+    false,
+  );
+  const lastEvent = [...events].reverse().find((event) => event.event === "restore.changed");
+  assert.equal(lastEvent?.payload.point.state, "undone");
+  await assert.rejects(
+    handlers.handle(request("restore.undo", { conversationId, messageId }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "unavailable",
+  );
 });

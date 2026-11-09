@@ -11,6 +11,7 @@ import {
   conversationSendParamsSchema,
   messageSchema,
 } from "./conversations.ts";
+import { restoreMethods } from "./restore.ts";
 
 export const MAX_SETTING_BYTES = 65_536;
 
@@ -373,6 +374,7 @@ export const methods = {
     params: z.strictObject({ id: z.string().min(1) }),
     result: z.strictObject({ removed: z.literal(true) }),
   },
+  ...restoreMethods,
   "terminals.list": {
     params: emptyParamsSchema,
     result: z.strictObject({ terminals: z.array(terminalInfoSchema) }),

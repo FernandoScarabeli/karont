@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { copyFile, mkdtemp, realpath, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, realpath, rm, stat, utimes } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -31,7 +31,8 @@ export type RestoreSnapshotOutcome =
 
 export const DEFAULT_RESTORE_TIMEOUT_MS = 10_000;
 const SNAPSHOT_MESSAGE = "karont: ponto de restauração";
-const REF_PATTERN = /^refs\/karont\/restore\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\/(?:before|after)$/;
+const REF_PATTERN =
+  /^refs\/karont\/restore\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\/(?:before|after|undo)$/;
 const INHERITED_GIT_VARIABLES = [
   "GIT_DIR",
   "GIT_WORK_TREE",
@@ -49,10 +50,16 @@ export function restoreRefs(conversationId: string, messageId: string): string[]
   return [
     restoreRef(conversationId, messageId, "before"),
     restoreRef(conversationId, messageId, "after"),
+    undoRef(conversationId, messageId),
   ];
 }
 
-class GitFailure extends Error {
+/** Foto de segurança do desfazer: guarda o que o usuário tinha antes de os arquivos serem tocados. */
+export function undoRef(conversationId: string, messageId: string): string {
+  return `refs/karont/restore/${conversationId}/${messageId}/undo`;
+}
+
+export class GitFailure extends Error {
   readonly kind: "timeout" | "aborted" | "exit" | "spawn";
   constructor(kind: GitFailure["kind"], message: string) {
     super(message);
@@ -70,7 +77,7 @@ function gitEnvironment(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 }
 
 /** Prazo único para a operação inteira: o relógio e o sinal do chamador valem para todas as chamadas. */
-class Deadline {
+export class Deadline {
   readonly signal: AbortSignal;
   readonly #deadlineAt: number;
   readonly #caller: AbortSignal;
@@ -104,13 +111,16 @@ class Deadline {
   }
 }
 
-function runGit(
+export function runGit(
   args: string[],
   options: {
     cwd: string;
     deadline: Deadline;
     env?: NodeJS.ProcessEnv;
     input?: string;
+    maxBuffer?: number;
+    /** Saída acima de `maxBuffer` devolve o que coube em vez de falhar. */
+    truncateOverflow?: boolean;
   },
 ): Promise<string> {
   const { deadline } = options;
@@ -128,12 +138,19 @@ function runGit(
         signal: deadline.signal,
         timeout: deadline.remaining(),
         killSignal: "SIGKILL",
-        maxBuffer: 16 * 1024 * 1024,
+        maxBuffer: options.maxBuffer ?? 16 * 1024 * 1024,
         encoding: "utf8",
         windowsHide: true,
       },
       (error, stdout) => {
         if (!error) {
+          resolve(stdout);
+          return;
+        }
+        if (
+          options.truncateOverflow &&
+          (error as NodeJS.ErrnoException).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+        ) {
           resolve(stdout);
           return;
         }
@@ -160,7 +177,7 @@ function runGit(
   });
 }
 
-function unavailableFrom(error: unknown): "timeout" | "failed" {
+export function unavailableFrom(error: unknown): "timeout" | "failed" {
   return error instanceof GitFailure && error.kind === "timeout" ? "timeout" : "failed";
 }
 
@@ -217,6 +234,10 @@ export async function createSnapshot(
     const tempIndex = path.join(tempDir, "index");
     try {
       await copyFile(realIndex, tempIndex);
+      // O Git usa o horário do index para desconfiar de edições no mesmo instante ("racy git").
+      // Com o horário da cópia, ele deixaria passar uma edição de mesmo tamanho e a foto sairia errada.
+      const original = await stat(realIndex);
+      await utimes(tempIndex, original.atime, original.mtime);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }

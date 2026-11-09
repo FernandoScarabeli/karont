@@ -111,6 +111,12 @@ export const migrations: { version: number; up: string }[] = [
     ) STRICT;
     CREATE INDEX restore_points_conversation ON restore_points(conversation_id, created_at);`,
   },
+  {
+    version: 16,
+    up: `ALTER TABLE restore_points ADD COLUMN changed_files INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE restore_points ADD COLUMN undone_at TEXT;
+    ALTER TABLE restore_points ADD COLUMN undo_commit TEXT;`,
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -787,6 +793,9 @@ export type RestorePointRecord = {
   headAfter: string | null;
   unavailableReason: string | null;
   concurrent: boolean;
+  changedFiles: number;
+  undoneAt: string | null;
+  undoCommit: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -801,6 +810,9 @@ type RestorePointRow = {
   head_after: string | null;
   unavailable_reason: string | null;
   concurrent: number;
+  changed_files: number;
+  undone_at: string | null;
+  undo_commit: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -816,6 +828,9 @@ function mapRestorePoint(row: RestorePointRow): RestorePointRecord {
     headAfter: row.head_after,
     unavailableReason: row.unavailable_reason,
     concurrent: row.concurrent === 1,
+    changedFiles: row.changed_files,
+    undoneAt: row.undone_at,
+    undoCommit: row.undo_commit,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -865,13 +880,36 @@ export function setRestorePointAfter(
   afterCommit: string,
   headAfter: string | null,
   now: string,
+  changedFiles = 0,
 ): boolean {
   return (
     db
       .prepare(
-        "UPDATE restore_points SET after_commit=?,head_after=?,updated_at=? WHERE message_id=?",
+        "UPDATE restore_points SET after_commit=?,head_after=?,changed_files=?,updated_at=? WHERE message_id=?",
       )
-      .run(afterCommit, headAfter, now, messageId).changes > 0
+      .run(afterCommit, headAfter, changedFiles, now, messageId).changes > 0
+  );
+}
+
+/** Guarda a foto de segurança do desfazer antes de qualquer arquivo ser tocado. */
+export function setRestorePointUndoCommit(
+  db: DatabaseSync,
+  messageId: string,
+  undoCommit: string,
+  now: string,
+): boolean {
+  return (
+    db
+      .prepare("UPDATE restore_points SET undo_commit=?,updated_at=? WHERE message_id=?")
+      .run(undoCommit, now, messageId).changes > 0
+  );
+}
+
+export function setRestorePointUndone(db: DatabaseSync, messageId: string, now: string): boolean {
+  return (
+    db
+      .prepare("UPDATE restore_points SET undone_at=?,updated_at=? WHERE message_id=?")
+      .run(now, now, messageId).changes > 0
   );
 }
 
