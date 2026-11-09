@@ -10,9 +10,13 @@ import {
   type ConversationAttachment,
   type ConversationContextUsage,
   type ConversationMessage,
+  DEFAULT_MAX_CONCURRENT_AGENTS,
   describeAgentError,
+  MAX_CONCURRENT_AGENTS_LIMIT,
+  MAX_CONCURRENT_AGENTS_SETTING,
   type MessagePart,
   type MessageSource,
+  type PayloadOf,
   reasoningEffortSchema,
 } from "@karont/contract";
 import { validateAttachments } from "../attachments.ts";
@@ -36,6 +40,7 @@ import {
   listConversations,
   listMessages,
   listMessagesPage,
+  listSlotConversationStates,
   markConversationSeen,
   type NewConversation,
   saveMessage,
@@ -92,6 +97,20 @@ type ActiveConversation = {
   eventQueue: Promise<void>;
 };
 
+type QueuedTurn = {
+  conversationId: string;
+  message: ConversationMessage;
+  text: string;
+  plan: boolean | undefined;
+  attachments: ConversationAttachment[];
+  skills: Array<Pick<ComposerSkill, "name" | "path">>;
+  operation: "send" | "compact";
+};
+
+function isBusyState(state: Conversation["state"]): boolean {
+  return state === "queued" || state === "working" || state === "waiting";
+}
+
 export type ConversationManagerOptions = {
   db: DatabaseSync;
   broadcast: (event: AnyEvent) => Promise<void>;
@@ -144,6 +163,8 @@ export class ConversationManager {
   #closing = false;
   #deletingAll = false;
   readonly #agentOperations = new Set<Promise<unknown>>();
+  #queue: QueuedTurn[] = [];
+  #lastQueueStatus = "";
   readonly #skillCache = new Map<string, { cachedAt: number; skills: ComposerSkill[] }>();
   readonly #skillLoads = new Map<string, Promise<ComposerSkill[]>>();
 
@@ -174,6 +195,7 @@ export class ConversationManager {
           env: this.#env,
           ...titleOptions,
         }));
+    this.#lastQueueStatus = JSON.stringify(this.queueStatus());
     const cached = readCodexModelCache(getSetting(this.#db, CODEX_MODELS_SETTING));
     if (cached) {
       this.#codexModelList = cached.modelList;
@@ -340,7 +362,7 @@ export class ConversationManager {
 
   async #branch(id: string, messageId: string): Promise<Conversation> {
     const source = this.#requireConversation(id);
-    if (source.state === "working" || source.state === "waiting")
+    if (isBusyState(source.state))
       throw new Error("Espere o agente terminar antes de ramificar a conversa.");
 
     const messages = listMessages(this.#db, id);
@@ -446,8 +468,7 @@ export class ConversationManager {
   ): Promise<{ userMessage: ConversationMessage; agentMessage: ConversationMessage }> {
     const validatedAttachments = validateAttachments(attachments);
     const conversation = this.#requireConversation(id);
-    if (conversation.state === "working" || conversation.state === "waiting")
-      throw new Error("A conversa já está em andamento.");
+    if (isBusyState(conversation.state)) throw new Error("A conversa já está em andamento.");
     const now = this.#now();
     if (
       operation === "send" &&
@@ -497,6 +518,7 @@ export class ConversationManager {
       currentConversation.state = "idle";
       currentConversation.updatedAt = this.#now();
       updateConversation(this.#db, currentConversation);
+      this.#drainQueue();
       throw error;
     }
     const agentMessage = this.#newAgentMessage(id);
@@ -523,8 +545,7 @@ export class ConversationManager {
 
   async #retry(id: string, messageId?: string): Promise<ConversationMessage> {
     const conversation = this.#requireConversation(id);
-    if (conversation.state === "working" || conversation.state === "waiting")
-      throw new Error("A conversa já está em andamento.");
+    if (isBusyState(conversation.state)) throw new Error("A conversa já está em andamento.");
     const messages = listMessages(this.#db, id);
     const failed = messageId
       ? messages.find((message) => message.id === messageId)
@@ -579,6 +600,20 @@ export class ConversationManager {
   }
 
   async stop(id: string): Promise<boolean> {
+    const queuedItem = this.#dequeue(id);
+    if (queuedItem) {
+      const conversation = getConversation(this.#db, id);
+      if (conversation) {
+        await this.#finishWithError(
+          conversation,
+          queuedItem.message,
+          "interrupted",
+          "Mensagem removida da fila.",
+        );
+      }
+      this.#drainQueue();
+      return true;
+    }
     const active = this.#active.get(id);
     if (!active?.currentMessage) return false;
     if (!active.turnStarted) {
@@ -631,12 +666,12 @@ export class ConversationManager {
     },
   ): Promise<Conversation> {
     let conversation = this.#requireConversation(id);
-    if (conversation.state === "working" || conversation.state === "waiting")
+    if (isBusyState(conversation.state))
       throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
     const mustCheckFast = options.fast === true || (conversation.fast && "model" in options);
     if (mustCheckFast && conversation.agent === "codex") await this.#loadCodexModelsIfNeeded();
     conversation = this.#requireConversation(id);
-    if (conversation.state === "working" || conversation.state === "waiting")
+    if (isBusyState(conversation.state))
       throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
     const selectedModelId = "model" in options ? options.model : conversation.model;
     const supportsFast = modelSupportsFast(
@@ -691,7 +726,7 @@ export class ConversationManager {
       await this.#disposeAdapter(active);
       this.#active.delete(id);
       conversation = this.#requireConversation(id);
-      if (conversation.state === "working" || conversation.state === "waiting")
+      if (isBusyState(conversation.state))
         throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
     }
     conversation.mode = nextMode;
@@ -713,6 +748,7 @@ export class ConversationManager {
   async remove(id: string): Promise<boolean> {
     this.#assertNotDeletingAll();
     this.#removedConversationIds.add(id);
+    this.#dequeue(id);
     try {
       const active = this.#active.get(id);
       if (active) {
@@ -735,12 +771,14 @@ export class ConversationManager {
       return deleted;
     } finally {
       this.#removedConversationIds.delete(id);
+      this.#drainQueue();
     }
   }
 
   async deleteAll(): Promise<number> {
     this.#assertNotDeletingAll();
     this.#deletingAll = true;
+    this.#queue = [];
     try {
       const activeBeforeDeleteAll = [...this.#active.entries()];
       for (const { id } of listConversationStates(this.#db)) {
@@ -788,6 +826,7 @@ export class ConversationManager {
       return deleted;
     } finally {
       this.#deletingAll = false;
+      this.#drainQueue();
     }
   }
 
@@ -1000,6 +1039,7 @@ export class ConversationManager {
 
   async close(): Promise<void> {
     this.#closing = true;
+    this.#queue = [];
     const adapters = [...this.#active.values()];
     await Promise.all(
       adapters.map(async (active) => {
@@ -1018,6 +1058,91 @@ export class ConversationManager {
     this.#latestUserAttachments.clear();
   }
 
+  queueStatus(): PayloadOf<"queue.changed"> {
+    return {
+      limit: this.#concurrencyLimit(),
+      running: this.#runningCount(),
+      queuedConversationIds: this.#queue.map((item) => item.conversationId),
+    };
+  }
+
+  applyConcurrencyLimit(): void {
+    this.#drainQueue();
+  }
+
+  #concurrencyLimit(): number {
+    const value = getSetting(this.#db, MAX_CONCURRENT_AGENTS_SETTING);
+    return typeof value === "number" &&
+      Number.isInteger(value) &&
+      value >= 1 &&
+      value <= MAX_CONCURRENT_AGENTS_LIMIT
+      ? value
+      : DEFAULT_MAX_CONCURRENT_AGENTS;
+  }
+
+  // Vaga é turno em andamento, derivado do estado: plano aguardando aprovação não ocupa.
+  #runningCount(excludeId?: string): number {
+    return listSlotConversationStates(this.#db).filter(
+      ({ id, state }) =>
+        id !== excludeId &&
+        !(state === "waiting" && this.#active.get(id)?.currentMessage?.status === "done"),
+    ).length;
+  }
+
+  #publishQueueStatus(): void {
+    const status = this.queueStatus();
+    const serialized = JSON.stringify(status);
+    if (serialized === this.#lastQueueStatus) return;
+    this.#lastQueueStatus = serialized;
+    void this.#broadcast({ event: "queue.changed", payload: status }).catch(() => undefined);
+  }
+
+  #drainQueue(): void {
+    if (this.#closing || this.#deletingAll) return;
+    while (this.#queue.length > 0 && this.#runningCount() < this.#concurrencyLimit()) {
+      const item = this.#queue.shift() as QueuedTurn;
+      const stored = getConversation(this.#db, item.conversationId);
+      if (stored?.state !== "queued") continue;
+      const conversation = this.#ignoreClaudeFast(stored);
+      conversation.state = "working";
+      conversation.updatedAt = this.#now();
+      updateConversation(this.#db, conversation);
+      // O tempo de "trabalhando" não conta a espera na fila.
+      item.message.startedAt = this.#epochNow();
+      saveMessage(this.#db, item.message);
+      void this.#trackAgentOperation(
+        (async () => {
+          await this.#stateEvent(conversation, item.message).catch(() => undefined);
+          if (this.#deletingAll || !getConversation(this.#db, conversation.id)) return;
+          await this.#runTurn(
+            conversation,
+            item.message,
+            item.text,
+            item.plan,
+            item.attachments,
+            item.skills,
+            item.operation,
+          );
+        })().catch(async (error: unknown) => {
+          if (this.#closing) return;
+          await this.#finishWithError(
+            conversation,
+            item.message,
+            error instanceof AgentCliError ? error.errorType : "failed",
+            error instanceof Error ? error.message : String(error),
+          ).catch(() => undefined);
+        }),
+      );
+    }
+    this.#publishQueueStatus();
+  }
+
+  #dequeue(conversationId: string): QueuedTurn | undefined {
+    const index = this.#queue.findIndex((item) => item.conversationId === conversationId);
+    if (index === -1) return undefined;
+    return this.#queue.splice(index, 1)[0];
+  }
+
   async #startTurn(
     conversation: Conversation,
     message: ConversationMessage,
@@ -1029,17 +1154,48 @@ export class ConversationManager {
   ): Promise<void> {
     conversation = this.#requireConversation(conversation.id);
     addMessage(this.#db, message);
-    conversation.state = "working";
+    // Decisão síncrona: nenhum await entre contar as vagas e mudar o estado.
+    const queued =
+      this.#queue.length > 0 || this.#runningCount(conversation.id) >= this.#concurrencyLimit();
+    conversation.state = queued ? "queued" : "working";
     conversation.updatedAt = this.#now();
     updateConversation(this.#db, conversation);
+    if (queued) {
+      this.#queue.push({
+        conversationId: conversation.id,
+        message,
+        text,
+        plan,
+        attachments,
+        skills,
+        operation,
+      });
+    }
     await this.#emit({
       event: "conversation.messageCreated",
       payload: { conversationId: conversation.id, message },
     });
+    if (queued) {
+      // O item pode ter saído da fila durante o await acima: informa o estado atual.
+      const current = getConversation(this.#db, conversation.id);
+      if (current) await this.#stateEvent(current);
+      this.#drainQueue();
+      return;
+    }
     await this.#stateEvent(conversation);
     if (this.#deletingAll || !getConversation(this.#db, conversation.id)) return;
+    await this.#runTurn(conversation, message, text, plan, attachments, skills, operation);
+  }
 
-    // Ponto único para aplicar o limite/fila de agentes quando a configuração da M3 existir.
+  async #runTurn(
+    conversation: Conversation,
+    message: ConversationMessage,
+    text: string,
+    plan: boolean | undefined,
+    attachments: ConversationAttachment[],
+    skills: Array<Pick<ComposerSkill, "name" | "path">>,
+    operation: "send" | "compact",
+  ): Promise<void> {
     let active = this.#active.get(conversation.id);
     if (!active) {
       const previousSession = getAgentSession(this.#db, conversation.id);
@@ -1578,18 +1734,22 @@ export class ConversationManager {
 
   async #stateEvent(conversation: Conversation, message?: ConversationMessage): Promise<void> {
     const current = this.#ignoreClaudeFast(conversation);
-    await this.#emit({
-      event: "conversation.stateChanged",
-      payload: message
-        ? {
-            conversation: current,
-            messageId: message.id,
-            messageStatus: message.status,
-            ...(message.startedAt !== undefined ? { messageStartedAt: message.startedAt } : {}),
-            ...(message.endedAt !== undefined ? { messageEndedAt: message.endedAt } : {}),
-          }
-        : { conversation: current },
-    });
+    try {
+      await this.#emit({
+        event: "conversation.stateChanged",
+        payload: message
+          ? {
+              conversation: current,
+              messageId: message.id,
+              messageStatus: message.status,
+              ...(message.startedAt !== undefined ? { messageStartedAt: message.startedAt } : {}),
+              ...(message.endedAt !== undefined ? { messageEndedAt: message.endedAt } : {}),
+            }
+          : { conversation: current },
+      });
+    } finally {
+      this.#drainQueue();
+    }
   }
 
   async #emit(event: AnyEvent): Promise<void> {

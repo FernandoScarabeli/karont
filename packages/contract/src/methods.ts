@@ -14,6 +14,16 @@ import {
 
 export const MAX_SETTING_BYTES = 65_536;
 
+export const DEFAULT_MAX_CONCURRENT_AGENTS = 4;
+export const MAX_CONCURRENT_AGENTS_LIMIT = 16;
+export const MAX_CONCURRENT_AGENTS_SETTING = "agents.maxConcurrent";
+
+export const queueStatusSchema = z.strictObject({
+  limit: z.number().int().min(1),
+  running: z.number().int().nonnegative(),
+  queuedConversationIds: z.array(z.string().min(1)),
+});
+
 export const settingKeySchema = z.string().regex(/^[a-z][a-zA-Z0-9.]{0,63}$/);
 
 export const jsonValueSchema = z.json().refine((value) => {
@@ -332,6 +342,10 @@ export const methods = {
   "folders.gitInfo": {
     params: z.strictObject({ path: folderPathSchema }),
     result: z.strictObject({ branch: z.string().nullable(), detached: z.boolean() }),
+  },
+  "queue.status": {
+    params: emptyParamsSchema,
+    result: queueStatusSchema,
   },
   "projects.list": {
     params: emptyParamsSchema,

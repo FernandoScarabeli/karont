@@ -240,6 +240,14 @@ export function listConversationStates(
   }[];
 }
 
+export function listSlotConversationStates(
+  db: DatabaseSync,
+): { id: string; state: Conversation["state"] }[] {
+  return db
+    .prepare("SELECT id, state FROM conversations WHERE state IN ('working','waiting')")
+    .all() as { id: string; state: Conversation["state"] }[];
+}
+
 export function updateConversation(db: DatabaseSync, conversation: Conversation): void {
   db.prepare(
     "UPDATE conversations SET title=?,mode=?,model=?,effort=?,plan=?,fast=?,state=?,updated_at=?,pinned_at=?,archived_at=?,unread_at=? WHERE id=?",
@@ -476,7 +484,7 @@ export function recoverInterruptedMessages(db: DatabaseSync): void {
     saveMessage(db, message);
   }
   db.prepare(
-    "UPDATE conversations SET state='idle',updated_at=? WHERE state IN ('working','waiting')",
+    "UPDATE conversations SET state='idle',updated_at=? WHERE state IN ('queued','working','waiting')",
   ).run(now);
 }
 

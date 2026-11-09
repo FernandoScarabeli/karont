@@ -25,6 +25,7 @@ import {
   openDatabase,
   setAgentSession,
   setSetting,
+  updateConversation,
 } from "../db.ts";
 import type { AdapterFactory, AdapterModelList, AgentAdapterRegistration } from "./adapter.ts";
 import {
@@ -2527,4 +2528,427 @@ test("Claude distingue pasta do projeto apagada de CLI ausente", async (context)
       error.message === `A pasta do projeto não existe mais: ${cwd}`,
   );
   assert.equal(spawnCount, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Fila e limite de agentes (M3-B3)
+// ---------------------------------------------------------------------------
+
+type QueueAdapterEntry = {
+  emit: (event: Parameters<AdapterFactory>[1] extends (e: infer E) => void ? E : never) => void;
+  starts: number;
+  sends: number;
+  interrupts: number;
+};
+
+async function createQueueRig(limit: number | undefined, failStartFor: Set<string> = new Set()) {
+  const entries = new Map<string, QueueAdapterEntry>();
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      adapterFactory: (conversation, emit) => {
+        const entry: QueueAdapterEntry = { emit, starts: 0, sends: 0, interrupts: 0 };
+        entries.set(conversation.id, entry);
+        return {
+          start: async () => {
+            entry.starts += 1;
+            if (failStartFor.has(conversation.id)) throw new Error("falha ao iniciar");
+          },
+          send: async () => {
+            entry.sends += 1;
+            emit({ kind: "state", state: "working" });
+          },
+          respond: async () => undefined,
+          interrupt: async () => {
+            entry.interrupts += 1;
+            emit({
+              kind: "turn-end",
+              status: "interrupted",
+              error: { type: "interrupted", text: "Interrompida." },
+            });
+          },
+          dispose: async () => undefined,
+        };
+      },
+    },
+  );
+  if (limit !== undefined) setSetting(harness.db, "agents.maxConcurrent", limit);
+  const create = () => createConversation(harness.manager);
+  const finish = (id: string, status: "done" | "error" = "done") =>
+    entries
+      .get(id)
+      ?.emit(
+        status === "error"
+          ? { kind: "turn-end", status, error: { type: "failed", text: "falhou" } }
+          : { kind: "turn-end", status },
+      );
+  const stateOf = (id: string) => harness.manager.get(id)?.conversation.state;
+  const until = async (predicate: () => boolean, label: string) => {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (predicate()) return;
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error(`Timeout esperando: ${label}`);
+  };
+  const states = (id: string) =>
+    harness.events.flatMap((event) =>
+      event.event === "conversation.stateChanged" && event.payload.conversation.id === id
+        ? [event.payload.conversation.state]
+        : [],
+    );
+  return { harness, entries, create, finish, stateOf, until, states };
+}
+
+test("fila: com limite 2 a terceira mensagem espera sem iniciar o adaptador", async () => {
+  const rig = await createQueueRig(2);
+  try {
+    const [a, b, c] = [rig.create(), rig.create(), rig.create()];
+    await rig.harness.manager.send(a.id, "a");
+    await rig.harness.manager.send(b.id, "b");
+    const sent = await rig.harness.manager.send(c.id, "c");
+    assert.equal(sent.agentMessage.status, "streaming");
+    assert.equal(rig.stateOf(c.id), "queued");
+    assert.equal(rig.entries.has(c.id), false);
+    assert.equal(rig.states(c.id).includes("working"), false);
+    assert.equal(rig.states(c.id)[0], "queued");
+    assert.deepEqual(rig.harness.manager.queueStatus(), {
+      limit: 2,
+      running: 2,
+      queuedConversationIds: [c.id],
+    });
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("fila: terminar um turno inicia o próximo em ordem FIFO e mensagem nova não fura", async () => {
+  const rig = await createQueueRig(2);
+  try {
+    const [a, b, c, d, e] = [rig.create(), rig.create(), rig.create(), rig.create(), rig.create()];
+    for (const [conversation, text] of [
+      [a, "a"],
+      [b, "b"],
+      [c, "c"],
+      [d, "d"],
+    ] as const)
+      await rig.harness.manager.send(conversation.id, text);
+    rig.finish(a.id);
+    await rig.until(() => rig.stateOf(c.id) === "working", "c sai da fila");
+    assert.equal(rig.stateOf(d.id), "queued");
+    await rig.harness.manager.send(e.id, "e");
+    assert.equal(rig.stateOf(e.id), "queued");
+    assert.deepEqual(rig.harness.manager.queueStatus().queuedConversationIds, [d.id, e.id]);
+    rig.finish(b.id);
+    await rig.until(() => rig.stateOf(d.id) === "working", "d sai da fila");
+    assert.equal(rig.stateOf(e.id), "queued");
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("fila: envios simultâneos nunca passam do limite", async () => {
+  const rig = await createQueueRig(2);
+  try {
+    const conversations = Array.from({ length: 7 }, () => rig.create());
+    await Promise.all(
+      conversations.map((conversation) => rig.harness.manager.send(conversation.id, "oi")),
+    );
+    const status = rig.harness.manager.queueStatus();
+    assert.equal(status.running, 2);
+    assert.equal(status.queuedConversationIds.length, 5);
+    assert.equal(
+      conversations.filter((conversation) => rig.stateOf(conversation.id) === "working").length,
+      2,
+    );
+    assert.equal(rig.entries.size, 2);
+    // Esvazia a fila por completo sem nunca passar do limite.
+    for (let round = 0; round < 7; round += 1) {
+      const running = conversations.filter((c) => rig.stateOf(c.id) === "working");
+      assert.ok(running.length <= 2);
+      for (const conversation of running) rig.finish(conversation.id);
+      await rig.until(
+        () =>
+          conversations.every((c) => rig.stateOf(c.id) !== "working") ||
+          conversations.filter((c) => rig.stateOf(c.id) === "working").length > 0,
+        "próxima rodada",
+      );
+      await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    }
+    assert.equal(rig.harness.manager.queueStatus().queuedConversationIds.length, 0);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("fila: erro, parar e falha ao iniciar liberam a vaga e drenam", async () => {
+  const rig = await createQueueRig(1);
+  try {
+    const [a, b, c, d, e] = [rig.create(), rig.create(), rig.create(), rig.create(), rig.create()];
+    await rig.harness.manager.send(a.id, "a");
+    await rig.harness.manager.send(b.id, "b");
+    await rig.harness.manager.send(c.id, "c");
+    await rig.harness.manager.send(d.id, "d");
+    await rig.harness.manager.send(e.id, "e");
+    // Erro de turno.
+    rig.finish(a.id, "error");
+    await rig.until(() => rig.stateOf(b.id) === "working", "b roda depois do erro de a");
+    assert.equal(rig.stateOf(a.id), "error");
+    // Parar o turno em andamento.
+    assert.equal(await rig.harness.manager.stop(b.id), true);
+    await rig.until(() => rig.stateOf(c.id) === "working", "c roda depois de parar b");
+    assert.equal(rig.stateOf(b.id), "idle");
+    rig.finish(c.id);
+    await rig.until(() => rig.stateOf(d.id) === "working", "d roda");
+    rig.finish(d.id);
+    await rig.until(() => rig.stateOf(e.id) === "working", "e roda");
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("fila: falha ao iniciar o adaptador na saída da fila libera a vaga", async () => {
+  const failFor = new Set<string>();
+  const rig = await createQueueRig(1, failFor);
+  try {
+    const [a, b, c] = [rig.create(), rig.create(), rig.create()];
+    failFor.add(b.id);
+    await rig.harness.manager.send(a.id, "a");
+    await rig.harness.manager.send(b.id, "b");
+    await rig.harness.manager.send(c.id, "c");
+    rig.finish(a.id);
+    await rig.until(() => rig.stateOf(b.id) === "error", "b falha ao iniciar");
+    await rig.until(() => rig.stateOf(c.id) === "working", "c ocupa a vaga liberada");
+    assert.equal(rig.harness.manager.queueStatus().queuedConversationIds.length, 0);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("fila: permissão ocupa vaga; plano pendente e processo ocioso não ocupam", async () => {
+  const rig = await createQueueRig(1);
+  try {
+    const [a, b, c, d] = [rig.create(), rig.create(), rig.create(), rig.create()];
+    // Esperando permissão ou resposta ocupa vaga.
+    await rig.harness.manager.send(a.id, "a");
+    rig.entries.get(a.id)?.emit({ kind: "state", state: "waiting" });
+    await rig.until(() => rig.stateOf(a.id) === "waiting", "a espera");
+    await rig.harness.manager.send(b.id, "b");
+    assert.equal(rig.stateOf(b.id), "queued");
+    // Plano pendente: turno terminado, não ocupa.
+    rig.entries.get(a.id)?.emit({ kind: "state", state: "working" });
+    rig.entries.get(a.id)?.emit({
+      kind: "part",
+      part: { id: "plano", type: "plan", markdown: "Plano", state: "pending" },
+    });
+    rig.finish(a.id);
+    await rig.until(() => rig.stateOf(a.id) === "waiting", "a com plano pendente");
+    await rig.until(() => rig.stateOf(b.id) === "working", "b usa a vaga do plano");
+    // Processo ocioso no #active (a terminou) também não ocupa.
+    rig.finish(b.id);
+    await rig.until(() => rig.stateOf(b.id) === "idle", "b ocioso");
+    await rig.harness.manager.send(c.id, "c");
+    assert.equal(rig.stateOf(c.id), "working");
+    assert.equal(rig.harness.manager.queueStatus().running, 1);
+    rig.finish(c.id);
+    await rig.until(() => rig.stateOf(c.id) === "idle", "c ocioso");
+    await rig.harness.manager.send(d.id, "d");
+    assert.equal(rig.stateOf(d.id), "working");
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("fila: parar na fila interrompe a mensagem sem iniciar o adaptador e não afeta o próximo", async () => {
+  const rig = await createQueueRig(1);
+  try {
+    const [a, b, c] = [rig.create(), rig.create(), rig.create()];
+    await rig.harness.manager.send(a.id, "a");
+    const sentB = await rig.harness.manager.send(b.id, "b");
+    await rig.harness.manager.send(c.id, "c");
+    assert.equal(await rig.harness.manager.stop(b.id), true);
+    assert.equal(rig.stateOf(b.id), "idle");
+    assert.equal(rig.entries.has(b.id), false);
+    const message = latestAgent(rig.harness, b.id);
+    assert.equal(message?.id, sentB.agentMessage.id);
+    assert.equal(message?.status, "interrupted");
+    assert.ok(message?.parts.some((part) => part.type === "error" && part.retryable));
+    assert.deepEqual(rig.harness.manager.queueStatus().queuedConversationIds, [c.id]);
+    assert.equal(rig.stateOf(c.id), "queued");
+    rig.finish(a.id);
+    await rig.until(() => rig.stateOf(c.id) === "working", "c roda");
+    assert.equal(rig.entries.has(b.id), false);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("fila: apagar na fila remove o item e apagar o que roda drena", async () => {
+  const rig = await createQueueRig(1);
+  try {
+    const [a, b, c] = [rig.create(), rig.create(), rig.create()];
+    await rig.harness.manager.send(a.id, "a");
+    await rig.harness.manager.send(b.id, "b");
+    await rig.harness.manager.send(c.id, "c");
+    assert.equal(await rig.harness.manager.remove(b.id), true);
+    assert.deepEqual(rig.harness.manager.queueStatus().queuedConversationIds, [c.id]);
+    assert.equal(await rig.harness.manager.remove(a.id), true);
+    await rig.until(() => rig.stateOf(c.id) === "working", "c roda depois de apagar a");
+    assert.equal(rig.entries.has(b.id), false);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("fila: apagar todas limpa a fila", async () => {
+  const rig = await createQueueRig(1);
+  try {
+    const [a, b] = [rig.create(), rig.create()];
+    await rig.harness.manager.send(a.id, "a");
+    await rig.harness.manager.send(b.id, "b");
+    await rig.harness.manager.deleteAll();
+    assert.deepEqual(rig.harness.manager.queueStatus(), {
+      limit: 1,
+      running: 0,
+      queuedConversationIds: [],
+    });
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("fila: reiniciar o serviço deixa a mensagem da fila interrompida e nada roda", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-fila-restart-"));
+  const dbPath = path.join(root, "karont.db");
+  let db = openDatabase(dbPath);
+  const conversation = createConversationRecord(db, {
+    agent: "claude",
+    title: "Na fila",
+    cwd: os.tmpdir(),
+    mode: "edit",
+  });
+  updateConversation(db, { ...conversation, state: "queued" });
+  const now = new Date().toISOString();
+  addMessage(db, {
+    id: "queued-message",
+    conversationId: conversation.id,
+    author: "agent",
+    status: "streaming",
+    parts: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+  db.close();
+  db = openDatabase(dbPath);
+  let factoryCalls = 0;
+  const manager = new ConversationManager({
+    db,
+    env: { ...process.env, KARONT_DISABLE_AGENT_DETECTION: "1" },
+    broadcast: async () => undefined,
+    adapterFactory: () => {
+      factoryCalls += 1;
+      throw new Error("não deve rodar");
+    },
+  });
+  try {
+    assert.equal(manager.get(conversation.id)?.conversation.state, "idle");
+    const message = getMessage(db, "queued-message");
+    assert.equal(message?.status, "interrupted");
+    assert.ok(message?.parts.some((part) => part.type === "error" && part.retryable));
+    assert.deepEqual(manager.queueStatus().queuedConversationIds, []);
+    assert.equal(factoryCalls, 0);
+  } finally {
+    await manager.close();
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("fila: aumentar o limite drena na hora e limite inválido vale 4", async () => {
+  const rig = await createQueueRig(1);
+  try {
+    const [a, b, c] = [rig.create(), rig.create(), rig.create()];
+    await rig.harness.manager.send(a.id, "a");
+    await rig.harness.manager.send(b.id, "b");
+    await rig.harness.manager.send(c.id, "c");
+    setSetting(rig.harness.db, "agents.maxConcurrent", 2);
+    rig.harness.manager.applyConcurrencyLimit();
+    await rig.until(() => rig.stateOf(b.id) === "working", "b roda com limite 2");
+    assert.equal(rig.stateOf(c.id), "queued");
+    for (const invalid of ["muitos", 0, -1, 17, 2.5, null, true]) {
+      setSetting(rig.harness.db, "agents.maxConcurrent", invalid);
+      assert.equal(rig.harness.manager.queueStatus().limit, 4, `valor ${String(invalid)}`);
+    }
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("fila: startedAt é zerado ao sair da fila", async () => {
+  const rig = await createQueueRig(1);
+  try {
+    const [a, b] = [rig.create(), rig.create()];
+    await rig.harness.manager.send(a.id, "a");
+    const sentB = await rig.harness.manager.send(b.id, "b");
+    const queuedStartedAt = sentB.agentMessage.startedAt as number;
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
+    rig.finish(a.id);
+    await rig.until(() => rig.stateOf(b.id) === "working", "b sai da fila");
+    const stored = getMessage(rig.harness.db, sentB.agentMessage.id);
+    assert.ok((stored?.startedAt ?? 0) >= queuedStartedAt + 20);
+    const event = rig.harness.events.find(
+      (item) =>
+        item.event === "conversation.stateChanged" &&
+        "messageId" in item.payload &&
+        item.payload.messageId === sentB.agentMessage.id &&
+        item.payload.conversation.state === "working",
+    );
+    assert.ok(
+      event?.event === "conversation.stateChanged" &&
+        "messageStartedAt" in event.payload &&
+        (event.payload.messageStartedAt ?? 0) >= queuedStartedAt + 20,
+    );
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("fila: queue.changed não repete payload igual e bate com queueStatus", async () => {
+  const rig = await createQueueRig(1);
+  try {
+    const [a, b, c] = [rig.create(), rig.create(), rig.create()];
+    await rig.harness.manager.send(a.id, "a");
+    await rig.harness.manager.send(b.id, "b");
+    await rig.harness.manager.send(c.id, "c");
+    rig.finish(a.id);
+    await rig.until(() => rig.stateOf(b.id) === "working", "b roda");
+    rig.finish(b.id);
+    await rig.until(() => rig.stateOf(c.id) === "working", "c roda");
+    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    const payloads = rig.harness.events.flatMap((event) =>
+      event.event === "queue.changed" ? [JSON.stringify(event.payload)] : [],
+    );
+    assert.ok(payloads.length >= 3);
+    for (let index = 1; index < payloads.length; index += 1)
+      assert.notEqual(payloads[index], payloads[index - 1]);
+    assert.equal(payloads.at(-1), JSON.stringify(rig.harness.manager.queueStatus()));
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("fila: mandar mensagem, tentar de novo e ramificar numa conversa na fila dão erro", async () => {
+  const rig = await createQueueRig(1);
+  try {
+    const [a, b] = [rig.create(), rig.create()];
+    await rig.harness.manager.send(a.id, "a");
+    const sentB = await rig.harness.manager.send(b.id, "b");
+    assert.equal(rig.stateOf(b.id), "queued");
+    await assert.rejects(rig.harness.manager.send(b.id, "de novo"), /em andamento/);
+    await assert.rejects(rig.harness.manager.retry(b.id), /em andamento/);
+    await assert.rejects(rig.harness.manager.branch(b.id, sentB.agentMessage.id), /Espere/);
+    await assert.rejects(rig.harness.manager.setOptions(b.id, { mode: "full" }), /parada/);
+  } finally {
+    await rig.harness.close();
+  }
 });

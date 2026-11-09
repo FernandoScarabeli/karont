@@ -5,6 +5,7 @@ import {
   type AnyEvent,
   CONTRACT_VERSION,
   type JsonValue,
+  MAX_CONCURRENT_AGENTS_SETTING,
   type ParsedRequest,
 } from "@karont/contract";
 import type { AdapterFactory, AgentAdapterRegistration } from "./agents/adapter.ts";
@@ -108,7 +109,11 @@ export function createHandlers({
         return { key: request.params.key, value: getSetting(db, request.params.key) };
       case "settings.set":
         setSetting(db, request.params.key, request.params.value as JsonValue);
+        if (request.params.key === MAX_CONCURRENT_AGENTS_SETTING)
+          conversationManager.applyConcurrencyLimit();
         return { key: request.params.key, value: request.params.value };
+      case "queue.status":
+        return conversationManager.queueStatus();
       case "agents.list":
         return agentRegistry.list();
       case "agents.detect":

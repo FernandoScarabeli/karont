@@ -1102,3 +1102,56 @@ function tempFs(allowedRoots: string[]): AgentDetectionFs {
     },
   };
 }
+
+test("fila: queue.status bate com queue.changed e settings.set do limite drena a fila", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-fila-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const events: AnyEvent[] = [];
+  const db = openDatabase(path.join(root, "karont.db"));
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async () => emit({ kind: "state", state: "working" }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void events.push(event),
+    env: { PATH: "", KARONT_DISABLE_AGENT_DETECTION: "1" },
+    homeDir: root,
+    adapterFactory,
+  });
+  context.after(async () => {
+    await handlers.closeAgents();
+    db.close();
+  });
+  const conn = connection([]);
+  await handlers.handle(request("settings.set", { key: "agents.maxConcurrent", value: 1 }), conn);
+  const ids: string[] = [];
+  for (const title of ["A", "B"]) {
+    const created = (await handlers.handle(
+      request("conversation.create", { agent: "claude", cwd: root, mode: "edit", title }),
+      conn,
+    )) as { conversation: Conversation };
+    ids.push(created.conversation.id);
+    await handlers.handle(
+      request("conversation.send", { id: created.conversation.id, text: title }),
+      conn,
+    );
+  }
+  const status = await handlers.handle(request("queue.status", {}), conn);
+  assert.deepEqual(status, { limit: 1, running: 1, queuedConversationIds: [ids[1]] });
+  const lastChanged = [...events].reverse().find((event) => event.event === "queue.changed");
+  assert.deepEqual(lastChanged?.payload, status);
+
+  await handlers.handle(request("settings.set", { key: "agents.maxConcurrent", value: 2 }), conn);
+  assert.deepEqual(await handlers.handle(request("queue.status", {}), conn), {
+    limit: 2,
+    running: 2,
+    queuedConversationIds: [],
+  });
+});

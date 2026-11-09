@@ -5,7 +5,12 @@ import {
   messagePartSchema,
   messageSchema,
 } from "./conversations.ts";
-import { projectSchema, recentFolderSchema, terminalInfoSchema } from "./methods.ts";
+import {
+  projectSchema,
+  queueStatusSchema,
+  recentFolderSchema,
+  terminalInfoSchema,
+} from "./methods.ts";
 
 export const events = {
   "dev.streamTest.delta": z.strictObject({
@@ -37,6 +42,7 @@ export const events = {
     terminals: z.array(terminalInfoSchema),
   }),
   "folders.changed": z.strictObject({ folders: z.array(recentFolderSchema).max(8) }),
+  "queue.changed": queueStatusSchema,
   "projects.changed": z.strictObject({ projects: z.array(projectSchema) }),
   "conversation.messageCreated": z.strictObject({
     conversationId: z.string(),

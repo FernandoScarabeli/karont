@@ -81,10 +81,14 @@ export type {
 } from "./methods.ts";
 export {
   agentSchema,
+  DEFAULT_MAX_CONCURRENT_AGENTS,
   jsonValueSchema,
+  MAX_CONCURRENT_AGENTS_LIMIT,
+  MAX_CONCURRENT_AGENTS_SETTING,
   MAX_SETTING_BYTES,
   methods,
   projectSchema,
+  queueStatusSchema,
   recentFolderSchema,
   settingKeySchema,
   terminalInfoSchema,
