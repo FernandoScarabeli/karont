@@ -131,6 +131,11 @@ Repositório recriado do zero em 2026-10-31.
     - Crachá: só mostra Agente, acesso e pasta, sem prometer isolamento. O acesso continua sendo mudado no controle que já existe.
     - Bom dia e boa noite: cartões no Início, com dados reais e frases prontas no tom do Dot, sem IA. Bom dia na primeira abertura do dia; boa noite depois das 20h. Só com o app aberto.
     - Teste real no fechamento: Codex `gpt-6-luna` em `low` e, com o ok do dono, 1 ou 2 mensagens curtas no Claude com Haiku, em banco temporário, para comprovar a troca de Agente.
+37. **O Dot é uma alminha** (2026-11-09, substitui parte da decisão 36):
+    - Forma **Véu**: fantasminha grafite com dois olhinhos, em referência a Caronte. O dono rejeitou os personagens Ponto, Lua e Pixel.
+    - Olhos e corpo seguem o ponteiro, com base no Eye tracker do Bencho (MIT, © 2026 Lorenzo Cabra; o aviso fica no arquivo). O BoopFace (MIT) é só inspiração de comportamento e não entra como dependência.
+    - A pessoa escolhe a cor do Dot num seletor completo, feito no app sem dependência nova, no modelo do color picker do BoardUI. A cor dos olhos se ajusta sozinha pelo contraste. Isso substitui "na cor de destaque".
+    - **A salinha fica de lado por enquanto**: o dono não gostou do quarto nem quis a barquinha. Mesmo com a SPEC ainda citando a salinha no M6, ela não faz parte da entrega. Sem ela, nome, cor, personalidade e memórias ficam numa seção **Dot** das Configurações.
 
 ## M5 — estado
 Branch `m5-primeira-abertura`, a partir da `main` com o M4. Feito, nesta ordem: B1 (migração 21, `KARONT_SKIP_ONBOARDING`, `system.diagnostics`), F1 (Perfil: nome, foto e botão no rodapé), F2 (Aparência e rodapé enxuto), F3 (Diagnóstico), F4 (primeira abertura, "Abrir de novo" e ajustes finais do rodapé). Depois, o contador de uso (decisões 32 a 34): B2 e B3 (serviço), F5, F6 e F7 (tela). Juntado na `main` (PR #7).
