@@ -248,19 +248,7 @@
   font-weight: var(--k-weight-regular);
 }
 
-.searchButton:disabled {
-  opacity: 1;
-}
-
 .searchLabel {
   flex: 1;
   text-align: left;
-}
-
-.shortcut {
-  color: var(--k-color-text-muted);
-  font-family: var(--k-font-mono);
-  font-size: var(--k-text-12);
-  font-weight: var(--k-weight-regular);
-  line-height: var(--k-leading-tight);
 }

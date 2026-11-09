@@ -127,7 +127,7 @@ const WorkspaceTab = memo(function WorkspaceTab({
   );
 });
 
-export function TopBar() {
+export function TopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
   const { navigate, openWorkspace, view, activeWorkspaceId } = useNavigation();
   const bridge = getBridge();
   const { workspaces } = useWorkspaces();
@@ -282,14 +282,13 @@ export function TopBar() {
           />
         </nav>
         <Button
-          aria-description={t.shell.availableSoon}
+          aria-keyshortcuts="Control+K"
           aria-label={t.shell.searchAccessibleName}
           className={styles.searchButton}
-          disabled
           iconStart={<Search aria-hidden="true" size={16} strokeWidth={1.75} />}
+          onClick={onOpenSearch}
         >
           <span className={styles.searchLabel}>{t.shell.search}</span>
-          <kbd className={styles.shortcut}>{t.shell.searchShortcut}</kbd>
         </Button>
       </div>
       <WorkspaceDialog

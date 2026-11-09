@@ -184,7 +184,7 @@
   --k-brand-reflection-short-width: 6px;
   --k-brand-reflection-height: 1px;
   --k-brand-reflection-gap: 2px;
-  --k-search-width: 240px;
+  --k-search-width: 112px;
   --k-window-min-width: 960px;
   --k-window-min-height: 600px;
   --k-topbar-brand-gap: 8px;
@@ -200,6 +200,9 @@
   --k-empty-state-max-width: 360px;
   --k-dialog-width-sm: 420px;
   --k-dialog-width-md: 520px;
+  --k-search-panel-width: 640px;
+  --k-search-panel-top: 96px;
+  --k-search-list-height: 384px;
   --k-menu-min-width: 200px;
   --k-pane-menu-max-width: 360px;
   --k-menu-max-height: 480px;

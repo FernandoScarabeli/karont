@@ -54,8 +54,8 @@ export type View =
 
 export type NavigationTarget =
   | View
-  | { name: "new-conversation"; projectId?: string }
-  | { name: "conversation"; id: string }
+  | { name: "new-conversation"; projectId?: string; workspaceId?: string }
+  | { name: "conversation"; id: string; workspaceId?: string }
   | { name: "terminal"; id: string; workspaceId?: string };
 
 type NavigationState = {
@@ -379,11 +379,12 @@ export function NavigationProvider({ children }: PropsWithChildren) {
       let workspaceId = current.activeWorkspaceId;
       const owner =
         target.name === "conversation"
-          ? getConversationIndexEntry(target.id)?.workspaceId
+          ? (target.workspaceId ?? getConversationIndexEntry(target.id)?.workspaceId)
           : target.name === "terminal"
             ? target.workspaceId
-            : target.name === "new-conversation" && target.projectId
-              ? getProject(target.projectId)?.workspaceId
+            : target.name === "new-conversation"
+              ? (target.workspaceId ??
+                (target.projectId ? getProject(target.projectId)?.workspaceId : undefined))
               : undefined;
       if (
         owner &&
