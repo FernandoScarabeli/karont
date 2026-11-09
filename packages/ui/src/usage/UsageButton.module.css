@@ -1,0 +1,4 @@
+.trigger[aria-expanded="true"] {
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+}

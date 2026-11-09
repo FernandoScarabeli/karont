@@ -921,4 +921,20 @@ export const t = {
     finishFailed: "Não foi possível concluir. Tente de novo.",
     noBridge: "Sem conexão com o serviço.",
   },
+  usage: {
+    title: "Uso",
+    empty: "Converse com um agente para ver o uso aqui.",
+    loading: "Carregando…",
+    loadError: "Não foi possível carregar o uso.",
+    retry: "Tentar de novo",
+    updated: (ago: string) => `atualizado ${ago}`,
+    resetsIn: (duration: string) => `zera em ${duration}`,
+    expired: "Já zerou",
+    windowLabel: { five_hour: "5 h", weekly: "Semana" },
+    windowSpoken: { five_hour: "5 horas", weekly: "semana" },
+    barLabel: (agent: string, window: string, percent: number | null, resets: string | null) =>
+      percent === null
+        ? `${agent}, ${window}: já zerou`
+        : `${agent}, ${window}: ${percent}% usado${resets ? `, zera em ${resets}` : ""}`,
+  },
 } as const;
