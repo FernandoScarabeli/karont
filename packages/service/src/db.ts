@@ -13,6 +13,7 @@ import type {
   Workspace,
   Worktree,
 } from "@karont/contract";
+import { indexMessageIfFinished } from "./search.ts";
 
 export const migrations: { version: number; up: string }[] = [
   {
@@ -151,6 +152,33 @@ export const migrations: { version: number; up: string }[] = [
     version: 19,
     // Mensagem de erro que o usuário dispensou da caixa de entrada; um erro novo tem outro id.
     up: "ALTER TABLE conversations ADD COLUMN error_dismissed_message_id TEXT;",
+  },
+  {
+    version: 20,
+    // Busca do Ctrl K: índice FTS5 só do texto das mensagens (partes `text`). A tabela de ligação
+    // evita depender do rowid de `messages`; o gatilho cobre apagar mensagem, conversa e cascata.
+    up: `CREATE TABLE message_search_map (
+      fts_rowid INTEGER PRIMARY KEY, message_id TEXT NOT NULL UNIQUE
+    ) STRICT;
+    CREATE VIRTUAL TABLE message_search USING fts5(text, tokenize = 'unicode61 remove_diacritics 2');
+    CREATE TRIGGER message_search_cleanup AFTER DELETE ON messages BEGIN
+      DELETE FROM message_search WHERE rowid = (SELECT fts_rowid FROM message_search_map WHERE message_id = old.id);
+      DELETE FROM message_search_map WHERE message_id = old.id;
+    END;
+    CREATE TEMP TABLE message_search_seed AS
+      SELECT m.id AS message_id, group_concat(CASE WHEN j.type = 'object' THEN json_extract(j.value, '$.markdown') END, char(10)) AS body
+      FROM messages m,
+        json_each(CASE WHEN json_valid(m.parts) THEN CASE WHEN json_type(m.parts) = 'array' THEN m.parts ELSE '[]' END ELSE '[]' END) j
+      WHERE m.status != 'streaming'
+        AND j.type = 'object'
+        AND CASE WHEN j.type = 'object' THEN json_extract(j.value, '$.type') END = 'text'
+        AND CASE WHEN j.type = 'object' THEN json_type(j.value, '$.markdown') END = 'text'
+      GROUP BY m.id;
+    INSERT INTO message_search_map (message_id) SELECT message_id FROM message_search_seed WHERE trim(body) != '';
+    INSERT INTO message_search (rowid, text)
+      SELECT map.fts_rowid, replace(replace(seed.body, char(57344), ''), char(57345), '')
+      FROM message_search_map map JOIN message_search_seed seed ON seed.message_id = map.message_id;
+    DROP TABLE message_search_seed;`,
   },
 ];
 
@@ -375,6 +403,11 @@ export function setConversationTitle(
 }
 
 export function addMessage(db: DatabaseSync, message: ConversationMessage): void {
+  insertMessageRow(db, message);
+  indexMessageIfFinished(db, message);
+}
+
+function insertMessageRow(db: DatabaseSync, message: ConversationMessage): void {
   db.prepare(
     "INSERT INTO messages (id,conversation_id,author,status,parts,attachments_json,created_at,updated_at,started_at_ms,ended_at_ms,agent_turn_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
@@ -405,6 +438,7 @@ export function saveMessage(db: DatabaseSync, message: ConversationMessage): voi
     message.agentTurnId ?? null,
     message.id,
   );
+  indexMessageIfFinished(db, message);
 }
 
 export function getMessage(db: DatabaseSync, id: string): ConversationMessage | null {

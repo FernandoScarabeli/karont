@@ -94,7 +94,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    19,
+    20,
   );
   assert.equal(
     (
@@ -155,7 +155,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    19,
+    20,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();
@@ -399,7 +399,7 @@ test("migra um banco na versão 13 mantendo a conversa solta, sem projectId", as
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      19,
+      20,
     );
     const conversation = getConversation(db, "v13-1");
     assert.equal(conversation?.title, "Antes dos projetos");
@@ -511,7 +511,7 @@ test("migra um banco na versão 14 sem perder dados e cria restore_points", asyn
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      19,
+      20,
     );
     assert.equal(getConversation(db, "v14-1")?.title, "Antes");
     assert.equal(listMessages(db, "v14-1").length, 1);
@@ -553,7 +553,7 @@ test("migra um banco na versão 15 sem perder dados e acrescenta as colunas do d
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      19,
+      20,
     );
     const point = getRestorePoint(db, "m-15");
     assert.equal(point?.beforeCommit, "antes");
@@ -592,7 +592,7 @@ test("migra um banco na versão 16 sem perder dados e cria worktrees e conversat
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      19,
+      20,
     );
     const before = getConversation(db, "v16-1");
     assert.equal(before?.title, "Antes");
@@ -788,7 +788,7 @@ test("migra um banco na versão 17 com dados para workspaces, sem perder nada", 
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      19,
+      20,
     );
     const workspaces = listWorkspaces(db);
     assert.equal(workspaces.length, 1);
@@ -844,7 +844,7 @@ test("migra um banco na versão 18 com dados: acrescenta error_dismissed_message
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      19,
+      20,
     );
     const conversation = getConversation(db, "c18");
     assert.equal(conversation?.title, "Com erro");

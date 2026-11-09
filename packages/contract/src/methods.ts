@@ -13,6 +13,7 @@ import {
 } from "./conversations.ts";
 import { inboxMethods } from "./inbox.ts";
 import { restoreMethods } from "./restore.ts";
+import { searchMethods } from "./search.ts";
 import { worktreeMethods } from "./worktrees.ts";
 
 export const MAX_SETTING_BYTES = 65_536;
@@ -460,6 +461,7 @@ export const methods = {
     result: z.strictObject({ workspaces: z.array(overviewWorkspaceSchema) }),
   },
   ...inboxMethods,
+  ...searchMethods,
   ...restoreMethods,
   ...worktreeMethods,
   "terminals.list": {

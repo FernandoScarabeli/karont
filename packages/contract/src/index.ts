@@ -118,6 +118,23 @@ export {
   restoreStateSchema,
   restoreUnavailableReasonSchema,
 } from "./restore.ts";
+export type {
+  SearchConversationResult,
+  SearchMessageResult,
+  SearchProjectResult,
+  SearchResult,
+  SearchSnippetSegment,
+} from "./search.ts";
+export {
+  SEARCH_LIMIT_DEFAULT,
+  SEARCH_LIMIT_MAX,
+  SEARCH_QUERY_MAX,
+  searchConversationResultSchema,
+  searchMessageResultSchema,
+  searchProjectResultSchema,
+  searchResultSchema,
+  searchSnippetSegmentSchema,
+} from "./search.ts";
 export type { MessageSource } from "./sources.ts";
 export {
   MAX_MESSAGE_SOURCES,

@@ -38,6 +38,7 @@ import {
 } from "./git/worktrees.ts";
 import { getOverview } from "./overview.ts";
 import { resolvePaths } from "./paths.ts";
+import { searchAll } from "./search.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
 import { getSystemUserName } from "./user-name.ts";
 import {
@@ -140,6 +141,8 @@ export function createHandlers({
         return conversationManager.inboxList();
       case "inbox.dismiss":
         return { dismissed: conversationManager.dismissInboxError(request.params.conversationId) };
+      case "search.query":
+        return searchAll(db, request.params.query, request.params.limit);
       case "agents.list":
         return agentRegistry.list();
       case "agents.detect":
