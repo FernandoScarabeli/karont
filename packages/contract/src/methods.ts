@@ -11,8 +11,20 @@ import {
   conversationSendParamsSchema,
   messageSchema,
 } from "./conversations.ts";
+import { restoreMethods } from "./restore.ts";
+import { worktreeMethods } from "./worktrees.ts";
 
 export const MAX_SETTING_BYTES = 65_536;
+
+export const DEFAULT_MAX_CONCURRENT_AGENTS = 4;
+export const MAX_CONCURRENT_AGENTS_LIMIT = 16;
+export const MAX_CONCURRENT_AGENTS_SETTING = "agents.maxConcurrent";
+
+export const queueStatusSchema = z.strictObject({
+  limit: z.number().int().min(1),
+  running: z.number().int().nonnegative(),
+  queuedConversationIds: z.array(z.string().min(1)),
+});
 
 export const settingKeySchema = z.string().regex(/^[a-z][a-zA-Z0-9.]{0,63}$/);
 
@@ -61,6 +73,25 @@ export const recentFolderSchema = z.strictObject({
 });
 
 export type RecentFolder = z.infer<typeof recentFolderSchema>;
+
+const projectNameSchema = z
+  .string()
+  .min(1)
+  .max(80)
+  .refine((name) => name.trim().length > 0, "O nome do projeto não pode ter só espaços.");
+const projectIconSchema = z.string().regex(/^[a-z0-9-]{1,40}$/);
+
+export const projectSchema = z.strictObject({
+  id: z.string().min(1),
+  name: projectNameSchema,
+  icon: projectIconSchema,
+  path: z.string().min(1).max(4_096),
+  defaultAgent: agentIdSchema.nullable(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
+});
+
+export type Project = z.infer<typeof projectSchema>;
 
 export const terminalInfoSchema = z.strictObject({
   id: z.string().min(1),
@@ -165,6 +196,8 @@ export const methods = {
     params: z.strictObject({
       agent: z.enum(["claude", "codex"]),
       cwd: z.string().min(1).max(4_096),
+      projectId: z.string().min(1).optional(),
+      worktreeId: z.string().min(1).optional(),
       mode: z.enum(["read-only", "edit", "full"]).default("edit"),
       title: z.string().min(1).max(240).optional(),
       model: z.string().min(1).max(80).optional(),
@@ -313,6 +346,38 @@ export const methods = {
     params: z.strictObject({ path: folderPathSchema }),
     result: z.strictObject({ branch: z.string().nullable(), detached: z.boolean() }),
   },
+  "queue.status": {
+    params: emptyParamsSchema,
+    result: queueStatusSchema,
+  },
+  "projects.list": {
+    params: emptyParamsSchema,
+    result: z.strictObject({ projects: z.array(projectSchema) }),
+  },
+  "projects.create": {
+    params: z.strictObject({
+      name: projectNameSchema,
+      icon: projectIconSchema,
+      path: folderPathSchema,
+      defaultAgent: agentIdSchema.optional(),
+    }),
+    result: z.strictObject({ project: projectSchema }),
+  },
+  "projects.update": {
+    params: z.strictObject({
+      id: z.string().min(1),
+      name: projectNameSchema.optional(),
+      icon: projectIconSchema.optional(),
+      defaultAgent: agentIdSchema.nullable().optional(),
+    }),
+    result: z.strictObject({ project: projectSchema }),
+  },
+  "projects.remove": {
+    params: z.strictObject({ id: z.string().min(1) }),
+    result: z.strictObject({ removed: z.literal(true) }),
+  },
+  ...restoreMethods,
+  ...worktreeMethods,
   "terminals.list": {
     params: emptyParamsSchema,
     result: z.strictObject({ terminals: z.array(terminalInfoSchema) }),

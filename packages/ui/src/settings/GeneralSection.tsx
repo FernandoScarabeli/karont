@@ -1,11 +1,14 @@
-import { CircleAlert } from "lucide-react";
+import { MAX_CONCURRENT_AGENTS_LIMIT, MAX_CONCURRENT_AGENTS_SETTING } from "@karont/contract";
+import { CircleAlert, Minus, Plus } from "lucide-react";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
 import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { FluidHoverHighlight, useFluidHover } from "../components/FluidHover/FluidHover.tsx";
+import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { TextField } from "../components/TextField/TextField.tsx";
 import { clearAllConversationsFromIndex } from "../conversation/useConversationIndex.ts";
+import { useQueueStatus } from "../conversation/useQueueStatus.ts";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import styles from "./GeneralSection.module.css";
@@ -254,6 +257,8 @@ export function GeneralSection() {
         ) : null}
       </fieldset>
 
+      <AgentLimitGroup />
+
       {phase === "noBridge" ? (
         <p className={styles.connectionMessage} role="status">
           {t.settings.noBridge}
@@ -285,6 +290,72 @@ export function GeneralSection() {
         </p>
       ) : null}
       <DataSection />
+    </section>
+  );
+}
+
+function AgentLimitGroup() {
+  const bridge = useMemo(() => getBridge(), []);
+  const { status } = useQueueStatus();
+  const serviceLimit = status?.limit ?? null;
+  // Valor mostrado logo no clique; some quando o serviço informa o limite ou a gravação falha.
+  const [pendingLimit, setPendingLimit] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState("");
+  const saveRevisionRef = useRef(0);
+  const limit = pendingLimit ?? serviceLimit;
+
+  // Só limpa quando o serviço confirma o último clique; com cliques seguidos, o número não volta.
+  useEffect(() => {
+    setPendingLimit((current) => (current === serviceLimit ? null : current));
+  }, [serviceLimit]);
+
+  async function changeLimit(delta: number) {
+    if (!bridge || limit === null) return;
+    const next = Math.min(MAX_CONCURRENT_AGENTS_LIMIT, Math.max(1, limit + delta));
+    if (next === limit) return;
+    const revision = ++saveRevisionRef.current;
+    setPendingLimit(next);
+    setSaveError("");
+    try {
+      await bridge.request("settings.set", { key: MAX_CONCURRENT_AGENTS_SETTING, value: next });
+    } catch (error) {
+      if (revision !== saveRevisionRef.current) return;
+      setPendingLimit(null);
+      setSaveError(errorMessage(error, t.settings.agentLimitSaveFailed));
+    }
+  }
+
+  return (
+    <section aria-labelledby="settings-agent-limit-title" className={styles.limitGroup}>
+      <h2 className={styles.limitHeading} id="settings-agent-limit-title">
+        {t.settings.agentLimitTitle}
+      </h2>
+      <div className={styles.limitControl}>
+        <IconButton
+          disabled={!bridge || limit === null || limit <= 1}
+          icon={<Minus aria-hidden="true" size={15} />}
+          label={t.settings.agentLimitDecrease}
+          onClick={() => void changeLimit(-1)}
+          variant="secondary"
+        />
+        <span className={styles.limitValue} role="status">
+          {limit === null ? "" : t.settings.agentLimitValue(limit)}
+        </span>
+        <IconButton
+          disabled={!bridge || limit === null || limit >= MAX_CONCURRENT_AGENTS_LIMIT}
+          icon={<Plus aria-hidden="true" size={15} />}
+          label={t.settings.agentLimitIncrease}
+          onClick={() => void changeLimit(1)}
+          variant="secondary"
+        />
+      </div>
+      <p className={styles.limitDescription}>{t.settings.agentLimitDescription}</p>
+      {saveError ? (
+        <p className={styles.errorMessage} role="alert">
+          <CircleAlert aria-hidden="true" size={16} strokeWidth={1.8} />
+          <span>{saveError}</span>
+        </p>
+      ) : null}
     </section>
   );
 }

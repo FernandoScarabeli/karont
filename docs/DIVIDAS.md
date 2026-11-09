@@ -15,3 +15,16 @@
 - Limite de quadro subiu para 64 MiB para caber até 8 anexos; anexos grandes passam inteiros pela memória do serviço. Se pesar, trocar por envio em pedaços.
 - Medição (preview, resposta de ~14 mil caracteres): serviço ~1–2% de CPU e 52 MB; aba da interface 12–20% de CPU durante o streaming (antes 60–110%), 0% parada. Repetir no Electron empacotado.
 - A skill `unslop` não está instalada no Codex; as revisões de UI usaram taste lint + Impeccable.
+
+## Do M3
+- **Desfazer e outra conversa no mesmo repositório:** o desfazer recusa se já há turno rodando no repositório, mas um turno de outra conversa que comece *durante* o desfazer pode fotografar os arquivos pela metade. Janela curta; um bloqueio por repositório resolve.
+- **Cópia separada sem projeto:** remover o projeto mantém as cópias no disco (a tela avisa), mas elas ficam sem lugar na interface para trazer ou remover.
+- **Conversa depois de remover a cópia:** a tela avisa antes, e enviar mensagem cai no erro "A pasta do projeto não existe mais". Vale desabilitar o composer com texto próprio.
+- **Cópias não são reaproveitadas:** cada oferta aceita cria uma nova, mesmo havendo outra parada.
+- **A oferta de cópia depende do `gitInfo` carregado:** quem envia no primeiro instante da tela pode não ver a oferta.
+- **Terminais abertos num projeto** continuam na lista de Conversas, porque `TerminalInfo` não tem `projectId`.
+- **Objetos do Git:** cada foto escreve objetos soltos no repositório do usuário. As refs são limpas (50 por conversa), mas o espaço só volta no `git gc` dele. Arquivo grande não ignorado pesa.
+- **Submódulos** não são desfeitos; a tela avisa.
+- **`Dialog` não devolve o foco ao ser desmontado**, porque o ref já é nulo no cleanup. Os diálogos do M3 ficam sempre montados, com `open` controlado; o certo é corrigir no componente.
+- **`conversation.create` não emite evento:** outra janela aberta (preview e app juntos) só vê a conversa nova quando ela muda de estado.
+- **Medir o PSS de todos os processos do Electron:** o sandbox impede ler `smaps_rollup` dos filhos; a medição do M3 usa working set.

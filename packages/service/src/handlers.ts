@@ -5,6 +5,7 @@ import {
   type AnyEvent,
   CONTRACT_VERSION,
   type JsonValue,
+  MAX_CONCURRENT_AGENTS_SETTING,
   type ParsedRequest,
 } from "@karont/contract";
 import type { AdapterFactory, AgentAdapterRegistration } from "./agents/adapter.ts";
@@ -12,9 +13,29 @@ import { ConversationManager } from "./agents/conversation-manager.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
 import { AgentRegistry } from "./agents/registry.ts";
 import { DeltaCoalescer } from "./coalescer.ts";
-import { getSetting, recordRecentFolder, setSetting } from "./db.ts";
+import {
+  createProject,
+  getProject,
+  getProjectByPath,
+  getSetting,
+  getWorktree,
+  listProjects,
+  listWorktrees,
+  recordRecentFolder,
+  removeProject,
+  setSetting,
+  updateProject,
+} from "./db.ts";
 import { ServiceError } from "./errors.ts";
 import { gitInfo, listRecentFolders, validateFolder } from "./folders.ts";
+import {
+  createWorktree,
+  mergeWorktree,
+  removeWorktree,
+  worktreeMergePreview,
+  worktreeStatus,
+} from "./git/worktrees.ts";
+import { resolvePaths } from "./paths.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
 import { getSystemUserName } from "./user-name.ts";
 
@@ -34,6 +55,8 @@ export type HandlerOptions = {
   dev: boolean;
   emit: (event: AnyEvent, conn: HandlerConnection) => Promise<void>;
   env?: NodeJS.ProcessEnv;
+  /** Pasta de dados do Karont; as cópias separadas ficam em `<dataDir>/worktrees`. */
+  dataDir?: string;
   homeDir?: string;
   platform?: NodeJS.Platform;
   agentFs?: AgentDetectionFs;
@@ -50,6 +73,7 @@ export function createHandlers({
   dev,
   emit,
   env = process.env,
+  dataDir = resolvePaths(env).dataDir,
   homeDir = os.homedir(),
   platform = process.platform,
   agentFs,
@@ -98,7 +122,11 @@ export function createHandlers({
         return { key: request.params.key, value: getSetting(db, request.params.key) };
       case "settings.set":
         setSetting(db, request.params.key, request.params.value as JsonValue);
+        if (request.params.key === MAX_CONCURRENT_AGENTS_SETTING)
+          conversationManager.applyConcurrencyLimit();
         return { key: request.params.key, value: request.params.value };
+      case "queue.status":
+        return conversationManager.queueStatus();
       case "agents.list":
         return agentRegistry.list();
       case "agents.detect":
@@ -120,6 +148,19 @@ export function createHandlers({
             "invalid_request",
             `O caminho do projeto não é uma pasta: ${folder.path}`,
           );
+        }
+        if (request.params.projectId && !getProject(db, request.params.projectId)) {
+          throw new ServiceError("invalid_request", "O projeto não existe.");
+        }
+        if (request.params.worktreeId) {
+          const worktree = getWorktree(db, request.params.worktreeId);
+          if (!worktree) throw new ServiceError("invalid_request", "A cópia separada não existe.");
+          if (folder.path !== worktree.path) {
+            throw new ServiceError(
+              "invalid_request",
+              "A conversa precisa usar a pasta da cópia separada.",
+            );
+          }
         }
         return {
           conversation: conversationManager.create({
@@ -236,6 +277,26 @@ export function createHandlers({
           .catch((error: unknown) => {
             throw conversationError(error);
           });
+      case "restore.list":
+        return conversationManager.restoreList(request.params.conversationId);
+      case "restore.changes":
+        return conversationManager.restoreChanges(
+          request.params.conversationId,
+          request.params.messageId,
+        );
+      case "restore.diff":
+        return conversationManager.restoreDiff(
+          request.params.conversationId,
+          request.params.messageId,
+          request.params.path,
+        );
+      case "restore.undoPreview":
+        return conversationManager.undoPreview(
+          request.params.conversationId,
+          request.params.messageId,
+        );
+      case "restore.undo":
+        return conversationManager.undo(request.params.conversationId, request.params.messageId);
       case "agent.models":
         return conversationManager.models(request.params.agent);
       case "agent.capabilities":
@@ -250,6 +311,103 @@ export function createHandlers({
         return validateFolder(request.params.path);
       case "folders.gitInfo":
         return gitInfo(request.params.path);
+      case "projects.list":
+        return { projects: listProjects(db) };
+      case "projects.create": {
+        const folder = await validateFolder(request.params.path);
+        if (!folder.exists) {
+          throw new ServiceError(
+            "invalid_request",
+            `A pasta do projeto não existe: ${folder.path}`,
+          );
+        }
+        if (!folder.isDirectory) {
+          throw new ServiceError(
+            "invalid_request",
+            `O caminho do projeto não é uma pasta: ${folder.path}`,
+          );
+        }
+        if (getProjectByPath(db, folder.path)) {
+          throw new ServiceError("invalid_request", "Esta pasta já pertence a outro projeto.");
+        }
+        let project: ReturnType<typeof createProject>;
+        try {
+          project = createProject(db, {
+            name: request.params.name,
+            icon: request.params.icon,
+            path: folder.path,
+            defaultAgent: request.params.defaultAgent ?? null,
+          });
+        } catch (error) {
+          if (getProjectByPath(db, folder.path)) {
+            throw new ServiceError("invalid_request", "Esta pasta já pertence a outro projeto.");
+          }
+          throw error;
+        }
+        await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
+        return { project };
+      }
+      case "projects.update": {
+        const { id, ...changes } = request.params;
+        const project = updateProject(db, id, changes);
+        if (!project) throw new ServiceError("invalid_request", "O projeto não existe.");
+        await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
+        return { project };
+      }
+      case "projects.remove": {
+        if (!removeProject(db, request.params.id)) {
+          throw new ServiceError("invalid_request", "O projeto não existe.");
+        }
+        await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
+        return { removed: true };
+      }
+      case "worktrees.list":
+        return { worktrees: listWorktrees(db, request.params.projectId) };
+      case "worktrees.create": {
+        const worktree = await createWorktree(db, request.params.projectId, { dataDir, homeDir });
+        await broadcast({
+          event: "worktrees.changed",
+          payload: {
+            projectId: request.params.projectId,
+            worktrees: listWorktrees(db, request.params.projectId),
+          },
+        });
+        return { worktree };
+      }
+      case "worktrees.status":
+        return worktreeStatus(db, request.params.id);
+      case "worktrees.mergePreview":
+        return worktreeMergePreview(db, request.params.id);
+      case "worktrees.merge": {
+        const { worktree, commit, targetBranch } = await mergeWorktree(db, request.params.id);
+        if (worktree.projectId) {
+          await broadcast({
+            event: "worktrees.changed",
+            payload: {
+              projectId: worktree.projectId,
+              worktrees: listWorktrees(db, worktree.projectId),
+            },
+          });
+        }
+        return { merged: true, commit, targetBranch };
+      }
+      case "worktrees.remove": {
+        const { worktree, branchKept } = await removeWorktree(db, request.params.id, {
+          dataDir,
+          homeDir,
+          force: request.params.force === true,
+        });
+        if (worktree.projectId) {
+          await broadcast({
+            event: "worktrees.changed",
+            payload: {
+              projectId: worktree.projectId,
+              worktrees: listWorktrees(db, worktree.projectId),
+            },
+          });
+        }
+        return { removed: true, branchKept };
+      }
       case "terminals.list":
         return terminalManager.list();
       case "terminals.open": {

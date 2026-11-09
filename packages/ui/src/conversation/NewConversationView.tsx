@@ -5,6 +5,7 @@ import type {
   Conversation,
   ConversationAttachment,
   ResultOf,
+  Worktree,
 } from "@karont/contract";
 import { BridgeError } from "@karont/contract";
 import { Folder, TriangleAlert } from "lucide-react";
@@ -21,6 +22,7 @@ import {
   useState,
 } from "react";
 import { AgentIcon } from "../agents/AgentIcon.tsx";
+import { findChatAgents } from "../agents/chatAgents.ts";
 import { getBridge } from "../bridge/index.ts";
 import { Button } from "../components/Button/Button.tsx";
 import { Composer, type ComposerAutocompleteOption } from "../components/Composer/Composer.tsx";
@@ -29,6 +31,11 @@ import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { TextField } from "../components/TextField/TextField.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
+import { resolveInitialAgent, TERMINAL_CHOICE } from "../projects/initialAgent.ts";
+import { getProjectIcon } from "../projects/projectIcons.ts";
+import { useProject } from "../projects/useProjects.ts";
+import { upsertWorktree } from "../projects/useWorktrees.ts";
+import { shouldOfferSeparateCopy } from "../projects/worktreeOffer.ts";
 import {
   AttachmentChips,
   AttachmentPicker,
@@ -56,13 +63,12 @@ import {
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import { resolveModelId } from "./modelCatalog.ts";
 import styles from "./NewConversationView.module.css";
-import { upsertConversation } from "./useConversationIndex.ts";
+import { upsertConversation, useConversationIndex } from "./useConversationIndex.ts";
 
 type ComposerFile = ResultOf<"composer.files">["files"][number];
 
 const LAST_AGENT_SETTING = "newConversation.lastAgent";
 const LAST_FOLDER_SETTING = "newConversation.lastFolder";
-const TERMINAL_CHOICE = "terminal";
 const PERSONAL_FOLDER = "~";
 
 type AgentChoice = typeof TERMINAL_CHOICE | string;
@@ -70,7 +76,10 @@ export function NewConversationView({
   titleRef,
   headerActions,
   dragHandleProps,
+  projectId,
 }: {
+  /** Projeto da nova conversa. Se ele não existir mais, a tela vira conversa solta. */
+  projectId?: string;
   titleRef?: RefObject<HTMLHeadingElement | null>;
   headerActions?: ReactNode;
   dragHandleProps?: {
@@ -82,8 +91,11 @@ export function NewConversationView({
 }) {
   const bridge = getBridge();
   const { navigate } = useNavigation();
+  const { project, loading: projectsLoading } = useProject(projectId);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [choice, setChoice] = useState<AgentChoice>(TERMINAL_CHOICE);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
+  const [manualChoice, setManualChoice] = useState<AgentChoice | null>(null);
+  const [lastUsedAgent, setLastUsedAgent] = useState<string | null>(null);
   const [folderPath, setFolderPath] = useState(PERSONAL_FOLDER);
   const [homePath, setHomePath] = useState<string>();
   const [command, setCommand] = useState("");
@@ -94,6 +106,11 @@ export function NewConversationView({
   const [folderDialogPath, setFolderDialogPath] = useState("");
   const [folderDialogError, setFolderDialogError] = useState("");
   const [error, setError] = useState("");
+  const [offerOpen, setOfferOpen] = useState(false);
+  const [creatingCopy, setCreatingCopy] = useState(false);
+  const [offerError, setOfferError] = useState("");
+  const offerCopyRef = useRef<Worktree | null>(null);
+  const copyButtonRef = useRef<HTMLButtonElement>(null);
   const [agentsError, setAgentsError] = useState(false);
   const [models, setModels] = useState<AgentModels | null>(null);
   const [capabilities, setCapabilities] = useState<AgentCapabilities | null>(null);
@@ -115,8 +132,8 @@ export function NewConversationView({
     hour: new Date().getHours(),
     sample: Math.random(),
   }));
-  const choiceTouchedRef = useRef(false);
   const folderTouchedRef = useRef(false);
+  const hasProjectRef = useRef(Boolean(projectId));
   const titleId = useId();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const composerSectionRef = useRef<HTMLElement>(null);
@@ -160,21 +177,17 @@ export function NewConversationView({
         if (!mounted) return;
 
         if (agentsResult.status === "fulfilled") {
-          const foundAgents = agentsResult.value.agents.filter(
-            (agent) => agent.found && (agent.id === "claude" || agent.id === "codex"),
-          );
-          setAgents(foundAgents);
-          if (
-            !choiceTouchedRef.current &&
-            agentSettingResult.status === "fulfilled" &&
-            typeof agentSettingResult.value.value === "string" &&
-            (agentSettingResult.value.value === TERMINAL_CHOICE ||
-              foundAgents.some((agent) => agent.id === agentSettingResult.value.value))
-          ) {
-            setChoice(agentSettingResult.value.value);
-          }
+          setAgents(findChatAgents(agentsResult.value.agents));
+          setAgentsLoaded(true);
         } else {
           setAgentsError(true);
+        }
+
+        if (
+          agentSettingResult.status === "fulfilled" &&
+          typeof agentSettingResult.value.value === "string"
+        ) {
+          setLastUsedAgent(agentSettingResult.value.value);
         }
 
         if (systemInfoResult.status === "fulfilled") {
@@ -208,11 +221,14 @@ export function NewConversationView({
 
         if (mounted) {
           updateFolderPath(PERSONAL_FOLDER);
-          saveSetting(
-            LAST_FOLDER_SETTING,
-            PERSONAL_FOLDER,
-            t.conversation.settingsFolderSaveFailed,
-          );
+          // Dentro de um projeto a pasta salva não é usada nem mexida.
+          if (!hasProjectRef.current) {
+            saveSetting(
+              LAST_FOLDER_SETTING,
+              PERSONAL_FOLDER,
+              t.conversation.settingsFolderSaveFailed,
+            );
+          }
         }
       },
     );
@@ -222,6 +238,12 @@ export function NewConversationView({
     };
   }, [bridge, saveSetting, updateFolderPath]);
 
+  const choice = resolveInitialAgent({
+    manualChoice,
+    projectDefault: project?.defaultAgent,
+    lastUsed: lastUsedAgent,
+    foundAgentIds: agentsLoaded ? agents.map((agent) => agent.id) : null,
+  });
   const selectedAgent = agents.find((agent) => agent.id === choice);
   const selectedAgentForShortcuts = selectedAgent?.id;
   const selectedTitle = selectedAgent?.name ?? t.conversation.terminal;
@@ -235,14 +257,18 @@ export function NewConversationView({
     canAttachFiles,
     choice === TERMINAL_CHOICE ? "terminal" : "agent",
   );
-  const gitPath = folderPath === PERSONAL_FOLDER ? homePath : folderPath;
-  const suggestionCwd = folderPath === PERSONAL_FOLDER ? homePath : folderPath;
+  // Com projeto carregado, a pasta é a dele e não dá para trocar.
+  const workingPath = project ? project.path : folderPath;
+  const gitPath = workingPath === PERSONAL_FOLDER ? homePath : workingPath;
+  const suggestionCwd = workingPath === PERSONAL_FOLDER ? homePath : workingPath;
   const { info: gitInfo } = useGitInfo(gitPath, "new-conversation");
-  const isPersonalFolderSelected = folderPath === PERSONAL_FOLDER || folderPath === homePath;
-  const folderName = isPersonalFolderSelected ? PERSONAL_FOLDER : getFolderName(folderPath);
+  const activeConversations = useConversationIndex().conversations;
+  const isPersonalFolderSelected =
+    !project && (folderPath === PERSONAL_FOLDER || folderPath === homePath);
+  const folderName = isPersonalFolderSelected ? PERSONAL_FOLDER : getFolderName(workingPath);
   const accessibleFolderPath = isPersonalFolderSelected
     ? (homePath ?? PERSONAL_FOLDER)
-    : folderPath;
+    : workingPath;
   const folderButtonLabel = `${t.conversation.folderAccessibleName(accessibleFolderPath)}`;
 
   const selectedAgentId =
@@ -470,9 +496,9 @@ export function NewConversationView({
   }, [bridge, saveSetting, selectedAgentId]);
 
   function chooseAgent(option: AgentChoice) {
-    choiceTouchedRef.current = true;
     if (option === TERMINAL_CHOICE) composerAttachments.clear();
-    setChoice(option);
+    setManualChoice(option);
+    setLastUsedAgent(option);
     setShortcutTrigger(null);
     setActivePopover(null);
     setError("");
@@ -618,7 +644,7 @@ export function NewConversationView({
       const result = await bridge.request("terminals.open", {
         cols: 80,
         rows: 24,
-        ...(folderPath === PERSONAL_FOLDER ? {} : { cwd: folderPath }),
+        ...(workingPath === PERSONAL_FOLDER ? {} : { cwd: workingPath }),
         ...(cleanCommand ? { command: cleanCommand } : {}),
       });
       navigate({ name: "terminal", id: result.terminal.id });
@@ -633,7 +659,11 @@ export function NewConversationView({
     }
   }
 
-  async function openAgentConversation(value: string) {
+  async function openAgentConversation(
+    value: string,
+    options: { skipOffer?: boolean; worktree?: Worktree; onError?: (message: string) => void } = {},
+  ) {
+    const reportError = options.onError ?? setError;
     if (!bridge || isOpening || !selectedAgent || (modelListAvailable && !currentModel)) return;
     if (selectedAgent.id !== "claude" && selectedAgent.id !== "codex") {
       setError(t.chat.agentUnavailable);
@@ -647,17 +677,34 @@ export function NewConversationView({
     );
     const files: ConversationAttachment[] = composerAttachments.getRequestAttachments();
     if (!text && files.length === 0) return;
+    if (
+      !options.skipOffer &&
+      !options.worktree &&
+      shouldOfferSeparateCopy({
+        projectId: project?.id,
+        isTerminal: false,
+        usesGit: Boolean(gitInfo && (gitInfo.branch || gitInfo.detached)),
+        conversations: activeConversations,
+      })
+    ) {
+      setOfferError("");
+      setOfferOpen(true);
+      return;
+    }
     setError("");
     setIsOpening(true);
     let created: Conversation | null = null;
     try {
       const cwd =
-        folderPath === PERSONAL_FOLDER
+        options.worktree?.path ??
+        (workingPath === PERSONAL_FOLDER
           ? (homePath ?? (await bridge.request("system.info", {})).homeDir)
-          : folderPath;
+          : workingPath);
       const result = await bridge.request("conversation.create", {
         agent: selectedAgent.id,
         cwd,
+        ...(project ? { projectId: project.id } : {}),
+        ...(options.worktree ? { worktreeId: options.worktree.id } : {}),
         mode,
         title: t.conversation.title,
         ...(modelListAvailable && currentModel ? { model: currentModel } : {}),
@@ -677,9 +724,10 @@ export function NewConversationView({
         ...(selectedSkills.length ? { skills: selectedSkills } : {}),
       });
       composerAttachments.clear();
+      setOfferOpen(false);
       navigate({ name: "conversation", id: created.id });
     } catch (openError) {
-      setError(
+      reportError(
         openError instanceof BridgeError && openError.message
           ? openError.message
           : t.chat.createFailed,
@@ -687,6 +735,42 @@ export function NewConversationView({
     } finally {
       setIsOpening(false);
     }
+  }
+
+  function closeOffer() {
+    if (creatingCopy || isOpening) return;
+    setOfferOpen(false);
+    setOfferError("");
+  }
+
+  function continueInProjectFolder() {
+    setOfferOpen(false);
+    setOfferError("");
+    void openAgentConversation(command, { skipOffer: true });
+  }
+
+  async function chooseSeparateCopy() {
+    if (!bridge || !project || creatingCopy || isOpening) return;
+    setOfferError("");
+    let worktree = offerCopyRef.current;
+    if (!worktree) {
+      setCreatingCopy(true);
+      try {
+        worktree = (await bridge.request("worktrees.create", { projectId: project.id })).worktree;
+        offerCopyRef.current = worktree;
+        upsertWorktree(worktree);
+      } catch (createError) {
+        setOfferError(
+          createError instanceof BridgeError && createError.message
+            ? createError.message
+            : t.worktrees.createCopyFailed,
+        );
+        return;
+      } finally {
+        setCreatingCopy(false);
+      }
+    }
+    await openAgentConversation(command, { worktree, onError: setOfferError });
   }
 
   function submitComposer() {
@@ -743,7 +827,11 @@ export function NewConversationView({
     else if (shortcutCommand === "access") setActivePopover("config");
     else if (shortcutCommand === "new") {
       composerAttachments.clear();
-      navigate({ name: "new-conversation" });
+      navigate(
+        project
+          ? { name: "new-conversation", projectId: project.id }
+          : { name: "new-conversation" },
+      );
     }
   }
 
@@ -857,16 +945,29 @@ export function NewConversationView({
           }
           below={
             <div className={styles.folderStrip}>
-              <button
-                aria-label={folderButtonLabel}
-                className={styles.folderButton}
-                onClick={() => void openFolderChooser()}
-                title={folderButtonLabel}
-                type="button"
-              >
-                <Folder aria-hidden="true" size={16} strokeWidth={1.8} />
-                <span>{folderName}</span>
-              </button>
+              {project ? (
+                // biome-ignore lint/a11y/useSemanticElements: o nome acessível exige role explícito num contêiner.
+                <div
+                  aria-label={t.projects.stripAccessibleName(project.name, project.path)}
+                  className={styles.projectLabel}
+                  role="group"
+                  title={project.path}
+                >
+                  <ProjectStripIcon name={project.icon} />
+                  <span>{project.name}</span>
+                </div>
+              ) : (
+                <button
+                  aria-label={folderButtonLabel}
+                  className={styles.folderButton}
+                  onClick={() => void openFolderChooser()}
+                  title={folderButtonLabel}
+                  type="button"
+                >
+                  <Folder aria-hidden="true" size={16} strokeWidth={1.8} />
+                  <span>{folderName}</span>
+                </button>
+              )}
               <span className={styles.branchSlot}>
                 <GitBranchLabel info={gitInfo} />
               </span>
@@ -896,6 +997,7 @@ export function NewConversationView({
           submitDisabled={
             !bridge ||
             isOpening ||
+            (Boolean(projectId) && projectsLoading) ||
             composerAttachments.isPreparing ||
             (choice !== TERMINAL_CHOICE &&
               (!selectedAgent ||
@@ -930,6 +1032,44 @@ export function NewConversationView({
           <span>{error}</span>
         </p>
       ) : null}
+
+      <Dialog
+        description={t.worktrees.offerDescription}
+        footer={
+          <>
+            <Button
+              disabled={creatingCopy || isOpening}
+              onClick={() => void chooseSeparateCopy()}
+              ref={copyButtonRef}
+              variant="primary"
+            >
+              {creatingCopy ? t.worktrees.creatingCopy : t.worktrees.useCopy}
+            </Button>
+            <Button
+              disabled={creatingCopy || isOpening}
+              onClick={continueInProjectFolder}
+              variant="secondary"
+            >
+              {t.worktrees.keepFolder}
+            </Button>
+            <Button disabled={creatingCopy || isOpening} onClick={closeOffer} variant="ghost">
+              {t.worktrees.cancel}
+            </Button>
+          </>
+        }
+        initialFocusRef={copyButtonRef as RefObject<HTMLElement | null>}
+        onClose={closeOffer}
+        open={offerOpen}
+        title={t.worktrees.offerTitle}
+      >
+        <p className={styles.offerNotice}>{t.worktrees.offerNotice}</p>
+        {offerError ? (
+          <p className={styles.offerError} role="alert">
+            <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.8} />
+            <span>{offerError}</span>
+          </p>
+        ) : null}
+      </Dialog>
 
       <Dialog
         description={t.conversation.folderDialogDescription}
@@ -972,6 +1112,11 @@ export function NewConversationView({
       </Dialog>
     </div>
   );
+}
+
+function ProjectStripIcon({ name }: { name: string }) {
+  const Icon = getProjectIcon(name);
+  return <Icon aria-hidden="true" size={16} strokeWidth={1.8} />;
 }
 
 function getFolderName(path: string): string {

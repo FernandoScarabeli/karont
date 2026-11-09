@@ -118,21 +118,36 @@ function connect() {
       removeConversationFromIndex(event.payload.id);
       return;
     }
+    if (event.event === "projects.changed") {
+      pruneRemovedProjects(new Set(event.payload.projects.map((project) => project.id)));
+      return;
+    }
+    if (event.event === "worktrees.changed") {
+      pruneRemovedWorktrees(
+        event.payload.projectId,
+        new Set(event.payload.worktrees.map((worktree) => worktree.id)),
+      );
+      return;
+    }
     if (event.event !== "conversation.stateChanged") return;
     applyConversationStateChange(event.payload.conversation);
   });
   loadBucket("active");
 }
 
+export function subscribeConversationIndex(bucket: Bucket, listener: () => void) {
+  listeners[bucket].add(listener);
+  connect();
+  if (bucket === "archived") loadBucket("archived");
+  return () => {
+    listeners[bucket].delete(listener);
+  };
+}
+
 export function useConversationIndex(archived = false) {
   const bucket: Bucket = archived ? "archived" : "active";
   return useSyncExternalStore(
-    (listener) => {
-      listeners[bucket].add(listener);
-      connect();
-      if (archived) loadBucket("archived");
-      return () => listeners[bucket].delete(listener);
-    },
+    (listener) => subscribeConversationIndex(bucket, listener),
     () => snapshots[bucket],
     () => snapshots[bucket],
   );
@@ -187,6 +202,64 @@ export function removeConversationFromIndex(id: string) {
     const conversations = current.conversations.filter((conversation) => conversation.id !== id);
     if (conversations.length === current.conversations.length) continue;
     snapshots[bucket] = { ...current, conversations };
+    notify(bucket);
+  }
+}
+
+function withoutProjectId(conversation: Conversation): Conversation {
+  const { projectId: _removed, ...rest } = conversation;
+  return rest;
+}
+
+/**
+ * Remover um projeto não emite `conversation.stateChanged` e o `updatedAt` não muda,
+ * então recarregar a lista não corrigiria a cópia local. Tiramos o `projectId` que
+ * não existe mais, sem mexer em `updatedAt`.
+ */
+export function pruneRemovedProjects(existingProjectIds: ReadonlySet<string>) {
+  pruneConversations(
+    (conversation) =>
+      conversation.projectId !== undefined && !existingProjectIds.has(conversation.projectId),
+    withoutProjectId,
+  );
+}
+
+function withoutWorktreeId(conversation: Conversation): Conversation {
+  const { worktreeId: _removed, ...rest } = conversation;
+  return rest;
+}
+
+/**
+ * Remover uma cópia separada também não emite `conversation.stateChanged`. Tiramos o
+ * `worktreeId` das conversas **daquele projeto** cuja cópia não está mais na lista,
+ * sem mexer em `updatedAt` e sem pedir nada ao serviço.
+ */
+export function pruneRemovedWorktrees(projectId: string, existingWorktreeIds: ReadonlySet<string>) {
+  pruneConversations(
+    (conversation) =>
+      conversation.projectId === projectId &&
+      conversation.worktreeId !== undefined &&
+      !existingWorktreeIds.has(conversation.worktreeId),
+    withoutWorktreeId,
+  );
+}
+
+function pruneConversations(
+  isStale: (conversation: Conversation) => boolean,
+  fix: (conversation: Conversation) => Conversation,
+) {
+  for (const [id, conversation] of latestConversations) {
+    if (isStale(conversation)) latestConversations.set(id, fix(conversation));
+  }
+  for (const bucket of ["active", "archived"] as const) {
+    const current = snapshots[bucket];
+    if (!current.conversations.some(isStale)) continue;
+    snapshots[bucket] = {
+      ...current,
+      conversations: current.conversations.map((conversation) =>
+        isStale(conversation) ? fix(conversation) : conversation,
+      ),
+    };
     notify(bucket);
   }
 }

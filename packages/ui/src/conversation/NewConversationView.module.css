@@ -158,6 +158,33 @@
   flex: 0 0 auto;
 }
 
+.projectLabel {
+  display: inline-flex;
+  max-width: var(--k-new-conversation-width);
+  min-width: 0;
+  min-height: var(--k-control-height-lg);
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: 0 var(--k-space-3);
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-13);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+}
+
+.projectLabel > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projectLabel svg {
+  flex: 0 0 auto;
+}
+
 .folderButton:hover {
   background: var(--k-color-bg-hover);
   color: var(--k-color-text-primary);
@@ -189,4 +216,21 @@
 
 .connectionMessage {
   color: var(--k-color-text-secondary);
+}
+
+.offerNotice {
+  margin: 0;
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}
+
+.offerError {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin: var(--k-space-2) 0 0;
+  color: var(--k-color-danger);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
 }

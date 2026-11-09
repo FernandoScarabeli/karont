@@ -25,12 +25,14 @@ export const conversationContextUsageSchema = z.strictObject({
 export type ConversationContextUsage = z.infer<typeof conversationContextUsageSchema>;
 export const conversationModeSchema = z.enum(["read-only", "edit", "full"]);
 export const reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh", "max"]);
-export const conversationStateSchema = z.enum(["idle", "working", "waiting", "error"]);
+export const conversationStateSchema = z.enum(["idle", "queued", "working", "waiting", "error"]);
 export const conversationSchema = z.strictObject({
   id: z.string().min(1),
   agent: conversationAgentSchema,
   title: z.string().min(1).max(240),
   cwd: z.string().min(1).max(4_096),
+  projectId: z.string().min(1).optional(),
+  worktreeId: z.string().min(1).optional(),
   mode: conversationModeSchema,
   model: z.string().min(1).max(80).optional(),
   effort: reasoningEffortSchema.optional(),

@@ -10,10 +10,17 @@ import {
   type ConversationAttachment,
   type ConversationContextUsage,
   type ConversationMessage,
+  DEFAULT_MAX_CONCURRENT_AGENTS,
   describeAgentError,
+  MAX_CONCURRENT_AGENTS_LIMIT,
+  MAX_CONCURRENT_AGENTS_SETTING,
   type MessagePart,
   type MessageSource,
+  type PayloadOf,
+  type RestorePointSummary,
+  type ResultOf,
   reasoningEffortSchema,
+  restoreUnavailableReasonSchema,
 } from "@karont/contract";
 import { validateAttachments } from "../attachments.ts";
 import { DeltaCoalescer } from "../coalescer.ts";
@@ -24,20 +31,28 @@ import {
   completeBranchFork,
   countConversations,
   createConversation,
+  createRestorePoint,
   deleteAllConversations,
   deleteConversation,
+  deleteRestorePoints,
   getAgentSession,
   getBranchContextPending,
   getConversation,
+  getRestorePoint,
   getSetting,
   isBranchForkPending,
   listConversationContextUsage,
   listConversationStates,
   listConversations,
+  listExcessRestorePoints,
   listMessages,
   listMessagesPage,
+  listRestorePoints,
+  listSlotConversationStates,
   markConversationSeen,
+  markRestorePointsConcurrent,
   type NewConversation,
+  type RestorePointRecord,
   saveMessage,
   setAgentSession,
   setBranchContextPending,
@@ -45,10 +60,32 @@ import {
   setConversationContextUsage,
   setConversationTitle,
   setMessageAgentTurnId,
+  setRestorePointAfter,
+  setRestorePointUndoCommit,
+  setRestorePointUndone,
   setSetting,
   updateConversation,
 } from "../db.ts";
 import { ServiceError } from "../errors.ts";
+import {
+  applyUndo,
+  countRestoreChanges,
+  listRestoreChanges,
+  previewUndo,
+  RestoreError,
+  readRestorePatch,
+  saveUndoSafety,
+} from "../git/restore-diff.ts";
+import {
+  DEFAULT_RESTORE_TIMEOUT_MS,
+  deleteRestoreRefs,
+  type RestoreSnapshotOutcome,
+  type RestoreSnapshotRequest,
+  restoreRef,
+  restoreRefs,
+  takeRestorePoint,
+  undoRef,
+} from "../git/restore-points.ts";
 import type {
   AdapterEvent,
   AdapterFactory,
@@ -70,6 +107,14 @@ const SKILL_CACHE_TTL_MS = 5 * 60_000;
 const BRANCH_CONTEXT_LIMIT = 24_000;
 const MAX_ATTACHMENT_CACHE_CONVERSATIONS = 3;
 const MAX_ATTACHMENT_CACHE_BYTES = 25 * 1024 * 1024;
+const MAX_RESTORE_POINTS_PER_CONVERSATION = 50;
+const INTERRUPTED_BY_USER_TEXT = "Resposta interrompida pelo usuário.";
+
+type PendingRestoreSnapshot = {
+  controller: AbortController;
+  message: ConversationMessage;
+  stopped: boolean;
+};
 
 type ActiveConversation = {
   adapter: AgentAdapter;
@@ -92,6 +137,58 @@ type ActiveConversation = {
   eventQueue: Promise<void>;
 };
 
+type QueuedTurn = {
+  conversationId: string;
+  message: ConversationMessage;
+  text: string;
+  plan: boolean | undefined;
+  attachments: ConversationAttachment[];
+  skills: Array<Pick<ComposerSkill, "name" | "path">>;
+  operation: "send" | "compact";
+};
+
+function isBusyState(state: Conversation["state"]): boolean {
+  return state === "queued" || state === "working" || state === "waiting";
+}
+
+type RestoreCommits = {
+  root: string;
+  conversationId: string;
+  messageId: string;
+  before: string;
+  after: string;
+};
+
+function summarizeRestorePoint(row: RestorePointRecord): RestorePointSummary {
+  const state: RestorePointSummary["state"] = !row.beforeCommit
+    ? "unavailable"
+    : row.undoneAt
+      ? "undone"
+      : !row.afterCommit
+        ? "incomplete"
+        : "ready";
+  const reason = restoreUnavailableReasonSchema.safeParse(row.unavailableReason);
+  return {
+    messageId: row.messageId,
+    state,
+    ...(state === "unavailable" ? { reason: reason.success ? reason.data : "failed" } : {}),
+    changedFiles: row.changedFiles,
+    concurrent: row.concurrent,
+    headMoved: row.afterCommit !== null && row.headBefore !== row.headAfter,
+  };
+}
+
+function restoreServiceError(error: unknown): Error {
+  if (error instanceof ServiceError) return error;
+  if (error instanceof RestoreError) {
+    return new ServiceError(
+      error.kind === "not-in-list" ? "invalid_request" : "unavailable",
+      error.message,
+    );
+  }
+  return error instanceof Error ? error : new Error("A operação de restauração falhou.");
+}
+
 export type ConversationManagerOptions = {
   db: DatabaseSync;
   broadcast: (event: AnyEvent) => Promise<void>;
@@ -103,6 +200,10 @@ export type ConversationManagerOptions = {
   codexSkillLoader?: (cwd: string) => Promise<ComposerSkill[]>;
   claudeSkillLoader?: (cwd: string) => Promise<ComposerSkill[]>;
   now?: () => string;
+  /** Pasta pessoal: nunca recebe ponto de restauração. Padrão: `os.homedir()`. */
+  homeDir?: string;
+  /** Substitui o módulo Git (testes simulam foto lenta ou com falha). */
+  restoreSnapshot?: (request: RestoreSnapshotRequest) => Promise<RestoreSnapshotOutcome>;
   titleGenerator?: (
     agent: Conversation["agent"],
     userMessage: string,
@@ -129,6 +230,16 @@ export class ConversationManager {
     { messageId: string; attachments: ConversationAttachment[]; sizeBytes: number }
   >();
   readonly #removedConversationIds = new Set<string>();
+  readonly #homeDir: string;
+  readonly #restoreSnapshot: (request: RestoreSnapshotRequest) => Promise<RestoreSnapshotOutcome>;
+  // Fotos em andamento (antes e depois), por controlador, para remove/deleteAll/close abortarem.
+  readonly #restoreOps = new Map<AbortController, string>();
+  readonly #pendingRestoreSnapshots = new Map<string, PendingRestoreSnapshot>();
+  readonly #restoreChains = new Map<string, Promise<void>>();
+  readonly #afterSnapshotsInFlight = new Set<string>();
+  readonly #repoTurns = new Map<string, Set<string>>();
+  readonly #undoing = new Set<string>();
+  readonly #repoByMessage = new Map<string, string>();
   readonly #pendingParts = new Map<string, { conversationId: string; messageId: string }>();
   readonly #titleRequests = new Map<string, { userMessage: string; attempted: boolean }>();
   #codexModelList: AdapterModelList = {
@@ -144,6 +255,8 @@ export class ConversationManager {
   #closing = false;
   #deletingAll = false;
   readonly #agentOperations = new Set<Promise<unknown>>();
+  #queue: QueuedTurn[] = [];
+  #lastQueueStatus = "";
   readonly #skillCache = new Map<string, { cachedAt: number; skills: ComposerSkill[] }>();
   readonly #skillLoads = new Map<string, Promise<ComposerSkill[]>>();
 
@@ -167,6 +280,8 @@ export class ConversationManager {
     ]);
     this.#adapterFactoryOverride = options.adapterFactory;
     this.#now = options.now ?? (() => new Date().toISOString());
+    this.#homeDir = options.homeDir ?? os.homedir();
+    this.#restoreSnapshot = options.restoreSnapshot ?? takeRestorePoint;
     this.#titleGenerator =
       options.titleGenerator ??
       ((agent, userMessage, agentResponse, titleOptions) =>
@@ -174,6 +289,7 @@ export class ConversationManager {
           env: this.#env,
           ...titleOptions,
         }));
+    this.#lastQueueStatus = JSON.stringify(this.queueStatus());
     const cached = readCodexModelCache(getSetting(this.#db, CODEX_MODELS_SETTING));
     if (cached) {
       this.#codexModelList = cached.modelList;
@@ -340,7 +456,7 @@ export class ConversationManager {
 
   async #branch(id: string, messageId: string): Promise<Conversation> {
     const source = this.#requireConversation(id);
-    if (source.state === "working" || source.state === "waiting")
+    if (isBusyState(source.state))
       throw new Error("Espere o agente terminar antes de ramificar a conversa.");
 
     const messages = listMessages(this.#db, id);
@@ -386,6 +502,8 @@ export class ConversationManager {
       agent: source.agent,
       title: branchTitle,
       cwd: source.cwd,
+      ...(source.projectId ? { projectId: source.projectId } : {}),
+      ...(source.worktreeId ? { worktreeId: source.worktreeId } : {}),
       mode: source.mode,
       ...(source.model ? { model: source.model } : {}),
       ...(source.effort ? { effort: source.effort } : {}),
@@ -445,8 +563,8 @@ export class ConversationManager {
   ): Promise<{ userMessage: ConversationMessage; agentMessage: ConversationMessage }> {
     const validatedAttachments = validateAttachments(attachments);
     const conversation = this.#requireConversation(id);
-    if (conversation.state === "working" || conversation.state === "waiting")
-      throw new Error("A conversa já está em andamento.");
+    if (this.#undoing.has(id)) throw new Error("Espere o desfazer terminar.");
+    if (isBusyState(conversation.state)) throw new Error("A conversa já está em andamento.");
     const now = this.#now();
     if (
       operation === "send" &&
@@ -496,6 +614,7 @@ export class ConversationManager {
       currentConversation.state = "idle";
       currentConversation.updatedAt = this.#now();
       updateConversation(this.#db, currentConversation);
+      this.#drainQueue();
       throw error;
     }
     const agentMessage = this.#newAgentMessage(id);
@@ -522,8 +641,8 @@ export class ConversationManager {
 
   async #retry(id: string, messageId?: string): Promise<ConversationMessage> {
     const conversation = this.#requireConversation(id);
-    if (conversation.state === "working" || conversation.state === "waiting")
-      throw new Error("A conversa já está em andamento.");
+    if (this.#undoing.has(id)) throw new Error("Espere o desfazer terminar.");
+    if (isBusyState(conversation.state)) throw new Error("A conversa já está em andamento.");
     const messages = listMessages(this.#db, id);
     const failed = messageId
       ? messages.find((message) => message.id === messageId)
@@ -578,6 +697,36 @@ export class ConversationManager {
   }
 
   async stop(id: string): Promise<boolean> {
+    const queuedItem = this.#dequeue(id);
+    if (queuedItem) {
+      const conversation = getConversation(this.#db, id);
+      if (conversation) {
+        await this.#finishWithError(
+          conversation,
+          queuedItem.message,
+          "interrupted",
+          "Mensagem removida da fila.",
+        );
+      }
+      this.#drainQueue();
+      return true;
+    }
+    const pendingSnapshot = this.#pendingRestoreSnapshots.get(id);
+    if (pendingSnapshot && !pendingSnapshot.stopped) {
+      pendingSnapshot.stopped = true;
+      pendingSnapshot.controller.abort();
+      const conversation = getConversation(this.#db, id);
+      if (conversation) {
+        await this.#finishWithError(
+          conversation,
+          pendingSnapshot.message,
+          "interrupted",
+          INTERRUPTED_BY_USER_TEXT,
+        );
+      }
+      this.#drainQueue();
+      return true;
+    }
     const active = this.#active.get(id);
     if (!active?.currentMessage) return false;
     if (!active.turnStarted) {
@@ -596,7 +745,7 @@ export class ConversationManager {
       await this.#handleAdapterEvent(id, {
         kind: "turn-end",
         status: "interrupted",
-        error: { type: "interrupted", text: "Resposta interrompida pelo usuário." },
+        error: { type: "interrupted", text: INTERRUPTED_BY_USER_TEXT },
       });
       if (active.idleTimer) clearTimeout(active.idleTimer);
       await this.#disposeAdapter(active);
@@ -630,12 +779,12 @@ export class ConversationManager {
     },
   ): Promise<Conversation> {
     let conversation = this.#requireConversation(id);
-    if (conversation.state === "working" || conversation.state === "waiting")
+    if (isBusyState(conversation.state))
       throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
     const mustCheckFast = options.fast === true || (conversation.fast && "model" in options);
     if (mustCheckFast && conversation.agent === "codex") await this.#loadCodexModelsIfNeeded();
     conversation = this.#requireConversation(id);
-    if (conversation.state === "working" || conversation.state === "waiting")
+    if (isBusyState(conversation.state))
       throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
     const selectedModelId = "model" in options ? options.model : conversation.model;
     const supportsFast = modelSupportsFast(
@@ -690,7 +839,7 @@ export class ConversationManager {
       await this.#disposeAdapter(active);
       this.#active.delete(id);
       conversation = this.#requireConversation(id);
-      if (conversation.state === "working" || conversation.state === "waiting")
+      if (isBusyState(conversation.state))
         throw new Error("As opções só podem ser alteradas quando a conversa está parada.");
     }
     conversation.mode = nextMode;
@@ -712,6 +861,8 @@ export class ConversationManager {
   async remove(id: string): Promise<boolean> {
     this.#assertNotDeletingAll();
     this.#removedConversationIds.add(id);
+    this.#dequeue(id);
+    this.#abortRestoreOperations(id);
     try {
       const active = this.#active.get(id);
       if (active) {
@@ -724,8 +875,12 @@ export class ConversationManager {
         this.#titleRequests.delete(id);
         this.#latestUserAttachments.delete(id);
       }
+      // As linhas somem em cascata: lê antes para apagar as refs depois.
+      const restorePoints = listRestorePoints(this.#db, id);
       const deleted = deleteConversation(this.#db, id);
+      this.#restoreChains.delete(id);
       if (deleted) {
+        this.#discardRestorePoints(restorePoints);
         this.#contextUsage.delete(id);
         await this.#broadcast({ event: "conversation.removed", payload: { id } }).catch(
           () => undefined,
@@ -734,12 +889,15 @@ export class ConversationManager {
       return deleted;
     } finally {
       this.#removedConversationIds.delete(id);
+      this.#drainQueue();
     }
   }
 
   async deleteAll(): Promise<number> {
     this.#assertNotDeletingAll();
     this.#deletingAll = true;
+    this.#queue = [];
+    this.#abortRestoreOperations();
     try {
       const activeBeforeDeleteAll = [...this.#active.entries()];
       for (const { id } of listConversationStates(this.#db)) {
@@ -772,7 +930,10 @@ export class ConversationManager {
       await Promise.all(active.map(([, session]) => session.eventQueue));
       for (const [id] of active) this.#active.delete(id);
 
+      const restorePoints = conversations.flatMap(({ id }) => listRestorePoints(this.#db, id));
       const deleted = deleteAllConversations(this.#db);
+      this.#restoreChains.clear();
+      this.#discardRestorePoints(restorePoints);
       const deletedIds = new Set(conversations.map(({ id }) => id));
       for (const id of deletedIds) {
         this.#contextUsage.delete(id);
@@ -787,6 +948,7 @@ export class ConversationManager {
       return deleted;
     } finally {
       this.#deletingAll = false;
+      this.#drainQueue();
     }
   }
 
@@ -999,6 +1161,11 @@ export class ConversationManager {
 
   async close(): Promise<void> {
     this.#closing = true;
+    this.#queue = [];
+    this.#abortRestoreOperations();
+    await Promise.all(
+      [...this.#restoreChains.values()].map((chain) => chain.catch(() => undefined)),
+    );
     const adapters = [...this.#active.values()];
     await Promise.all(
       adapters.map(async (active) => {
@@ -1017,6 +1184,91 @@ export class ConversationManager {
     this.#latestUserAttachments.clear();
   }
 
+  queueStatus(): PayloadOf<"queue.changed"> {
+    return {
+      limit: this.#concurrencyLimit(),
+      running: this.#runningCount(),
+      queuedConversationIds: this.#queue.map((item) => item.conversationId),
+    };
+  }
+
+  applyConcurrencyLimit(): void {
+    this.#drainQueue();
+  }
+
+  #concurrencyLimit(): number {
+    const value = getSetting(this.#db, MAX_CONCURRENT_AGENTS_SETTING);
+    return typeof value === "number" &&
+      Number.isInteger(value) &&
+      value >= 1 &&
+      value <= MAX_CONCURRENT_AGENTS_LIMIT
+      ? value
+      : DEFAULT_MAX_CONCURRENT_AGENTS;
+  }
+
+  // Vaga é turno em andamento, derivado do estado: plano aguardando aprovação não ocupa.
+  #runningCount(excludeId?: string): number {
+    return listSlotConversationStates(this.#db).filter(
+      ({ id, state }) =>
+        id !== excludeId &&
+        !(state === "waiting" && this.#active.get(id)?.currentMessage?.status === "done"),
+    ).length;
+  }
+
+  #publishQueueStatus(): void {
+    const status = this.queueStatus();
+    const serialized = JSON.stringify(status);
+    if (serialized === this.#lastQueueStatus) return;
+    this.#lastQueueStatus = serialized;
+    void this.#broadcast({ event: "queue.changed", payload: status }).catch(() => undefined);
+  }
+
+  #drainQueue(): void {
+    if (this.#closing || this.#deletingAll) return;
+    while (this.#queue.length > 0 && this.#runningCount() < this.#concurrencyLimit()) {
+      const item = this.#queue.shift() as QueuedTurn;
+      const stored = getConversation(this.#db, item.conversationId);
+      if (stored?.state !== "queued") continue;
+      const conversation = this.#ignoreClaudeFast(stored);
+      conversation.state = "working";
+      conversation.updatedAt = this.#now();
+      updateConversation(this.#db, conversation);
+      // O tempo de "trabalhando" não conta a espera na fila.
+      item.message.startedAt = this.#epochNow();
+      saveMessage(this.#db, item.message);
+      void this.#trackAgentOperation(
+        (async () => {
+          await this.#stateEvent(conversation, item.message).catch(() => undefined);
+          if (this.#deletingAll || !getConversation(this.#db, conversation.id)) return;
+          await this.#runTurn(
+            conversation,
+            item.message,
+            item.text,
+            item.plan,
+            item.attachments,
+            item.skills,
+            item.operation,
+          );
+        })().catch(async (error: unknown) => {
+          if (this.#closing) return;
+          await this.#finishWithError(
+            conversation,
+            item.message,
+            error instanceof AgentCliError ? error.errorType : "failed",
+            error instanceof Error ? error.message : String(error),
+          ).catch(() => undefined);
+        }),
+      );
+    }
+    this.#publishQueueStatus();
+  }
+
+  #dequeue(conversationId: string): QueuedTurn | undefined {
+    const index = this.#queue.findIndex((item) => item.conversationId === conversationId);
+    if (index === -1) return undefined;
+    return this.#queue.splice(index, 1)[0];
+  }
+
   async #startTurn(
     conversation: Conversation,
     message: ConversationMessage,
@@ -1028,17 +1280,49 @@ export class ConversationManager {
   ): Promise<void> {
     conversation = this.#requireConversation(conversation.id);
     addMessage(this.#db, message);
-    conversation.state = "working";
+    // Decisão síncrona: nenhum await entre contar as vagas e mudar o estado.
+    const queued =
+      this.#queue.length > 0 || this.#runningCount(conversation.id) >= this.#concurrencyLimit();
+    conversation.state = queued ? "queued" : "working";
     conversation.updatedAt = this.#now();
     updateConversation(this.#db, conversation);
+    if (queued) {
+      this.#queue.push({
+        conversationId: conversation.id,
+        message,
+        text,
+        plan,
+        attachments,
+        skills,
+        operation,
+      });
+    }
     await this.#emit({
       event: "conversation.messageCreated",
       payload: { conversationId: conversation.id, message },
     });
+    if (queued) {
+      // O item pode ter saído da fila durante o await acima: informa o estado atual.
+      const current = getConversation(this.#db, conversation.id);
+      if (current) await this.#stateEvent(current);
+      this.#drainQueue();
+      return;
+    }
     await this.#stateEvent(conversation);
     if (this.#deletingAll || !getConversation(this.#db, conversation.id)) return;
+    await this.#runTurn(conversation, message, text, plan, attachments, skills, operation);
+  }
 
-    // Ponto único para aplicar o limite/fila de agentes quando a configuração da M3 existir.
+  async #runTurn(
+    conversation: Conversation,
+    message: ConversationMessage,
+    text: string,
+    plan: boolean | undefined,
+    attachments: ConversationAttachment[],
+    skills: Array<Pick<ComposerSkill, "name" | "path">>,
+    operation: "send" | "compact",
+  ): Promise<void> {
+    if (!(await this.#prepareRestorePoint(conversation, message, operation))) return;
     let active = this.#active.get(conversation.id);
     if (!active) {
       const previousSession = getAgentSession(this.#db, conversation.id);
@@ -1203,6 +1487,7 @@ export class ConversationManager {
         message.status = "streaming";
         message.updatedAt = this.#now();
         saveMessage(this.#db, message);
+        this.#resumeRepoTurn(message.id);
       }
       conversation.state = event.state;
       conversation.updatedAt = this.#now();
@@ -1342,6 +1627,7 @@ export class ConversationManager {
       const pendingPlan =
         event.status === "done" &&
         message.parts.some((part) => part.type === "plan" && part.state === "pending");
+      this.#scheduleAfterSnapshot(conversationId, message.id, !pendingPlan);
       if (!pendingPlan) {
         active.currentMessage = undefined;
         for (const partId of active.pendingPartIds) this.#pendingParts.delete(partId);
@@ -1526,8 +1812,507 @@ export class ConversationManager {
     conversation.updatedAt = completedAt;
     if (message.status === "error") conversation.unreadAt = completedAt;
     updateConversation(this.#db, conversation);
+    this.#scheduleAfterSnapshot(conversation.id, message.id, true);
     await this.#stateEvent(conversation, message);
     if (active?.currentMessage?.id === message.id) active.currentMessage = undefined;
+  }
+
+  #emitRestoreChanged(conversationId: string, messageId: string): Promise<void> {
+    if (this.#closing || this.#deletingAll || this.#removedConversationIds.has(conversationId))
+      return Promise.resolve();
+    const row = getRestorePoint(this.#db, messageId);
+    if (!row || row.conversationId !== conversationId) return Promise.resolve();
+    return this.#broadcast({
+      event: "restore.changed",
+      payload: { conversationId, point: summarizeRestorePoint(row) },
+    }).catch(() => undefined);
+  }
+
+  /** Lista os pontos da conversa só com o que está no banco: nunca chama o Git. */
+  restoreList(conversationId: string): { points: RestorePointSummary[] } {
+    this.#assertNotDeletingAll();
+    this.#requireRestoreConversation(conversationId);
+    return { points: listRestorePoints(this.#db, conversationId).map(summarizeRestorePoint) };
+  }
+
+  async restoreChanges(
+    conversationId: string,
+    messageId: string,
+  ): Promise<ResultOf<"restore.changes">> {
+    this.#assertNotDeletingAll();
+    const { commits } = this.#requireViewablePoint(conversationId, messageId);
+    try {
+      return await this.#runRestoreOperation(conversationId, (signal) =>
+        listRestoreChanges(commits.root, commits, signal),
+      );
+    } catch (error) {
+      throw restoreServiceError(error);
+    }
+  }
+
+  async restoreDiff(
+    conversationId: string,
+    messageId: string,
+    filePath: string,
+  ): Promise<ResultOf<"restore.diff">> {
+    this.#assertNotDeletingAll();
+    const { commits } = this.#requireViewablePoint(conversationId, messageId);
+    try {
+      return await this.#runRestoreOperation(conversationId, (signal) =>
+        readRestorePatch(commits.root, commits, filePath, signal),
+      );
+    } catch (error) {
+      throw restoreServiceError(error);
+    }
+  }
+
+  async undoPreview(
+    conversationId: string,
+    messageId: string,
+  ): Promise<ResultOf<"restore.undoPreview">> {
+    this.#assertNotDeletingAll();
+    const { row, commits } = this.#requireUndoablePoint(conversationId, messageId);
+    try {
+      const preview = await this.#runRestoreOperation(conversationId, (signal) =>
+        previewUndo(commits.root, commits, signal),
+      );
+      return {
+        ...preview,
+        headMoved: summarizeRestorePoint(row).headMoved,
+        concurrent: row.concurrent,
+      };
+    } catch (error) {
+      throw restoreServiceError(error);
+    }
+  }
+
+  async undo(conversationId: string, messageId: string): Promise<ResultOf<"restore.undo">> {
+    this.#assertNotDeletingAll();
+    const { row, commits } = this.#requireUndoablePoint(conversationId, messageId);
+    // Marca já, antes de qualquer espera: send/retry e um segundo desfazer passam a falhar.
+    this.#undoing.add(conversationId);
+    return this.#trackAgentOperation(this.#undo(conversationId, row, commits));
+  }
+
+  async #undo(
+    conversationId: string,
+    row: RestorePointRecord,
+    commits: RestoreCommits,
+  ): Promise<ResultOf<"restore.undo">> {
+    const messageId = row.messageId;
+    try {
+      return await this.#runRestoreOperation(conversationId, async (signal) => {
+        const undoCommit = await saveUndoSafety(commits.root, commits, signal);
+        if (!setRestorePointUndoCommit(this.#db, messageId, undoCommit, this.#now())) {
+          throw new RestoreError("gone");
+        }
+        let outcome: { restored: number; removed: number };
+        try {
+          outcome = await applyUndo(commits.root, commits, signal);
+        } catch (error) {
+          if (error instanceof RestoreError && error.kind !== "gone") {
+            throw new RestoreError(
+              error.kind,
+              `${error.message} O que havia antes do desfazer está guardado em ${undoRef(conversationId, messageId)}.`,
+            );
+          }
+          throw error;
+        }
+        setRestorePointUndone(this.#db, messageId, this.#now());
+        await this.#emitRestoreChanged(conversationId, messageId);
+        return outcome;
+      });
+    } catch (error) {
+      throw restoreServiceError(error);
+    } finally {
+      this.#undoing.delete(conversationId);
+    }
+  }
+
+  #requireRestoreConversation(conversationId: string): void {
+    if (!getConversation(this.#db, conversationId)) {
+      throw new ServiceError("unavailable", "Conversa não encontrada.");
+    }
+  }
+
+  #requireRestorePoint(conversationId: string, messageId: string): RestorePointRecord {
+    this.#requireRestoreConversation(conversationId);
+    const row = getRestorePoint(this.#db, messageId);
+    if (!row || row.conversationId !== conversationId) {
+      throw new ServiceError("invalid_request", "Ponto de restauração não encontrado.");
+    }
+    return row;
+  }
+
+  #requireViewablePoint(
+    conversationId: string,
+    messageId: string,
+  ): { row: RestorePointRecord; commits: RestoreCommits } {
+    const row = this.#requireRestorePoint(conversationId, messageId);
+    if (!row.repoRoot || !row.beforeCommit) {
+      throw new ServiceError("unavailable", "Esta mensagem não tem ponto de restauração.");
+    }
+    if (!row.afterCommit) {
+      throw new ServiceError(
+        "unavailable",
+        "As mudanças desta mensagem ainda não foram registradas.",
+      );
+    }
+    return {
+      row,
+      commits: {
+        root: row.repoRoot,
+        conversationId,
+        messageId,
+        before: row.beforeCommit,
+        after: row.afterCommit,
+      },
+    };
+  }
+
+  /** Regras de segurança do desfazer; vale também para a prévia. */
+  #requireUndoablePoint(
+    conversationId: string,
+    messageId: string,
+  ): { row: RestorePointRecord; commits: RestoreCommits } {
+    const conversation = this.#requireConversation(conversationId);
+    const row = this.#requireRestorePoint(conversationId, messageId);
+    const state = summarizeRestorePoint(row).state;
+    if (state === "undone") throw new ServiceError("unavailable", "Esta mensagem já foi desfeita.");
+    if (state === "unavailable") {
+      throw new ServiceError("unavailable", "Esta mensagem não tem ponto de restauração.");
+    }
+    if (state === "incomplete") {
+      throw new ServiceError(
+        "unavailable",
+        "As mudanças desta mensagem não foram registradas por completo. Não dá para desfazer.",
+      );
+    }
+    if (this.#undoing.has(conversationId)) {
+      throw new ServiceError("unavailable", "Já existe um desfazer em andamento nesta conversa.");
+    }
+    if (isBusyState(conversation.state)) {
+      throw new ServiceError(
+        "unavailable",
+        "Espere a conversa terminar para desfazer. O agente ainda está trabalhando.",
+      );
+    }
+    const viewable = this.#requireViewablePoint(conversationId, messageId);
+    if ((this.#repoTurns.get(viewable.commits.root)?.size ?? 0) > 0) {
+      throw new ServiceError(
+        "unavailable",
+        "Há um agente trabalhando neste repositório. Espere ele terminar para desfazer.",
+      );
+    }
+    return viewable;
+  }
+
+  /** Operação de Git ligada à conversa: apagar a conversa ou fechar o serviço a interrompe. */
+  #runRestoreOperation<T>(
+    conversationId: string,
+    operation: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    const controller = new AbortController();
+    this.#restoreOps.set(controller, conversationId);
+    return this.#trackAgentOperation(
+      operation(controller.signal).finally(() => this.#restoreOps.delete(controller)),
+    );
+  }
+
+  #restoreTimeoutMs(): number {
+    const configured = Number(this.#env.KARONT_RESTORE_TIMEOUT_MS);
+    return Number.isFinite(configured) && configured > 0
+      ? Math.min(configured, 10 * 60_000)
+      : DEFAULT_RESTORE_TIMEOUT_MS;
+  }
+
+  #abortRestoreOperations(conversationId?: string): void {
+    for (const [controller, owner] of this.#restoreOps) {
+      if (conversationId === undefined || owner === conversationId) controller.abort();
+    }
+  }
+
+  /**
+   * Foto "antes" do turno. Devolve falso quando o turno não deve seguir (parado, conversa apagada,
+   * apagar todas ou fechamento). Falha ou tempo esgotado só gravam o motivo: a mensagem segue.
+   */
+  async #prepareRestorePoint(
+    conversation: Conversation,
+    message: ConversationMessage,
+    operation: "send" | "compact",
+  ): Promise<boolean> {
+    if (operation === "compact") return true;
+    const conversationId = conversation.id;
+    const mustStop = (controller?: AbortController) =>
+      this.#closing ||
+      this.#deletingAll ||
+      controller?.signal.aborted === true ||
+      !getConversation(this.#db, conversationId);
+    if (mustStop()) return false;
+    const controller = new AbortController();
+    const pending: PendingRestoreSnapshot = { controller, message, stopped: false };
+    this.#restoreOps.set(controller, conversationId);
+    this.#pendingRestoreSnapshots.set(conversationId, pending);
+    let outcome: RestoreSnapshotOutcome | undefined;
+    try {
+      const previous = this.#restoreChains.get(conversationId);
+      if (previous) await raceAbort(previous, controller.signal);
+      if (!controller.signal.aborted) {
+        outcome = await this.#takeSnapshot(
+          {
+            phase: "before",
+            cwd: conversation.cwd,
+            repoRoot: null,
+            conversationId,
+            messageId: message.id,
+          },
+          controller.signal,
+        );
+      }
+    } catch {
+      outcome = { repoRoot: null, unavailable: "failed" };
+    } finally {
+      this.#restoreOps.delete(controller);
+      if (this.#pendingRestoreSnapshots.get(conversationId) === pending) {
+        this.#pendingRestoreSnapshots.delete(conversationId);
+      }
+    }
+    if (!outcome || mustStop(controller)) {
+      if (outcome && "commit" in outcome) {
+        this.#deleteRefsInBackground(outcome.repoRoot, restoreRefs(conversationId, message.id));
+      }
+      return false;
+    }
+    const repoRoot = outcome.repoRoot;
+    try {
+      createRestorePoint(this.#db, {
+        messageId: message.id,
+        conversationId,
+        repoRoot: "commit" in outcome ? repoRoot : null,
+        beforeCommit: "commit" in outcome ? outcome.commit : null,
+        headBefore: "commit" in outcome ? outcome.head : null,
+        unavailableReason: "unavailable" in outcome ? outcome.unavailable : null,
+        now: this.#now(),
+      });
+    } catch {
+      // Sem a linha não há desfazer, mas a mensagem precisa seguir: voltar aqui a deixaria presa.
+      return true;
+    }
+    if ("commit" in outcome) {
+      this.#registerRepoTurn(outcome.repoRoot, message.id);
+      this.#pruneRestorePoints(conversationId);
+    } else {
+      this.#emitRestoreChanged(conversationId, message.id);
+    }
+    return true;
+  }
+
+  /** Chama o módulo Git (ou o substituto) com tempo total e aborto, sem nunca lançar. */
+  async #takeSnapshot(
+    base: Omit<RestoreSnapshotRequest, "signal" | "timeoutMs" | "homeDir">,
+    parent: AbortSignal,
+  ): Promise<RestoreSnapshotOutcome> {
+    const timeoutMs = this.#restoreTimeoutMs();
+    const child = new AbortController();
+    let timedOut = false;
+    let decided = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.abort();
+    }, timeoutMs);
+    const onParentAbort = () => child.abort();
+    if (parent.aborted) child.abort();
+    else parent.addEventListener("abort", onParentAbort, { once: true });
+    const discardLate = (outcome: RestoreSnapshotOutcome) => {
+      if ("commit" in outcome) {
+        // Só a ref desta foto: uma "depois" atrasada não pode levar a "antes", que continua válida.
+        this.#deleteRefsInBackground(outcome.repoRoot, [
+          restoreRef(base.conversationId, base.messageId, base.phase),
+        ]);
+      }
+    };
+    try {
+      return await new Promise<RestoreSnapshotOutcome>((resolve) => {
+        const onAbort = () => {
+          if (decided) return;
+          decided = true;
+          resolve({ repoRoot: base.repoRoot, unavailable: timedOut ? "timeout" : "failed" });
+        };
+        if (child.signal.aborted) onAbort();
+        else child.signal.addEventListener("abort", onAbort, { once: true });
+        Promise.resolve()
+          .then(() =>
+            this.#restoreSnapshot({
+              ...base,
+              homeDir: this.#homeDir,
+              signal: child.signal,
+              timeoutMs,
+            }),
+          )
+          .then(
+            (outcome) => {
+              if (decided) discardLate(outcome);
+              else {
+                decided = true;
+                resolve(outcome);
+              }
+            },
+            () => {
+              if (decided) return;
+              decided = true;
+              resolve({ repoRoot: base.repoRoot, unavailable: "failed" });
+            },
+          );
+      });
+    } finally {
+      clearTimeout(timer);
+      parent.removeEventListener("abort", onParentAbort);
+    }
+  }
+
+  #registerRepoTurn(repoRoot: string, messageId: string): void {
+    let turns = this.#repoTurns.get(repoRoot);
+    if (!turns) {
+      turns = new Set();
+      this.#repoTurns.set(repoRoot, turns);
+    }
+    turns.add(messageId);
+    this.#repoByMessage.set(messageId, repoRoot);
+    if (turns.size > 1) {
+      try {
+        markRestorePointsConcurrent(this.#db, [...turns], this.#now());
+      } catch {
+        // Melhor esforço: o aviso de concorrência não pode derrubar a mensagem.
+      }
+    }
+  }
+
+  /** Plano aprovado: o agente volta a escrever na mesma mensagem, e o turno volta a contar. */
+  #resumeRepoTurn(messageId: string): void {
+    const row = getRestorePoint(this.#db, messageId);
+    if (row?.repoRoot && row.beforeCommit && !row.afterCommit) {
+      this.#registerRepoTurn(row.repoRoot, messageId);
+    }
+  }
+
+  #releaseRepoTurn(messageId: string): void {
+    const repoRoot = this.#repoByMessage.get(messageId);
+    if (repoRoot === undefined) return;
+    this.#repoByMessage.delete(messageId);
+    const turns = this.#repoTurns.get(repoRoot);
+    turns?.delete(messageId);
+    if (turns?.size === 0) this.#repoTurns.delete(repoRoot);
+  }
+
+  /** Foto "depois": idempotente, em segundo plano e depois da foto anterior da mesma conversa. */
+  #scheduleAfterSnapshot(conversationId: string, messageId: string, snapshot: boolean): void {
+    if (!snapshot) {
+      this.#releaseRepoTurn(messageId);
+      return;
+    }
+    if (this.#afterSnapshotsInFlight.has(messageId)) return;
+    const row = getRestorePoint(this.#db, messageId);
+    if (!row?.beforeCommit || row.afterCommit || !row.repoRoot) {
+      this.#releaseRepoTurn(messageId);
+      return;
+    }
+    const repoRoot = row.repoRoot;
+    this.#afterSnapshotsInFlight.add(messageId);
+    const controller = new AbortController();
+    this.#restoreOps.set(controller, conversationId);
+    const previous = this.#restoreChains.get(conversationId) ?? Promise.resolve();
+    const task: Promise<void> = previous
+      .then(async () => {
+        const conversation = getConversation(this.#db, conversationId);
+        if (!conversation || controller.signal.aborted || this.#closing) return;
+        const outcome = await this.#takeSnapshot(
+          { phase: "after", cwd: conversation.cwd, repoRoot, conversationId, messageId },
+          controller.signal,
+        );
+        if (!("commit" in outcome)) {
+          // A tela precisa saber que esta resposta ficou sem desfazer.
+          void this.#emitRestoreChanged(conversationId, messageId);
+          return;
+        }
+        let changedFiles = 0;
+        try {
+          changedFiles = await countRestoreChanges(
+            repoRoot,
+            row.beforeCommit as string,
+            outcome.commit,
+            controller.signal,
+            this.#restoreTimeoutMs(),
+          );
+        } catch {
+          // Sem a contagem a tela mostra 0; o ponto continua utilizável.
+        }
+        const saved = setRestorePointAfter(
+          this.#db,
+          messageId,
+          outcome.commit,
+          outcome.head,
+          this.#now(),
+          changedFiles,
+        );
+        // A conversa foi apagada durante a foto: a ref ficaria órfã.
+        if (!saved) this.#deleteRefsInBackground(repoRoot, restoreRefs(conversationId, messageId));
+        else this.#emitRestoreChanged(conversationId, messageId);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        this.#restoreOps.delete(controller);
+        this.#afterSnapshotsInFlight.delete(messageId);
+        this.#releaseRepoTurn(messageId);
+        if (this.#restoreChains.get(conversationId) === task) {
+          this.#restoreChains.delete(conversationId);
+        }
+      });
+    this.#restoreChains.set(conversationId, task);
+    void this.#trackAgentOperation(task);
+  }
+
+  /** Fica com os últimos pontos da conversa; apaga refs e linhas dos excedentes em segundo plano. */
+  #pruneRestorePoints(conversationId: string): void {
+    const excess = listExcessRestorePoints(
+      this.#db,
+      conversationId,
+      MAX_RESTORE_POINTS_PER_CONVERSATION,
+    );
+    if (excess.length === 0) return;
+    const task = (async () => {
+      await this.#deleteRefsForPoints(excess);
+      deleteRestorePoints(
+        this.#db,
+        excess.map((point) => point.messageId),
+      );
+    })().catch(() => undefined);
+    void this.#trackAgentOperation(task);
+  }
+
+  #discardRestorePoints(
+    points: Array<{ messageId: string; conversationId: string; repoRoot: string | null }>,
+  ): void {
+    for (const point of points) this.#releaseRepoTurn(point.messageId);
+    if (points.length === 0) return;
+    void this.#trackAgentOperation(this.#deleteRefsForPoints(points).catch(() => undefined));
+  }
+
+  async #deleteRefsForPoints(
+    points: Array<{ messageId: string; conversationId: string; repoRoot: string | null }>,
+  ): Promise<void> {
+    const byRoot = new Map<string, string[]>();
+    for (const point of points) {
+      if (!point.repoRoot) continue;
+      const refs = byRoot.get(point.repoRoot) ?? [];
+      refs.push(...restoreRefs(point.conversationId, point.messageId));
+      byRoot.set(point.repoRoot, refs);
+    }
+    for (const [root, refs] of byRoot) await deleteRestoreRefs(root, refs);
+  }
+
+  #deleteRefsInBackground(repoRoot: string | null, refs: string[]): void {
+    if (!repoRoot) return;
+    void this.#trackAgentOperation(deleteRestoreRefs(repoRoot, refs).then(() => undefined));
   }
 
   #newAgentMessage(conversationId: string): ConversationMessage {
@@ -1577,18 +2362,22 @@ export class ConversationManager {
 
   async #stateEvent(conversation: Conversation, message?: ConversationMessage): Promise<void> {
     const current = this.#ignoreClaudeFast(conversation);
-    await this.#emit({
-      event: "conversation.stateChanged",
-      payload: message
-        ? {
-            conversation: current,
-            messageId: message.id,
-            messageStatus: message.status,
-            ...(message.startedAt !== undefined ? { messageStartedAt: message.startedAt } : {}),
-            ...(message.endedAt !== undefined ? { messageEndedAt: message.endedAt } : {}),
-          }
-        : { conversation: current },
-    });
+    try {
+      await this.#emit({
+        event: "conversation.stateChanged",
+        payload: message
+          ? {
+              conversation: current,
+              messageId: message.id,
+              messageStatus: message.status,
+              ...(message.startedAt !== undefined ? { messageStartedAt: message.startedAt } : {}),
+              ...(message.endedAt !== undefined ? { messageEndedAt: message.endedAt } : {}),
+            }
+          : { conversation: current },
+      });
+    } finally {
+      this.#drainQueue();
+    }
   }
 
   async #emit(event: AnyEvent): Promise<void> {
@@ -1810,4 +2599,26 @@ function skillCacheKey(agent: string, cwd: string): string {
 
 function cloneSkills(skills: ComposerSkill[]): ComposerSkill[] {
   return skills.map((skill) => ({ ...skill }));
+}
+
+/** Espera `promise`, mas volta na hora se o sinal abortar. */
+function raceAbort(promise: Promise<unknown>, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = () => resolve();
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      () => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      },
+      () => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      },
+    );
+  });
 }

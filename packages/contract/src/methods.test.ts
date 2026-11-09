@@ -336,3 +336,38 @@ test("JsonValue limita o JSON serializado em bytes UTF-8", () => {
   assert.equal(jsonValueSchema.safeParse(overLimitString).success, false);
   assert.equal(jsonValueSchema.safeParse({ ok: [1, "two", null] }).success, true);
 });
+
+test("métodos restore.* validam parâmetros e resultados", () => {
+  const target = { conversationId: "c1", messageId: "m1" };
+  assert.equal(methods["restore.list"].params.safeParse({ conversationId: "c1" }).success, true);
+  assert.equal(methods["restore.list"].params.safeParse({}).success, false);
+  assert.equal(methods["restore.changes"].params.safeParse(target).success, true);
+  assert.equal(
+    methods["restore.diff"].params.safeParse({ ...target, path: "a b.txt" }).success,
+    true,
+  );
+  assert.equal(methods["restore.diff"].params.safeParse({ ...target, path: "" }).success, false);
+  assert.equal(methods["restore.undo"].params.safeParse({ ...target, extra: 1 }).success, false);
+  const point = {
+    messageId: "m1",
+    state: "unavailable",
+    reason: "no-git",
+    changedFiles: 0,
+    concurrent: false,
+    headMoved: false,
+  };
+  assert.equal(methods["restore.list"].result.safeParse({ points: [point] }).success, true);
+  assert.equal(
+    methods["restore.list"].result.safeParse({ points: [{ ...point, state: "outro" }] }).success,
+    false,
+  );
+  assert.equal(
+    methods["restore.changes"].result.safeParse({
+      files: [{ path: "a", status: "added", additions: null, deletions: null, binary: true }],
+      truncated: false,
+    }).success,
+    true,
+  );
+  assert.equal(methods["restore.undo"].result.safeParse({ restored: 1, removed: 2 }).success, true);
+  assert.equal(isMethodName("restore.undoPreview"), true);
+});

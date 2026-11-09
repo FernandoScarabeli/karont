@@ -73,6 +73,7 @@ export type {
   JsonValue,
   MethodName,
   ParamsOf,
+  Project,
   RecentFolder,
   ResultOf,
   SettingKey,
@@ -80,13 +81,27 @@ export type {
 } from "./methods.ts";
 export {
   agentSchema,
+  DEFAULT_MAX_CONCURRENT_AGENTS,
   jsonValueSchema,
+  MAX_CONCURRENT_AGENTS_LIMIT,
+  MAX_CONCURRENT_AGENTS_SETTING,
   MAX_SETTING_BYTES,
   methods,
+  projectSchema,
+  queueStatusSchema,
   recentFolderSchema,
   settingKeySchema,
   terminalInfoSchema,
 } from "./methods.ts";
+export type { RestoreFileChange, RestorePointSummary } from "./restore.ts";
+export {
+  MAX_RESTORE_CHANGED_FILES,
+  MAX_RESTORE_PATCH_BYTES,
+  restoreFileChangeSchema,
+  restorePointSummarySchema,
+  restoreStateSchema,
+  restoreUnavailableReasonSchema,
+} from "./restore.ts";
 export type { MessageSource } from "./sources.ts";
 export {
   MAX_MESSAGE_SOURCES,
@@ -103,6 +118,19 @@ export type {
   ValidationFailure,
 } from "./validate.ts";
 export { isEventName, isMethodName, parseEvent, parseRequest, parseResult } from "./validate.ts";
+
+export type {
+  Worktree,
+  WorktreeMergeBlocked,
+  WorktreeMergePreview,
+  WorktreeStatus,
+} from "./worktrees.ts";
+export {
+  worktreeMergeBlockedSchema,
+  worktreeMergePreviewSchema,
+  worktreeSchema,
+  worktreeStatusSchema,
+} from "./worktrees.ts";
 
 export interface KarontBridge {
   request<M extends MethodName>(method: M, params: ParamsOf<M>): Promise<ResultOf<M>>;

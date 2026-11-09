@@ -8,7 +8,9 @@ import type {
   ConversationMessage,
   JsonValue,
   MessagePart,
+  Project,
   RecentFolder,
+  Worktree,
 } from "@karont/contract";
 
 export const migrations: { version: number; up: string }[] = [
@@ -89,6 +91,45 @@ export const migrations: { version: number; up: string }[] = [
       window_tokens INTEGER NOT NULL CHECK (window_tokens > 0)
     ) STRICT;`,
   },
+  {
+    version: 14,
+    up: `CREATE TABLE projects (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT NOT NULL, path TEXT NOT NULL UNIQUE,
+      default_agent TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    ALTER TABLE conversations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+    CREATE INDEX conversations_project ON conversations(project_id);`,
+  },
+  {
+    version: 15,
+    up: `CREATE TABLE restore_points (
+      message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      repo_root TEXT, before_commit TEXT, after_commit TEXT, head_before TEXT, head_after TEXT,
+      unavailable_reason TEXT,
+      concurrent INTEGER NOT NULL DEFAULT 0 CHECK (concurrent IN (0, 1)),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE INDEX restore_points_conversation ON restore_points(conversation_id, created_at);`,
+  },
+  {
+    version: 16,
+    up: `ALTER TABLE restore_points ADD COLUMN changed_files INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE restore_points ADD COLUMN undone_at TEXT;
+    ALTER TABLE restore_points ADD COLUMN undo_commit TEXT;`,
+  },
+  {
+    version: 17,
+    up: `CREATE TABLE worktrees (
+      id TEXT PRIMARY KEY,
+      project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+      repo_root TEXT NOT NULL, path TEXT NOT NULL UNIQUE, branch TEXT NOT NULL,
+      base_commit TEXT NOT NULL, created_at TEXT NOT NULL, merged_at TEXT
+    ) STRICT;
+    CREATE INDEX worktrees_project ON worktrees(project_id);
+    ALTER TABLE conversations ADD COLUMN worktree_id TEXT REFERENCES worktrees(id) ON DELETE SET NULL;
+    CREATE INDEX conversations_worktree ON conversations(worktree_id);`,
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -111,6 +152,8 @@ export type NewConversation = Pick<Conversation, "agent" | "title" | "cwd" | "mo
       | "branchedFromId"
       | "branchedFromMessageId"
       | "branchContext"
+      | "projectId"
+      | "worktreeId"
     >
   >;
 
@@ -129,7 +172,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     updatedAt: now,
   };
   db.prepare(
-    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,fast,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at,branched_from_id,branched_from_message_id,branch_context_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,fast,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at,branched_from_id,branched_from_message_id,branch_context_enabled,project_id,worktree_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     conversation.id,
     conversation.agent,
@@ -150,6 +193,8 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     conversation.branchedFromId ?? null,
     conversation.branchedFromMessageId ?? null,
     conversation.branchContext ? 1 : 0,
+    conversation.projectId ?? null,
+    conversation.worktreeId ?? null,
   );
   return conversation;
 }
@@ -226,6 +271,14 @@ export function listConversationStates(
     id: string;
     state: Conversation["state"];
   }[];
+}
+
+export function listSlotConversationStates(
+  db: DatabaseSync,
+): { id: string; state: Conversation["state"] }[] {
+  return db
+    .prepare("SELECT id, state FROM conversations WHERE state IN ('working','waiting')")
+    .all() as { id: string; state: Conversation["state"] }[];
 }
 
 export function updateConversation(db: DatabaseSync, conversation: Conversation): void {
@@ -464,7 +517,7 @@ export function recoverInterruptedMessages(db: DatabaseSync): void {
     saveMessage(db, message);
   }
   db.prepare(
-    "UPDATE conversations SET state='idle',updated_at=? WHERE state IN ('working','waiting')",
+    "UPDATE conversations SET state='idle',updated_at=? WHERE state IN ('queued','working','waiting')",
   ).run(now);
 }
 
@@ -484,6 +537,8 @@ type ConversationRow = {
   branched_from_id: string | null;
   branched_from_message_id: string | null;
   branch_context_enabled: number;
+  project_id: string | null;
+  worktree_id: string | null;
   state: Conversation["state"];
   created_at: string;
   updated_at: string;
@@ -507,6 +562,8 @@ function mapConversation(row: ConversationRow): Conversation {
     agent: row.agent,
     title: row.title,
     cwd: row.cwd,
+    ...(row.project_id ? { projectId: row.project_id } : {}),
+    ...(row.worktree_id ? { worktreeId: row.worktree_id } : {}),
     mode: row.mode,
     ...(row.model ? { model: row.model } : {}),
     ...(row.effort ? { effort: row.effort } : {}),
@@ -653,6 +710,357 @@ export function listRecentFolderRecords(db: DatabaseSync): RecentFolderRecord[] 
     .prepare("SELECT path, used_at FROM recent_folders ORDER BY used_at DESC, rowid DESC LIMIT 50")
     .all() as { path: string; used_at: string }[];
   return rows.map(({ path, used_at }) => ({ path, usedAt: used_at }));
+}
+
+type ProjectRow = {
+  id: string;
+  name: string;
+  icon: string;
+  path: string;
+  default_agent: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapProject(row: ProjectRow): Project {
+  return {
+    id: row.id,
+    name: row.name,
+    icon: row.icon,
+    path: row.path,
+    defaultAgent: row.default_agent,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createProject(
+  db: DatabaseSync,
+  input: { name: string; icon: string; path: string; defaultAgent?: string | null },
+): Project {
+  const now = new Date().toISOString();
+  const project: Project = {
+    id: randomUUID(),
+    name: input.name,
+    icon: input.icon,
+    path: input.path,
+    defaultAgent: input.defaultAgent ?? null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  db.prepare(
+    "INSERT INTO projects (id,name,icon,path,default_agent,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+  ).run(project.id, project.name, project.icon, project.path, project.defaultAgent, now, now);
+  return project;
+}
+
+export function listProjects(db: DatabaseSync): Project[] {
+  const rows = db
+    .prepare("SELECT * FROM projects ORDER BY name COLLATE NOCASE ASC, name ASC, rowid ASC")
+    .all() as ProjectRow[];
+  return rows.map(mapProject);
+}
+
+export function getProject(db: DatabaseSync, id: string): Project | null {
+  const row = db.prepare("SELECT * FROM projects WHERE id=?").get(id) as ProjectRow | undefined;
+  return row ? mapProject(row) : null;
+}
+
+export function getProjectByPath(db: DatabaseSync, projectPath: string): Project | null {
+  const row = db.prepare("SELECT * FROM projects WHERE path=?").get(projectPath) as
+    | ProjectRow
+    | undefined;
+  return row ? mapProject(row) : null;
+}
+
+/** Atualiza nome, ícone e agente padrão. A pasta nunca muda depois de criada. */
+export function updateProject(
+  db: DatabaseSync,
+  id: string,
+  changes: { name?: string; icon?: string; defaultAgent?: string | null },
+): Project | null {
+  const current = getProject(db, id);
+  if (!current) return null;
+  const next = {
+    name: changes.name ?? current.name,
+    icon: changes.icon ?? current.icon,
+    defaultAgent: changes.defaultAgent === undefined ? current.defaultAgent : changes.defaultAgent,
+  };
+  db.prepare("UPDATE projects SET name=?,icon=?,default_agent=?,updated_at=? WHERE id=?").run(
+    next.name,
+    next.icon,
+    next.defaultAgent,
+    new Date().toISOString(),
+    id,
+  );
+  return getProject(db, id);
+}
+
+export function removeProject(db: DatabaseSync, id: string): boolean {
+  return db.prepare("DELETE FROM projects WHERE id=?").run(id).changes > 0;
+}
+
+type WorktreeRow = {
+  id: string;
+  project_id: string | null;
+  repo_root: string;
+  path: string;
+  branch: string;
+  base_commit: string;
+  created_at: string;
+  merged_at: string | null;
+};
+
+function mapWorktree(row: WorktreeRow): Worktree {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    repoRoot: row.repo_root,
+    path: row.path,
+    branch: row.branch,
+    baseCommit: row.base_commit,
+    createdAt: row.created_at,
+    mergedAt: row.merged_at,
+  };
+}
+
+export function createWorktreeRecord(
+  db: DatabaseSync,
+  input: Pick<Worktree, "projectId" | "repoRoot" | "path" | "branch" | "baseCommit"> &
+    Partial<Pick<Worktree, "id">>,
+): Worktree {
+  const worktree: Worktree = {
+    id: input.id ?? randomUUID(),
+    projectId: input.projectId,
+    repoRoot: input.repoRoot,
+    path: input.path,
+    branch: input.branch,
+    baseCommit: input.baseCommit,
+    createdAt: new Date().toISOString(),
+    mergedAt: null,
+  };
+  db.prepare(
+    "INSERT INTO worktrees (id,project_id,repo_root,path,branch,base_commit,created_at,merged_at) VALUES (?,?,?,?,?,?,?,?)",
+  ).run(
+    worktree.id,
+    worktree.projectId,
+    worktree.repoRoot,
+    worktree.path,
+    worktree.branch,
+    worktree.baseCommit,
+    worktree.createdAt,
+    null,
+  );
+  return worktree;
+}
+
+export function getWorktree(db: DatabaseSync, id: string): Worktree | null {
+  const row = db.prepare("SELECT * FROM worktrees WHERE id=?").get(id) as WorktreeRow | undefined;
+  return row ? mapWorktree(row) : null;
+}
+
+/** Mais novas primeiro. */
+export function listWorktrees(db: DatabaseSync, projectId: string): Worktree[] {
+  const rows = db
+    .prepare("SELECT * FROM worktrees WHERE project_id=? ORDER BY created_at DESC, rowid DESC")
+    .all(projectId) as WorktreeRow[];
+  return rows.map(mapWorktree);
+}
+
+export function deleteWorktreeRecord(db: DatabaseSync, id: string): boolean {
+  return db.prepare("DELETE FROM worktrees WHERE id=?").run(id).changes > 0;
+}
+
+export function countBusyWorktreeConversations(db: DatabaseSync, worktreeId: string): number {
+  const row = db
+    .prepare(
+      "SELECT COUNT(*) AS count FROM conversations WHERE worktree_id=? AND state IN ('queued','working','waiting')",
+    )
+    .get(worktreeId) as { count: number };
+  return row.count;
+}
+
+/** Pastas de trabalho das conversas ocupadas (na fila, trabalhando ou esperando). */
+export function busyConversationCwds(db: DatabaseSync): string[] {
+  const rows = db
+    .prepare("SELECT cwd FROM conversations WHERE state IN ('queued','working','waiting')")
+    .all() as { cwd: string | null }[];
+  return rows.flatMap((row) => (row.cwd ? [row.cwd] : []));
+}
+
+export function markWorktreeMerged(db: DatabaseSync, id: string): Worktree | null {
+  db.prepare("UPDATE worktrees SET merged_at=? WHERE id=?").run(new Date().toISOString(), id);
+  return getWorktree(db, id);
+}
+
+export type RestorePointRecord = {
+  messageId: string;
+  conversationId: string;
+  repoRoot: string | null;
+  beforeCommit: string | null;
+  afterCommit: string | null;
+  headBefore: string | null;
+  headAfter: string | null;
+  unavailableReason: string | null;
+  concurrent: boolean;
+  changedFiles: number;
+  undoneAt: string | null;
+  undoCommit: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type RestorePointRow = {
+  message_id: string;
+  conversation_id: string;
+  repo_root: string | null;
+  before_commit: string | null;
+  after_commit: string | null;
+  head_before: string | null;
+  head_after: string | null;
+  unavailable_reason: string | null;
+  concurrent: number;
+  changed_files: number;
+  undone_at: string | null;
+  undo_commit: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapRestorePoint(row: RestorePointRow): RestorePointRecord {
+  return {
+    messageId: row.message_id,
+    conversationId: row.conversation_id,
+    repoRoot: row.repo_root,
+    beforeCommit: row.before_commit,
+    afterCommit: row.after_commit,
+    headBefore: row.head_before,
+    headAfter: row.head_after,
+    unavailableReason: row.unavailable_reason,
+    concurrent: row.concurrent === 1,
+    changedFiles: row.changed_files,
+    undoneAt: row.undone_at,
+    undoCommit: row.undo_commit,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createRestorePoint(
+  db: DatabaseSync,
+  input: {
+    messageId: string;
+    conversationId: string;
+    repoRoot?: string | null;
+    beforeCommit?: string | null;
+    headBefore?: string | null;
+    unavailableReason?: string | null;
+    concurrent?: boolean;
+    now: string;
+  },
+): void {
+  db.prepare(
+    `INSERT INTO restore_points
+      (message_id,conversation_id,repo_root,before_commit,head_before,unavailable_reason,concurrent,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?)`,
+  ).run(
+    input.messageId,
+    input.conversationId,
+    input.repoRoot ?? null,
+    input.beforeCommit ?? null,
+    input.headBefore ?? null,
+    input.unavailableReason ?? null,
+    input.concurrent ? 1 : 0,
+    input.now,
+    input.now,
+  );
+}
+
+export function getRestorePoint(db: DatabaseSync, messageId: string): RestorePointRecord | null {
+  const row = db.prepare("SELECT * FROM restore_points WHERE message_id=?").get(messageId) as
+    | RestorePointRow
+    | undefined;
+  return row ? mapRestorePoint(row) : null;
+}
+
+/** Devolve falso se a linha não existe mais (conversa apagada durante a foto). */
+export function setRestorePointAfter(
+  db: DatabaseSync,
+  messageId: string,
+  afterCommit: string,
+  headAfter: string | null,
+  now: string,
+  changedFiles = 0,
+): boolean {
+  return (
+    db
+      .prepare(
+        "UPDATE restore_points SET after_commit=?,head_after=?,changed_files=?,updated_at=? WHERE message_id=?",
+      )
+      .run(afterCommit, headAfter, changedFiles, now, messageId).changes > 0
+  );
+}
+
+/** Guarda a foto de segurança do desfazer antes de qualquer arquivo ser tocado. */
+export function setRestorePointUndoCommit(
+  db: DatabaseSync,
+  messageId: string,
+  undoCommit: string,
+  now: string,
+): boolean {
+  return (
+    db
+      .prepare("UPDATE restore_points SET undo_commit=?,updated_at=? WHERE message_id=?")
+      .run(undoCommit, now, messageId).changes > 0
+  );
+}
+
+export function setRestorePointUndone(db: DatabaseSync, messageId: string, now: string): boolean {
+  return (
+    db
+      .prepare("UPDATE restore_points SET undone_at=?,updated_at=? WHERE message_id=?")
+      .run(now, now, messageId).changes > 0
+  );
+}
+
+export function markRestorePointsConcurrent(
+  db: DatabaseSync,
+  messageIds: readonly string[],
+  now: string,
+): void {
+  const statement = db.prepare(
+    "UPDATE restore_points SET concurrent=1,updated_at=? WHERE message_id=?",
+  );
+  for (const messageId of messageIds) statement.run(now, messageId);
+}
+
+export function listRestorePoints(db: DatabaseSync, conversationId: string): RestorePointRecord[] {
+  const rows = db
+    .prepare(
+      "SELECT * FROM restore_points WHERE conversation_id=? ORDER BY created_at ASC, rowid ASC",
+    )
+    .all(conversationId) as RestorePointRow[];
+  return rows.map(mapRestorePoint);
+}
+
+/** Pontos além dos `keep` mais novos da conversa, do mais antigo para o mais novo. */
+export function listExcessRestorePoints(
+  db: DatabaseSync,
+  conversationId: string,
+  keep: number,
+): RestorePointRecord[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM restore_points WHERE conversation_id=?
+        ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?`,
+    )
+    .all(conversationId, keep) as RestorePointRow[];
+  return rows.map(mapRestorePoint).reverse();
+}
+
+export function deleteRestorePoints(db: DatabaseSync, messageIds: readonly string[]): void {
+  const statement = db.prepare("DELETE FROM restore_points WHERE message_id=?");
+  for (const messageId of messageIds) statement.run(messageId);
 }
 
 function readUserVersion(db: DatabaseSync): number {

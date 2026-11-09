@@ -132,6 +132,13 @@
   line-height: var(--k-leading-normal);
 }
 
+.removeProjectNote {
+  margin: 0 0 var(--k-space-2);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
 .conversationItem {
   position: relative;
   width: 100%;
@@ -171,6 +178,44 @@
 .conversationItem:hover .endTerminalButton,
 .endTerminalButton:focus-visible {
   opacity: 1;
+}
+
+.projectItem {
+  min-width: 0;
+}
+
+.projectActions {
+  position: absolute;
+  z-index: var(--k-layer-menu);
+  top: 50%;
+  inset-inline-end: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity var(--k-motion-fast) var(--k-ease);
+}
+
+.conversationItem:focus-within .projectActions,
+.conversationItem:hover .projectActions,
+.projectActions:has([aria-expanded="true"]) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.projectChevron {
+  color: var(--k-color-text-muted);
+}
+
+/* Duas classes para vencer o `padding: 0` de .conversationList; recuo = chevron + vão, alinhando com o ícone do projeto. */
+.conversationList.projectConversations {
+  margin-block-start: var(--k-space-1);
+  padding-inline-start: var(--k-space-6);
+}
+
+.projectEmpty {
+  padding-inline-start: calc(var(--k-space-2) + var(--k-space-6));
 }
 
 .conversationList {
@@ -289,6 +334,10 @@
   animation: conversationStatusPulse var(--k-duration-status-pulse-slow) ease-in-out infinite;
 }
 
+.conversationStatusQueued {
+  background: var(--k-color-text-muted);
+}
+
 .conversationStatusNeedsYou {
   background: var(--k-color-status-needs-you);
 }
@@ -318,6 +367,12 @@
   padding-inline-end: calc(var(--k-control-height-sm) + var(--k-space-1));
 }
 
+.projectItem > .conversationItem:hover .conversationButton,
+.projectItem > .conversationItem:focus-within .conversationButton,
+.projectItem > .conversationItem.conversationMenuOpen .conversationButton {
+  padding-inline-end: calc(var(--k-control-height-sm) * 2 + var(--k-space-1));
+}
+
 @keyframes conversationStatusPulse {
   0%,
   100% {
@@ -342,7 +397,8 @@
     pointer-events: auto;
   }
 
-  .conversationActions {
+  .conversationActions,
+  .projectActions {
     opacity: 1;
     pointer-events: auto;
   }
@@ -357,6 +413,10 @@
 
   .conversationItem:not(.terminalConversationItem) .conversationButton {
     padding-inline-end: calc(var(--k-control-height-sm) + var(--k-space-1));
+  }
+
+  .projectItem > .conversationItem:not(.terminalConversationItem) .conversationButton {
+    padding-inline-end: calc(var(--k-control-height-sm) * 2 + var(--k-space-1));
   }
 }
 

@@ -97,6 +97,22 @@ export const t = {
     projects: "Projetos",
     newProject: "Novo projeto",
     noProjects: "Nenhum projeto ainda",
+    projectsLoadError: "Não foi possível carregar os projetos.",
+    projectsSaveFailed: "Não foi possível salvar quais projetos ficam abertos.",
+    projectList: "Projetos",
+    projectConversations: (name: string) => `Conversas de ${name}`,
+    projectNoConversations: "Nenhuma conversa",
+    projectDescription: (conversationCount: number, status: string) =>
+      [conversationCount === 1 ? "1 conversa" : `${conversationCount} conversas`, status]
+        .filter(Boolean)
+        .join(", "),
+    projectStatusWorking: "com conversa trabalhando",
+    projectStatusQueued: "com conversa na fila",
+    projectStatusWaiting: "com conversa esperando você",
+    newConversationInProject: (name: string) => `Nova conversa em ${name}`,
+    projectActions: (name: string) => `Ações de ${name}`,
+    editProject: "Editar",
+    removeProject: "Remover",
     conversations: "Conversas",
     agentConversations: "Conversas com agentes",
     conversationError: "Resposta com erro",
@@ -111,6 +127,7 @@ export const t = {
     pinnedConversations: "Fixadas",
     recentConversations: "Recentes",
     pinnedState: "Fixada",
+    separateCopyState: "Em cópia separada",
     archivedState: "Arquivada",
     conversationActions: (title: string) => `Ações da conversa: ${title}`,
     pinConversation: "Fixar",
@@ -129,6 +146,70 @@ export const t = {
     exited: "Encerrado",
     settings: "Configurações",
     availableSoon: "Disponível em breve",
+  },
+  projects: {
+    createTitle: "Novo projeto",
+    createDescription: "Um projeto liga conversas a uma pasta do seu computador.",
+    editTitle: "Editar projeto",
+    nameLabel: "Nome",
+    nameRequired: "Informe um nome para o projeto.",
+    nameTooLong: "O nome pode ter até 80 caracteres.",
+    iconLabel: "Ícone",
+    iconTriggerAccessibleName: (icon: string) => `Ícone: ${icon}`,
+    iconNames: {
+      folder: "Pasta de arquivos",
+      code: "Código",
+      terminal: "Terminal",
+      globe: "Globo",
+      rocket: "Foguete",
+      "book-open": "Livro",
+      box: "Caixa",
+      package: "Pacote",
+      database: "Banco de dados",
+      server: "Servidor",
+      cloud: "Nuvem",
+      cpu: "Processador",
+      "git-branch": "Ramificação",
+      wrench: "Ferramenta",
+      "flask-conical": "Laboratório",
+      "chart-column": "Gráfico",
+      briefcase: "Maleta",
+      house: "Casa",
+      lightbulb: "Lâmpada",
+      palette: "Paleta",
+      image: "Imagem",
+      music: "Música",
+      "gamepad-2": "Jogo",
+      smartphone: "Celular",
+    } as Record<string, string>,
+    folderLabel: "Pasta",
+    folderPlaceholder: "/home/usuario/projeto",
+    chooseFolder: "Escolher…",
+    chooseFolderAccessibleName: "Escolher a pasta do projeto",
+    folderRequired: "Informe o caminho da pasta.",
+    folderMustBeAbsolute: "Informe um caminho absoluto.",
+    folderChooseFailed: "Não foi possível escolher a pasta.",
+    folderReadOnlyHint: "A pasta não muda depois que o projeto é criado.",
+    defaultAgentLabel: "Agente padrão",
+    lastUsedAgent: "Último usado",
+    agentNotFound: "não encontrado",
+    agentNotFoundAccessibleName: (name: string) => `${name}, não encontrado`,
+    agentsLoadFailed: "Não foi possível carregar os agentes encontrados.",
+    cancel: "Cancelar",
+    create: "Criar projeto",
+    creating: "Criando…",
+    save: "Salvar",
+    saving: "Salvando…",
+    saveFailed: "Não foi possível salvar o projeto.",
+    noBridge: "Sem conexão com o serviço",
+    removeTitle: (name: string) => `Remover ${name}?`,
+    removeKeepsCopies: "As cópias separadas continuam no disco.",
+    removeDescription:
+      "A pasta e os arquivos não são apagados. As conversas do projeto viram conversas soltas.",
+    removeAction: "Remover projeto",
+    removing: "Removendo…",
+    removeFailed: "Não foi possível remover o projeto.",
+    stripAccessibleName: (name: string, path: string) => `Projeto ${name}, pasta ${path}`,
   },
   service: {
     connected: "Serviço conectado",
@@ -261,6 +342,14 @@ export const t = {
     researchingAction: (action: string) => `Pesquisando ${action}`,
     waiting: "Precisa de você",
     idle: "Pronto",
+    queued: "Na fila",
+    queueLabel: (position: number, running: number) => {
+      const prefix = position > 1 ? `Na fila, posição ${position}` : "Na fila";
+      if (running < 1) return "Na fila";
+      return `${prefix}: ${running === 1 ? "1 agente trabalhando" : `${running} agentes trabalhando`}`;
+    },
+    queueAdjustLimit: "Ajustar limite",
+    queueStopTooltip: "Tirar da fila",
     conversationError: "A resposta falhou",
     stop: "Parar",
     messageInput: "Pergunte qualquer coisa · @ arquivos, / comandos",
@@ -431,6 +520,126 @@ export const t = {
     listAccessibleName: "Histórico das suas mensagens",
     messageLabel: (message: string) => `Mensagem sua: ${message}`,
   },
+  worktrees: {
+    offerTitle: "Este projeto já tem um agente trabalhando",
+    offerDescription:
+      "Dois agentes na mesma pasta podem alterar os mesmos arquivos. Uma cópia separada usa outra pasta e outra branch, e depois você traz o trabalho de volta com um clique.",
+    offerNotice:
+      "A cópia começa do último commit. Não vem com mudanças não salvas, node_modules nem arquivos ignorados, como .env.",
+    useCopy: "Usar cópia separada",
+    creatingCopy: "Criando cópia…",
+    keepFolder: "Continuar na mesma pasta",
+    cancel: "Cancelar",
+    createCopyFailed: "Não foi possível criar a cópia separada.",
+    stripBranch: (branch: string) => `Cópia separada · ${branch}`,
+    bringBack: "Trazer de volta",
+    removeCopy: "Remover cópia",
+    checking: "Verificando…",
+    merged: (target: string) => `Trazido para ${target}.`,
+    mergePreviewFailed: "Não foi possível verificar o que será trazido.",
+    statusFailed: "Não foi possível verificar esta cópia.",
+    mergeTitle: (target: string | null) =>
+      target ? `Trazer de volta para ${target}?` : "Trazer de volta",
+    close: "Fechar",
+    bring: "Trazer",
+    bringing: "Trazendo…",
+    mergeFailed: "Não foi possível trazer o trabalho de volta.",
+    blocked: {
+      missing: "A pasta da cópia não está mais no disco.",
+      busy: "Há conversa trabalhando nesta cópia. Espere terminar.",
+      "target-busy": "Há um agente trabalhando na pasta do projeto. Espere terminar.",
+      detached:
+        "A pasta do projeto não está em nenhuma branch. Escolha uma branch antes de trazer.",
+      "target-merging": (target: string) =>
+        `A branch ${target} está no meio de um merge. Conclua ou cancele antes.`,
+      "target-dirty": (target: string) =>
+        `A branch ${target} tem alterações não salvas. Salve ou descarte antes de trazer.`,
+      nothing: "Não há nada novo nesta cópia para trazer.",
+    },
+    targetDirtyList: "Arquivos com alterações não salvas",
+    conflictsText: (target: string) =>
+      `Estes arquivos têm conflito com ${target}. O Karont não resolve conflitos sozinho.`,
+    conflictsList: "Arquivos em conflito",
+    targetFallback: "a branch do projeto",
+    filesArrive: (count: number, target: string) =>
+      count === 1 ? `1 arquivo chega em ${target}.` : `${count} arquivos chegam em ${target}.`,
+    uncommittedBecomeCommit: (count: number) =>
+      count === 1
+        ? "1 arquivo ainda não salvo vira um commit na branch da cópia."
+        : `${count} arquivos ainda não salvos viram um commit na branch da cópia.`,
+    removeTitle: "Remover esta cópia?",
+    removeDescription:
+      "A pasta da cópia será apagada. A conversa continua, mas não vai conseguir mandar novas mensagens.",
+    removeBusy: (count: number) =>
+      count === 1
+        ? "Há 1 conversa trabalhando nesta cópia. Espere terminar para remover."
+        : `Há ${count} conversas trabalhando nesta cópia. Espere terminar para remover.`,
+    removeDirty: (count: number) =>
+      count === 1
+        ? "1 arquivo com mudanças não salvas será perdido."
+        : `${count} arquivos com mudanças não salvas serão perdidos.`,
+    removeUnmerged: (count: number) =>
+      count === 1
+        ? "1 commit ainda não foi trazido. A branch fica guardada no repositório."
+        : `${count} commits ainda não foram trazidos. A branch fica guardada no repositório.`,
+    removing: "Removendo…",
+    removeFailed: "Não foi possível remover a cópia.",
+  },
+  restore: {
+    filesChanged: (count: number) =>
+      count === 1 ? "1 arquivo alterado" : `${count} arquivos alterados`,
+    viewChanges: "Ver mudanças",
+    undo: "Desfazer",
+    undone: "Mudanças desfeitas",
+    incomplete: "Não foi possível registrar as mudanças desta resposta. Não há desfazer.",
+    unavailable:
+      "Não foi possível guardar o ponto de restauração. Não há desfazer para esta resposta.",
+    noGit: "Esta pasta não usa Git, então não dá para desfazer o que o agente alterar.",
+    home: "Conversas na pasta pessoal não têm desfazer.",
+    panelTitle: "Mudanças desta resposta",
+    closePanel: "Fechar mudanças",
+    concurrentChanges:
+      "Outro agente trabalhou neste repositório ao mesmo tempo. Estas mudanças podem incluir o trabalho dele.",
+    ignoredFiles: "Arquivos ignorados pelo .gitignore não aparecem aqui.",
+    truncatedFiles: (limit: number) => `Mostrando os primeiros ${limit} arquivos.`,
+    loadingChanges: "Carregando mudanças…",
+    changesFailed: "Não foi possível carregar as mudanças.",
+    noChanges: "Nenhum arquivo alterado.",
+    filesListLabel: "Arquivos alterados",
+    fileStatus: {
+      added: "novo",
+      modified: "alterado",
+      deleted: "apagado",
+      renamed: "renomeado",
+    },
+    renamed: (oldPath: string, path: string) => `${oldPath} → ${path}`,
+    binary: "binário",
+    loadingDiff: "Carregando diferenças…",
+    diffFailed: "Não foi possível carregar as diferenças deste arquivo.",
+    diffBinary: "Arquivo binário: não há diferenças para mostrar.",
+    diffTruncated: "As diferenças são grandes e foram cortadas aqui.",
+    diffEmpty: "Sem diferenças de texto neste arquivo.",
+    undoPreviewing: "Verificando…",
+    undoPreviewFailed: "Não foi possível verificar o que será desfeito.",
+    undoFailed: "Não foi possível desfazer as mudanças.",
+    undoTitle: "Desfazer as mudanças desta resposta?",
+    undoDescription: (count: number) =>
+      count === 1
+        ? "1 arquivo volta a como estava antes desta mensagem. Sua branch e seu stash não mudam."
+        : `${count} arquivos voltam a como estavam antes desta mensagem. Sua branch e seu stash não mudam.`,
+    userChanged: "Você alterou estes arquivos depois:",
+    userChangedKept: "A versão atual será substituída, mas fica guardada no Git.",
+    userChangedList: "Arquivos que você alterou depois",
+    headMoved: "O agente fez commit. Os arquivos voltam, mas o commit continua na branch.",
+    concurrentUndo:
+      "Outro agente trabalhou neste repositório ao mesmo tempo. Desfazer pode apagar o trabalho dele.",
+    submodulesSkipped: "Submódulos não são alterados:",
+    submodulesList: "Submódulos que não serão alterados",
+    ignoredNotRestored: "Arquivos ignorados pelo .gitignore não são restaurados.",
+    cancel: "Cancelar",
+    confirmUndo: "Desfazer",
+    undoing: "Desfazendo…",
+  },
   workspace: {
     panels: "Painéis de conversas",
     split: "Dividir",
@@ -489,6 +698,13 @@ export const t = {
     closeBehaviorQuit: "Fechar tudo",
     closeBehaviorQuitDescription: "Encerra agentes e terminais e sai do Karont.",
     preferenceSaved: "Preferência salva",
+    agentLimitTitle: "Agentes ao mesmo tempo",
+    agentLimitDescription:
+      "Acima desse limite, novas mensagens esperam na fila. Agente aguardando sua resposta continua ocupando vaga.",
+    agentLimitDecrease: "Diminuir limite",
+    agentLimitIncrease: "Aumentar limite",
+    agentLimitValue: (limit: number) => `${limit} ${limit === 1 ? "agente" : "agentes"}`,
+    agentLimitSaveFailed: "Não foi possível salvar o limite de agentes.",
     userNameLabel: "Como te chamar",
     userNamePlaceholder: "Seu primeiro nome",
     userNameSave: "Salvar nome",

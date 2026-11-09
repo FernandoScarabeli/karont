@@ -272,6 +272,8 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
         <NewConversationView
           dragHandleProps={dragHandleProps}
           headerActions={renderToolbar(pane)}
+          key={pane.view.projectId ?? "loose"}
+          projectId={pane.view.projectId}
           titleRef={isActive ? titleRef : undefined}
         />
       );

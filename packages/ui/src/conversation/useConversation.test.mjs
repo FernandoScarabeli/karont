@@ -210,3 +210,25 @@ test("ignora deltas já incluídos na foto ao reabrir uma resposta", () => {
   assert.equal(next.messagesById["mensagem-1"].parts[0].markdown, "hello world!");
   assert.equal(next.liveText, "!");
 });
+
+test("sair da fila aplica messageStartedAt na mensagem que já está na tela", () => {
+  const queued = stateWithStreamingMessage();
+  const message = { ...queued.messagesById["mensagem-1"], startedAt: undefined };
+  delete message.startedAt;
+  const state = { ...queued, messagesById: { "mensagem-1": message } };
+  const next = reducer(state, {
+    type: "event",
+    event: {
+      event: "conversation.stateChanged",
+      payload: {
+        conversation: { ...conversation, state: "working" },
+        messageId: "mensagem-1",
+        messageStatus: "streaming",
+        messageStartedAt: 5_000,
+      },
+    },
+  });
+
+  assert.equal(next.messagesById["mensagem-1"].startedAt, 5_000);
+  assert.equal(next.conversation.state, "working");
+});

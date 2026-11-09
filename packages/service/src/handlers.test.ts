@@ -1,5 +1,17 @@
 import assert from "node:assert/strict";
-import { access, chmod, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import {
+  access,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -8,6 +20,7 @@ import {
   type Conversation,
   type ParsedRequest,
   parseRequest,
+  parseResult,
 } from "@karont/contract";
 import type { AdapterFactory, AgentAdapter, AgentAdapterRegistration } from "./agents/adapter.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
@@ -877,6 +890,178 @@ test("falha ao gravar pasta recente não transforma terminals.open em erro", asy
   await handlers.closeTerminals();
 });
 
+function projectHandlers(root: string, events: AnyEvent[]) {
+  const db = openDatabase(path.join(root, "karont.db"));
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void events.push(event),
+    env: { PATH: "" },
+    homeDir: root,
+  });
+  return { db, handlers };
+}
+
+test("projects: CRUD, pasta duplicada, pasta inexistente e evento projects.changed", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-projects-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, "app");
+  await mkdir(folder);
+  const file = path.join(root, "arquivo.txt");
+  await writeFile(file, "x");
+  const events: AnyEvent[] = [];
+  const { db, handlers } = projectHandlers(root, events);
+  context.after(() => db.close());
+
+  const created = (await handlers.handle(
+    request("projects.create", { name: "App", icon: "folder", path: `${folder}/../app` }),
+    connection([]),
+  )) as { project: { id: string; path: string; defaultAgent: string | null } };
+  assert.equal(created.project.path, folder);
+  assert.equal(created.project.defaultAgent, null);
+  assert.deepEqual(
+    events.map((event) => event.event),
+    ["projects.changed"],
+  );
+
+  await assert.rejects(
+    handlers.handle(
+      request("projects.create", { name: "Outro", icon: "x", path: folder }),
+      connection([]),
+    ),
+    (error) =>
+      error instanceof ServiceError &&
+      error.code === "invalid_request" &&
+      error.message === "Esta pasta já pertence a outro projeto.",
+  );
+  await assert.rejects(
+    handlers.handle(
+      request("projects.create", { name: "Sumiu", icon: "x", path: path.join(root, "nada") }),
+      connection([]),
+    ),
+    (error) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+  await assert.rejects(
+    handlers.handle(
+      request("projects.create", { name: "Arquivo", icon: "x", path: file }),
+      connection([]),
+    ),
+    (error) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+  assert.equal(events.length, 1);
+
+  const updated = (await handlers.handle(
+    request("projects.update", { id: created.project.id, name: "App 2", defaultAgent: "codex" }),
+    connection([]),
+  )) as { project: { name: string; path: string; defaultAgent: string | null } };
+  assert.equal(updated.project.name, "App 2");
+  assert.equal(updated.project.defaultAgent, "codex");
+  assert.equal(updated.project.path, folder);
+  assert.equal(events.length, 2);
+  const changed = events.at(-1);
+  assert.equal(changed?.event === "projects.changed" && changed.payload.projects[0]?.name, "App 2");
+
+  const withPath = parseRequest({
+    type: "request",
+    id: "1",
+    method: "projects.update",
+    params: { id: created.project.id, path: root },
+  });
+  assert.equal(withPath.ok, false);
+  await assert.rejects(
+    handlers.handle(request("projects.update", { id: "nao-existe", name: "x" }), connection([])),
+    (error) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+  assert.equal(events.length, 2);
+
+  const listed = (await handlers.handle(request("projects.list", {}), connection([]))) as {
+    projects: unknown[];
+  };
+  assert.equal(listed.projects.length, 1);
+
+  assert.deepEqual(
+    await handlers.handle(request("projects.remove", { id: created.project.id }), connection([])),
+    { removed: true },
+  );
+  assert.equal(events.length, 3);
+  const afterRemove = events.at(-1);
+  assert.deepEqual(afterRemove?.event === "projects.changed" && afterRemove.payload.projects, []);
+  assert.equal((await stat(folder)).isDirectory(), true);
+  await assert.rejects(
+    handlers.handle(request("projects.remove", { id: created.project.id }), connection([])),
+    (error) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+});
+
+test("conversation.create valida projectId; branch preserva; remover projeto solta a conversa", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-project-conv-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, "app");
+  const elsewhere = path.join(root, "worktree");
+  await mkdir(folder);
+  await mkdir(elsewhere);
+  const events: AnyEvent[] = [];
+  const { db, handlers } = projectHandlers(root, events);
+  context.after(() => db.close());
+
+  const { project } = (await handlers.handle(
+    request("projects.create", { name: "App", icon: "folder", path: folder }),
+    connection([]),
+  )) as { project: { id: string } };
+
+  await assert.rejects(
+    handlers.handle(
+      request("conversation.create", { agent: "claude", cwd: folder, projectId: "nao-existe" }),
+      connection([]),
+    ),
+    (error) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+
+  const { conversation } = (await handlers.handle(
+    request("conversation.create", { agent: "claude", cwd: elsewhere, projectId: project.id }),
+    connection([]),
+  )) as { conversation: Conversation };
+  assert.equal(conversation.projectId, project.id);
+  assert.equal(conversation.cwd, elsewhere);
+
+  const now = new Date().toISOString();
+  addMessage(db, {
+    id: "agent-1",
+    conversationId: conversation.id,
+    author: "agent",
+    status: "done",
+    parts: [{ id: "p1", type: "text", markdown: "Oi" }],
+    createdAt: now,
+    updatedAt: now,
+  });
+  db.prepare(
+    "INSERT INTO agent_sessions (conversation_id,session_id,updated_at) VALUES (?,?,?)",
+  ).run(conversation.id, "sessao-1", now);
+
+  const branched = (await handlers.handle(
+    request("conversation.branch", { id: conversation.id, messageId: "agent-1" }),
+    connection([]),
+  )) as { conversation: Conversation };
+  assert.equal(branched.conversation.projectId, project.id);
+
+  await handlers.handle(request("projects.remove", { id: project.id }), connection([]));
+  for (const id of [conversation.id, branched.conversation.id]) {
+    const got = (await handlers.handle(request("conversation.get", { id }), connection([]))) as {
+      conversation: Conversation;
+      messages: unknown[];
+    };
+    assert.equal("projectId" in got.conversation, false);
+    assert.equal(got.messages.length, 1);
+  }
+  const session = db
+    .prepare("SELECT session_id FROM agent_sessions WHERE conversation_id=?")
+    .get(conversation.id) as { session_id: string } | undefined;
+  assert.equal(session?.session_id, "sessao-1");
+  await handlers.closeAgents();
+});
+
 class TestPty implements TerminalPty {
   readonly #exitListeners: Array<(event: { exitCode: number; signal?: number }) => void> = [];
 
@@ -930,3 +1115,492 @@ function tempFs(allowedRoots: string[]): AgentDetectionFs {
     },
   };
 }
+
+test("fila: queue.status bate com queue.changed e settings.set do limite drena a fila", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-fila-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const events: AnyEvent[] = [];
+  const db = openDatabase(path.join(root, "karont.db"));
+  const adapterFactory: AdapterFactory = (_conversation, emit) => ({
+    start: async () => undefined,
+    send: async () => emit({ kind: "state", state: "working" }),
+    respond: async () => undefined,
+    interrupt: async () => undefined,
+    dispose: async () => undefined,
+  });
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void events.push(event),
+    env: { PATH: "", KARONT_DISABLE_AGENT_DETECTION: "1" },
+    homeDir: root,
+    adapterFactory,
+  });
+  context.after(async () => {
+    await handlers.closeAgents();
+    db.close();
+  });
+  const conn = connection([]);
+  await handlers.handle(request("settings.set", { key: "agents.maxConcurrent", value: 1 }), conn);
+  const ids: string[] = [];
+  for (const title of ["A", "B"]) {
+    const created = (await handlers.handle(
+      request("conversation.create", { agent: "claude", cwd: root, mode: "edit", title }),
+      conn,
+    )) as { conversation: Conversation };
+    ids.push(created.conversation.id);
+    await handlers.handle(
+      request("conversation.send", { id: created.conversation.id, text: title }),
+      conn,
+    );
+  }
+  const status = await handlers.handle(request("queue.status", {}), conn);
+  assert.deepEqual(status, { limit: 1, running: 1, queuedConversationIds: [ids[1]] });
+  const lastChanged = [...events].reverse().find((event) => event.event === "queue.changed");
+  assert.deepEqual(lastChanged?.payload, status);
+
+  await handlers.handle(request("settings.set", { key: "agents.maxConcurrent", value: 2 }), conn);
+  assert.deepEqual(await handlers.handle(request("queue.status", {}), conn), {
+    limit: 2,
+    running: 2,
+    queuedConversationIds: [],
+  });
+});
+
+test("restore.*: lista, mudanças, diff, prévia e desfazer pelos métodos, com evento e erros claros", async (context) => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "ks-restore-")));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const repo = path.join(root, "repo");
+  await mkdir(repo);
+  const git = (...args: string[]) => {
+    const env = { ...process.env };
+    for (const name of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"]) delete env[name];
+    return execFileSync("git", args, { cwd: repo, env, encoding: "utf8" });
+  };
+  git("init", "-q", "-b", "main");
+  git("config", "user.name", "Teste");
+  git("config", "user.email", "teste@example.com");
+  await writeFile(path.join(repo, "antigo.txt"), "antigo\n");
+  git("add", "-A");
+  git("commit", "-q", "-m", "inicial");
+
+  const events: AnyEvent[] = [];
+  const db = openDatabase(path.join(root, "karont.db"));
+  const emitters = new Map<string, Parameters<AdapterFactory>[1]>();
+  let agentWrote = false;
+  const adapterFactory: AdapterFactory = (conversation, emit) => {
+    emitters.set(conversation.id, emit);
+    return {
+      start: async () => undefined,
+      send: async () => {
+        await writeFile(path.join(repo, "antigo.txt"), "mudado\n");
+        await writeFile(path.join(repo, "criado.txt"), "criado\n");
+        agentWrote = true;
+        emit({ kind: "state", state: "working" });
+      },
+      respond: async () => undefined,
+      interrupt: async () => undefined,
+      dispose: async () => undefined,
+    };
+  };
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void events.push(event),
+    env: { PATH: process.env.PATH ?? "", KARONT_DISABLE_AGENT_DETECTION: "1" },
+    homeDir: root,
+    adapterFactory,
+  });
+  context.after(async () => {
+    await handlers.closeAgents();
+    db.close();
+  });
+  const conn = connection([]);
+  const call = async <M extends Parameters<typeof parseResult>[0]>(method: M, params: unknown) => {
+    const result = await handlers.handle(request(method, params), conn);
+    const parsed = parseResult(method, result);
+    assert.equal(parsed.ok, true, `${method} devolve o formato do contrato`);
+    return result as never;
+  };
+  const created = (await handlers.handle(
+    request("conversation.create", { agent: "claude", cwd: repo, mode: "edit", title: "R" }),
+    conn,
+  )) as { conversation: Conversation };
+  const conversationId = created.conversation.id;
+  const sent = (await handlers.handle(
+    request("conversation.send", { id: conversationId, text: "mexa" }),
+    conn,
+  )) as { agentMessage: { id: string } };
+  const messageId = sent.agentMessage.id;
+  for (let attempt = 0; attempt < 300 && !agentWrote; attempt += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(agentWrote, true);
+  emitters.get(conversationId)?.({ kind: "turn-end", status: "done" });
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    const listed = (await call("restore.list", { conversationId })) as {
+      points: Array<{ state: string }>;
+    };
+    if (listed.points[0]?.state === "ready") break;
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  const changedEvent = events.find((event) => event.event === "restore.changed");
+  assert.equal(changedEvent?.payload.point.messageId, messageId);
+  assert.equal(changedEvent?.payload.point.state, "ready");
+  assert.equal(changedEvent?.payload.point.changedFiles, 2);
+
+  const changes = (await call("restore.changes", { conversationId, messageId })) as {
+    files: Array<{ path: string }>;
+  };
+  assert.deepEqual(changes.files.map((file) => file.path).sort(), ["antigo.txt", "criado.txt"]);
+  const diff = (await call("restore.diff", {
+    conversationId,
+    messageId,
+    path: "antigo.txt",
+  })) as { patch: string };
+  assert.match(diff.patch, /\+mudado/);
+  await assert.rejects(
+    handlers.handle(request("restore.diff", { conversationId, messageId, path: "fora.txt" }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+  await assert.rejects(
+    handlers.handle(request("restore.changes", { conversationId, messageId: "nada" }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+  await assert.rejects(
+    handlers.handle(request("restore.list", { conversationId: "nada" }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "unavailable",
+  );
+  const preview = await call("restore.undoPreview", { conversationId, messageId });
+  assert.deepEqual(preview, {
+    files: 2,
+    userChanged: [],
+    headMoved: false,
+    concurrent: false,
+    submodulesSkipped: [],
+  });
+  assert.deepEqual(await call("restore.undo", { conversationId, messageId }), {
+    restored: 1,
+    removed: 1,
+  });
+  assert.equal(await readFile(path.join(repo, "antigo.txt"), "utf8"), "antigo\n");
+  assert.equal(
+    await stat(path.join(repo, "criado.txt")).then(
+      () => true,
+      () => false,
+    ),
+    false,
+  );
+  const lastEvent = [...events].reverse().find((event) => event.event === "restore.changed");
+  assert.equal(lastEvent?.payload.point.state, "undone");
+  await assert.rejects(
+    handlers.handle(request("restore.undo", { conversationId, messageId }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "unavailable",
+  );
+});
+
+async function worktreeScenario(context: { after: (fn: () => Promise<void> | void) => void }) {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "ks-wt-h-")));
+  const repo = path.join(root, "repo");
+  const dataDir = path.join(root, "data");
+  await mkdir(repo);
+  const git = (cwd: string, ...args: string[]) => {
+    const env = { ...process.env };
+    for (const name of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"]) delete env[name];
+    return execFileSync("git", args, { cwd, env, encoding: "utf8" });
+  };
+  git(repo, "init", "-q", "-b", "main");
+  git(repo, "config", "user.name", "Teste");
+  git(repo, "config", "user.email", "teste@example.com");
+  await writeFile(path.join(repo, "antigo.txt"), "antigo\n");
+  git(repo, "add", "-A");
+  git(repo, "commit", "-q", "-m", "inicial");
+
+  const events: AnyEvent[] = [];
+  const db = openDatabase(path.join(root, "karont.db"));
+  const emitters = new Map<string, Parameters<AdapterFactory>[1]>();
+  const writes: { cwd: string; wrote: boolean } = { cwd: "", wrote: false };
+  const adapterFactory: AdapterFactory = (conversation, emit) => {
+    emitters.set(conversation.id, emit);
+    return {
+      start: async () => undefined,
+      send: async () => {
+        await writeFile(path.join(conversation.cwd, "antigo.txt"), "mudado\n");
+        await writeFile(path.join(conversation.cwd, "criado.txt"), "criado\n");
+        writes.cwd = conversation.cwd;
+        writes.wrote = true;
+        emit({ kind: "state", state: "working" });
+      },
+      respond: async () => undefined,
+      interrupt: async () => undefined,
+      dispose: async () => undefined,
+    };
+  };
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void events.push(event),
+    env: { PATH: process.env.PATH ?? "", KARONT_DISABLE_AGENT_DETECTION: "1" },
+    homeDir: root,
+    dataDir,
+    adapterFactory,
+  });
+  context.after(async () => {
+    await handlers.closeAgents();
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const conn = connection([]);
+  const call = async <M extends Parameters<typeof parseResult>[0]>(method: M, params: unknown) => {
+    const result = await handlers.handle(request(method, params), conn);
+    const parsed = parseResult(method, result);
+    assert.equal(parsed.ok, true, `${method} devolve o formato do contrato`);
+    return result as never;
+  };
+  const { project } = (await call("projects.create", {
+    name: "Repo",
+    icon: "folder",
+    path: repo,
+  })) as { project: { id: string } };
+  return { root, repo, dataDir, git, events, db, handlers, conn, call, project, emitters, writes };
+}
+
+test("worktrees.*: métodos, eventos, vínculo da conversa e remoção mantém as mensagens", async (context) => {
+  const { repo, dataDir, git, events, db, handlers, conn, call, project } =
+    await worktreeScenario(context);
+  const created = (await call("worktrees.create", { projectId: project.id })) as {
+    worktree: { id: string; path: string; branch: string; projectId: string };
+  };
+  const { worktree } = created;
+  assert.equal(path.dirname(worktree.path), path.join(dataDir, "worktrees"));
+  const changedEvents = () => events.filter((event) => event.event === "worktrees.changed");
+  assert.equal(changedEvents().length, 1);
+  assert.equal(changedEvents()[0]?.payload.projectId, project.id);
+  assert.deepEqual(
+    changedEvents()[0]?.payload.worktrees.map((entry: { id: string }) => entry.id),
+    [worktree.id],
+  );
+  const listed = (await call("worktrees.list", { projectId: project.id })) as {
+    worktrees: { id: string }[];
+  };
+  assert.deepEqual(
+    listed.worktrees.map((entry) => entry.id),
+    [worktree.id],
+  );
+  assert.deepEqual(await call("worktrees.status", { id: worktree.id }), {
+    dirtyFiles: 0,
+    unmergedCommits: 0,
+    busyConversations: 0,
+    missing: false,
+  });
+
+  // cwd errado e cópia inexistente: invalid_request.
+  for (const params of [
+    { cwd: repo, worktreeId: worktree.id },
+    { cwd: path.join(worktree.path, "."), worktreeId: "nao-existe" },
+    { cwd: path.dirname(worktree.path), worktreeId: worktree.id },
+  ]) {
+    await assert.rejects(
+      handlers.handle(
+        request("conversation.create", { agent: "claude", mode: "edit", ...params }),
+        conn,
+      ),
+      (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+    );
+  }
+  const { conversation } = (await call("conversation.create", {
+    agent: "claude",
+    cwd: worktree.path,
+    worktreeId: worktree.id,
+    projectId: project.id,
+    mode: "edit",
+  })) as { conversation: Conversation };
+  assert.equal(conversation.worktreeId, worktree.id);
+  assert.equal(conversation.cwd, worktree.path);
+
+  const now = new Date().toISOString();
+  addMessage(db, {
+    id: "agent-1",
+    conversationId: conversation.id,
+    author: "agent",
+    status: "done",
+    parts: [{ id: "p1", type: "text", markdown: "Oi" }],
+    createdAt: now,
+    updatedAt: now,
+  });
+  const branched = (await call("conversation.branch", {
+    id: conversation.id,
+    messageId: "agent-1",
+  })) as { conversation: Conversation };
+  assert.equal(branched.conversation.worktreeId, worktree.id);
+  assert.equal(branched.conversation.cwd, worktree.path);
+
+  // Remover: conversas ficam sem vínculo e mantêm as mensagens.
+  const removed = await call("worktrees.remove", { id: worktree.id });
+  assert.deepEqual(removed, { removed: true, branchKept: false });
+  assert.equal(changedEvents().length, 2);
+  assert.deepEqual(changedEvents()[1]?.payload.worktrees, []);
+  const after = (await call("conversation.get", { id: conversation.id })) as {
+    conversation: Conversation;
+    messages: unknown[];
+  };
+  assert.equal(after.conversation.worktreeId, undefined);
+  assert.equal(after.messages.length, 1);
+  const afterBranch = (await call("conversation.get", { id: branched.conversation.id })) as {
+    conversation: Conversation;
+    messages: unknown[];
+  };
+  assert.equal(afterBranch.conversation.worktreeId, undefined);
+  assert.equal(afterBranch.messages.length, 1);
+  assert.equal(git(repo, "worktree", "list").trim().split("\n").length, 1);
+  assert.deepEqual(await call("worktrees.list", { projectId: project.id }), { worktrees: [] });
+
+  await assert.rejects(
+    handlers.handle(request("worktrees.remove", { id: worktree.id }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+});
+
+test("worktrees.mergePreview e worktrees.merge: contrato, evento com merged_at e erro em português", async (context) => {
+  const { repo, git, events, handlers, conn, call, project } = await worktreeScenario(context);
+  const { worktree } = (await call("worktrees.create", { projectId: project.id })) as {
+    worktree: { id: string; path: string };
+  };
+  const changedEvents = () => events.filter((event) => event.event === "worktrees.changed");
+
+  const nothing = (await call("worktrees.mergePreview", { id: worktree.id })) as {
+    blocked: string | null;
+  };
+  assert.equal(nothing.blocked, "nothing");
+  await assert.rejects(
+    handlers.handle(request("worktrees.merge", { id: worktree.id }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+  assert.equal(changedEvents().length, 1);
+
+  await writeFile(path.join(worktree.path, "trazido.txt"), "trazido\n");
+  const preview = await call("worktrees.mergePreview", { id: worktree.id });
+  assert.deepEqual(preview, {
+    targetBranch: "main",
+    commits: 1,
+    uncommittedFiles: 1,
+    changedFiles: 1,
+    conflicts: [],
+    blocked: null,
+    targetDirtyFiles: [],
+  });
+  assert.equal(changedEvents().length, 1, "a prévia não emite evento");
+
+  const merged = (await call("worktrees.merge", { id: worktree.id })) as {
+    merged: true;
+    commit: string;
+    targetBranch: string;
+  };
+  assert.equal(merged.targetBranch, "main");
+  assert.equal(merged.commit, git(repo, "rev-parse", "HEAD").trim());
+  assert.equal(await readFile(path.join(repo, "trazido.txt"), "utf8"), "trazido\n");
+  assert.equal(changedEvents().length, 2);
+  const listed = changedEvents()[1]?.payload.worktrees as { id: string; mergedAt: string | null }[];
+  assert.notEqual(listed.find((entry) => entry.id === worktree.id)?.mergedAt, null);
+  assert.equal(
+    (
+      (await call("worktrees.list", { projectId: project.id })) as {
+        worktrees: { mergedAt: string | null }[];
+      }
+    ).worktrees[0]?.mergedAt,
+    listed[0]?.mergedAt,
+  );
+  await assert.rejects(
+    handlers.handle(request("worktrees.mergePreview", { id: "nada" }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+});
+
+test("worktrees.remove: conversa ocupada bloqueia mesmo com force e erros chegam em português", async (context) => {
+  const { db, handlers, conn, call, project } = await worktreeScenario(context);
+  const { worktree } = (await call("worktrees.create", { projectId: project.id })) as {
+    worktree: { id: string; path: string };
+  };
+  const { conversation } = (await call("conversation.create", {
+    agent: "claude",
+    cwd: worktree.path,
+    worktreeId: worktree.id,
+    mode: "edit",
+  })) as { conversation: Conversation };
+  db.prepare("UPDATE conversations SET state='working' WHERE id=?").run(conversation.id);
+  await assert.rejects(
+    handlers.handle(request("worktrees.remove", { id: worktree.id, force: true }), conn),
+    (error: unknown) =>
+      error instanceof ServiceError &&
+      error.code === "invalid_request" &&
+      /trabalhando/.test(error.message),
+  );
+  assert.equal(
+    ((await call("worktrees.status", { id: worktree.id })) as { busyConversations: number })
+      .busyConversations,
+    1,
+  );
+  await assert.rejects(
+    handlers.handle(request("worktrees.create", { projectId: "nada" }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+});
+
+test("restore.*: numa conversa em cópia separada a raiz é a da cópia, não a do projeto", async (context) => {
+  const { repo, events, handlers, conn, call, project, emitters, writes } =
+    await worktreeScenario(context);
+  const { worktree } = (await call("worktrees.create", { projectId: project.id })) as {
+    worktree: { id: string; path: string };
+  };
+  const { conversation } = (await call("conversation.create", {
+    agent: "claude",
+    cwd: worktree.path,
+    worktreeId: worktree.id,
+    mode: "edit",
+  })) as { conversation: Conversation };
+  const sent = (await handlers.handle(
+    request("conversation.send", { id: conversation.id, text: "mexa" }),
+    conn,
+  )) as { agentMessage: { id: string } };
+  const messageId = sent.agentMessage.id;
+  for (let attempt = 0; attempt < 300 && !writes.wrote; attempt += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(writes.cwd, worktree.path);
+  emitters.get(conversation.id)?.({ kind: "turn-end", status: "done" });
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    const listed = (await call("restore.list", { conversationId: conversation.id })) as {
+      points: Array<{ state: string }>;
+    };
+    if (listed.points[0]?.state === "ready") break;
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  const changedEvent = events.find((event) => event.event === "restore.changed");
+  assert.equal(changedEvent?.payload.point.state, "ready");
+  assert.equal(changedEvent?.payload.point.changedFiles, 2);
+
+  // O projeto não foi tocado, e a cópia mostra 2 arquivos sujos.
+  assert.equal(await readFile(path.join(repo, "antigo.txt"), "utf8"), "antigo\n");
+  assert.equal(
+    ((await call("worktrees.status", { id: worktree.id })) as { dirtyFiles: number }).dirtyFiles,
+    2,
+  );
+  const refs = execFileSync("git", ["for-each-ref", "refs/karont/restore"], {
+    cwd: repo,
+    encoding: "utf8",
+  });
+  assert.match(refs, new RegExp(conversation.id)); // refs vivem no repositório compartilhado
+
+  assert.deepEqual(await call("restore.undo", { conversationId: conversation.id, messageId }), {
+    restored: 1,
+    removed: 1,
+  });
+  assert.equal(await readFile(path.join(worktree.path, "antigo.txt"), "utf8"), "antigo\n");
+  assert.equal(await readFile(path.join(repo, "antigo.txt"), "utf8"), "antigo\n");
+});

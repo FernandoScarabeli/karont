@@ -17,11 +17,17 @@ Você é o Claude Code que vai construir o Karont do zero a partir da [SPEC.md](
 - Ciclo de testes: na tarefa, só os rápidos (typecheck, lint, `node:test`, 1 E2E de fumaça). Completos só antes do merge do marco. Medir o tempo; se passar de ~3 min por rodada, simplificar.
 - Registre decisões do dono em `docs/PROGRESSO.md` (numeradas) e problemas fora do escopo em `docs/DIVIDAS.md`.
 
+### Executor no M3
+
+No M3 o executor é um subagente Claude Sonnet 5.5 (decisão 22 do `PROGRESSO.md`), uma tarefa por vez, numa worktree própria. O comando abaixo vale quando o Codex for o executor; nesse caso, use o esforço `high`.
+
+A skill **taste** é a `design-taste-frontend`, em `~/.agents/skills` (decisão 25). Tarefas de tela leem o `SKILL.md` e `references/app-screens.md`.
+
 ### Comando do executor (Codex)
 
 ```bash
 W=~/karont-worktrees/<tarefa>
-cd "$W" && codex exec -m gpt-6-luna -c model_reasoning_effort="xhigh" -c service_tier="fast" \
+cd "$W" && codex exec -m gpt-6-luna -c model_reasoning_effort="high" -c service_tier="fast" \
   -c approval_policy="never" -C "$W" -s workspace-write \
   --add-dir "<repo>/.git/worktrees/<tarefa>" \
   -o <ref>/resposta.md - < <ref>/tarefa.md > <ref>/codex.log 2>&1
@@ -42,7 +48,7 @@ cd "$W" && codex exec -m gpt-6-luna -c model_reasoning_effort="xhigh" -c service
   ```bash
   sudo install -o root -g root -m 4755 node_modules/electron/dist/chrome-sandbox /usr/local/lib/karont-dev/chrome-sandbox
   ```
-- O dono tem `claude` (2.1.316) e `codex` (0.166.0) em `~/.local/bin`.
+- O dono tem `claude` (2.1.319) e `codex` (0.167.0) em `~/.local/bin`.
 - Design: o dono usa o pen.dev com um `karont.pen` de **referências visuais** fora do repositório. As ferramentas `mcp__pencil__*` só funcionam com o app do pen.dev aberto. Não publique prints de outros produtos no repositório (é open source).
 
 ## Lições aprendidas (não repita estes erros)
