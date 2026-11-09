@@ -115,6 +115,22 @@ Repositório recriado do zero em 2026-10-31.
     - A cor escolhida muda só o destaque da marca. "Trabalhando" e "precisa de você" mantêm as cores deles.
     - Executor: subagentes Claude Sonnet 5.5, uma tarefa por vez, numa worktree própria, como no M3 e no M4.
 
+## M5 — estado
+Branch `m5-primeira-abertura`, a partir da `main` com o M4. Feito, nesta ordem: B1 (migração 21, `KARONT_SKIP_ONBOARDING`, `system.diagnostics`), F1 (Perfil: nome, foto e botão no rodapé), F2 (Aparência e rodapé enxuto), F3 (Diagnóstico), F4 (primeira abertura, "Abrir de novo" e ajustes finais do rodapé). Falta o dono ver no preview e o PR.
+
+Testes (2026-11-09):
+- `npm run check`: contrato 41, serviço 355, desktop 41, interface 251, sem falhas. Build ok. E2E: 21 de 21, em 41 s.
+- Telas conferidas no navegador, em banco temporário: foto real, foto pesada, arquivo falso, nome longo, seis cores, setas do teclado, cor mantida ao recarregar, serviço caído com a sidebar estreita e o fluxo inteiro da primeira abertura.
+- Teste real no Electron, em banco e pastas temporárias, com Codex 0.167.0 `gpt-6-luna`, esforço `low`: 8 de 9. O nono era uma conferência errada do próprio script; a captura mostra a pasta escolhida no seletor. Cobriu primeira abertura em banco novo, Claude e Codex detectados, foto sob a CSP real, projeto com agente padrão, resposta no chat e diagnóstico. O Claude real não foi testado (decisão 28).
+
+Medições (build de produção, 30 s depois de um turno real): serviço com CPU 0% e 44 MB (PSS); Electron com CPU 0,02% e 774 MB somando o working set (Browser 193, GPU 326, Utility 82, Tab 172). A soma conta memória compartilhada várias vezes, como no M4 (714 MB).
+
+Notas técnicas:
+- A cor de destaque troca `--k-color-brand` e `--k-color-primary`, só no tema escuro: só a marca quase não mudaria nada na tela. As cores de estado não mudam (decisão 31).
+- A CSP só permite `img-src 'self' data:`, por isso a foto é preparada com `createImageBitmap` e canvas, sem `blob:`.
+- A primeira abertura fica sobre o shell, que continua montado e `inert`: reabrir não derruba terminais nem conversas.
+- O Playwright conta como presentes os elementos dentro de `inert`.
+
 ## M4 — estado
 Branch `m4-navegacao`, a partir da `main` com o M3. Feito, nesta ordem: B1 (workspaces no serviço), F1 (abas e sidebar), F1b (ajustes do dono), B2 (resumo agregado), F2 (telas do workspace e do Início), B3 e F3 (caixa de entrada), B4 e F4 (busca), E2E dos fluxos, F5 (sidebar ajustável, faixa de ícones, botão junto da marca, composer em painel estreito, divisão direta com animação de 240 ms). Falta o PR.
 
