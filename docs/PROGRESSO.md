@@ -117,7 +117,9 @@ Repositório recriado do zero em 2026-10-31.
 32. **Contador de uso** (2026-11-09): entra junto com o M5, na mesma branch. Mostra, por agente, a porcentagem usada em 5 horas e na semana e quando zera. Os números vêm só do que as CLIs já mandam durante as respostas; o app guarda o último valor e mostra há quanto tempo foi visto, sem ler credenciais nem abrir a CLI só para isso. Fica num ícone no rodapé da sidebar. Não substitui o painel de custos do M8, que é por Dot e em tokens.
 
 ## M5 — estado
-Branch `m5-primeira-abertura`, a partir da `main` com o M4. Feito, nesta ordem: B1 (migração 21, `KARONT_SKIP_ONBOARDING`, `system.diagnostics`), F1 (Perfil: nome, foto e botão no rodapé), F2 (Aparência e rodapé enxuto), F3 (Diagnóstico), F4 (primeira abertura, "Abrir de novo" e ajustes finais do rodapé). Falta o dono ver no preview e o PR.
+Branch `m5-primeira-abertura`, a partir da `main` com o M4. Feito, nesta ordem: B1 (migração 21, `KARONT_SKIP_ONBOARDING`, `system.diagnostics`), F1 (Perfil: nome, foto e botão no rodapé), F2 (Aparência e rodapé enxuto), F3 (Diagnóstico), F4 (primeira abertura, "Abrir de novo" e ajustes finais do rodapé). Depois, o contador de uso (decisão 32): B2 (serviço) e F5 (painel no rodapé). Falta o dono ver no preview e o PR.
+
+Contador de uso (2026-11-09): `npm run check`: contrato 42, serviço 365, desktop 41, interface 264, sem falhas. E2E: 22 de 22, em 40 s. Teste real no Electron com Codex 0.167.0 `gpt-6-luna`, esforço `low`: 4 de 4, e o painel mostrou 8% em 5 horas e 39% na semana. O Claude real não foi testado (decisão 28); o leitor dele usa a saída real gravada nos fixtures.
 
 Testes (2026-11-09):
 - `npm run check`: contrato 41, serviço 355, desktop 41, interface 251, sem falhas. Build ok. E2E: 21 de 21, em 41 s.
