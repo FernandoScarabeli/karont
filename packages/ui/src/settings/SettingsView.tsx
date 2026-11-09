@@ -5,6 +5,7 @@ import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { AgentsSection } from "./AgentsSection.tsx";
 import { AppearanceSection } from "./AppearanceSection.tsx";
 import { DiagnosticsSection } from "./DiagnosticsSection.tsx";
+import { DotSection } from "./DotSection.tsx";
 import { GeneralSection } from "./GeneralSection.tsx";
 import { ProfileSection } from "./ProfileSection.tsx";
 import styles from "./SettingsView.module.css";
@@ -52,6 +53,17 @@ export function SettingsView({ titleRef }: { titleRef: RefObject<HTMLHeadingElem
             </li>
             <li>
               <button
+                aria-current={selectedSection === "dot" ? "page" : undefined}
+                className={styles.sectionLink}
+                onClick={() => navigate({ name: "settings", section: "dot" })}
+                ref={(element) => fluidHover.registerItem("settings-dot", element)}
+                type="button"
+              >
+                {t.dotSettings.title}
+              </button>
+            </li>
+            <li>
+              <button
                 aria-current={selectedSection === "appearance" ? "page" : undefined}
                 className={styles.sectionLink}
                 onClick={() => navigate({ name: "settings", section: "appearance" })}
@@ -89,6 +101,8 @@ export function SettingsView({ titleRef }: { titleRef: RefObject<HTMLHeadingElem
           <GeneralSection />
         ) : selectedSection === "profile" ? (
           <ProfileSection />
+        ) : selectedSection === "dot" ? (
+          <DotSection />
         ) : selectedSection === "appearance" ? (
           <AppearanceSection />
         ) : selectedSection === "diagnostics" ? (

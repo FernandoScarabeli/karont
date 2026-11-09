@@ -80,6 +80,33 @@ function greetingFor(name: string | null, hour: number, sample: number): string 
 }
 
 export const t = {
+  dotSettings: {
+    title: "Dot",
+    name: "Nome",
+    color: "Cor",
+    enabled: "Ativar o Dot nas conversas",
+    upcoming:
+      "Personalize seu Dot e salve suas preferências. A personalização das respostas ainda não está disponível.",
+    personality: "Personalidade",
+    explanation: "Direto ↔ explicativo",
+    playfulness: "Sério ↔ brincalhão",
+    boldness: "Cauteloso ↔ ousado",
+    save: "Salvar",
+    saving: "Salvando…",
+    saved: "Salvo",
+    cancel: "Cancelar",
+    retry: "Tentar de novo",
+    loading: "Carregando o Dot…",
+    unavailable: "Não foi possível carregar o Dot.",
+    saveFailed: "Não foi possível salvar. Suas alterações foram mantidas.",
+    invalidName: "Informe um nome de até 80 caracteres.",
+    discardTitle: "Descartar alterações?",
+    discardDescription: "As alterações do Dot ainda não foram salvas.",
+    stay: "Continuar editando",
+    discard: "Descartar",
+    conflict:
+      "O Dot foi atualizado em outra janela. Sua edição foi mantida; salvar substituirá os campos editados.",
+  },
   brand: {
     name: "karont",
   },
@@ -920,6 +947,60 @@ export const t = {
     finishing: "Concluindo…",
     finishFailed: "Não foi possível concluir. Tente de novo.",
     noBridge: "Sem conexão com o serviço.",
+  },
+  dot: {
+    /** Nome acessível do botão que cutuca o Dot. */
+    poke: "Cutucar o Dot",
+    /** Falas ao cutucar. Nunca a mesma duas vezes seguidas. */
+    lines: [
+      "Ainda não é minha hora.",
+      "Trouxe a moeda?",
+      "Boop.",
+      "Isso faz cócegas.",
+      "Tô de olho.",
+      "De novo? Tá.",
+      "Já atravessei essa.",
+      "Achou uma alma.",
+    ],
+    /** Estado do Dot em texto, para quem não vê os olhos. */
+    mood: {
+      idle: "Dot parado",
+      working: "Dot trabalhando",
+      "needs-you": "Dot precisa de você",
+      sleeping: "Dot dormindo",
+      happy: "Dot feliz",
+      sad: "Dot triste",
+      dancing: "Dot dançando",
+      surprised: "Dot surpreso",
+      angry: "Dot bravo",
+      confused: "Dot confuso",
+      love: "Dot apaixonado",
+    },
+  },
+  colorPicker: {
+    /** Nome do conjunto: campo, matiz, hex e amostras. */
+    group: "Seletor de cor",
+    /** O campo de saturação (horizontal) e brilho (vertical). */
+    field: "Saturação e brilho",
+    fieldValue: (saturation: number, brightness: number) =>
+      `Saturação ${saturation}%, brilho ${brightness}%`,
+    hue: "Matiz",
+    hueValue: (degrees: number) => `${degrees} graus`,
+    hex: "Cor em hexadecimal",
+    swatches: "Cores prontas",
+    /** Nome de cada amostra pronta, pelo id. */
+    swatch: {
+      graphite: "Grafite",
+      ivory: "Marfim",
+      magenta: "Magenta",
+      turquoise: "Turquesa",
+      lime: "Lima",
+      blue: "Azul elétrico",
+      coral: "Coral",
+    },
+    /** Botão redondo que abre o seletor; leva a cor atual no nome. */
+    well: (hex: string) => `Cor do Dot, ${hex}`,
+    popover: "Escolher a cor do Dot",
   },
   usage: {
     title: "Uso",

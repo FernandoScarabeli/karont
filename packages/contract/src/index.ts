@@ -183,3 +183,6 @@ export class BridgeError extends Error {
     this.code = code;
   }
 }
+
+export type { Dot, DotFields } from "./dot.ts";
+export { dotFieldsSchema, dotSchema } from "./dot.ts";

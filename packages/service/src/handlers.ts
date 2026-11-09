@@ -34,6 +34,7 @@ import {
   setSetting,
   updateProject,
 } from "./db.ts";
+import { getDot, updateDot } from "./dot.ts";
 import { ServiceError } from "./errors.ts";
 import { gitInfo, listRecentFolders, validateFolder } from "./folders.ts";
 import {
@@ -177,6 +178,13 @@ export function createHandlers({
       }
       case "system.userName":
         return { name: await getSystemUserName({ platform }) };
+      case "dot.get":
+        return getDot(db);
+      case "dot.update": {
+        const dot = updateDot(db, request.params);
+        await broadcast({ event: "dot.updated", payload: dot });
+        return dot;
+      }
       case "settings.get":
         return { key: request.params.key, value: getSetting(db, request.params.key) };
       case "settings.set":

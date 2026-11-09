@@ -1,0 +1,191 @@
+/* Medidas provisórias do protótipo. */
+.page {
+  --k-dot-content-max-width: 960px;
+  --k-dot-control-min-width: 220px;
+  --k-dot-stage-min-height: 380px;
+  --k-dot-stage-room-top: 56px;
+  min-height: 100%;
+  padding: var(--k-space-6) var(--k-space-4);
+  background: var(--k-color-bg-sheet);
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-sans);
+}
+
+.content {
+  display: grid;
+  gap: var(--k-space-8);
+  width: 100%;
+  max-width: var(--k-dot-content-max-width);
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  padding-bottom: var(--k-space-5);
+  border-bottom: var(--k-border-width) solid var(--k-color-border);
+}
+
+.heading {
+  margin: 0;
+  font-family: var(--k-font-brand);
+  font-size: var(--k-text-28);
+  font-weight: var(--k-weight-brand);
+  line-height: var(--k-leading-tight);
+}
+
+.badge {
+  margin: 0;
+  padding: var(--k-space-1) var(--k-space-3);
+  border: var(--k-border-width) solid var(--k-color-border-strong);
+  border-radius: var(--k-radius-full);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}
+
+/* a área toda vale para o ponteiro: os olhos seguem em qualquer ponto dela */
+.stage {
+  display: grid;
+  min-height: var(--k-dot-stage-min-height);
+  place-items: center;
+  padding: var(--k-dot-stage-room-top) var(--k-space-4) var(--k-space-6);
+  border: var(--k-border-width) solid var(--k-color-border);
+  border-radius: var(--k-radius-xl);
+  background: var(--k-color-bg-app);
+}
+
+.panel {
+  padding: var(--k-space-5);
+  border: var(--k-border-width) solid var(--k-color-border);
+  border-radius: var(--k-radius-xl);
+  background: var(--k-color-bg-sheet);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--k-dot-control-min-width)), 1fr));
+  gap: var(--k-space-5) var(--k-space-6);
+}
+
+.field {
+  display: grid;
+  align-content: start;
+  gap: var(--k-space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  display: block;
+  padding: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
+.choice {
+  min-height: var(--k-control-height-md);
+  padding: 0 var(--k-space-3);
+  border: var(--k-border-width) solid var(--k-color-border-strong);
+  border-radius: var(--k-radius-md);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  font: inherit;
+  font-size: var(--k-text-13);
+  cursor: pointer;
+}
+
+.choice:hover {
+  background: var(--k-color-bg-hover);
+}
+
+.choice[aria-pressed="true"] {
+  border-color: var(--k-color-border-muted);
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+  font-weight: var(--k-weight-semibold);
+}
+
+.choice:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.section {
+  display: grid;
+  gap: var(--k-space-4);
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--k-text-16);
+  font-weight: var(--k-weight-semibold);
+  line-height: var(--k-leading-tight);
+}
+
+.sizes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-6);
+  padding: var(--k-space-4);
+  border-radius: var(--k-radius-xl);
+  background: var(--k-color-bg-app);
+}
+
+.chatSample {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.chatName {
+  min-width: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-tight);
+}
+
+.compare {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-6);
+  padding: var(--k-space-4);
+  border-radius: var(--k-radius-xl);
+  background: var(--k-color-bg-app);
+}
+
+.figure {
+  display: grid;
+  justify-items: center;
+  gap: var(--k-space-2);
+  margin: 0;
+}
+
+.caption {
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

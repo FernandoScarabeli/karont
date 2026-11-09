@@ -5,6 +5,7 @@ import {
   messagePartSchema,
   messageSchema,
 } from "./conversations.ts";
+import { dotSchema } from "./dot.ts";
 import { inboxListSchema } from "./inbox.ts";
 import {
   projectSchema,
@@ -18,6 +19,7 @@ import { agentUsageSchema } from "./usage.ts";
 import { worktreeSchema } from "./worktrees.ts";
 
 export const events = {
+  "dot.updated": dotSchema,
   "dev.streamTest.delta": z.strictObject({
     streamId: z.string(),
     seq: z.number().int().min(0),

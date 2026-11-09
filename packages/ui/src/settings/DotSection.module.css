@@ -1,0 +1,70 @@
+.section {
+  display: grid;
+  align-content: start;
+  gap: var(--k-space-4);
+  min-width: 0;
+}
+.heading {
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-16);
+  font-weight: var(--k-weight-semibold);
+}
+.note {
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+.preview {
+  display: flex;
+  justify-content: center;
+  padding: var(--k-space-4);
+}
+.fields {
+  display: grid;
+  gap: var(--k-space-4);
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.fields legend {
+  margin-bottom: var(--k-space-3);
+  font-weight: var(--k-weight-semibold);
+}
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+}
+.axis {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.axis span {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+}
+.axis input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--k-color-primary);
+}
+.axis input:focus-visible,
+.row input:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.error {
+  margin: 0;
+  color: var(--k-color-danger);
+  font-size: var(--k-text-13);
+}

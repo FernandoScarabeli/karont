@@ -190,6 +190,17 @@ export const migrations: { version: number; up: string }[] = [
         strftime('%Y-%m-%dT%H:%M:%fZ','now')
       WHERE EXISTS (SELECT 1 FROM conversations) OR EXISTS (SELECT 1 FROM projects);`,
   },
+  {
+    version: 22,
+    up: `CREATE TABLE dots (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL,
+      enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+      personality TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    INSERT INTO dots VALUES ('default','Dot','#232325',1,
+      '{"explanation":50,"playfulness":50,"boldness":50}',
+      strftime('%Y-%m-%dT%H:%M:%fZ','now'),strftime('%Y-%m-%dT%H:%M:%fZ','now'));`,
+  },
 ];
 
 /** Roda `work` numa transação; desfaz tudo se ela lançar. */

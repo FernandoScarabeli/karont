@@ -50,7 +50,10 @@ export type View =
   | { name: "home" }
   | { name: "workspace" }
   | { name: "inbox" }
-  | { name: "settings"; section: "general" | "profile" | "appearance" | "agents" | "diagnostics" };
+  | {
+      name: "settings";
+      section: "general" | "profile" | "appearance" | "agents" | "diagnostics" | "dot";
+    };
 
 export type NavigationTarget =
   | View
@@ -72,6 +75,7 @@ type NavigationState = {
   /** A tela do workspace (resumo) está por cima dos painéis do workspace ativo. */
   workspaceOverviewVisible: boolean;
   navigate: (view: NavigationTarget) => void;
+  setLeaveGuard: (guard: ((proceed: () => void) => boolean) | null) => void;
   /**
    * Ativa o workspace e mostra a área de trabalho dele. Na aba em que já se está, alterna entre a
    * tela do workspace e as conversas abertas.
@@ -577,13 +581,33 @@ export function NavigationProvider({ children }: PropsWithChildren) {
       workspaceOverviewVisible,
     ],
   );
-  const actions = useMemo(
+  const leaveGuard = useRef<((proceed: () => void) => boolean) | null>(null);
+  const actions = useMemo<NavigationActions>(
     () => ({
-      navigate,
-      openWorkspace,
-      setActivePane,
-      splitActivePane,
-      openConversationBeside,
+      setLeaveGuard: (guard) => {
+        leaveGuard.current = guard;
+      },
+      navigate: (target) => {
+        if (!leaveGuard.current?.(() => navigate(target))) navigate(target);
+      },
+      openWorkspace: (id) => {
+        if (!leaveGuard.current?.(() => openWorkspace(id))) openWorkspace(id);
+      },
+      setActivePane: (id) => {
+        if (!leaveGuard.current?.(() => setActivePane(id))) setActivePane(id);
+      },
+      splitActivePane: (direction, id) =>
+        leaveGuard.current?.(() => {
+          splitActivePane(direction, id);
+        })
+          ? null
+          : splitActivePane(direction, id),
+      openConversationBeside: (id) =>
+        leaveGuard.current?.(() => {
+          openConversationBeside(id);
+        })
+          ? null
+          : openConversationBeside(id),
       closeConversationWorkspacePanes,
       closeAllConversationPanes,
       closeWorkspacePane,
