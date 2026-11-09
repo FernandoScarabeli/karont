@@ -6,6 +6,8 @@ import {
   type KeyboardEvent,
   memo,
   type ReactNode,
+  useCallback,
+  useEffect,
   useId,
   useLayoutEffect,
   useRef,
@@ -43,6 +45,8 @@ export type ComposerProps = {
   onChange: (value: string) => void;
   onSubmit: () => void;
   placeholder: string;
+  /** Texto curto para painéis estreitos; a troca é feita por container query, sem re-render. */
+  shortPlaceholder?: string;
   submitLabel: string;
   submitTooltipLabel?: string;
   ariaDescription?: string;
@@ -73,6 +77,7 @@ export const Composer = memo(function Composer({
   onChange,
   onSubmit,
   placeholder,
+  shortPlaceholder,
   submitLabel,
   submitTooltipLabel,
   ariaDescription,
@@ -102,16 +107,50 @@ export const Composer = memo(function Composer({
   const listboxId = useId();
   const cannotSubmit = !busy && (disabled || submitDisabled);
 
-  useLayoutEffect(() => {
+  /**
+   * A altura só é recalculada quando o texto muda, ou quando a largura muda e há texto (aí a
+   * quantidade de linhas pode mudar). Vazio, a altura vem do CSS: arrastar o painel não mede nada.
+   */
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const fitHeight = useCallback(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
-
+    if (valueRef.current === "") {
+      textarea.style.removeProperty("height");
+      textarea.style.overflowY = "hidden";
+      return;
+    }
     textarea.style.height = "auto";
     const maxHeight = Number.parseFloat(getComputedStyle(textarea).maxHeight);
     const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
     textarea.style.height = `${nextHeight}px`;
     textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
-  });
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refaz a altura quando o texto muda.
+  useLayoutEffect(fitHeight, [value, fitHeight]);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    let lastWidth = textarea.clientWidth;
+    let frame = 0;
+    // Só olha a largura: escrever a altura não dispara o observador de novo.
+    const observer = new ResizeObserver(() => {
+      const width = textarea.clientWidth;
+      if (width === lastWidth) return;
+      lastWidth = width;
+      if (valueRef.current === "") return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fitHeight);
+    });
+    observer.observe(textarea);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [fitHeight]);
 
   function submit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -171,9 +210,11 @@ export const Composer = memo(function Composer({
   }
 
   const activeOption = autocomplete?.options[autocomplete.activeIndex];
+  const animatedShown = Boolean(animatedPlaceholder) && !value && !isFocused && !disabled;
+  const showOverlay = animatedShown || (Boolean(shortPlaceholder) && !value);
 
   return (
-    <div className={styles.wrapper}>
+    <div className={styles.wrapper} data-composer-root>
       <form
         className={`${styles.card} ${dragActive ? styles.dragActive : ""}`}
         onDragEnter={onDragEnter}
@@ -194,7 +235,7 @@ export const Composer = memo(function Composer({
             aria-autocomplete={autocomplete?.open ? "list" : undefined}
             aria-controls={autocomplete?.open ? listboxId : undefined}
             aria-label={placeholder}
-            className={`${styles.textarea} ${mono ? styles.mono : ""} ${animatedPlaceholder && !value && !isFocused && !disabled ? styles.animatedPlaceholderInput : ""}`}
+            className={`${styles.textarea} ${mono ? styles.mono : ""} ${showOverlay ? styles.animatedPlaceholderInput : ""}`}
             disabled={disabled}
             onBlur={() => setIsFocused(false)}
             onChange={(event) => {
@@ -212,9 +253,18 @@ export const Composer = memo(function Composer({
             rows={1}
             value={value}
           />
-          {animatedPlaceholder && !value && !isFocused && !disabled ? (
-            <div aria-hidden="true" className={styles.placeholderOverlay}>
-              {animatedPlaceholder}
+          {showOverlay ? (
+            <div
+              aria-hidden="true"
+              className={styles.placeholderOverlay}
+              data-has-short={shortPlaceholder ? "true" : undefined}
+            >
+              <span className={styles.placeholderWide}>
+                {animatedShown ? animatedPlaceholder : placeholder}
+              </span>
+              {shortPlaceholder ? (
+                <span className={styles.placeholderNarrow}>{shortPlaceholder}</span>
+              ) : null}
             </div>
           ) : null}
           {autocomplete?.open ? (

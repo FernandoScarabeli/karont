@@ -1022,6 +1022,9 @@ export function NewConversationView({
               ? t.conversation.terminalCommandPlaceholder
               : t.conversation.promptPlaceholder(capabilities?.skills === true)
           }
+          shortPlaceholder={
+            choice === TERMINAL_CHOICE ? undefined : t.chat.composerPlaceholderShort
+          }
           autocomplete={composerAutocomplete}
           submitDisabled={
             !bridge ||
