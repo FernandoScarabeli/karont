@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { AccentProvider } from "../appearance/AccentProvider.tsx";
 import { NavigationProvider } from "../navigation/NavigationContext.tsx";
+import { Onboarding } from "../onboarding/Onboarding.tsx";
+import { OnboardingProvider, useOnboarding } from "../onboarding/OnboardingContext.tsx";
 import { ProfileProvider } from "../profile/ProfileContext.tsx";
 import { decideSearchShortcut } from "../projects/searchPanelState.ts";
 import styles from "./AppShell.module.css";
@@ -23,7 +25,11 @@ function isInVisibleTerminal(target: EventTarget | null): boolean {
   return terminal.checkVisibility ? terminal.checkVisibility() : true;
 }
 
-export function AppShell() {
+function ShellContent() {
+  const { active: onboardingActive, pending: onboardingPending } = useOnboarding();
+  const blocked = onboardingActive || onboardingPending;
+  const blockedRef = useRef(false);
+  blockedRef.current = blocked;
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchLoaded, setSearchLoaded] = useState(false);
   const openRef = useRef(false);
@@ -37,6 +43,8 @@ export function AppShell() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      // Na primeira abertura o resto do app fica parado.
+      if (blockedRef.current) return;
       const decision = decideSearchShortcut({
         key: event.key,
         ctrlKey: event.ctrlKey,
@@ -59,20 +67,33 @@ export function AppShell() {
   }, [openSearch, closeSearch]);
 
   return (
+    <>
+      <div className={styles.content} inert={blocked}>
+        <SidebarShellProvider className={styles.shell}>
+          <TopBar onOpenSearch={openSearch} />
+          <SidebarLayout sidebar={({ collapsed }) => <Sidebar collapsed={collapsed} />}>
+            <Sheet />
+          </SidebarLayout>
+        </SidebarShellProvider>
+        {searchLoaded ? (
+          <Suspense fallback={null}>
+            <SearchPanel onClose={closeSearch} open={searchOpen} />
+          </Suspense>
+        ) : null}
+      </div>
+      <Onboarding />
+    </>
+  );
+}
+
+export function AppShell() {
+  return (
     <AccentProvider>
       <NavigationProvider>
         <ProfileProvider>
-          <SidebarShellProvider className={styles.shell}>
-            <TopBar onOpenSearch={openSearch} />
-            <SidebarLayout sidebar={({ collapsed }) => <Sidebar collapsed={collapsed} />}>
-              <Sheet />
-            </SidebarLayout>
-          </SidebarShellProvider>
-          {searchLoaded ? (
-            <Suspense fallback={null}>
-              <SearchPanel onClose={closeSearch} open={searchOpen} />
-            </Suspense>
-          ) : null}
+          <OnboardingProvider>
+            <ShellContent />
+          </OnboardingProvider>
         </ProfileProvider>
       </NavigationProvider>
     </AccentProvider>

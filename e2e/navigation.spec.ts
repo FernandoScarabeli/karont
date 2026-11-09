@@ -121,6 +121,7 @@ async function launch(): Promise<App> {
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
     KARONT_RUNTIME_DIR: path.join(root, "run"),
+    KARONT_SKIP_ONBOARDING: "1",
     KARONT_DATA_DIR: path.join(root, "data"),
     // Os testes não podem depender das CLIs instaladas na máquina.
     KARONT_DISABLE_AGENT_DETECTION: "1",

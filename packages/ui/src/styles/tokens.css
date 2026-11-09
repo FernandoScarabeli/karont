@@ -233,6 +233,9 @@
   --k-layer-drop-zone: 2;
   --k-layer-menu: 3;
   --k-layer-popover: 4;
+  --k-layer-onboarding: 10;
+  --k-onboarding-width: 480px;
+  --k-onboarding-list-max-height: 176px;
   --k-settings-nav-width: 160px;
   --k-settings-content-max-width: 960px;
   --k-settings-prose-width: 68ch;

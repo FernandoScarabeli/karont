@@ -10,6 +10,7 @@ import { clearAllConversationsFromIndex } from "../conversation/useConversationI
 import { useQueueStatus } from "../conversation/useQueueStatus.ts";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
+import { useOnboarding } from "../onboarding/OnboardingContext.tsx";
 import styles from "./GeneralSection.module.css";
 
 const CLOSE_BEHAVIOR_SETTING = "app.closeBehavior";
@@ -189,6 +190,7 @@ export function GeneralSection() {
           <span>{saveError}</span>
         </p>
       ) : null}
+      <FirstRunGroup />
       <DataSection />
     </section>
   );
@@ -256,6 +258,22 @@ function AgentLimitGroup() {
           <span>{saveError}</span>
         </p>
       ) : null}
+    </section>
+  );
+}
+
+function FirstRunGroup() {
+  const { reopen } = useOnboarding();
+  return (
+    <section aria-labelledby="settings-first-run-title" className={styles.firstRunGroup}>
+      <h2 className={styles.firstRunHeading} id="settings-first-run-title">
+        {t.settings.firstRunTitle}
+      </h2>
+      <div>
+        <Button onClick={reopen} variant="secondary">
+          {t.settings.firstRunReopen}
+        </Button>
+      </div>
     </section>
   );
 }

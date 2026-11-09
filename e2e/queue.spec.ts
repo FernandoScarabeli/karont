@@ -21,6 +21,7 @@ test("fila: limite 1 nas Configurações, segunda conversa espera, Parar tira da
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
     KARONT_RUNTIME_DIR: path.join(root, "run"),
+    KARONT_SKIP_ONBOARDING: "1",
     KARONT_DATA_DIR: path.join(root, "data"),
     KARONT_DISABLE_AGENT_DETECTION: "1",
     KARONT_CLAUDE_CLI: fakeCli,

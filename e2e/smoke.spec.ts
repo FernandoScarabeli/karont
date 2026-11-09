@@ -20,6 +20,7 @@ test("app abre, mostra a moldura e conversa com o serviço", async () => {
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
     KARONT_RUNTIME_DIR: path.join(root, "run"),
+    KARONT_SKIP_ONBOARDING: "1",
     KARONT_DATA_DIR: path.join(root, "data"),
   };
   let servicePid: number | undefined;

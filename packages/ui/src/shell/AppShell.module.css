@@ -18,3 +18,8 @@
     --k-sidebar-anim: 0s;
   }
 }
+
+/* Só agrupa para o `inert` valer sobre o shell inteiro, sem criar caixa. */
+.content {
+  display: contents;
+}

@@ -476,10 +476,11 @@
 
 .profileButton {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 999 auto;
   align-items: center;
   gap: var(--k-space-2);
-  min-width: 0;
+  /* Nunca menor que o avatar mais o padding e a borda. */
+  min-width: calc(var(--k-avatar-size-sm) + 2 * var(--k-space-1) + 2 * var(--k-border-width));
   padding: var(--k-space-1);
   border: var(--k-border-width) solid transparent;
   border-radius: var(--k-radius-md);

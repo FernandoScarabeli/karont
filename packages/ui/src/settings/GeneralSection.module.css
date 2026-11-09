@@ -126,6 +126,23 @@
   line-height: var(--k-leading-normal);
 }
 
+.firstRunGroup {
+  display: grid;
+  min-width: 0;
+  gap: var(--k-space-3);
+  margin-block-start: var(--k-space-2);
+  padding-block-start: var(--k-space-4);
+  border-block-start: var(--k-border-width) solid var(--k-color-border);
+}
+
+.firstRunHeading {
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-16);
+  font-weight: var(--k-weight-semibold);
+  line-height: var(--k-leading-tight);
+}
+
 .dataSection {
   display: grid;
   min-width: 0;
