@@ -31,6 +31,8 @@
 }
 .fields legend {
   margin-bottom: var(--k-space-3);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
   font-weight: var(--k-weight-semibold);
 }
 .row {
@@ -38,10 +40,14 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--k-space-3);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
 }
 .axis {
   display: grid;
   gap: var(--k-space-2);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
 }
 .axis span {
   display: flex;

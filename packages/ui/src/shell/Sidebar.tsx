@@ -628,7 +628,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
           onSelect: () => {
             setSidebarActionError("");
             const paneId = openConversationBeside(conversation.id);
-            if (!paneId) setSidebarActionError(t.workspace.panelLimit);
+            if (paneId === null) setSidebarActionError(t.workspace.panelLimit);
           },
         },
         { id: "main-separator", separator: true },

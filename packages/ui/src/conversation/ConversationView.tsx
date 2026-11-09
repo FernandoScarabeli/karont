@@ -1238,7 +1238,7 @@ export function ConversationView({
       try {
         const result = await bridge.request("conversation.branch", { id, messageId });
         upsertConversation(result.conversation);
-        if (!openConversationBeside(result.conversation.id))
+        if (openConversationBeside(result.conversation.id) === null)
           setInteractionError(t.chat.branchOpenFailed);
       } catch (branchError) {
         setInteractionError(

@@ -83,7 +83,8 @@ type NavigationState = {
   openWorkspace: (workspaceId: string) => void;
   setActivePane: (paneId: string) => void;
   splitActivePane: (direction: "row" | "column", paneId?: string) => string | null;
-  openConversationBeside: (conversationId: string) => string | null;
+  /** Devolve o painel; `null` se não coube; `undefined` se a saída ainda espera confirmação. */
+  openConversationBeside: (conversationId: string) => string | null | undefined;
   closeConversationWorkspacePanes: (conversationId: string) => void;
   closeAllConversationPanes: () => void;
   closeWorkspacePane: (paneId: string) => void;
@@ -606,7 +607,7 @@ export function NavigationProvider({ children }: PropsWithChildren) {
         leaveGuard.current?.(() => {
           openConversationBeside(id);
         })
-          ? null
+          ? undefined
           : openConversationBeside(id),
       closeConversationWorkspacePanes,
       closeAllConversationPanes,

@@ -84,6 +84,8 @@ export function createMainWindow(): BrowserWindow {
     event.preventDefault();
     openAllowedExternalUrl(url);
   });
+  // No Electron, o beforeunload da interface cancelaria o fechamento sem mostrar nada ao usuário.
+  contents.on("will-prevent-unload", (event) => event.preventDefault());
   contents.on("before-input-event", (event, input) => {
     if (!input.control || !input.shift || input.key.toLowerCase() !== "i") return;
     event.preventDefault();

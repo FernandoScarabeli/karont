@@ -239,7 +239,10 @@ export function DotSection() {
               disabled={saving}
               onClick={() => {
                 const proceed = pending;
-                setLeaveGuard(null);
+                // Descarta de verdade: o destino pode ser esta mesma seção, e aí nada desmonta.
+                if (saved) setDraft(copy(saved));
+                setError("");
+                setMessage("");
                 setPending(null);
                 proceed?.();
               }}

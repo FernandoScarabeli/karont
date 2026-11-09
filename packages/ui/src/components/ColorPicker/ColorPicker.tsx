@@ -2,7 +2,6 @@ import {
   type KeyboardEvent,
   type PointerEvent,
   useCallback,
-  useEffect,
   useId,
   useLayoutEffect,
   useRef,
@@ -74,7 +73,20 @@ export function ColorPicker({
       onChangeRef.current(hsvToHex(hsv.current));
     });
   }, []);
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+
+  /* Fechar o popover desmonta o seletor antes do blur do campo hex e antes do
+     próximo quadro: o hex digitado e a última cor do arrasto são entregues aqui. */
+  useLayoutEffect(() => {
+    const hexInput = input.current;
+    return () => {
+      cancelAnimationFrame(frame.current);
+      const last = hsvToHex(hsv.current);
+      const typed = hexInput ? normalizeHex(hexInput.value) : null;
+      if (typed && typed !== last) onChangeRef.current(typed);
+      else if (frame.current) onChangeRef.current(last);
+      frame.current = 0;
+    };
+  }, []);
 
   const set = useCallback(
     (next: Hsv) => {
