@@ -1,3 +1,10 @@
+/* Registrada para o topo poder animar a largura da sidebar junto com ela, sem re-render. */
+@property --k-sidebar-current-width {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 232px;
+}
+
 :root {
   color-scheme: dark;
   --k-color-bg-app: #0f0f10;
@@ -169,6 +176,9 @@
 
   --k-topbar-height: 48px;
   --k-sidebar-width: 232px;
+  --k-sidebar-min-width: 200px;
+  --k-sidebar-max-width: 400px;
+  --k-sidebar-rail-width: 48px;
   --k-sidebar-item-height: 32px;
   --k-sidebar-padding: 12px;
   --k-sidebar-section-gap: 24px;
@@ -184,12 +194,14 @@
   --k-brand-reflection-short-width: 6px;
   --k-brand-reflection-height: 1px;
   --k-brand-reflection-gap: 2px;
-  --k-search-width: 240px;
+  --k-search-width: 112px;
   --k-window-min-width: 960px;
   --k-window-min-height: 600px;
   --k-topbar-brand-gap: 8px;
   --k-topbar-tab-height: 40px;
   --k-topbar-tab-padding: 12px;
+  --k-topbar-tab-min-width: 76px;
+  --k-topbar-tab-max-width: 200px;
   --k-topbar-search-gap: 8px;
   --k-section-heading-height: 28px;
   --k-service-status-gap: 8px;
@@ -198,6 +210,9 @@
   --k-empty-state-max-width: 360px;
   --k-dialog-width-sm: 420px;
   --k-dialog-width-md: 520px;
+  --k-search-panel-width: 640px;
+  --k-search-panel-top: 96px;
+  --k-search-list-height: 384px;
   --k-menu-min-width: 200px;
   --k-pane-menu-max-width: 360px;
   --k-menu-max-height: 480px;
@@ -210,9 +225,16 @@
   --k-settings-content-max-width: 960px;
   --k-settings-prose-width: 68ch;
   --k-new-conversation-width: 760px;
+  --k-overview-card-min: 260px;
+  --k-overview-max-width: 960px;
   --k-new-conversation-prompt-height: 180px;
   --k-terminal-header-height: 52px;
   --k-composer-textarea-min-height: 40px;
+  --k-composer-textarea-compact-min-height: 28px;
+  --k-composer-compact-width: 414px;
+  --k-composer-compact-hysteresis: 10px;
+  --k-new-title-min-size: var(--k-text-16);
+  --k-new-title-max-size: var(--k-text-32);
   --k-composer-textarea-max-height: 224px;
   --k-composer-submit-size: 36px;
   --k-composer-select-max-width: 180px;
@@ -327,12 +349,6 @@
   --k-color-code-comment: #606168;
   --k-color-code-title: #285d84;
   --k-color-code-meta: #875400;
-}
-
-@container new-conversation (max-width: 520px) {
-  [data-k-new-conversation-title] {
-    font-size: var(--k-text-24);
-  }
 }
 
 /* Breakpoints são literais na gramática de @container e ficam centralizados nos tokens. */

@@ -49,6 +49,15 @@ export function createInitialLayout(): PaneNode {
   return { type: "pane", id: "pane-1", view: { kind: "new-conversation" } };
 }
 
+/** Layout vazio compartilhado: workspace que ainda não tem layout próprio. */
+export const EMPTY_LAYOUT: PaneNode = createInitialLayout();
+
+/** O painel ativo salvo, se ainda existir; senão o primeiro. */
+export function resolveActivePaneId(layout: LayoutNode, saved: string | undefined): string {
+  if (saved && findPane(layout, saved)) return saved;
+  return listPanes(layout)[0]?.id ?? EMPTY_LAYOUT.id;
+}
+
 export function paneCount(tree: LayoutNode): number {
   return tree.type === "pane"
     ? 1
@@ -189,6 +198,25 @@ export function movePane(
   };
 
   return normalize(insert(remaining));
+}
+
+/**
+ * Verdadeiro quando mover o painel deixaria a mesma disposição (estrutura e ordem
+ * dos painéis), ignorando tamanhos e ids de grupos gerados.
+ */
+export function isNoOpMove(
+  tree: LayoutNode,
+  paneId: string,
+  targetPaneId: string,
+  edge: PaneEdge,
+): boolean {
+  if (paneId === targetPaneId) return true;
+  return layoutShape(movePane(tree, paneId, targetPaneId, edge)) === layoutShape(tree);
+}
+
+function layoutShape(node: LayoutNode): string {
+  if (node.type === "pane") return node.id;
+  return `${node.direction}(${node.children.map(layoutShape).join(",")})`;
 }
 
 export function setSizes(tree: LayoutNode, splitId: string, sizes: number[]): LayoutNode {

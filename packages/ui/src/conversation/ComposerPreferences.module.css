@@ -14,7 +14,7 @@
 
 .modelName {
   display: block;
-  min-width: 0;
+  min-width: var(--k-space-6);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -380,5 +380,82 @@
   .switchTrack,
   .switchThumb {
     transition: none;
+  }
+
+  .options > *,
+  .configGroup > * {
+    animation: none;
+  }
+}
+
+/*
+ * Responde à largura do composer (o painel), não à da janela. Ordem de encolhimento: nome do
+ * agente (nos módulos das telas), modelo com reticências, selo só com o ícone; no painel
+ * estreito o modelo, o esforço e o modo rápido vão para o popover (ver `compact` no TSX).
+ * Os pontos de quebra são literais porque @container não aceita variáveis.
+ */
+@container composer (max-width: 594px) {
+  .badgeLabel {
+    display: none;
+  }
+}
+
+/* Objetos que reaparecem num ponto de quebra entram com um fade curto, sem animar largura. */
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+}
+
+.options > *,
+.configGroup > * {
+  animation: appear var(--k-motion-fast) var(--k-ease);
+}
+
+.compactOptions {
+  display: grid;
+  gap: var(--k-space-1);
+  margin-block-end: var(--k-space-2);
+}
+
+.compactOption {
+  display: flex;
+  min-width: 0;
+  min-height: var(--k-control-height-lg);
+  align-items: center;
+  padding-inline: var(--k-space-2);
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-13);
+  text-align: left;
+  cursor: pointer;
+}
+
+.compactOption[aria-checked="true"] {
+  background: var(--k-color-bg-hover);
+  font-weight: var(--k-weight-medium);
+}
+
+.compactOption:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: calc(-1 * var(--k-focus-ring-width));
+}
+
+.compactOption:disabled {
+  opacity: var(--k-opacity-disabled);
+  cursor: not-allowed;
+}
+
+/* Menor painel: os selos saem da barra (o acesso e o plano estão no popover); o alerta passa para o ícone de opções. */
+@container composer (max-width: 200px) {
+  .badge {
+    display: none;
+  }
+
+  .configGroup[data-alert="true"] .iconTrigger {
+    color: var(--k-color-danger);
   }
 }

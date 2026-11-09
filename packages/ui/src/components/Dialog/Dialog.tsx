@@ -6,10 +6,12 @@ export type DialogProps = {
   onClose: () => void;
   title: string;
   description?: string;
-  children: ReactNode;
+  children?: ReactNode;
   footer: ReactNode;
   initialFocusRef?: RefObject<HTMLElement | null>;
   returnFocusRef?: RefObject<HTMLElement | null>;
+  /** Deixa um painel aberto dentro do diálogo vazar pela borda sem criar barra de rolagem. */
+  allowOverflow?: boolean;
 };
 
 export function Dialog({
@@ -21,6 +23,7 @@ export function Dialog({
   footer,
   initialFocusRef,
   returnFocusRef,
+  allowOverflow = false,
 }: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const openingFocusRef = useRef<HTMLElement | null>(null);
@@ -81,7 +84,7 @@ export function Dialog({
     <dialog
       aria-describedby={description ? descriptionId : undefined}
       aria-labelledby={titleId}
-      className={styles.dialog}
+      className={allowOverflow ? `${styles.dialog} ${styles.allowOverflow}` : styles.dialog}
       onCancel={(event) => {
         event.preventDefault();
         onCloseRef.current();
@@ -99,7 +102,7 @@ export function Dialog({
             </p>
           ) : null}
         </header>
-        <div className={styles.body}>{children}</div>
+        {children ? <div className={styles.body}>{children}</div> : null}
         <footer className={styles.footer}>{footer}</footer>
       </div>
     </dialog>

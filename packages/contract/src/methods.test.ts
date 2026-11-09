@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { conversationSendParamsSchema, messageSchema } from "./conversations.ts";
+import { events } from "./events.ts";
 import {
   jsonValueSchema,
   MAX_SETTING_BYTES,
@@ -290,6 +291,7 @@ test("métodos de terminal validam caminhos, dimensões e bytes UTF-8", () => {
       id: "t1",
       title: "bash · ~",
       cwd: "/tmp",
+      workspaceId: "w1",
       shell: "/bin/bash",
       cols: 80,
       rows: 24,
@@ -370,4 +372,70 @@ test("métodos restore.* validam parâmetros e resultados", () => {
   );
   assert.equal(methods["restore.undo"].result.safeParse({ restored: 1, removed: 2 }).success, true);
   assert.equal(isMethodName("restore.undoPreview"), true);
+});
+
+test("workspaces.*: pedidos, resultados e evento seguem o contrato", () => {
+  const workspace = {
+    id: "w1",
+    name: "Pessoal",
+    icon: "house",
+    position: 0,
+    createdAt: "2026-11-09T10:00:00.000Z",
+    updatedAt: "2026-11-09T10:00:00.000Z",
+  };
+  assert.equal(methods["workspaces.list"].params.safeParse({}).success, true);
+  assert.equal(methods["workspaces.create"].params.safeParse({ name: "Trabalho" }).success, true);
+  assert.equal(
+    methods["workspaces.create"].params.safeParse({ name: "Trabalho", icon: "briefcase" }).success,
+    true,
+  );
+  assert.equal(methods["workspaces.create"].params.safeParse({ name: "   " }).success, false);
+  assert.equal(
+    methods["workspaces.create"].params.safeParse({ name: "x".repeat(81) }).success,
+    false,
+  );
+  assert.equal(
+    methods["workspaces.update"].params.safeParse({ id: "w1", name: "Casa" }).success,
+    true,
+  );
+  assert.equal(
+    methods["workspaces.update"].params.safeParse({ id: "", name: "Casa" }).success,
+    false,
+  );
+  assert.equal(methods["workspaces.remove"].params.safeParse({ id: "w1" }).success, true);
+  assert.equal(methods["workspaces.reorder"].params.safeParse({ ids: ["a", "b"] }).success, true);
+  assert.equal(methods["workspaces.reorder"].params.safeParse({ ids: [] }).success, false);
+  assert.equal(
+    methods["workspaces.list"].result.safeParse({ workspaces: [workspace] }).success,
+    true,
+  );
+  assert.equal(events["workspaces.changed"].safeParse({ workspaces: [workspace] }).success, true);
+  assert.equal(
+    events["workspaces.changed"].safeParse({ workspaces: [{ id: "w1" }] }).success,
+    false,
+  );
+  assert.equal(
+    methods["projects.update"].params.safeParse({ id: "p1", workspaceId: "w2" }).success,
+    true,
+  );
+  assert.equal(
+    methods["terminals.open"].params.safeParse({
+      cols: 80,
+      rows: 24,
+      projectId: "p1",
+      workspaceId: "w1",
+    }).success,
+    true,
+  );
+});
+
+test("conversations.workspaceMoved exige exatamente um entre fromWorkspaceId e projectId", () => {
+  const schema = events["conversations.workspaceMoved"];
+  assert.equal(schema.safeParse({ workspaceId: "w1", fromWorkspaceId: "w0" }).success, true);
+  assert.equal(schema.safeParse({ workspaceId: "w1", projectId: "p1" }).success, true);
+  assert.equal(schema.safeParse({ workspaceId: "w1" }).success, false);
+  assert.equal(
+    schema.safeParse({ workspaceId: "w1", fromWorkspaceId: "w0", projectId: "p1" }).success,
+    false,
+  );
 });

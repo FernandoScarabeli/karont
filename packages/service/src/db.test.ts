@@ -15,6 +15,7 @@ import {
   deleteRestorePoints,
   getAgentSession,
   getConversation,
+  getErrorDismissedMessageId,
   getRestorePoint,
   getSetting,
   getWorktree,
@@ -26,6 +27,7 @@ import {
   listProjects,
   listRecentFolderRecords,
   listRestorePoints,
+  listWorkspaces,
   markRestorePointsConcurrent,
   markWorktreeMerged,
   migrations,
@@ -35,6 +37,7 @@ import {
   removeProject,
   setAgentSession,
   setConversationTitle,
+  setErrorDismissedMessageId,
   setRestorePointAfter,
   setRestorePointUndoCommit,
   setRestorePointUndone,
@@ -91,7 +94,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    17,
+    20,
   );
   assert.equal(
     (
@@ -152,7 +155,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    17,
+    20,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();
@@ -396,7 +399,7 @@ test("migra um banco na versão 13 mantendo a conversa solta, sem projectId", as
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      17,
+      20,
     );
     const conversation = getConversation(db, "v13-1");
     assert.equal(conversation?.title, "Antes dos projetos");
@@ -508,7 +511,7 @@ test("migra um banco na versão 14 sem perder dados e cria restore_points", asyn
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      17,
+      20,
     );
     assert.equal(getConversation(db, "v14-1")?.title, "Antes");
     assert.equal(listMessages(db, "v14-1").length, 1);
@@ -550,7 +553,7 @@ test("migra um banco na versão 15 sem perder dados e acrescenta as colunas do d
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      17,
+      20,
     );
     const point = getRestorePoint(db, "m-15");
     assert.equal(point?.beforeCommit, "antes");
@@ -589,7 +592,7 @@ test("migra um banco na versão 16 sem perder dados e cria worktrees e conversat
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      17,
+      20,
     );
     const before = getConversation(db, "v16-1");
     assert.equal(before?.title, "Antes");
@@ -730,6 +733,135 @@ test("restore_points: cria, atualiza o depois, marca concorrência, lista excede
     assert.equal(getRestorePoint(db, "m1"), null);
     db.prepare("DELETE FROM conversations WHERE id=?").run(conversation.id);
     assert.deepEqual(listRestorePoints(db, conversation.id), []);
+  } finally {
+    db.close();
+  }
+});
+
+test("migra um banco na versão 17 com dados para workspaces, sem perder nada", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-v17-"));
+  const dbPath = path.join(root, "karont.db");
+  const legacyDb = new DatabaseSync(dbPath);
+  for (const migration of migrations.filter((entry) => entry.version <= 17)) {
+    legacyDb.exec(migration.up);
+    legacyDb.exec(`PRAGMA user_version = ${migration.version}`);
+  }
+  const stamp = "2026-11-01T10:00:00.000Z";
+  legacyDb
+    .prepare(
+      "INSERT INTO projects (id,name,icon,path,default_agent,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+    )
+    .run("p17", "App", "folder", "/tmp/p17", null, stamp, stamp);
+  const insertConversation = legacyDb.prepare(
+    "INSERT INTO conversations (id,agent,title,cwd,mode,state,created_at,updated_at,project_id) VALUES (?,?,?,?,?,?,?,?,?)",
+  );
+  insertConversation.run(
+    "c17-solta",
+    "claude",
+    "Solta",
+    "/tmp",
+    "edit",
+    "idle",
+    stamp,
+    stamp,
+    null,
+  );
+  insertConversation.run(
+    "c17-proj",
+    "codex",
+    "No projeto",
+    "/tmp/p17",
+    "edit",
+    "idle",
+    stamp,
+    stamp,
+    "p17",
+  );
+  legacyDb
+    .prepare(
+      "INSERT INTO messages (id,conversation_id,author,status,parts,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+    )
+    .run("m-17", "c17-solta", "agent", "done", "[]", stamp, stamp);
+  legacyDb.close();
+
+  const db = openDatabase(dbPath);
+  try {
+    assert.equal(
+      (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+      20,
+    );
+    const workspaces = listWorkspaces(db);
+    assert.equal(workspaces.length, 1);
+    const pessoal = workspaces[0];
+    assert.equal(pessoal?.name, "Pessoal");
+    assert.equal(pessoal?.icon, "folder");
+    assert.equal(pessoal?.position, 0);
+    assert.equal(getConversation(db, "c17-solta")?.workspaceId, pessoal?.id);
+    assert.equal(getConversation(db, "c17-proj")?.workspaceId, pessoal?.id);
+    assert.equal(getConversation(db, "c17-proj")?.projectId, "p17");
+    assert.equal(listProjects(db)[0]?.workspaceId, pessoal?.id);
+    assert.equal(listMessages(db, "c17-solta").length, 1);
+    const nulls = db
+      .prepare(
+        "SELECT (SELECT COUNT(*) FROM projects WHERE workspace_id IS NULL) + (SELECT COUNT(*) FROM conversations WHERE workspace_id IS NULL) AS n",
+      )
+      .get() as { n: number };
+    assert.equal(nulls.n, 0);
+    // Coisas novas caem no workspace padrão.
+    assert.equal(
+      createConversation(db, { agent: "claude", title: "Nova", cwd: "/tmp", mode: "edit" })
+        .workspaceId,
+      pessoal?.id,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("migra um banco na versão 18 com dados: acrescenta error_dismissed_message_id sem perder nada", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-v18-"));
+  const dbPath = path.join(root, "karont.db");
+  const legacyDb = new DatabaseSync(dbPath);
+  for (const migration of migrations.filter((entry) => entry.version <= 18)) {
+    legacyDb.exec(migration.up);
+    legacyDb.exec(`PRAGMA user_version = ${migration.version}`);
+  }
+  const stamp = "2026-11-01T10:00:00.000Z";
+  const workspaceId = (legacyDb.prepare("SELECT id FROM workspaces").get() as { id: string }).id;
+  legacyDb
+    .prepare(
+      "INSERT INTO conversations (id,agent,title,cwd,mode,state,created_at,updated_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
+    )
+    .run("c18", "claude", "Com erro", "/tmp", "edit", "error", stamp, stamp, workspaceId);
+  legacyDb
+    .prepare(
+      "INSERT INTO messages (id,conversation_id,author,status,parts,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+    )
+    .run("m18", "c18", "agent", "error", "[]", stamp, stamp);
+  legacyDb.close();
+
+  const db = openDatabase(dbPath);
+  try {
+    assert.equal(
+      (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+      20,
+    );
+    const conversation = getConversation(db, "c18");
+    assert.equal(conversation?.title, "Com erro");
+    assert.equal(conversation?.state, "error");
+    assert.equal(listMessages(db, "c18").length, 1);
+    // Conversa antiga: nenhum erro dispensado ainda.
+    assert.equal(getErrorDismissedMessageId(db, "c18"), null);
+    setErrorDismissedMessageId(db, "c18", "m18");
+    assert.equal(getErrorDismissedMessageId(db, "c18"), "m18");
+    // Conversa nova também começa sem erro dispensado.
+    const created = createConversation(db, {
+      agent: "claude",
+      title: "Nova",
+      cwd: "/tmp",
+      mode: "edit",
+    });
+    assert.equal(getErrorDismissedMessageId(db, created.id), null);
   } finally {
     db.close();
   }

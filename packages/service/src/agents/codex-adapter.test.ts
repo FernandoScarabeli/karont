@@ -243,6 +243,7 @@ test("thread/fork ramifica o Codex no turno selecionado", async () => {
   });
   const timestamp = new Date().toISOString();
   const conversation: Conversation = {
+    workspaceId: "ws-test",
     id: "branch-test",
     agent: "codex",
     title: "Conversa de teste",
@@ -279,6 +280,7 @@ test("Codex distingue pasta do projeto apagada de CLI ausente", async (context) 
   await rm(cwd, { recursive: true, force: true });
   const timestamp = new Date().toISOString();
   const conversation: Conversation = {
+    workspaceId: "ws-test",
     id: "missing-folder-codex",
     agent: "codex",
     title: "Pasta apagada",
@@ -331,6 +333,7 @@ test("Codex não abre processo se for descartado enquanto valida a pasta", async
   });
   const timestamp = new Date().toISOString();
   const conversation: Conversation = {
+    workspaceId: "ws-test",
     id: "dispose-before-spawn-codex",
     agent: "codex",
     title: "Abertura cancelada",
@@ -383,6 +386,7 @@ test("Codex mata o processo se dispose acontecer dentro do spawn", async () => {
   });
   const timestamp = new Date().toISOString();
   const conversation: Conversation = {
+    workspaceId: "ws-test",
     id: "dispose-during-spawn-codex",
     agent: "codex",
     title: "Abertura cancelada",
@@ -419,6 +423,7 @@ test("thread/turns/list recupera o turno selecionado em histórico antigo", asyn
   });
   const timestamp = new Date().toISOString();
   const conversation: Conversation = {
+    workspaceId: "ws-test",
     id: "branch-test-legacy",
     agent: "codex",
     title: "Conversa de teste",

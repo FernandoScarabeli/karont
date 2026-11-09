@@ -99,7 +99,12 @@ test("cliente lento não segura a saída e recebe resync com replay ao voltar a 
     isExecutable: async () => true,
   });
 
-  const { terminal } = await manager.open({ cwd: root, cols: 80, rows: 24 });
+  const { terminal } = await manager.open({
+    workspaceId: "ws-test",
+    cwd: root,
+    cols: 80,
+    rows: 24,
+  });
   const firstChunk = "a".repeat(100 * 1024);
   const skippedChunk = "b".repeat(100 * 1024);
   pty.emitData(firstChunk);

@@ -1,7 +1,14 @@
+/*
+ * O contêiner é o conjunto inteiro (cartão e faixa de baixo), então tudo responde à largura do
+ * painel. Os pontos de quebra são literais porque @container não aceita variáveis.
+ */
 .wrapper {
   display: grid;
   width: 100%;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
+  container-name: composer;
+  container-type: inline-size;
 }
 
 .card {
@@ -149,6 +156,10 @@
   color: transparent;
 }
 
+.placeholderNarrow {
+  display: none;
+}
+
 .placeholderOverlay {
   position: absolute;
   inset: var(--k-space-1) 0 auto;
@@ -170,11 +181,12 @@
   font-family: var(--k-font-mono); /* taste-skill-ignore: literal shell command. */
 }
 
+/* O enviar e o anel de contexto ficam sempre na primeira linha, à direita; os controles encolhem ou quebram. */
 .footer {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-wrap: nowrap;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--k-space-3);
 }
@@ -182,7 +194,8 @@
 .leading {
   display: flex;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  padding-block-start: calc((var(--k-composer-submit-size) - var(--k-control-height-md)) / 2);
   flex-wrap: nowrap;
   align-items: center;
   gap: var(--k-space-1);
@@ -190,6 +203,7 @@
 
 .actions {
   display: inline-flex;
+  min-height: var(--k-composer-submit-size);
   flex: 0 0 auto;
   align-items: center;
   gap: var(--k-space-2);
@@ -237,4 +251,49 @@
   color: var(--k-color-text-secondary);
   font-size: var(--k-text-12);
   line-height: var(--k-leading-normal);
+}
+
+/* Painel estreito: placeholder curto, em uma linha, com reticências se ainda não couber. */
+@container composer (max-width: 330px) {
+  .placeholderOverlay[data-has-short="true"] .placeholderWide {
+    display: none;
+  }
+
+  .placeholderNarrow {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .textarea {
+    min-height: var(--k-composer-textarea-compact-min-height);
+  }
+}
+
+/* Painel mínimo: cartão mais justo, para o anexar, o agente, as opções e o enviar caberem numa linha. */
+@container composer (max-width: 230px) {
+  .card {
+    padding-inline: var(--k-space-2);
+  }
+
+  .footer {
+    gap: var(--k-space-1);
+  }
+}
+
+/* Menor painel possível: botões e cartão um pouco mais justos, ainda numa linha só. */
+@container composer (max-width: 190px) {
+  .card {
+    padding-inline: var(--k-space-1);
+  }
+
+  .submit {
+    width: var(--k-control-height-md);
+    height: var(--k-control-height-md);
+  }
+
+  .leading {
+    gap: 0;
+  }
 }

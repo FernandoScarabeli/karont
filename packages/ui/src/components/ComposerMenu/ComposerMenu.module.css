@@ -5,6 +5,11 @@
   align-items: center;
 }
 
+/* O contêiner do tooltip precisa poder encolher, para o nome do modelo ganhar reticências. */
+.wrap .tooltip {
+  flex: 0 1 auto;
+}
+
 .trigger {
   display: inline-flex;
   min-width: 0;

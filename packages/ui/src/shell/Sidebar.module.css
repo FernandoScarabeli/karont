@@ -1,10 +1,42 @@
 .sidebar {
+  position: relative;
   display: flex;
+  min-width: 0;
   min-height: 0;
   flex-direction: column;
-  padding: var(--k-sidebar-padding);
-  border-right: var(--k-border-width) solid var(--k-color-border);
   background: var(--k-color-bg-app);
+}
+
+/* Recolhida, o conteúdo some (e fica inerte), mas continua montado; a faixa de ícones aparece por cima. */
+.expanded {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  opacity: 1;
+  transition:
+    opacity var(--k-motion-fast) var(--k-ease),
+    visibility 0s;
+}
+
+.sidebar[data-collapsed="true"] .expanded {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--k-motion-fast-exit) var(--k-ease),
+    visibility 0s linear var(--k-motion-fast-exit);
+}
+
+/* Largura mínima fixa: o conteúdo não se espreme enquanto a barra abre ou fecha. */
+.expandedInner {
+  display: flex;
+  width: max(100%, var(--k-sidebar-min-width));
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  padding: var(--k-sidebar-padding);
 }
 
 .navigation {
@@ -34,6 +66,13 @@
   padding-inline: var(--k-space-2);
   color: var(--k-color-text-secondary);
   text-align: left;
+}
+
+.navigationCount {
+  margin-inline-start: auto;
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-12);
+  font-variant-numeric: tabular-nums;
 }
 
 .navigationAction:disabled {

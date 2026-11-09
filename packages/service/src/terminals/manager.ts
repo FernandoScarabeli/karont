@@ -99,11 +99,45 @@ export class TerminalManager {
     return { terminals: [...this.#terminals.values()].map(({ info }) => ({ ...info })) };
   }
 
+  /**
+   * Mantém os terminais abertos coerentes com mudanças de workspace/projeto.
+   * Emite `terminals.changed` uma vez, e só se algo mudou.
+   */
+  async reassign(
+    change:
+      | { fromWorkspaceId: string; toWorkspaceId: string }
+      | { projectId: string; toWorkspaceId: string }
+      | { removedProjectId: string },
+  ): Promise<void> {
+    let changed = false;
+    for (const { info } of this.#terminals.values()) {
+      if ("fromWorkspaceId" in change) {
+        if (info.workspaceId === change.fromWorkspaceId) {
+          info.workspaceId = change.toWorkspaceId;
+          changed = true;
+        }
+      } else if ("removedProjectId" in change) {
+        if (info.projectId === change.removedProjectId) {
+          delete info.projectId;
+          changed = true;
+        }
+      } else if (info.projectId === change.projectId && info.workspaceId !== change.toWorkspaceId) {
+        info.workspaceId = change.toWorkspaceId;
+        changed = true;
+      }
+    }
+    if (changed) {
+      await this.#broadcast({ event: "terminals.changed", payload: this.list() });
+    }
+  }
+
   async open(params: {
     cwd?: string;
     cols: number;
     rows: number;
     command?: string;
+    projectId?: string;
+    workspaceId: string;
   }): Promise<{ terminal: TerminalInfo }> {
     validateSize(params.cols, params.rows);
     const activeTerminals = [...this.#terminals.values()].filter(({ info }) => !info.exited).length;
@@ -167,6 +201,8 @@ export class TerminalManager {
         id,
         title: `${shellName} · ${abbreviatePath(cwd, this.#homeDir)}`,
         cwd,
+        ...(params.projectId ? { projectId: params.projectId } : {}),
+        workspaceId: params.workspaceId,
         shell,
         cols: params.cols,
         rows: params.rows,

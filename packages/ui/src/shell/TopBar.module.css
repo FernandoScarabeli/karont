@@ -1,18 +1,39 @@
 .topbar {
   display: grid;
-  grid-template-columns: var(--k-sidebar-width) minmax(0, 1fr);
+  /* A largura da marca é a da sidebar mais a linha da alça; a variável vem do shell. */
+  grid-template-columns: calc(var(--k-sidebar-current-width) + var(--k-border-width)) minmax(0, 1fr);
+  transition: grid-template-columns var(--k-sidebar-anim, 0s) var(--k-ease);
   min-width: 0;
   height: var(--k-topbar-height);
-  border-bottom: var(--k-border-width) solid var(--k-color-border);
   background: var(--k-color-bg-app);
 }
 
 .brandArea {
   display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-topbar-brand-gap);
+  padding-inline: var(--k-space-4) var(--k-space-2);
+  border-right: var(--k-border-width) solid var(--k-color-border);
+}
+
+.brand {
+  display: flex;
+  min-width: 0;
   align-items: center;
   gap: var(--k-topbar-brand-gap);
-  padding-inline: var(--k-space-4);
-  border-right: var(--k-border-width) solid var(--k-color-border);
+  overflow: hidden;
+}
+
+/* Recolhida, só o botão fica, centrado com os ícones da faixa. */
+.brandArea:has([data-collapsed="true"]) {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.brandArea:has([data-collapsed="true"]) .brand {
+  display: none;
 }
 
 .brandName {
@@ -30,14 +51,137 @@
   gap: var(--k-topbar-search-gap);
   min-width: 0;
   padding-inline: var(--k-space-3);
+  /* A linha existe só sob as abas: a marca e a sidebar formam uma superfície só. */
+  border-bottom: var(--k-border-width) solid var(--k-color-border);
 }
 
 .areas {
   display: flex;
+  flex: 0 1 auto;
   align-items: end;
   align-self: stretch;
   gap: var(--k-space-1);
   min-width: 0;
+}
+
+.homeTab {
+  flex: 0 0 auto;
+}
+
+/* Muitas abas encolhem com reticências e, passando disso, rolam na horizontal. */
+.tabScroller {
+  display: flex;
+  min-width: 0;
+  align-items: end;
+  align-self: stretch;
+  gap: var(--k-space-1);
+  overflow: auto hidden;
+  scrollbar-width: none;
+}
+
+.tabItem {
+  position: relative;
+  display: flex;
+  min-width: var(--k-topbar-tab-min-width);
+  max-width: var(--k-topbar-tab-max-width);
+  flex: 0 1 auto;
+}
+
+.tabButton {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* O espaço do "⋯" fica sempre reservado: o nome nunca passa por baixo dele e a aba não muda de largura. */
+.tabItem .tabButton {
+  padding-inline-end: calc(var(--k-control-height-sm) + var(--k-space-2));
+}
+
+.tabLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.newWorkspace {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.tabActions {
+  position: absolute;
+  z-index: var(--k-layer-menu);
+  top: 50%;
+  inset-inline-end: var(--k-space-1);
+  background: var(--k-color-bg-raised);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity var(--k-motion-fast) var(--k-ease);
+}
+
+.tabItemActive .tabActions {
+  background: var(--k-color-bg-sheet);
+}
+
+.tabItem:hover .tabActions,
+.tabItem:focus-within .tabActions,
+.tabActions[aria-expanded="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Mesmas cores da sidebar: trabalhando pulsa, precisa de você fica fixo. */
+.statusDot {
+  width: var(--k-status-dot-size-small);
+  height: var(--k-status-dot-size-small);
+  flex: 0 0 auto;
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-full);
+}
+
+.statusWorking {
+  background: var(--k-color-status-working);
+  animation: statusPulse var(--k-duration-status-pulse-slow) ease-in-out infinite;
+}
+
+.statusNeedsYou {
+  background: var(--k-color-status-needs-you);
+}
+
+.removeError {
+  margin: 0;
+  color: var(--k-color-danger);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+@keyframes statusPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Sem animação, "trabalhando" vira um anel: o estado não depende só da cor. */
+@media (prefers-reduced-motion: reduce) {
+  .statusWorking {
+    border-color: var(--k-color-status-working);
+    background: transparent;
+    animation: none;
+  }
+}
+
+@media (hover: none) {
+  .tabActions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .activeArea {
@@ -98,6 +242,11 @@
   outline-offset: var(--k-focus-ring-offset);
 }
 
+/* Dentro da faixa rolável o anel por fora seria cortado: fica por dentro. */
+.tabButton:focus-visible {
+  outline-offset: calc(var(--k-focus-ring-width) * -1);
+}
+
 .activeArea svg {
   color: var(--k-color-text-secondary);
 }
@@ -122,19 +271,7 @@
   font-weight: var(--k-weight-regular);
 }
 
-.searchButton:disabled {
-  opacity: 1;
-}
-
 .searchLabel {
   flex: 1;
   text-align: left;
-}
-
-.shortcut {
-  color: var(--k-color-text-muted);
-  font-family: var(--k-font-mono);
-  font-size: var(--k-text-12);
-  font-weight: var(--k-weight-regular);
-  line-height: var(--k-leading-tight);
 }

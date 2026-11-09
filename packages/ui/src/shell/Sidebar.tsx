@@ -3,11 +3,13 @@ import {
   Archive,
   ArchiveRestore,
   ArrowLeft,
+  ArrowRightLeft,
   ChevronDown,
   ChevronRight,
   Columns2,
   Ellipsis,
   GitFork,
+  Inbox,
   ListTodo,
   Pencil,
   Pin,
@@ -37,8 +39,11 @@ import { useNavigationActions, useNavigationState } from "../navigation/Navigati
 import { ProjectDialog } from "../projects/ProjectDialog.tsx";
 import { groupConversations } from "../projects/projectGroups.ts";
 import { getProjectIcon } from "../projects/projectIcons.ts";
+import { useInbox } from "../projects/useInbox.ts";
 import { removeProjectFromStore, upsertProject, useProjects } from "../projects/useProjects.ts";
+import { useWorkspaces } from "../projects/useWorkspaces.ts";
 import { useWorktrees } from "../projects/useWorktrees.ts";
+import { filterByWorkspace, groupTerminals } from "../projects/workspaceState.ts";
 import { TerminalCloseButton } from "../terminal/TerminalCloseButton.tsx";
 import {
   getTerminalDisplayDetails,
@@ -48,6 +53,7 @@ import {
 import { findPane, findPaneByConversation, paneCount } from "../workspace/layout.ts";
 import { ServiceStatus } from "./ServiceStatus.tsx";
 import styles from "./Sidebar.module.css";
+import { SidebarRail } from "./SidebarRail.tsx";
 
 const conversationActionsIcon = <Ellipsis aria-hidden="true" size={17} strokeWidth={1.8} />;
 const COLLAPSED_PROJECTS_SETTING = "sidebar.collapsedProjects";
@@ -220,8 +226,13 @@ const ConversationRow = memo(function ConversationRow({
   );
 });
 
-export function Sidebar() {
-  const { view, layout, activePaneId } = useNavigationState();
+type SidebarProps = {
+  collapsed: boolean;
+};
+
+export function Sidebar({ collapsed }: SidebarProps) {
+  const { view, layout, activePaneId, workspaceOverviewVisible } = useNavigationState();
+  const { total: inboxTotal } = useInbox();
   const {
     closeConversationWorkspacePanes,
     closeTerminalWorkspacePane,
@@ -236,18 +247,22 @@ export function Sidebar() {
     isItemDisabled: (element) => element.matches(":disabled"),
     gapClick: false,
   });
-  const { terminals, error } = useTerminals();
+  const { terminals: allTerminals, error } = useTerminals();
+  const { workspaces, activeId: activeWorkspaceId, loading: workspacesLoading } = useWorkspaces();
   const [showArchived, setShowArchived] = useState(false);
   const showArchivedRef = useRef(showArchived);
   showArchivedRef.current = showArchived;
   const conversationIndex = useConversationIndex(showArchived);
   const projectsState = useProjects();
-  const conversationList = conversationIndex.conversations;
-  const groups = groupConversations(
-    conversationList,
-    projectsState.projects,
-    projectsState.loading,
-  );
+  // A sidebar mostra só o workspace ativo; em Início, o último que esteve ativo.
+  // Enquanto a lista de workspaces carrega não há ativo: não mostramos tudo para depois encolher.
+  const scoped = <T extends { workspaceId: string }>(items: readonly T[]) =>
+    workspacesLoading ? [] : filterByWorkspace(items, activeWorkspaceId);
+  const conversationList = scoped(conversationIndex.conversations);
+  const workspaceProjects = scoped(projectsState.projects);
+  const terminals = scoped(allTerminals);
+  const groups = groupConversations(conversationList, workspaceProjects, projectsState.loading);
+  const terminalGroups = groupTerminals(terminals, workspaceProjects, projectsState.loading);
   // Fora das arquivadas, a seção Conversas mostra só as soltas.
   const visibleConversations = showArchived ? conversationList : groups.loose;
   const focusScopeRef = useRef({ visibleConversations, groups, showArchived });
@@ -276,7 +291,7 @@ export function Sidebar() {
   const recentConversations = showArchived
     ? visibleConversations
     : visibleConversations.filter((conversation) => conversation.pinnedAt === null);
-  const terminalTitles = getTerminalDisplayTitles(terminals);
+  const terminalTitles = getTerminalDisplayTitles(allTerminals);
   const [terminalToClose, setTerminalToClose] = useState<TerminalInfo | null>(null);
   const [isClosing, setIsClosing] = useState(false);
   const [closeError, setCloseError] = useState("");
@@ -666,8 +681,10 @@ export function Sidebar() {
   const renderConversation = (conversation: Conversation) => {
     const isOpen =
       view.name === "workspace" && findPaneByConversation(layout, conversation.id) !== undefined;
+    // Com a tela do workspace por cima, o painel escondido não conta como ativo.
     const active =
       view.name === "workspace" &&
+      !workspaceOverviewVisible &&
       activePane?.view.kind === "chat" &&
       activePane.view.conversationId === conversation.id;
     const editing = editingConversationId === conversation.id;
@@ -788,24 +805,107 @@ export function Sidebar() {
     }
   }
 
-  const projectMenuItems = (project: Project): ActionMenuItem[] => [
-    {
-      id: "edit",
-      label: t.shell.editProject,
-      icon: <Pencil size={15} />,
-      onSelect: () => openProjectDialog(project),
-    },
-    {
-      id: "remove",
-      label: t.shell.removeProject,
-      icon: <Trash2 size={15} />,
-      danger: true,
-      onSelect: () => requestRemoveProject(project),
-    },
-  ];
+  async function moveProject(project: Project, workspaceId: string) {
+    if (!bridge) return;
+    setSidebarActionError("");
+    try {
+      const result = await bridge.request("projects.update", { id: project.id, workspaceId });
+      upsertProject(result.project);
+    } catch (moveError) {
+      setSidebarActionError(
+        moveError instanceof BridgeError && moveError.message
+          ? moveError.message
+          : t.shell.moveProjectFailed,
+      );
+    }
+  }
+
+  const projectMenuItems = (project: Project): ActionMenuItem[] => {
+    const otherWorkspaces = workspaces.filter((workspace) => workspace.id !== project.workspaceId);
+    return [
+      {
+        id: "edit",
+        label: t.shell.editProject,
+        icon: <Pencil size={15} />,
+        onSelect: () => openProjectDialog(project),
+      },
+      ...(otherWorkspaces.length > 0
+        ? [
+            { id: "move-separator", separator: true as const },
+            ...otherWorkspaces.map((workspace) => ({
+              id: `move-${workspace.id}`,
+              label: t.shell.moveProjectTo(workspace.name),
+              icon: <ArrowRightLeft size={15} />,
+              onSelect: () => void moveProject(project, workspace.id),
+            })),
+            { id: "remove-separator", separator: true as const },
+          ]
+        : []),
+      {
+        id: "remove",
+        label: t.shell.removeProject,
+        icon: <Trash2 size={15} />,
+        danger: true,
+        onSelect: () => requestRemoveProject(project),
+      },
+    ];
+  };
+
+  const renderTerminal = (terminal: TerminalInfo) => {
+    const details = getTerminalDisplayDetails(terminal);
+    const title = terminalTitles.get(terminal.id) ?? details.shortTitle;
+    const terminalState = terminal.exited ? t.shell.exited : t.terminal.running;
+    const accessibleName = t.terminal.sidebarAccessibleName(title, terminalState);
+    return (
+      <li
+        className={`${styles.conversationItem} ${styles.terminalConversationItem}`}
+        key={terminal.id}
+      >
+        <button
+          aria-current={
+            view.name === "workspace" &&
+            activePane?.view.kind === "terminal" &&
+            activePane.view.terminalId === terminal.id
+              ? "page"
+              : undefined
+          }
+          aria-label={accessibleName}
+          className={styles.conversationButton}
+          onClick={() =>
+            navigate({ name: "terminal", id: terminal.id, workspaceId: terminal.workspaceId })
+          }
+          ref={(element) => {
+            if (element) {
+              terminalButtonRefs.current.set(terminal.id, element);
+              fluidHover.registerItem(`terminal:${terminal.id}`, element);
+            } else {
+              terminalButtonRefs.current.delete(terminal.id);
+              fluidHover.registerItem(`terminal:${terminal.id}`, null);
+            }
+          }}
+          title={accessibleName}
+          type="button"
+        >
+          <SquareTerminal aria-hidden="true" size={15} strokeWidth={1.8} />
+          <span className={styles.conversationTitle}>{title}</span>
+          {terminal.exited ? (
+            <span className={styles.exitedMarker}>{t.shell.exited}</span>
+          ) : (
+            <span aria-hidden="true" className={styles.runningMarker} />
+          )}
+        </button>
+        <TerminalCloseButton
+          className={styles.endTerminalButton}
+          label={title}
+          onRequestClose={() => requestClose(terminal)}
+        />
+      </li>
+    );
+  };
 
   const renderProject = (project: Project) => {
     const conversations = groups.byProject.get(project.id) ?? [];
+    const projectTerminals = terminalGroups.byProject.get(project.id) ?? [];
     const expanded = !collapsedProjects.includes(project.id);
     const hasWaiting = conversations.some((conversation) => conversation.state === "waiting");
     const hasWorking = conversations.some((conversation) => conversation.state === "working");
@@ -839,7 +939,11 @@ export function Sidebar() {
         >
           <button
             aria-controls={expanded ? listId : undefined}
-            aria-description={t.shell.projectDescription(conversations.length, statusText)}
+            aria-description={t.shell.projectDescription(
+              conversations.length,
+              statusText,
+              projectTerminals.length,
+            )}
             aria-expanded={expanded}
             className={styles.conversationButton}
             onClick={() => toggleProject(project.id)}
@@ -890,13 +994,14 @@ export function Sidebar() {
           </div>
         </div>
         {expanded ? (
-          conversations.length > 0 ? (
+          conversations.length > 0 || projectTerminals.length > 0 ? (
             <ul
               aria-label={t.shell.projectConversations(project.name)}
               className={`${styles.conversationList} ${styles.projectConversations}`}
               id={listId}
             >
               {conversations.map(renderConversation)}
+              {projectTerminals.map(renderTerminal)}
             </ul>
           ) : (
             <p className={`${styles.emptyList} ${styles.projectEmpty}`} id={listId}>
@@ -908,243 +1013,226 @@ export function Sidebar() {
     );
   };
 
+  const newConversationActive =
+    view.name === "workspace" &&
+    !workspaceOverviewVisible &&
+    activePane?.view.kind === "new-conversation" &&
+    !activePane.view.projectId;
+
   return (
-    <aside aria-label={t.shell.sidebar} className={styles.sidebar}>
-      <nav
-        aria-label={t.shell.primaryNavigation}
-        className={`${styles.navigation} ${scrollAreaStyles.scrollArea}`}
-        ref={fluidHover.containerRef}
-      >
-        <FluidHoverHighlight controller={fluidHover} />
-        <div className={styles.primaryActions}>
-          <Button
-            aria-current={
-              view.name === "workspace" &&
-              activePane?.view.kind === "new-conversation" &&
-              !activePane.view.projectId
-                ? "page"
-                : undefined
-            }
-            className={styles.navigationAction}
-            iconStart={<SquarePen aria-hidden="true" size={16} strokeWidth={1.75} />}
-            onClick={() => navigate({ name: "new-conversation" })}
-            ref={(element) => fluidHover.registerItem("new-conversation", element)}
-            variant="ghost"
+    <aside aria-label={t.shell.sidebar} className={styles.sidebar} data-collapsed={collapsed}>
+      {/* A barra recolhida só esconde o conteúdo: tudo continua montado (diálogos, listas, foco de retorno). */}
+      <div className={styles.expanded} inert={collapsed}>
+        <div className={styles.expandedInner}>
+          <nav
+            aria-label={t.shell.primaryNavigation}
+            className={`${styles.navigation} ${scrollAreaStyles.scrollArea}`}
+            ref={fluidHover.containerRef}
           >
-            {t.shell.newConversation}
-          </Button>
-          <Button
-            aria-description={t.shell.availableSoon}
-            className={styles.navigationAction}
-            disabled
-            iconStart={<ListTodo aria-hidden="true" size={16} strokeWidth={1.75} />}
-            ref={(element) => fluidHover.registerItem("tasks", element)}
-            variant="ghost"
-          >
-            {t.shell.tasks}
-          </Button>
-        </div>
-
-        {showArchived ? null : (
-          <section aria-labelledby="sidebar-projects-title" className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <h2 className={styles.sectionTitle} id="sidebar-projects-title">
-                {t.shell.projects}
-              </h2>
-              <IconButton
-                icon={<Plus aria-hidden="true" size={16} strokeWidth={1.8} />}
-                label={t.shell.newProject}
-                onClick={() => openProjectDialog(null)}
-                ref={newProjectRef}
-                size="sm"
-              />
-            </div>
-            {projectsState.error ? (
-              <p className={styles.emptyList} role="status">
-                <span>{t.shell.projectsLoadError}</span>
-              </p>
-            ) : null}
-            {projectsState.projects.length > 0 ? (
-              <ul aria-label={t.shell.projectList} className={styles.conversationList}>
-                {projectsState.projects.map(renderProject)}
-              </ul>
-            ) : projectsState.loading || projectsState.error ? null : (
-              <p className={styles.emptyList}>
-                <span>{t.shell.noProjects}</span>
-              </p>
-            )}
-          </section>
-        )}
-
-        <section aria-labelledby="sidebar-conversations-title" className={styles.section}>
-          <div className={styles.sectionHeader}>
-            {showArchived ? (
-              <div className={styles.sectionHeadingStart}>
-                <IconButton
-                  icon={<ArrowLeft aria-hidden="true" size={16} strokeWidth={1.8} />}
-                  label={t.shell.backToConversations}
-                  onClick={showRecentConversations}
-                  ref={archivedBackRef}
-                  size="sm"
-                />
-                <h2 className={styles.sectionTitle} id="sidebar-conversations-title">
-                  {t.shell.archivedConversations}
-                </h2>
-              </div>
-            ) : (
-              <h2 className={styles.sectionTitle} id="sidebar-conversations-title">
-                {t.shell.conversations}
-              </h2>
-            )}
-            {showArchived ? null : (
-              <div className={styles.sectionActions}>
-                <ActionMenu
-                  items={[
-                    {
-                      id: "view-archived",
-                      label: t.shell.viewArchivedConversations,
-                      icon: <Archive size={15} />,
-                      onSelect: viewArchivedConversations,
-                    },
-                  ]}
-                  label={t.shell.conversationSectionActions}
-                  onOpenChange={(open) => setMenu(open ? { kind: "section" } : null)}
-                  open={menu?.kind === "section"}
-                  triggerClassName={styles.sectionActionsMenu}
-                  triggerIcon={<Ellipsis aria-hidden="true" size={16} strokeWidth={1.8} />}
-                  triggerLabel={t.shell.conversationSectionActions}
-                />
-                <IconButton
-                  icon={<Plus aria-hidden="true" size={16} strokeWidth={1.8} />}
-                  label={t.shell.newLooseConversation}
-                  onClick={() => navigate({ name: "new-conversation" })}
-                  ref={newLooseConversationRef}
-                  size="sm"
-                />
-              </div>
-            )}
-          </div>
-
-          {error ? (
-            <p className={styles.emptyList} role="status">
-              <span>{t.shell.conversationsLoadError}</span>
-            </p>
-          ) : null}
-          {conversationIndex.error ? (
-            <p className={styles.emptyList} role="status">
-              <span>{t.shell.conversationsLoadError}</span>
-            </p>
-          ) : null}
-          {sidebarActionError ? (
-            <p className={styles.actionError} role="status">
-              {sidebarActionError}
-            </p>
-          ) : null}
-
-          {pinnedRows.length > 0 ? (
-            <>
-              <h3 className={styles.conversationSubheading}>{t.shell.pinnedConversations}</h3>
-              <ul aria-label={t.shell.pinnedConversations} className={styles.conversationList}>
-                {pinnedRows}
-              </ul>
-            </>
-          ) : null}
-          {recentRows.length > 0 ? (
-            <>
-              {pinnedRows.length > 0 ? (
-                <h3 className={styles.conversationSubheading}>{t.shell.recentConversations}</h3>
-              ) : null}
-              <ul
-                aria-label={
-                  showArchived ? t.shell.archivedConversations : t.shell.agentConversations
-                }
-                className={styles.conversationList}
+            <FluidHoverHighlight controller={fluidHover} />
+            <div className={styles.primaryActions}>
+              <Button
+                aria-current={newConversationActive ? "page" : undefined}
+                className={styles.navigationAction}
+                iconStart={<SquarePen aria-hidden="true" size={16} strokeWidth={1.75} />}
+                onClick={() => navigate({ name: "new-conversation" })}
+                ref={(element) => fluidHover.registerItem("new-conversation", element)}
+                variant="ghost"
               >
-                {recentRows}
-              </ul>
-            </>
-          ) : null}
-          {showArchived && !conversationIndex.loading && conversationList.length === 0 ? (
-            <p className={styles.emptyList}>
-              <span>{t.shell.noArchivedConversations}</span>
-            </p>
-          ) : null}
-          {!showArchived &&
-          !conversationIndex.loading &&
-          !projectsState.loading &&
-          groups.loose.length === 0 &&
-          terminals.length === 0 ? (
-            <p className={styles.emptyList}>
-              <span>{t.shell.noConversations}</span>
-            </p>
-          ) : null}
-          {!showArchived && terminals.length > 0 ? (
-            <ul aria-label={t.shell.conversations} className={styles.conversationList}>
-              {terminals.map((terminal) => {
-                const details = getTerminalDisplayDetails(terminal);
-                const title = terminalTitles.get(terminal.id) ?? details.shortTitle;
-                const terminalState = terminal.exited ? t.shell.exited : t.terminal.running;
-                const accessibleName = t.terminal.sidebarAccessibleName(title, terminalState);
-                return (
-                  <li
-                    className={`${styles.conversationItem} ${styles.terminalConversationItem}`}
-                    key={terminal.id}
-                  >
-                    <button
-                      aria-current={
-                        view.name === "workspace" &&
-                        activePane?.view.kind === "terminal" &&
-                        activePane.view.terminalId === terminal.id
-                          ? "page"
-                          : undefined
-                      }
-                      aria-label={accessibleName}
-                      className={styles.conversationButton}
-                      onClick={() => navigate({ name: "terminal", id: terminal.id })}
-                      ref={(element) => {
-                        if (element) {
-                          terminalButtonRefs.current.set(terminal.id, element);
-                          fluidHover.registerItem(`terminal:${terminal.id}`, element);
-                        } else {
-                          terminalButtonRefs.current.delete(terminal.id);
-                          fluidHover.registerItem(`terminal:${terminal.id}`, null);
-                        }
-                      }}
-                      title={accessibleName}
-                      type="button"
-                    >
-                      <SquareTerminal aria-hidden="true" size={15} strokeWidth={1.8} />
-                      <span className={styles.conversationTitle}>{title}</span>
-                      {terminal.exited ? (
-                        <span className={styles.exitedMarker}>{t.shell.exited}</span>
-                      ) : (
-                        <span aria-hidden="true" className={styles.runningMarker} />
-                      )}
-                    </button>
-                    <TerminalCloseButton
-                      className={styles.endTerminalButton}
-                      label={title}
-                      onRequestClose={() => requestClose(terminal)}
-                    />
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
-        </section>
-      </nav>
+                {t.shell.newConversation}
+              </Button>
+              <Button
+                aria-current={view.name === "inbox" ? "page" : undefined}
+                aria-description={inboxTotal > 0 ? t.shell.inboxCount(inboxTotal) : undefined}
+                className={styles.navigationAction}
+                iconStart={<Inbox aria-hidden="true" size={16} strokeWidth={1.75} />}
+                onClick={() => navigate({ name: "inbox" })}
+                ref={(element) => fluidHover.registerItem("inbox", element)}
+                variant="ghost"
+              >
+                {t.shell.inbox}
+                {inboxTotal > 0 ? (
+                  <span aria-hidden="true" className={styles.navigationCount}>
+                    {inboxTotal}
+                  </span>
+                ) : null}
+              </Button>
+              <Button
+                aria-description={t.shell.availableSoon}
+                className={styles.navigationAction}
+                disabled
+                iconStart={<ListTodo aria-hidden="true" size={16} strokeWidth={1.75} />}
+                ref={(element) => fluidHover.registerItem("tasks", element)}
+                variant="ghost"
+              >
+                {t.shell.tasks}
+              </Button>
+            </div>
 
-      <footer className={styles.footer}>
-        <ServiceStatus />
-        <IconButton
-          aria-current={view.name === "settings" ? "page" : undefined}
-          className={styles.settingsButton}
-          icon={<Settings aria-hidden="true" size={16} strokeWidth={1.75} />}
-          label={t.shell.settings}
-          onClick={() => navigate({ name: "settings", section: "general" })}
-          size="sm"
-        />
-      </footer>
+            {showArchived ? null : (
+              <section aria-labelledby="sidebar-projects-title" className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <h2 className={styles.sectionTitle} id="sidebar-projects-title">
+                    {t.shell.projects}
+                  </h2>
+                  <IconButton
+                    icon={<Plus aria-hidden="true" size={16} strokeWidth={1.8} />}
+                    label={t.shell.newProject}
+                    onClick={() => openProjectDialog(null)}
+                    ref={newProjectRef}
+                    size="sm"
+                  />
+                </div>
+                {projectsState.error ? (
+                  <p className={styles.emptyList} role="status">
+                    <span>{t.shell.projectsLoadError}</span>
+                  </p>
+                ) : null}
+                {workspaceProjects.length > 0 ? (
+                  <ul aria-label={t.shell.projectList} className={styles.conversationList}>
+                    {workspaceProjects.map(renderProject)}
+                  </ul>
+                ) : projectsState.loading || projectsState.error || workspacesLoading ? null : (
+                  <p className={styles.emptyList}>
+                    <span>{t.shell.noProjects}</span>
+                  </p>
+                )}
+              </section>
+            )}
+
+            <section aria-labelledby="sidebar-conversations-title" className={styles.section}>
+              <div className={styles.sectionHeader}>
+                {showArchived ? (
+                  <div className={styles.sectionHeadingStart}>
+                    <IconButton
+                      icon={<ArrowLeft aria-hidden="true" size={16} strokeWidth={1.8} />}
+                      label={t.shell.backToConversations}
+                      onClick={showRecentConversations}
+                      ref={archivedBackRef}
+                      size="sm"
+                    />
+                    <h2 className={styles.sectionTitle} id="sidebar-conversations-title">
+                      {t.shell.archivedConversations}
+                    </h2>
+                  </div>
+                ) : (
+                  <h2 className={styles.sectionTitle} id="sidebar-conversations-title">
+                    {t.shell.conversations}
+                  </h2>
+                )}
+                {showArchived ? null : (
+                  <div className={styles.sectionActions}>
+                    <ActionMenu
+                      items={[
+                        {
+                          id: "view-archived",
+                          label: t.shell.viewArchivedConversations,
+                          icon: <Archive size={15} />,
+                          onSelect: viewArchivedConversations,
+                        },
+                      ]}
+                      label={t.shell.conversationSectionActions}
+                      onOpenChange={(open) => setMenu(open ? { kind: "section" } : null)}
+                      open={menu?.kind === "section"}
+                      triggerClassName={styles.sectionActionsMenu}
+                      triggerIcon={<Ellipsis aria-hidden="true" size={16} strokeWidth={1.8} />}
+                      triggerLabel={t.shell.conversationSectionActions}
+                    />
+                    <IconButton
+                      icon={<Plus aria-hidden="true" size={16} strokeWidth={1.8} />}
+                      label={t.shell.newLooseConversation}
+                      onClick={() => navigate({ name: "new-conversation" })}
+                      ref={newLooseConversationRef}
+                      size="sm"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {error ? (
+                <p className={styles.emptyList} role="status">
+                  <span>{t.shell.conversationsLoadError}</span>
+                </p>
+              ) : null}
+              {conversationIndex.error ? (
+                <p className={styles.emptyList} role="status">
+                  <span>{t.shell.conversationsLoadError}</span>
+                </p>
+              ) : null}
+              {sidebarActionError ? (
+                <p className={styles.actionError} role="status">
+                  {sidebarActionError}
+                </p>
+              ) : null}
+
+              {pinnedRows.length > 0 ? (
+                <>
+                  <h3 className={styles.conversationSubheading}>{t.shell.pinnedConversations}</h3>
+                  <ul aria-label={t.shell.pinnedConversations} className={styles.conversationList}>
+                    {pinnedRows}
+                  </ul>
+                </>
+              ) : null}
+              {recentRows.length > 0 ? (
+                <>
+                  {pinnedRows.length > 0 ? (
+                    <h3 className={styles.conversationSubheading}>{t.shell.recentConversations}</h3>
+                  ) : null}
+                  <ul
+                    aria-label={
+                      showArchived ? t.shell.archivedConversations : t.shell.agentConversations
+                    }
+                    className={styles.conversationList}
+                  >
+                    {recentRows}
+                  </ul>
+                </>
+              ) : null}
+              {showArchived && !conversationIndex.loading && conversationList.length === 0 ? (
+                <p className={styles.emptyList}>
+                  <span>{t.shell.noArchivedConversations}</span>
+                </p>
+              ) : null}
+              {!showArchived &&
+              !conversationIndex.loading &&
+              !projectsState.loading &&
+              groups.loose.length === 0 &&
+              terminalGroups.loose.length === 0 ? (
+                <p className={styles.emptyList}>
+                  <span>{t.shell.noConversations}</span>
+                </p>
+              ) : null}
+              {!showArchived && terminalGroups.loose.length > 0 ? (
+                <ul aria-label={t.shell.conversations} className={styles.conversationList}>
+                  {terminalGroups.loose.map(renderTerminal)}
+                </ul>
+              ) : null}
+            </section>
+          </nav>
+
+          <footer className={styles.footer}>
+            <ServiceStatus />
+            <IconButton
+              aria-current={view.name === "settings" ? "page" : undefined}
+              className={styles.settingsButton}
+              icon={<Settings aria-hidden="true" size={16} strokeWidth={1.75} />}
+              label={t.shell.settings}
+              onClick={() => navigate({ name: "settings", section: "general" })}
+              size="sm"
+            />
+          </footer>
+        </div>
+      </div>
+      <SidebarRail
+        collapsed={collapsed}
+        inboxTotal={inboxTotal}
+        inboxActive={view.name === "inbox"}
+        newConversationActive={newConversationActive}
+        onInbox={() => navigate({ name: "inbox" })}
+        onNewConversation={() => navigate({ name: "new-conversation" })}
+        onSettings={() => navigate({ name: "settings", section: "general" })}
+        settingsActive={view.name === "settings"}
+      />
       <Dialog
         description={
           terminalToClose?.exited ? t.terminal.closeExitedDescription : t.terminal.closeDescription

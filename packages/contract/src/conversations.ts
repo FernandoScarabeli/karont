@@ -32,6 +32,7 @@ export const conversationSchema = z.strictObject({
   title: z.string().min(1).max(240),
   cwd: z.string().min(1).max(4_096),
   projectId: z.string().min(1).optional(),
+  workspaceId: z.string().min(1),
   worktreeId: z.string().min(1).optional(),
   mode: conversationModeSchema,
   model: z.string().min(1).max(80).optional(),
@@ -76,6 +77,46 @@ export const questionOptionSchema = z.strictObject({
   label: z.string(),
   description: z.string().optional(),
 });
+export const permissionPartSchema = z.strictObject({
+  ...messagePartBase,
+  type: z.literal("permission"),
+  tool: z.string().max(120),
+  summary: z.string().max(8_192),
+  description: z.string().max(8_192).optional(),
+  options: z.array(z.enum(["allow", "always", "deny"])).min(1),
+  state: z.enum(["pending", "allowed", "denied"]),
+});
+export const questionPartSchema = z.strictObject({
+  ...messagePartBase,
+  type: z.literal("question"),
+  questions: z
+    .array(
+      z.strictObject({
+        question: z.string(),
+        header: z.string().optional(),
+        options: z.array(questionOptionSchema),
+        multiSelect: z.boolean(),
+        freeText: z.boolean(),
+      }),
+    )
+    .min(1),
+  state: z.enum(["pending", "answered"]),
+});
+export const planPartSchema = z.strictObject({
+  ...messagePartBase,
+  type: z.literal("plan"),
+  markdown: z.string(),
+  state: z.enum(["pending", "approved", "rejected"]),
+  comment: z.string().optional(),
+});
+export const errorPartSchema = z.strictObject({
+  ...messagePartBase,
+  type: z.literal("error"),
+  errorType: z.enum(["cli-not-found", "not-logged-in", "failed", "interrupted"]),
+  text: z.string(),
+  details: z.string().max(8_192).optional(),
+  retryable: z.boolean(),
+});
 export const messagePartSchema = z.discriminatedUnion("type", [
   z.strictObject({
     ...messagePartBase,
@@ -100,38 +141,9 @@ export const messagePartSchema = z.discriminatedUnion("type", [
     state: z.enum(["running", "waiting", "ok", "error"]),
     durationMs: z.number().int().min(0).nullable(),
   }),
-  z.strictObject({
-    ...messagePartBase,
-    type: z.literal("permission"),
-    tool: z.string().max(120),
-    summary: z.string().max(8_192),
-    description: z.string().max(8_192).optional(),
-    options: z.array(z.enum(["allow", "always", "deny"])).min(1),
-    state: z.enum(["pending", "allowed", "denied"]),
-  }),
-  z.strictObject({
-    ...messagePartBase,
-    type: z.literal("question"),
-    questions: z
-      .array(
-        z.strictObject({
-          question: z.string(),
-          header: z.string().optional(),
-          options: z.array(questionOptionSchema),
-          multiSelect: z.boolean(),
-          freeText: z.boolean(),
-        }),
-      )
-      .min(1),
-    state: z.enum(["pending", "answered"]),
-  }),
-  z.strictObject({
-    ...messagePartBase,
-    type: z.literal("plan"),
-    markdown: z.string(),
-    state: z.enum(["pending", "approved", "rejected"]),
-    comment: z.string().optional(),
-  }),
+  permissionPartSchema,
+  questionPartSchema,
+  planPartSchema,
   z.strictObject({
     ...messagePartBase,
     type: z.literal("todos"),
@@ -145,14 +157,7 @@ export const messagePartSchema = z.discriminatedUnion("type", [
       }),
     ),
   }),
-  z.strictObject({
-    ...messagePartBase,
-    type: z.literal("error"),
-    errorType: z.enum(["cli-not-found", "not-logged-in", "failed", "interrupted"]),
-    text: z.string(),
-    details: z.string().max(8_192).optional(),
-    retryable: z.boolean(),
-  }),
+  errorPartSchema,
 ]);
 export type MessagePart = z.infer<typeof messagePartSchema>;
 export const conversationAttachmentMetadataSchema = z.strictObject({

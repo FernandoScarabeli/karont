@@ -16,6 +16,16 @@
 - Medição (preview, resposta de ~14 mil caracteres): serviço ~1–2% de CPU e 52 MB; aba da interface 12–20% de CPU durante o streaming (antes 60–110%), 0% parada. Repetir no Electron empacotado.
 - A skill `unslop` não está instalada no Codex; as revisões de UI usaram taste lint + Impeccable.
 
+## Do M4
+- **Pendência depois de reiniciar o serviço:** permissão, pergunta ou plano continuam `pending` na mensagem salva e o chat ainda mostra os botões, mas responder é recusado. A caixa de entrada já não mostra esses itens.
+- **Caixa de entrada lê uma mensagem por conversa em erro** a cada recálculo. Só roda em mudança de estado, mas erros acumulados pesam; vale trazer num único SQL.
+- **`createSnapshot: sinal já abortado e prazo curto…`** (`git/restore-points.test.ts`) falhou uma vez com a máquina carregada e passou nas seguintes.
+- **Painel aberto de conversa cujo projeto mudou de workspace** continua no layout antigo; a sidebar já mostra no lugar novo.
+- **Letra duplicada ao nomear workspace:** uma vez o E2E digitou "Trabalho" e a aba mostrou "Trabalhoo". Não se repetiu em mais de 25 rodadas; causa desconhecida (olhar o `WorkspaceDialog`).
+- **Busca abre a conversa, mas não rola até a mensagem encontrada**: não existe mecanismo para isso.
+- **Conversa solta não muda de workspace:** só projetos têm "Mover para".
+- **Dividir remonta o painel que já existia:** ele nasce no mesmo tamanho e não pisca, mas evitar o remonte exige reestruturar a árvore de painéis (portais ou chave estável do `Group`).
+
 ## Do M3
 - **Desfazer e outra conversa no mesmo repositório:** o desfazer recusa se já há turno rodando no repositório, mas um turno de outra conversa que comece *durante* o desfazer pode fotografar os arquivos pela metade. Janela curta; um bloqueio por repositório resolve.
 - **Cópia separada sem projeto:** remover o projeto mantém as cópias no disco (a tela avisa), mas elas ficam sem lugar na interface para trazer ou remover.

@@ -88,12 +88,16 @@ export const t = {
     home: "Início",
     newWorkspace: "Novo workspace",
     search: "Buscar",
-    searchShortcut: "Ctrl K",
-    searchAccessibleName: "Buscar (Ctrl K)",
+    searchAccessibleName: "Buscar",
     sidebar: "Barra lateral",
+    sidebarResize: "Largura da barra lateral",
+    sidebarClose: "Fechar barra lateral",
+    sidebarOpen: "Abrir barra lateral",
     primaryNavigation: "Navegação principal",
     newConversation: "Nova conversa",
     tasks: "Tarefas",
+    inbox: "Caixa de entrada",
+    inboxCount: (count: number) => (count === 1 ? "1 item esperando" : `${count} itens esperando`),
     projects: "Projetos",
     newProject: "Novo projeto",
     noProjects: "Nenhum projeto ainda",
@@ -102,10 +106,20 @@ export const t = {
     projectList: "Projetos",
     projectConversations: (name: string) => `Conversas de ${name}`,
     projectNoConversations: "Nenhuma conversa",
-    projectDescription: (conversationCount: number, status: string) =>
-      [conversationCount === 1 ? "1 conversa" : `${conversationCount} conversas`, status]
+    projectDescription: (conversationCount: number, status: string, terminalCount = 0) =>
+      [
+        conversationCount === 1 ? "1 conversa" : `${conversationCount} conversas`,
+        terminalCount === 0
+          ? ""
+          : terminalCount === 1
+            ? "1 terminal"
+            : `${terminalCount} terminais`,
+        status,
+      ]
         .filter(Boolean)
         .join(", "),
+    moveProjectTo: (name: string) => `Mover para ${name}`,
+    moveProjectFailed: "Não foi possível mover o projeto.",
     projectStatusWorking: "com conversa trabalhando",
     projectStatusQueued: "com conversa na fila",
     projectStatusWaiting: "com conversa esperando você",
@@ -146,6 +160,44 @@ export const t = {
     exited: "Encerrado",
     settings: "Configurações",
     availableSoon: "Disponível em breve",
+  },
+  search: {
+    title: "Buscar",
+    placeholder: "Buscar",
+    inputLabel: "Buscar em conversas, projetos e mensagens",
+    resultsLabel: "Resultados da busca",
+    conversations: "Conversas",
+    projects: "Projetos",
+    messages: "Mensagens",
+    empty: "Nada encontrado",
+    error: "Não foi possível buscar.",
+    archived: "Arquivada",
+    you: "Você",
+  },
+  workspaces: {
+    createTitle: "Novo workspace",
+    editTitle: "Renomear workspace",
+    createDescription: "Um workspace agrupa projetos, conversas e terminais.",
+    nameLabel: "Nome",
+    nameRequired: "Informe um nome para o workspace.",
+    nameTooLong: "O nome pode ter até 80 caracteres.",
+    cancel: "Cancelar",
+    create: "Criar",
+    creating: "Criando…",
+    save: "Salvar",
+    saving: "Salvando…",
+    saveFailed: "Não foi possível salvar o workspace.",
+    noBridge: "A conexão com o serviço não está disponível.",
+    tabActions: (name: string) => `Ações do workspace ${name}`,
+    rename: "Renomear",
+    remove: "Apagar",
+    removeTitle: (name: string) => `Apagar o workspace ${name}?`,
+    removeDescription: (name: string, target: string) =>
+      `Os projetos, conversas e terminais de ${name} passam para ${target}.`,
+    removeAction: "Apagar workspace",
+    removing: "Apagando…",
+    removeFailed: "Não foi possível apagar o workspace.",
+    loadError: "Não foi possível carregar os workspaces.",
   },
   projects: {
     createTitle: "Novo projeto",
@@ -218,10 +270,45 @@ export const t = {
     noBridge: "Sem conexão com o serviço",
     versionPrefix: "v",
   },
+  overview: {
+    working: (count: number) => `${count} trabalhando`,
+    queued: (count: number) => `${count} na fila`,
+    waiting: (count: number) => (count === 1 ? "1 precisa de você" : `${count} precisam de você`),
+    error: (count: number) => `${count} com erro`,
+    conversationsToday: (count: number) =>
+      count === 1 ? "1 conversa hoje" : `${count} conversas hoje`,
+    noConversationsToday: "Nenhuma conversa hoje",
+    conversations: (count: number) =>
+      count === 0 ? "Nenhuma conversa" : count === 1 ? "1 conversa" : `${count} conversas`,
+    today: (count: number) => `${count} hoje`,
+    loadFailed: "Não foi possível carregar o resumo.",
+    projectsHeading: "Projetos",
+    noProjects: "Este workspace ainda não tem projetos.",
+    newProject: "Novo projeto",
+    noProject: "Sem projeto",
+    projectPickerLabel: "Projeto da nova conversa",
+    projectPickerTrigger: (name: string) => `Projeto: ${name}`,
+    composerLabel: (name: string) => `Nova conversa em ${name}`,
+    workspacesHeading: "Workspaces",
+    openProjectHint: "Abre uma conversa nova neste projeto",
+    openWorkspaceHint: "Abre este workspace",
+  },
   home: {
     title: "Início",
-    emptyTitle: "Tudo pronto para começar",
-    emptyDescription: "Os agentes, projetos e conversas vão aparecer aqui.",
+  },
+  inbox: {
+    title: "Caixa de entrada",
+    needsYou: "Precisa de você",
+    empty: "Nada precisa de você",
+    remainder: (count: number) =>
+      count === 1 ? "Mais 1 item não aparece aqui." : `Mais ${count} itens não aparecem aqui.`,
+    loadFailed: "Não foi possível carregar a caixa de entrada.",
+    openConversation: (title: string) => `Abrir conversa: ${title}`,
+    dismiss: "Dispensar",
+    retry: "Tentar de novo",
+    dismissFailed: "Não foi possível dispensar.",
+    retryFailed: "Não foi possível tentar de novo.",
+    errorTitle: "Erro na resposta do agente",
   },
   conversation: {
     title: "Nova conversa",
@@ -305,9 +392,7 @@ export const t = {
     },
     fullAccessTitle: "Ativar acesso total?",
     fullAccessDescription:
-      "O agente poderá executar qualquer comando e a pasta do projeto não fica isolada.",
-    fullAccessWarning:
-      "Com acesso total, o agente pode executar qualquer comando disponível à sua conta. A pasta escolhida não é uma sandbox: outros arquivos acessíveis à sua conta também podem ser alterados.",
+      "O agente poderá executar qualquer comando disponível à sua conta. A pasta escolhida não é uma sandbox: outros arquivos também podem ser alterados.",
     fullAccessConfirm: "Ativar acesso total",
     settingsSaveFailed: "Não foi possível salvar a preferência da conversa.",
     emptyTitle: (agent: string) => `Conversa com ${agent}`,
@@ -353,6 +438,7 @@ export const t = {
     conversationError: "A resposta falhou",
     stop: "Parar",
     messageInput: "Pergunte qualquer coisa · @ arquivos, / comandos",
+    composerPlaceholderShort: "Pergunte qualquer coisa",
     composerPlaceholder: (supportsSkills: boolean) =>
       `Pergunte qualquer coisa · @ arquivos${supportsSkills ? ", $ skills" : ""}, / comandos`,
     shortcutSuggestions: {
@@ -594,8 +680,6 @@ export const t = {
     incomplete: "Não foi possível registrar as mudanças desta resposta. Não há desfazer.",
     unavailable:
       "Não foi possível guardar o ponto de restauração. Não há desfazer para esta resposta.",
-    noGit: "Esta pasta não usa Git, então não dá para desfazer o que o agente alterar.",
-    home: "Conversas na pasta pessoal não têm desfazer.",
     panelTitle: "Mudanças desta resposta",
     closePanel: "Fechar mudanças",
     concurrentChanges:
@@ -643,8 +727,6 @@ export const t = {
   workspace: {
     panels: "Painéis de conversas",
     split: "Dividir",
-    splitRight: "Dividir à direita",
-    splitBelow: "Dividir abaixo",
     closePane: (title: string) => `Fechar painel ${title}`,
     panelLimit: "O limite de seis painéis foi atingido.",
     panelActions: "Ações do painel",

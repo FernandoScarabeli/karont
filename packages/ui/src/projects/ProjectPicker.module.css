@@ -1,0 +1,23 @@
+.trigger {
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: var(--k-composer-select-max-width);
+  min-height: var(--k-control-height-lg);
+  padding-inline: var(--k-space-3);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  white-space: nowrap;
+}
+
+.trigger:hover:not(:disabled),
+.trigger[aria-expanded="true"] {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

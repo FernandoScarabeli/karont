@@ -20,6 +20,7 @@ import {
   getSetting,
   getWorktree,
   listProjects,
+  listWorkspaces,
   listWorktrees,
   recordRecentFolder,
   removeProject,
@@ -35,9 +36,18 @@ import {
   worktreeMergePreview,
   worktreeStatus,
 } from "./git/worktrees.ts";
+import { getOverview } from "./overview.ts";
 import { resolvePaths } from "./paths.ts";
+import { searchAll } from "./search.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
 import { getSystemUserName } from "./user-name.ts";
+import {
+  createWorkspaceChecked,
+  removeWorkspaceChecked,
+  reorderWorkspacesChecked,
+  resolveWorkspaceId,
+  updateWorkspaceChecked,
+} from "./workspaces.ts";
 
 export { ServiceError } from "./errors.ts";
 
@@ -127,6 +137,12 @@ export function createHandlers({
         return { key: request.params.key, value: request.params.value };
       case "queue.status":
         return conversationManager.queueStatus();
+      case "inbox.list":
+        return conversationManager.inboxList();
+      case "inbox.dismiss":
+        return { dismissed: conversationManager.dismissInboxError(request.params.conversationId) };
+      case "search.query":
+        return searchAll(db, request.params.query, request.params.limit);
       case "agents.list":
         return agentRegistry.list();
       case "agents.detect":
@@ -149,9 +165,7 @@ export function createHandlers({
             `O caminho do projeto não é uma pasta: ${folder.path}`,
           );
         }
-        if (request.params.projectId && !getProject(db, request.params.projectId)) {
-          throw new ServiceError("invalid_request", "O projeto não existe.");
-        }
+        const workspaceId = resolveWorkspaceId(db, request.params);
         if (request.params.worktreeId) {
           const worktree = getWorktree(db, request.params.worktreeId);
           if (!worktree) throw new ServiceError("invalid_request", "A cópia separada não existe.");
@@ -163,8 +177,9 @@ export function createHandlers({
           }
         }
         return {
-          conversation: conversationManager.create({
+          conversation: await conversationManager.createAnnounced({
             ...request.params,
+            workspaceId,
             cwd: folder.path,
             title: request.params.title ?? "Nova conversa",
           }),
@@ -330,6 +345,7 @@ export function createHandlers({
         if (getProjectByPath(db, folder.path)) {
           throw new ServiceError("invalid_request", "Esta pasta já pertence a outro projeto.");
         }
+        const workspaceId = resolveWorkspaceId(db, { workspaceId: request.params.workspaceId });
         let project: ReturnType<typeof createProject>;
         try {
           project = createProject(db, {
@@ -337,6 +353,7 @@ export function createHandlers({
             icon: request.params.icon,
             path: folder.path,
             defaultAgent: request.params.defaultAgent ?? null,
+            workspaceId,
           });
         } catch (error) {
           if (getProjectByPath(db, folder.path)) {
@@ -349,8 +366,18 @@ export function createHandlers({
       }
       case "projects.update": {
         const { id, ...changes } = request.params;
+        if (changes.workspaceId !== undefined) resolveWorkspaceId(db, changes);
+        const before = getProject(db, id);
         const project = updateProject(db, id, changes);
         if (!project) throw new ServiceError("invalid_request", "O projeto não existe.");
+        if (before && before.workspaceId !== project.workspaceId) {
+          await terminalManager.reassign({ projectId: id, toWorkspaceId: project.workspaceId });
+          await broadcast({
+            event: "conversations.workspaceMoved",
+            payload: { workspaceId: project.workspaceId, projectId: id },
+          });
+          conversationManager.refreshInbox();
+        }
         await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
         return { project };
       }
@@ -358,8 +385,54 @@ export function createHandlers({
         if (!removeProject(db, request.params.id)) {
           throw new ServiceError("invalid_request", "O projeto não existe.");
         }
+        await terminalManager.reassign({ removedProjectId: request.params.id });
+        conversationManager.refreshInbox();
         await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
         return { removed: true };
+      }
+      case "overview.get":
+        return getOverview(db, request.params.since);
+      case "workspaces.list":
+        return { workspaces: listWorkspaces(db) };
+      case "workspaces.create": {
+        const workspace = createWorkspaceChecked(db, request.params);
+        await broadcast({
+          event: "workspaces.changed",
+          payload: { workspaces: listWorkspaces(db) },
+        });
+        return { workspace };
+      }
+      case "workspaces.update": {
+        const workspace = updateWorkspaceChecked(db, request.params);
+        await broadcast({
+          event: "workspaces.changed",
+          payload: { workspaces: listWorkspaces(db) },
+        });
+        return { workspace };
+      }
+      case "workspaces.remove": {
+        const moved = removeWorkspaceChecked(db, request.params.id);
+        await terminalManager.reassign({
+          fromWorkspaceId: request.params.id,
+          toWorkspaceId: moved,
+        });
+        await broadcast({
+          event: "conversations.workspaceMoved",
+          payload: { workspaceId: moved, fromWorkspaceId: request.params.id },
+        });
+        conversationManager.refreshInbox();
+        // O conteúdo do workspace apagado mudou de lugar: avisa as listas de projetos também.
+        await broadcast({
+          event: "workspaces.changed",
+          payload: { workspaces: listWorkspaces(db) },
+        });
+        await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
+        return { removed: true };
+      }
+      case "workspaces.reorder": {
+        const workspaces = reorderWorkspacesChecked(db, request.params.ids);
+        await broadcast({ event: "workspaces.changed", payload: { workspaces } });
+        return { workspaces };
       }
       case "worktrees.list":
         return { worktrees: listWorktrees(db, request.params.projectId) };
@@ -411,7 +484,16 @@ export function createHandlers({
       case "terminals.list":
         return terminalManager.list();
       case "terminals.open": {
-        const result = await terminalManager.open(request.params);
+        const { projectId, workspaceId: requestedWorkspaceId, ...openParams } = request.params;
+        const workspaceId = resolveWorkspaceId(db, {
+          projectId,
+          workspaceId: requestedWorkspaceId,
+        });
+        const result = await terminalManager.open({
+          ...openParams,
+          workspaceId,
+          ...(projectId ? { projectId } : {}),
+        });
         conn.afterResponse(async () => {
           recordRecentFolder(db, {
             path: result.terminal.cwd,

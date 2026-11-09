@@ -2,6 +2,7 @@ import type { Conversation } from "@karont/contract";
 import { useSyncExternalStore } from "react";
 import { getBridge } from "../bridge/index.ts";
 import { t } from "../i18n/pt-BR.ts";
+import { isAffectedByWorkspaceMove, type WorkspaceMove } from "../projects/workspaceState.ts";
 
 type Snapshot = { conversations: Conversation[]; loading: boolean; error: boolean };
 type Bucket = "active" | "archived";
@@ -122,6 +123,10 @@ function connect() {
       pruneRemovedProjects(new Set(event.payload.projects.map((project) => project.id)));
       return;
     }
+    if (event.event === "conversations.workspaceMoved") {
+      applyWorkspaceMove(event.payload);
+      return;
+    }
     if (event.event === "worktrees.changed") {
       pruneRemovedWorktrees(
         event.payload.projectId,
@@ -221,6 +226,18 @@ export function pruneRemovedProjects(existingProjectIds: ReadonlySet<string>) {
     (conversation) =>
       conversation.projectId !== undefined && !existingProjectIds.has(conversation.projectId),
     withoutProjectId,
+  );
+}
+
+/**
+ * Mover um projeto ou apagar um workspace muda o `workspaceId` das conversas sem emitir
+ * `conversation.stateChanged`, e o `updatedAt` não muda. Corrigimos a cópia local, sem
+ * mexer em `updatedAt` e sem pedir nada ao serviço.
+ */
+export function applyWorkspaceMove(move: WorkspaceMove) {
+  pruneConversations(
+    (conversation) => isAffectedByWorkspaceMove(conversation, move),
+    (conversation) => ({ ...conversation, workspaceId: move.workspaceId }),
   );
 }
 

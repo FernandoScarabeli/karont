@@ -1142,6 +1142,7 @@ export function createClaudeModelLoader(
     const now = new Date().toISOString();
     const conversation: Conversation = {
       id: randomUUID(),
+      workspaceId: "synthetic",
       agent: "claude",
       title: "Lista de modelos",
       cwd,
@@ -1174,6 +1175,7 @@ export function createClaudeSkillLoader(
     const now = new Date().toISOString();
     const conversation: Conversation = {
       id: randomUUID(),
+      workspaceId: "synthetic",
       agent: "claude",
       title: "Lista de skills",
       cwd,

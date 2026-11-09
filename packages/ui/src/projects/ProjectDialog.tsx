@@ -19,6 +19,7 @@ import { t } from "../i18n/pt-BR.ts";
 import styles from "./ProjectDialog.module.css";
 import { ProjectIconPicker } from "./ProjectIconPicker.tsx";
 import { DEFAULT_PROJECT_ICON } from "./projectIcons.ts";
+import { getActiveWorkspaceId } from "./useWorkspaces.ts";
 
 const MAX_NAME_LENGTH = 80;
 /** Valor do radio "Último usado"; não é um id de agente. */
@@ -160,12 +161,14 @@ export function ProjectDialog({
       pathRef.current?.focus();
       return;
     }
+    const activeWorkspaceId = getActiveWorkspaceId();
     await save(
       () =>
         bridge?.request("projects.create", {
           name: cleanName,
           icon,
           path: cleanPath,
+          ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
           ...(defaultAgent ? { defaultAgent } : {}),
         }),
       "create",
@@ -203,6 +206,7 @@ export function ProjectDialog({
 
   return (
     <Dialog
+      allowOverflow
       description={editing ? undefined : t.projects.createDescription}
       footer={
         <>

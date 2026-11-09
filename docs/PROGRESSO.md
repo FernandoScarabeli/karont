@@ -93,13 +93,40 @@ Repositório recriado do zero em 2026-10-31.
 
 25. **Skill taste no M3** (2026-11-08): a skill `design-taste-frontend`, em `~/.agents/skills`, faz o papel da **taste** do `AGENTS.md`. Ela é voltada a sites, então as telas usam só a parte de telas de aplicativo (`references/app-screens.md`), sem nova direção visual.
 
+26. **Plano do M4** (aprovado em 2026-11-09):
+    - Ordem: B1 workspaces, F1 abas e sidebar, B2 resumo agregado, F2 tela do workspace e Início, B3 caixa de entrada, F3 tela da caixa, B4 busca, F4 Ctrl K e fechamento.
+    - Conversa solta fica no workspace em que foi criada. Projetos e conversas que já existem vão para um workspace "Pessoal".
+    - Caixa de entrada: item na sidebar com contagem, e a mesma lista no Início.
+    - Direto na caixa: Permitir/Negar, responder pergunta, aprovar plano e tentar de novo. "Ajustar" um plano abre a conversa.
+    - Busca: títulos, projetos e texto das mensagens.
+    - Executor: subagentes Claude Sonnet 5.5, uma tarefa por vez, numa worktree própria, como no M3.
+    - Tarefas e PRs nessas telas ficam para o M9, quando existirem de verdade.
+
+27. **Sem aviso de "não usa Git"** (2026-11-09): o dono mandou tirar o aviso do chat, sem etiqueta nem faixa no lugar. Sem Git, "ver mudanças" e "desfazer" só não aparecem.
+28. **Testes com agente real** (2026-11-09): usam o Codex `gpt-6-luna` em esforço `low`, para não gastar o limite do Claude. Se algo só puder ser testado no Claude real, perguntar antes.
+29. **Telas do M4** (aprovadas em 2026-11-09): a tela do workspace aparece sem conversa aberta na aba, ou ao clicar de novo na aba em que já se está. Tem a linha do dia, o campo de mensagem com escolha de projeto e um cartão por projeto. O Início tem o que precisa de você e um cartão por workspace. "Nova conversa" abre limpa, sem cartões. Cartão de projeto abre conversa nova nele; cartão de workspace abre a aba.
+30. **Sidebar e divisão** (aprovado em 2026-11-09): a sidebar tem largura ajustável e fecha deixando uma faixa com ícones de atalho, inspirada no Splitter de ui.productdevbook.com. Esse componente não está publicado no npm nem tem o código no GitHub, então o comportamento é feito com `react-resizable-panels`, já aprovada. "Dividir" abre sempre à direita, sem menu. O destaque ao arrastar um painel só aparece onde soltar muda o layout.
+
+## M4 — estado
+Branch `m4-navegacao`, a partir da `main` com o M3. Feito, nesta ordem: B1 (workspaces no serviço), F1 (abas e sidebar), F1b (ajustes do dono), B2 (resumo agregado), F2 (telas do workspace e do Início), B3 e F3 (caixa de entrada), B4 e F4 (busca), E2E dos fluxos, F5 (sidebar ajustável, faixa de ícones, botão junto da marca, composer em painel estreito, divisão direta com animação de 240 ms). Falta o PR.
+
+Testes (2026-11-09):
+- `npm run check`: contrato 40, serviço 348, desktop 41, interface 227, sem falhas. Build ok. E2E: 20 de 20.
+- Teste real no Electron, em banco e pastas temporárias, com Codex 0.167.0 `gpt-6-luna`, esforço `low`: 11 de 11. Cobriu permissão aprovada pela caixa de entrada, arquivo criado, caixa vazia depois, busca, resumo, ponto de restauração, continuar a sessão e mover o projeto de workspace no meio do turno. O Claude real não foi testado, para não gastar o limite (decisão 28).
+
+Medições:
+- Migração da busca com 50 mil mensagens: 0,35 s. Busca: menos de 50 ms.
+- App parado (build de produção, 30 s depois de dois turnos reais): serviço com CPU 0% e 33 MB (PSS); Electron com CPU 0,02% e 714 MB somando o working set (Browser 188, GPU 297, Utility 78, Tab 151). A soma conta memória compartilhada várias vezes e foi medida depois de uso, então não é comparável direto aos 622 MB do M3.
+
+Notas técnicas:
+- Painéis de workspaces visitados ficam montados e escondidos, para terminais e conversas não piscarem na troca de aba. Cada workspace visitado custa os assinantes de eventos dele.
+
 ## M3 — estado em 2026-11-08 (fim da noite, sem o dono)
-Branch `m3-projetos`, local. **Sem push e sem PR**: o dono testa antes e manda subir. Feito, nesta ordem: B1, F1, B3, F3, B2a, B2b, F2, B4a, B4b, F4.
+Juntado na `main` em 2026-11-09 (PR #5, CI verde). Feito, nesta ordem: B1, F1, B3, F3, B2a, B2b, F2, B4a, B4b, F4.
 
 Testes (`17ef182` e os docs):
 - `npm run check`: contrato 38, serviço 312, desktop 41, interface 164, sem falhas. Build ok. E2E: 8 de 8.
 - Teste real com as CLIs instaladas, em banco e pastas temporárias, nos modelos mais baratos (Claude Code 2.1.319 com Haiku; Codex 0.167.0 com `gpt-6-luna`, esforço `low`): 38 de 38. Cobriu criar, apagar, renomear e alterar arquivo; ver mudanças; desfazer sem mudar HEAD, stash e status; continuar a sessão; agente na cópia separada e continuar a sessão nela; ramo de conversa na cópia; trazer de volta; remover cópia; fila com limite 1.
-- **Ainda falta o CI**, que só roda quando houver PR.
 
 Medições:
 - Foto do ponto de restauração: ~40 ms num repositório real de 5,4 mil arquivos; ~100 ms em 50 mil arquivos. Não havia repositório muito maior na máquina; acima de 10 s a mensagem segue sem desfazer.

@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -20,6 +21,7 @@ import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { useRegisterFluidHoverItem } from "../components/FluidHover/FluidHover.tsx";
 import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
+import { readPixelToken } from "../shell/sidebarState.ts";
 import styles from "./ComposerPreferences.module.css";
 import { findModelByIdOrAlias, resolveModelId } from "./modelCatalog.ts";
 
@@ -106,6 +108,8 @@ export function ComposerPreferences({
   onPlanModeChange: (value: boolean) => void;
   onFastModeChange: (value: boolean) => void;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
   const [confirmFull, setConfirmFull] = useState(false);
   const [timedFastTooltip, setTimedFastTooltip] = useState(false);
   const [fastTooltipLabel, setFastTooltipLabel] = useState("");
@@ -170,6 +174,31 @@ export function ComposerPreferences({
     if (fastTooltipTimerRef.current) clearTimeout(fastTooltipTimerRef.current);
   }, [activePopover]);
 
+  /**
+   * Painel estreito: modelo, esforço e modo rápido saem da barra e vão para o popover de opções.
+   * O estado só muda ao cruzar o limiar (com folga na volta), então arrastar não re-renderiza.
+   */
+  useLayoutEffect(() => {
+    const container = rootRef.current?.closest("[data-composer-root]");
+    if (!container) return;
+    const enter = readPixelToken("--k-composer-compact-width", 414);
+    const margin = readPixelToken("--k-composer-compact-hysteresis", 10);
+    let current = false;
+    const apply = (width: number) => {
+      const next = current ? width < enter + margin : width <= enter;
+      if (next === current) return;
+      current = next;
+      setCompact(next);
+    };
+    apply(container.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) apply(entry.borderBoxSize?.[0]?.inlineSize ?? entry.contentRect.width);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
   function toggleFastMode() {
     const nextValue = !fastMode;
     setFastTooltipLabel(nextValue ? t.chat.fastModeOnTooltip : t.chat.fastModeOffTooltip);
@@ -213,19 +242,21 @@ export function ComposerPreferences({
   }
 
   return (
-    <div className={styles.options}>
-      <ComposerMenu
-        disabled={disabled || !models || modelOptions.length === 0}
-        label={t.chat.model}
-        onOpenChange={(open) => onActivePopoverChange(open ? "model" : null)}
-        open={active("model")}
-        options={modelOptions}
-        triggerClassName={styles.modelTrigger}
-        triggerContent={<span className={styles.modelName}>{modelName}</span>}
-        triggerLabel={model ? `${t.chat.model}: ${modelName}` : t.chat.model}
-        tooltipLabel={modelTooltipLabel}
-      />
-      {efforts.length > 0 ? (
+    <div className={styles.options} data-compact={compact} ref={rootRef}>
+      {compact ? null : (
+        <ComposerMenu
+          disabled={disabled || !models || modelOptions.length === 0}
+          label={t.chat.model}
+          onOpenChange={(open) => onActivePopoverChange(open ? "model" : null)}
+          open={active("model")}
+          options={modelOptions}
+          triggerClassName={styles.modelTrigger}
+          triggerContent={<span className={styles.modelName}>{modelName}</span>}
+          triggerLabel={model ? `${t.chat.model}: ${modelName}` : t.chat.model}
+          tooltipLabel={modelTooltipLabel}
+        />
+      )}
+      {!compact && efforts.length > 0 ? (
         <EffortButton
           activePopover={activePopover !== null}
           disabled={disabled}
@@ -236,7 +267,7 @@ export function ComposerPreferences({
           open={active("effort")}
         />
       ) : null}
-      {supportsFast ? (
+      {!compact && supportsFast ? (
         <Tooltip
           label={
             timedFastTooltip
@@ -262,7 +293,7 @@ export function ComposerPreferences({
           </button>
         </Tooltip>
       ) : null}
-      <div className={styles.configGroup}>
+      <div className={styles.configGroup} data-alert={fullAccess}>
         <Tooltip label={t.chat.configTooltip} open={active("config")}>
           <button
             aria-controls={configPopoverId}
@@ -282,7 +313,7 @@ export function ComposerPreferences({
           </button>
         </Tooltip>
         {planMode ? (
-          <Tooltip label={t.chat.configTooltip} open={active("config")}>
+          <Tooltip label={t.chat.planBadgeAccessibleName} open={active("config")}>
             <button
               aria-controls={configPopoverId}
               aria-expanded={active("config")}
@@ -298,12 +329,12 @@ export function ComposerPreferences({
               type="button"
             >
               <ListTodo aria-hidden="true" size={13} />
-              <span>{t.chat.planMode}</span>
+              <span className={styles.badgeLabel}>{t.chat.planMode}</span>
             </button>
           </Tooltip>
         ) : null}
         {fullAccess ? (
-          <Tooltip label={t.chat.configTooltip} open={active("config")}>
+          <Tooltip label={t.chat.fullAccessBadgeAccessibleName} open={active("config")}>
             <button
               aria-controls={configPopoverId}
               aria-expanded={active("config")}
@@ -319,7 +350,7 @@ export function ComposerPreferences({
               type="button"
             >
               <TriangleAlert aria-hidden="true" size={13} />
-              <span>{t.chat.modes.full}</span>
+              <span className={styles.badgeLabel}>{t.chat.modes.full}</span>
             </button>
           </Tooltip>
         ) : null}
@@ -337,6 +368,71 @@ export function ComposerPreferences({
           open={active("config")}
           role="dialog"
         >
+          {compact ? (
+            <>
+              <ComposerPopoverHeading>{t.chat.model}</ComposerPopoverHeading>
+              <div aria-label={t.chat.model} className={styles.compactOptions} role="radiogroup">
+                {modelOptions.map((option) => (
+                  <RegisteredFluidHoverButton
+                    aria-checked={option.selected}
+                    className={styles.compactOption}
+                    disabled={disabled || !models}
+                    fluidKey={`model-${option.id}`}
+                    key={option.id}
+                    onClick={option.onSelect}
+                    role="radio"
+                    type="button"
+                  >
+                    {option.content}
+                  </RegisteredFluidHoverButton>
+                ))}
+              </div>
+              {efforts.length > 0 ? (
+                <>
+                  <ComposerPopoverHeading>{t.chat.effort}</ComposerPopoverHeading>
+                  <div
+                    aria-label={t.chat.effort}
+                    className={styles.compactOptions}
+                    role="radiogroup"
+                  >
+                    {efforts.map((level) => (
+                      <RegisteredFluidHoverButton
+                        aria-checked={level === selectedEffort}
+                        className={styles.compactOption}
+                        disabled={disabled}
+                        fluidKey={`effort-${level}`}
+                        key={level}
+                        onClick={() => onEffortChange(level)}
+                        role="radio"
+                        type="button"
+                      >
+                        {t.chat.efforts[level]}
+                      </RegisteredFluidHoverButton>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+              {supportsFast ? (
+                <RegisteredFluidHoverButton
+                  aria-checked={fastMode}
+                  className={styles.planOption}
+                  disabled={disabled}
+                  fluidKey="fast-mode"
+                  onClick={() => onFastModeChange(!fastMode)}
+                  role="switch"
+                  type="button"
+                >
+                  <span className={styles.planCopy}>
+                    <span className={styles.accessName}>{t.chat.fastMode}</span>
+                  </span>
+                  <span aria-hidden="true" className={styles.switchTrack} data-checked={fastMode}>
+                    <span className={styles.switchThumb} />
+                  </span>
+                </RegisteredFluidHoverButton>
+              ) : null}
+              <hr className={styles.sectionSeparator} data-ui="" />
+            </>
+          ) : null}
           <ComposerPopoverHeading>{t.chat.access}</ComposerPopoverHeading>
           <fieldset className={styles.configContent} id={configContentId}>
             <legend className={styles.srOnly}>{t.chat.configLabel}</legend>
@@ -412,9 +508,7 @@ export function ComposerPreferences({
         open={confirmFull}
         returnFocusRef={configAnchorRef}
         title={t.chat.fullAccessTitle}
-      >
-        <p className={styles.warning}>{t.chat.fullAccessWarning}</p>
-      </Dialog>
+      />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { parseEvent, parseRequest } from "./validate.ts";
 
 const conversation = {
   id: "c1",
+  workspaceId: "w1",
   agent: "claude",
   title: "Chat",
   cwd: "/tmp",

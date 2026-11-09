@@ -73,11 +73,19 @@
   opacity: 0;
   transform: scale(0.95);
   transform-origin: top left;
+  overflow-y: auto;
+  max-height: var(--icon-panel-max-height, none);
   visibility: hidden;
   transition:
     opacity var(--k-motion-moderate-exit) var(--k-ease),
     transform var(--k-motion-moderate-exit) var(--k-ease),
     visibility 0s linear var(--k-motion-moderate-exit);
+}
+
+.iconPanel[data-placement="top"] {
+  top: auto;
+  bottom: calc(100% + var(--k-space-1));
+  transform-origin: bottom left;
 }
 
 .iconPanel[data-open="true"] {

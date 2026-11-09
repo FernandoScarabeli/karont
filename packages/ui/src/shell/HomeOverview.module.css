@@ -1,0 +1,19 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-4);
+  margin-top: var(--k-space-8);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--k-overview-card-min), 1fr));
+  gap: var(--k-space-3);
+  max-width: var(--k-overview-max-width);
+}
+
+.error {
+  margin: 0;
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-13);
+}

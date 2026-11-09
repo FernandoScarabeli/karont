@@ -64,8 +64,8 @@ O onboarding pode ser reaberto pelas configurações.
 - Criar projeto: modal com **nome, ícone e pasta**. Só isso.
 - Agente padrão: cada projeto pode ter o seu, e a conversa pode trocar.
 - Projeto com Git: depois de uma resposta que mudou arquivos, o chat mostra "N arquivos alterados · ver mudanças · desfazer". "Ver mudanças" abre o diff; "desfazer" volta os arquivos ao estado de antes daquela mensagem (ver 6.4).
-- Projeto sem Git: o agente trabalha direto na pasta; o chat avisa, uma vez, que não há "desfazer".
-- Conversa sem projeto: roda na pasta pessoal (`~`), com o mesmo aviso.
+- Projeto sem Git: o agente trabalha direto na pasta, e o chat não mostra "ver mudanças" nem "desfazer". Não há aviso (decisão 27 do `PROGRESSO.md`).
+- Conversa sem projeto: roda na pasta pessoal (`~`), do mesmo jeito.
 
 ### 4.4 Workspaces, Início e navegação
 
@@ -157,7 +157,7 @@ Electron (janela)                Serviço local (daemon Node)
 - O agente trabalha **direto na pasta do projeto** (não em cópia).
 - Antes de cada mensagem num projeto com Git, o serviço guarda um **ponto de restauração** sem mexer na branch nem no stash do usuário (ex.: `git stash create` + ref própria em `refs/karont/…`, ou árvore temporária equivalente).
 - Depois da resposta: lista os arquivos alterados desde o ponto; "ver mudanças" mostra o diff; "desfazer" restaura os arquivos alterados para o ponto (com confirmação e aviso se o usuário mexeu nos mesmos arquivos depois).
-- Sem Git: sem ponto de restauração, com aviso.
+- Sem Git: sem ponto de restauração e sem aviso.
 - Cópia separada (git worktree) para dois agentes no mesmo projeto entra no M3.
 
 ### 6.5 Dados

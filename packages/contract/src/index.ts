@@ -38,8 +38,12 @@ export {
   conversationOptionsSchema,
   conversationSchema,
   conversationSendParamsSchema,
+  errorPartSchema,
   messagePartSchema,
   messageSchema,
+  permissionPartSchema,
+  planPartSchema,
+  questionPartSchema,
   reasoningEffortSchema,
 } from "./conversations.ts";
 export type {
@@ -68,16 +72,25 @@ export {
 } from "./envelopes.ts";
 export type { AnyEvent, EventName, PayloadOf } from "./events.ts";
 export { events } from "./events.ts";
+export type { InboxItem, InboxItemKind, InboxList } from "./inbox.ts";
+export {
+  inboxItemSchema,
+  inboxListSchema,
+  MAX_INBOX_ITEMS,
+} from "./inbox.ts";
 export type {
   Agent,
   JsonValue,
   MethodName,
+  OverviewProject,
+  OverviewWorkspace,
   ParamsOf,
   Project,
   RecentFolder,
   ResultOf,
   SettingKey,
   TerminalInfo,
+  Workspace,
 } from "./methods.ts";
 export {
   agentSchema,
@@ -87,11 +100,14 @@ export {
   MAX_CONCURRENT_AGENTS_SETTING,
   MAX_SETTING_BYTES,
   methods,
+  overviewProjectSchema,
+  overviewWorkspaceSchema,
   projectSchema,
   queueStatusSchema,
   recentFolderSchema,
   settingKeySchema,
   terminalInfoSchema,
+  workspaceSchema,
 } from "./methods.ts";
 export type { RestoreFileChange, RestorePointSummary } from "./restore.ts";
 export {
@@ -102,6 +118,23 @@ export {
   restoreStateSchema,
   restoreUnavailableReasonSchema,
 } from "./restore.ts";
+export type {
+  SearchConversationResult,
+  SearchMessageResult,
+  SearchProjectResult,
+  SearchResult,
+  SearchSnippetSegment,
+} from "./search.ts";
+export {
+  SEARCH_LIMIT_DEFAULT,
+  SEARCH_LIMIT_MAX,
+  SEARCH_QUERY_MAX,
+  searchConversationResultSchema,
+  searchMessageResultSchema,
+  searchProjectResultSchema,
+  searchResultSchema,
+  searchSnippetSegmentSchema,
+} from "./search.ts";
 export type { MessageSource } from "./sources.ts";
 export {
   MAX_MESSAGE_SOURCES,

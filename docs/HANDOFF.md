@@ -17,9 +17,9 @@ Você é o Claude Code que vai construir o Karont do zero a partir da [SPEC.md](
 - Ciclo de testes: na tarefa, só os rápidos (typecheck, lint, `node:test`, 1 E2E de fumaça). Completos só antes do merge do marco. Medir o tempo; se passar de ~3 min por rodada, simplificar.
 - Registre decisões do dono em `docs/PROGRESSO.md` (numeradas) e problemas fora do escopo em `docs/DIVIDAS.md`.
 
-### Executor no M3
+### Executor no M3 e no M4
 
-No M3 o executor é um subagente Claude Sonnet 5.5 (decisão 22 do `PROGRESSO.md`), uma tarefa por vez, numa worktree própria. O comando abaixo vale quando o Codex for o executor; nesse caso, use o esforço `high`.
+No M3 e no M4 o executor é um subagente Claude Sonnet 5.5 (decisões 22 e 26 do `PROGRESSO.md`), uma tarefa por vez, numa worktree própria. O comando abaixo vale quando o Codex for o executor; nesse caso, use o esforço `high`.
 
 A skill **taste** é a `design-taste-frontend`, em `~/.agents/skills` (decisão 25). Tarefas de tela leem o `SKILL.md` e `references/app-screens.md`.
 
@@ -42,7 +42,7 @@ cd "$W" && codex exec -m gpt-6-luna -c model_reasoning_effort="high" -c service_
 
 ### Ambiente da máquina (Ubuntu)
 
-- Node 24 (via nvm, já no `PATH`).
+- Node 24 instalado pelo fnm: `~/.local/share/fnm/node-versions/v24.22.2/installation/bin`. O shell pode abrir com o Node 22 do sistema; coloque essa pasta no começo do `PATH` antes de `npm ci`, testes e preview.
 - Sandbox do Electron nos testes: o dono instalou um helper com SUID em `/usr/local/lib/karont-dev/chrome-sandbox`. Rode os testes com `CHROME_DEVEL_SANDBOX=/usr/local/lib/karont-dev/chrome-sandbox` e, **depois de cada `npm ci`**, renomeie `node_modules/electron/dist/chrome-sandbox` (o Chromium ignora a variável se esse arquivo existir). Se a versão do Electron mudar, o helper precisa ser reinstalado pelo dono com sudo:
 
   ```bash

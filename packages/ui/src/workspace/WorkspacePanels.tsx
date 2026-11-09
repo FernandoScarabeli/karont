@@ -7,6 +7,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -18,13 +19,17 @@ import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { getTerminalDisplayTitles, useTerminals } from "../terminal/useTerminals.ts";
 import {
+  EMPTY_LAYOUT,
+  isNoOpMove,
   type LayoutNode,
   type PaneEdge,
   type PaneNode,
   paneCount,
+  resolveActivePaneId,
   type SplitNode,
 } from "./layout.ts";
 import { PanelToolbar } from "./PanelToolbar.tsx";
+import { animateSplit } from "./splitAnimation.ts";
 import styles from "./WorkspacePanels.module.css";
 
 const ConversationView = lazy(async () => {
@@ -79,10 +84,19 @@ function LazyConversationPanel({
 
 type DragTarget = { paneId: string; edge: PaneEdge } | null;
 
-export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingElement | null> }) {
+export function WorkspacePanels({
+  workspaceId,
+  visible,
+  titleRef,
+}: {
+  workspaceId: string;
+  /** Só o workspace à vista recebe atalhos, foco e leitura de conversa; os outros ficam montados e escondidos. */
+  visible: boolean;
+  titleRef: RefObject<HTMLHeadingElement | null>;
+}) {
   const {
-    layout,
-    activePaneId,
+    layouts,
+    activePaneIds,
     statusMessage,
     setActivePane,
     splitActivePane,
@@ -90,10 +104,14 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
     moveWorkspacePane,
     resizeWorkspaceSplit,
   } = useNavigation();
+  const layout = layouts[workspaceId] ?? EMPTY_LAYOUT;
+  const activePaneId = resolveActivePaneId(layout, activePaneIds[workspaceId]);
   const { terminals } = useTerminals();
   const paneElements = useRef(new Map<string, HTMLDivElement>());
   const [draggedPaneId, setDraggedPaneId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DragTarget>(null);
+  /** Painel criado pelo clique em Dividir: só ele anima; arrastar, fechar e restaurar não. */
+  const pendingSplitPaneId = useRef<string | null>(null);
   const terminalTitles = getTerminalDisplayTitles(terminals);
   const terminalById = new Map(terminals.map((terminal) => [terminal.id, terminal]));
 
@@ -110,6 +128,7 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
   }, [draggedPaneId]);
 
   useEffect(() => {
+    if (!visible) return;
     const handleShortcut = (event: KeyboardEvent) => {
       if (!event.ctrlKey || !event.altKey) return;
       const directionByKey = {
@@ -169,6 +188,7 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
               : direction === "up"
                 ? "top"
                 : "bottom";
+        if (isNoOpMove(layout, activePaneId, neighbor.paneId, edge)) return;
         moveWorkspacePane(activePaneId, neighbor.paneId, edge);
         window.requestAnimationFrame(() =>
           getPaneFocusTarget(paneElements.current.get(activePaneId))?.focus({
@@ -184,7 +204,17 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [activePaneId, moveWorkspacePane, setActivePane]);
+  }, [activePaneId, layout, moveWorkspacePane, setActivePane, visible]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roda quando o layout muda, depois que o painel novo está no DOM.
+  useLayoutEffect(() => {
+    const paneId = pendingSplitPaneId.current;
+    if (!paneId) return;
+    const surface = paneElements.current.get(paneId);
+    if (!surface) return;
+    pendingSplitPaneId.current = null;
+    animateSplit(surface);
+  }, [layout]);
 
   const allPanes = collectPanes(layout);
   const activePane = allPanes.find((pane) => pane.id === activePaneId);
@@ -201,11 +231,11 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
 
   useEffect(() => {
     const previous = previousActive.current;
-    if (previous.paneId === activePaneId && previous.viewKind !== activeViewKind) {
+    if (visible && previous.paneId === activePaneId && previous.viewKind !== activeViewKind) {
       focusPaneContext(activePaneId);
     }
     previousActive.current = { paneId: activePaneId, viewKind: activeViewKind };
-  }, [activePaneId, activeViewKind, focusPaneContext]);
+  }, [activePaneId, activeViewKind, focusPaneContext, visible]);
 
   function startDrag(event: DragEvent<HTMLHeadingElement>, paneId: string) {
     event.dataTransfer.effectAllowed = "move";
@@ -251,7 +281,10 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
         onClosePane={() => closePanel(pane.id)}
         onSplit={(direction) => {
           const newPaneId = splitActivePane(direction, pane.id);
-          if (newPaneId) focusPaneContext(newPaneId);
+          if (newPaneId) {
+            pendingSplitPaneId.current = newPaneId;
+            focusPaneContext(newPaneId);
+          }
         }}
         paneTitle={paneTitle}
       />
@@ -274,7 +307,7 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
           headerActions={renderToolbar(pane)}
           key={pane.view.projectId ?? "loose"}
           projectId={pane.view.projectId}
-          titleRef={isActive ? titleRef : undefined}
+          titleRef={isActive && visible ? titleRef : undefined}
         />
       );
     }
@@ -292,7 +325,7 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
             dragHandleProps={dragHandleProps}
             headerActions={renderToolbar(pane)}
             id={pane.view.terminalId}
-            titleRef={isActive ? titleRef : undefined}
+            titleRef={isActive && visible ? titleRef : undefined}
           />
         </Suspense>
       );
@@ -303,7 +336,7 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
         dragHandleProps={dragHandleProps}
         headerActions={renderToolbar(pane)}
         id={pane.view.conversationId}
-        isActivePane={isActive}
+        isActivePane={isActive && visible}
       />
     );
   }
@@ -328,13 +361,30 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
           onDragOver={(event) => {
             if (!draggedPaneId || draggedPaneId === pane.id) return;
             event.preventDefault();
-            setDropTarget({ paneId: pane.id, edge: edgeFromPointer(event) });
+            const edge = edgeFromPointer(event);
+            if (isNoOpMove(layout, draggedPaneId, pane.id, edge)) {
+              event.dataTransfer.dropEffect = "none";
+              setDropTarget((current) => (current?.paneId === pane.id ? null : current));
+              return;
+            }
+            event.dataTransfer.dropEffect = "move";
+            setDropTarget((current) =>
+              current?.paneId === pane.id && current.edge === edge
+                ? current
+                : { paneId: pane.id, edge },
+            );
           }}
           onDrop={(event) => {
             event.preventDefault();
             const sourcePaneId = event.dataTransfer.getData("text/plain") || draggedPaneId;
             const edge = dropTarget?.paneId === pane.id ? dropTarget.edge : edgeFromPointer(event);
-            if (sourcePaneId && sourcePaneId !== pane.id) movePanel(sourcePaneId, pane.id, edge);
+            if (
+              sourcePaneId &&
+              sourcePaneId !== pane.id &&
+              !isNoOpMove(layout, sourcePaneId, pane.id, edge)
+            ) {
+              movePanel(sourcePaneId, pane.id, edge);
+            }
             endDrag();
           }}
           onFocusCapture={() => setActivePane(pane.id)}
@@ -350,6 +400,7 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
             <div
               aria-hidden="true"
               className={`${styles.dropZone} ${styles[`drop${capitalize(dropEdge)}`]}`}
+              data-drop-zone={dropEdge}
             />
           ) : null}
         </div>
@@ -409,9 +460,11 @@ export function WorkspacePanels({ titleRef }: { titleRef: RefObject<HTMLHeadingE
   return (
     <div className={styles.workspace}>
       {layout.type === "pane" ? renderPane(layout) : renderSplit(layout)}
-      <div aria-live="polite" className={styles.visuallyHidden} role="status">
-        {statusMessage}
-      </div>
+      {visible ? (
+        <div aria-live="polite" className={styles.visuallyHidden} role="status">
+          {statusMessage}
+        </div>
+      ) : null}
     </div>
   );
 }

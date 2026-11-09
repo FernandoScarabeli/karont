@@ -511,9 +511,51 @@
   }
 }
 
+@container conversation-pane (max-width: 260px) {
+  .composerSection {
+    width: calc(100% - var(--k-space-2) - var(--k-space-2));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dataReveal,
   .messageList[data-reveal="true"] > :not(.bottomSentinel) {
     animation: none;
+  }
+}
+
+/* Largura do painel (cartão do composer): o nome do agente vira só o ícone. */
+@container composer (max-width: 714px) {
+  .agentName {
+    position: absolute;
+    width: var(--k-border-width);
+    height: var(--k-border-width);
+    clip-path: inset(50%);
+  }
+}
+
+/* Painel estreito: a faixa de baixo tem a largura do composer, com a borda alinhada. */
+@container composer (max-width: 330px) {
+  .folderStrip {
+    width: 100%;
+    padding-inline: var(--k-space-2);
+  }
+}
+
+.composerRing,
+.composerHistory {
+  display: inline-flex;
+}
+
+/* Sobra pouco espaço: o histórico sai primeiro e depois o anel de contexto. */
+@container composer (max-width: 330px) {
+  .composerHistory {
+    display: none;
+  }
+}
+
+@container composer (max-width: 230px) {
+  .composerRing {
+    display: none;
   }
 }

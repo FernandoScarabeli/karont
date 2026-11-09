@@ -1,0 +1,82 @@
+/* Largura fixa: os ícones não andam enquanto a barra abre e fecha. */
+.rail {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: var(--k-sidebar-rail-width);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--k-space-2);
+  background: var(--k-color-bg-app);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--k-motion-fast-exit) var(--k-ease),
+    visibility 0s linear var(--k-motion-fast-exit);
+}
+
+.rail:not([inert]) {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity var(--k-motion-fast) var(--k-ease),
+    visibility 0s;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.button {
+  position: relative;
+  display: inline-flex;
+  width: var(--k-control-height-md);
+  height: var(--k-control-height-md);
+  align-items: center;
+  justify-content: center;
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-md);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--k-motion-fast) var(--k-ease),
+    color var(--k-motion-fast) var(--k-ease);
+}
+
+.button:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.button:not(:disabled):hover {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
+.button:disabled {
+  color: var(--k-color-text-muted);
+  cursor: not-allowed;
+}
+
+.button[aria-current="page"] {
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+}
+
+.count {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  min-width: var(--k-space-4);
+  padding-inline: var(--k-space-1);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-11);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--k-space-4);
+  text-align: center;
+}

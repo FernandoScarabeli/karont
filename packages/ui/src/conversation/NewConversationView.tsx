@@ -34,6 +34,7 @@ import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { resolveInitialAgent, TERMINAL_CHOICE } from "../projects/initialAgent.ts";
 import { getProjectIcon } from "../projects/projectIcons.ts";
 import { useProject } from "../projects/useProjects.ts";
+import { getActiveWorkspaceId } from "../projects/useWorkspaces.ts";
 import { upsertWorktree } from "../projects/useWorktrees.ts";
 import { shouldOfferSeparateCopy } from "../projects/worktreeOffer.ts";
 import {
@@ -77,9 +78,21 @@ export function NewConversationView({
   headerActions,
   dragHandleProps,
   projectId,
+  embedded = false,
+  workspaceId,
+  projectPicker,
+  composerLabel,
 }: {
   /** Projeto da nova conversa. Se ele não existir mais, a tela vira conversa solta. */
   projectId?: string;
+  /** Só o campo de mensagem, para viver dentro da tela do workspace (sem cabeçalho nem saudação). */
+  embedded?: boolean;
+  /** Workspace onde a conversa nasce; sem isto vale o ativo. */
+  workspaceId?: string;
+  /** Escolha de projeto mostrada na faixa de baixo do campo. */
+  projectPicker?: ReactNode;
+  /** Nome acessível do campo quando não há título. */
+  composerLabel?: string;
   titleRef?: RefObject<HTMLHeadingElement | null>;
   headerActions?: ReactNode;
   dragHandleProps?: {
@@ -640,12 +653,16 @@ export function NewConversationView({
     setError("");
     setIsOpening(true);
     const cleanCommand = value.trim();
+    const activeWorkspaceId = workspaceId ?? getActiveWorkspaceId();
     try {
       const result = await bridge.request("terminals.open", {
         cols: 80,
         rows: 24,
         ...(workingPath === PERSONAL_FOLDER ? {} : { cwd: workingPath }),
         ...(cleanCommand ? { command: cleanCommand } : {}),
+        // Dentro de um projeto, o terminal fica no projeto; o workspace é o ativo.
+        ...(project ? { projectId: project.id } : {}),
+        ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
       });
       navigate({ name: "terminal", id: result.terminal.id });
     } catch (openError) {
@@ -694,6 +711,7 @@ export function NewConversationView({
     setError("");
     setIsOpening(true);
     let created: Conversation | null = null;
+    const activeWorkspaceId = workspaceId ?? getActiveWorkspaceId();
     try {
       const cwd =
         options.worktree?.path ??
@@ -704,6 +722,7 @@ export function NewConversationView({
         agent: selectedAgent.id,
         cwd,
         ...(project ? { projectId: project.id } : {}),
+        ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
         ...(options.worktree ? { worktreeId: options.worktree.id } : {}),
         mode,
         title: t.conversation.title,
@@ -862,29 +881,38 @@ export function NewConversationView({
   const choiceOptions = buildChoiceOptions();
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <h1
-          className={styles.title}
-          data-pane-title=""
-          id={titleId}
-          ref={titleRef}
-          tabIndex={-1}
-          {...dragHandleProps}
-        >
-          {t.conversation.title}
-        </h1>
-        {headerActions}
-      </header>
+    <div className={embedded ? styles.pageEmbedded : styles.page}>
+      {embedded ? null : (
+        <header className={styles.header}>
+          <h1
+            className={styles.title}
+            data-pane-title=""
+            id={titleId}
+            ref={titleRef}
+            tabIndex={-1}
+            {...dragHandleProps}
+          >
+            {t.conversation.title}
+          </h1>
+          {headerActions}
+        </header>
+      )}
 
       <section
-        aria-labelledby={titleId}
-        className={styles.composerSection}
+        aria-label={embedded ? composerLabel : undefined}
+        aria-labelledby={embedded ? undefined : titleId}
+        className={`${styles.composerSection} ${embedded ? styles.composerSectionEmbedded : ""}`}
         ref={composerSectionRef}
       >
-        <p className={styles.welcome} data-k-new-conversation-title>
-          {t.conversation.welcomeTitle(greetingName, openingGreeting.hour, openingGreeting.sample)}
-        </p>
+        {embedded ? null : (
+          <p className={styles.welcome} data-k-new-conversation-title>
+            {t.conversation.welcomeTitle(
+              greetingName,
+              openingGreeting.hour,
+              openingGreeting.sample,
+            )}
+          </p>
+        )}
         {composerAttachments.isPreparing ? (
           <p className={styles.preparing} role="status">
             {t.chat.preparingAttachments}
@@ -945,7 +973,8 @@ export function NewConversationView({
           }
           below={
             <div className={styles.folderStrip}>
-              {project ? (
+              {projectPicker}
+              {project && projectPicker ? null : project ? (
                 // biome-ignore lint/a11y/useSemanticElements: o nome acessível exige role explícito num contêiner.
                 <div
                   aria-label={t.projects.stripAccessibleName(project.name, project.path)}
@@ -992,6 +1021,9 @@ export function NewConversationView({
             choice === TERMINAL_CHOICE
               ? t.conversation.terminalCommandPlaceholder
               : t.conversation.promptPlaceholder(capabilities?.skills === true)
+          }
+          shortPlaceholder={
+            choice === TERMINAL_CHOICE ? undefined : t.chat.composerPlaceholderShort
           }
           autocomplete={composerAutocomplete}
           submitDisabled={
