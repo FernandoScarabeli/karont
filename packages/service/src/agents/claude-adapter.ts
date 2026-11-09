@@ -101,6 +101,7 @@ export class ClaudeAdapter implements AgentAdapter {
   #sessionId = "";
   #resumeSession = false;
   #forkSessionPending = false;
+  #dotInstructions: string | undefined;
   #forkSessionSourceId: string | undefined;
   #permissionMode = "";
   #nextControlRequestId = 0;
@@ -161,6 +162,8 @@ export class ClaudeAdapter implements AgentAdapter {
     this.#skills = [];
     this.#sessionId = sessionId;
     this.#resumeSession = resume;
+    // O reinício interno chama start sem opções: mantém a instrução já guardada.
+    if (options.dotInstructions !== undefined) this.#dotInstructions = options.dotInstructions;
     this.#forkSessionPending = resume && options.forkSession === true;
     this.#forkSessionSourceId = this.#forkSessionPending ? sessionId : undefined;
     this.#stderrErrorType = undefined;
@@ -206,6 +209,7 @@ export class ClaudeAdapter implements AgentAdapter {
     if (conversation.effort) args.push("--effort", conversation.effort);
     args.push(resume ? "--resume" : "--session-id", sessionId);
     if (this.#forkSessionPending) args.push("--fork-session");
+    if (this.#dotInstructions) args.push("--append-system-prompt", this.#dotInstructions);
     let child: ChildProcess;
     try {
       child = this.#spawn(command, args, {

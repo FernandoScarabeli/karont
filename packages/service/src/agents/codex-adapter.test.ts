@@ -16,6 +16,7 @@ import {
   setAgentSession,
   setSetting,
 } from "../db.ts";
+import { updateDot } from "../dot.ts";
 import type { AdapterModelList } from "./adapter.ts";
 import { AgentCliError } from "./claude-adapter.ts";
 import { CodexAdapter, unwrapCodexShellCommand } from "./codex-adapter.ts";
@@ -964,6 +965,7 @@ test("modos Codex usam sandbox na thread e aprovação por turno", async (t) => 
 test("Codex aplica o modo atualizado ao retomar uma conversa", async () => {
   const harness = await createHarness("continuar");
   try {
+    updateDot(harness.db, { enabled: false });
     const conversation = createConversation(harness.manager, "read-only");
     await harness.manager.send(conversation.id, fixturePrompt("continuar"));
     const initialTurn = requestParams(
@@ -1419,6 +1421,46 @@ test("Codex publica e guarda o uso das janelas sem alterar as partes da mensagem
         ?.messages.at(-1)
         ?.parts.every((part) => part.type !== ("usage" as string)),
     );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("Codex envia developerInstructions do Dot em thread/start e thread/resume", async () => {
+  const fresh = await createHarness("texto");
+  try {
+    updateDot(fresh.db, { name: "Caronte", enabled: true });
+    const conversation = createConversation(fresh.manager);
+    await fresh.manager.send(conversation.id, fixturePrompt("texto"));
+    await waitForState(fresh, conversation.id, "idle");
+    const start = fresh.fakes[0]?.messages[0]?.find((m) => m.method === "thread/start");
+    assert.match(String(requestParams(start).developerInstructions), /Caronte/);
+  } finally {
+    await fresh.close();
+  }
+  const resumed = await createHarness("continuar", { resumeExisting: true });
+  try {
+    updateDot(resumed.db, { name: "Caronte", enabled: true });
+    const conversation = createConversation(resumed.manager);
+    setAgentSession(resumed.db, conversation.id, "00000000-0000-4000-8000-000000000002");
+    await resumed.manager.send(conversation.id, fixturePrompt("continuar", -1));
+    await waitForState(resumed, conversation.id, "idle");
+    const resume = resumed.fakes[0]?.messages[0]?.find((m) => m.method === "thread/resume");
+    assert.match(String(requestParams(resume).developerInstructions), /Caronte/);
+  } finally {
+    await resumed.close();
+  }
+});
+
+test("Codex não envia developerInstructions com o Dot desligado", async () => {
+  const harness = await createHarness("texto");
+  try {
+    updateDot(harness.db, { enabled: false });
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, fixturePrompt("texto"));
+    await waitForState(harness, conversation.id, "idle");
+    const start = harness.fakes[0]?.messages[0]?.find((m) => m.method === "thread/start");
+    assert.equal(Object.hasOwn(requestParams(start), "developerInstructions"), false);
   } finally {
     await harness.close();
   }

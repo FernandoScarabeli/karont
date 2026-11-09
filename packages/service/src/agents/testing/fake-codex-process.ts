@@ -361,6 +361,7 @@ function omitPolicy(value: unknown): unknown {
     sandbox: _sandbox,
     approvalPolicy: _approvalPolicy,
     serviceTier: _serviceTier,
+    developerInstructions: _developerInstructions,
     ...params
   } = value;
   return params;
@@ -368,6 +369,11 @@ function omitPolicy(value: unknown): unknown {
 
 function omitAccessPolicy(value: unknown): unknown {
   if (!isRecord(value)) return value;
-  const { sandbox: _sandbox, approvalPolicy: _approvalPolicy, ...params } = value;
+  const {
+    sandbox: _sandbox,
+    approvalPolicy: _approvalPolicy,
+    developerInstructions: _developerInstructions,
+    ...params
+  } = value;
   return params;
 }

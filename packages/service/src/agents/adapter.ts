@@ -46,6 +46,8 @@ export type AdapterModelList = {
 
 export type AdapterStartOptions = {
   forkSession?: boolean;
+  /** Instrução curta do Dot (nome e jeito de falar); ausente com o Dot desligado. */
+  dotInstructions?: string;
 };
 
 export type CodexBranchPoint =

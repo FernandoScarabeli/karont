@@ -21,6 +21,7 @@ import type {
   AdapterFactory,
   AdapterModelList,
   AdapterResponse,
+  AdapterStartOptions,
   AgentAdapter,
   AgentAdapterRegistration,
   CodexBranchPoint,
@@ -110,6 +111,7 @@ export class CodexAdapter implements AgentAdapter {
   #disposed = false;
   #approvedPlanPartId: string | undefined;
   #attachmentDirectory: string | undefined;
+  #dotInstructions: string | undefined;
   #attachmentCleanup: Promise<void> = Promise.resolve();
 
   constructor(emit: (event: AdapterEvent) => void, options: CodexAdapterOptions = {}) {
@@ -122,9 +124,17 @@ export class CodexAdapter implements AgentAdapter {
     this.#platform = options.platform ?? process.platform;
   }
 
-  async start(conversation: Conversation, sessionId: string, resume: boolean): Promise<void> {
+  async start(
+    conversation: Conversation,
+    sessionId: string,
+    resume: boolean,
+    _plan?: boolean,
+    options: AdapterStartOptions = {},
+  ): Promise<void> {
     if (isRunning(this.#child)) return;
     this.#conversation = conversation;
+    // Reinícios internos chamam start sem opções: mantém a instrução já guardada.
+    if (options.dotInstructions !== undefined) this.#dotInstructions = options.dotInstructions;
     this.#threadId = sessionId;
     this.#disposed = false;
     this.#turnId = "";
@@ -151,6 +161,7 @@ export class CodexAdapter implements AgentAdapter {
         cwd: conversation.cwd,
         sandbox,
         approvalPolicy,
+        ...(this.#dotInstructions ? { developerInstructions: this.#dotInstructions } : {}),
       });
       this.#throwIfDisposed();
     } else {
@@ -162,6 +173,7 @@ export class CodexAdapter implements AgentAdapter {
           model: this.#modelId,
           sandbox,
           approvalPolicy,
+          ...(this.#dotInstructions ? { developerInstructions: this.#dotInstructions } : {}),
           ...(this.#fast && this.#fastServiceTier ? { serviceTier: this.#fastServiceTier } : {}),
         });
         this.#throwIfDisposed();

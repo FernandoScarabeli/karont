@@ -69,6 +69,7 @@ import {
   setSetting,
   updateConversation,
 } from "../db.ts";
+import { getDot } from "../dot.ts";
 import { ServiceError } from "../errors.ts";
 import {
   applyUndo,
@@ -104,6 +105,7 @@ import {
   createClaudeModelLoader,
 } from "./claude-adapter.ts";
 import { createCodexAdapterRegistration, createCodexModelLoader } from "./codex-adapter.ts";
+import { dotInstructions } from "./dot-instructions.ts";
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 import { recordUsage } from "./usage.ts";
 
@@ -1391,6 +1393,14 @@ export class ConversationManager {
     if (!active) {
       const previousSession = getAgentSession(this.#db, conversation.id);
       const sessionId = previousSession ?? randomUUID();
+      // O Dot vale só para adapters novos; uma falha ao lê-lo não impede a conversa.
+      let instructions: string | undefined;
+      try {
+        instructions = dotInstructions(getDot(this.#db));
+      } catch {
+        instructions = undefined;
+      }
+      const dotOptions = instructions ? { dotInstructions: instructions } : {};
       let activeRef: ActiveConversation;
       const adapter = this.#createAdapter(conversation, (event) => {
         if (activeRef.removed || this.#deletingAll) return;
@@ -1418,6 +1428,7 @@ export class ConversationManager {
       activeRef.startPromise = adapter
         .start(conversation, sessionId, previousSession !== null, plan, {
           forkSession: isBranchForkPending(this.#db, conversation.id),
+          ...dotOptions,
         })
         .then(async () => {
           await activeRef.eventQueue;

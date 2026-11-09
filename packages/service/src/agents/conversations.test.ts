@@ -34,6 +34,7 @@ import {
   updateConversation,
   updateProject,
 } from "../db.ts";
+import { updateDot } from "../dot.ts";
 import { ServiceError } from "../errors.ts";
 import {
   type RestoreSnapshotOutcome,
@@ -4426,6 +4427,92 @@ test("Claude publica e guarda o uso das janelas sem alterar as partes da mensage
         ?.parts.map((part) => part.type),
       ["text"],
     );
+  } finally {
+    await harness.close();
+  }
+});
+
+const DOT_FLAG = "--append-system-prompt";
+
+function dotFlagValue(args: string[] | undefined): string | undefined {
+  const index = args?.indexOf(DOT_FLAG) ?? -1;
+  return index >= 0 ? args?.[index + 1] : undefined;
+}
+
+test("Dot ligado passa a instrução ao Claude em conversa nova e em --resume", async () => {
+  const harness = await createHarness("texto");
+  try {
+    updateDot(harness.db, { name: "Caronte", enabled: true });
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Oi.");
+    await waitForState(harness, conversation.id, "idle");
+    assert.ok(dotFlagValue(harness.spawnArgs[0])?.includes("Caronte"));
+    assert.ok(harness.spawnArgs[0]?.includes("--session-id"));
+  } finally {
+    await harness.close();
+  }
+  const resumed = await createHarness("continuar");
+  try {
+    updateDot(resumed.db, { name: "Caronte", enabled: true });
+    const conversation = createConversation(resumed.manager);
+    setAgentSession(resumed.db, conversation.id, "00000000-0000-4000-8000-000000000003");
+    await resumed.manager.send(conversation.id, "Continue.");
+    await waitForState(resumed, conversation.id, "idle");
+    assert.ok(resumed.spawnArgs[0]?.includes("--resume"));
+    assert.ok(dotFlagValue(resumed.spawnArgs[0])?.includes("Caronte"));
+  } finally {
+    await resumed.close();
+  }
+});
+
+test("Dot desligado não passa a flag ao Claude", async () => {
+  const harness = await createHarness("texto");
+  try {
+    updateDot(harness.db, { enabled: false });
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Oi.");
+    await waitForState(harness, conversation.id, "idle");
+    assert.equal(harness.spawnArgs[0]?.includes(DOT_FLAG), false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("o reinício interno do Claude mantém a instrução do Dot", async () => {
+  const harness = await createHarness("texto", {}, { exitAfterResult: true });
+  try {
+    updateDot(harness.db, { name: "Caronte", enabled: true });
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Primeira.");
+    await waitForState(harness, conversation.id, "idle");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await harness.manager.send(conversation.id, "Segunda.");
+    await waitForState(harness, conversation.id, "idle");
+    assert.equal(harness.spawnArgs.length, 2);
+    assert.ok(harness.spawnArgs[1]?.includes("--resume"));
+    assert.equal(dotFlagValue(harness.spawnArgs[1]), dotFlagValue(harness.spawnArgs[0]));
+    assert.ok(dotFlagValue(harness.spawnArgs[1])?.includes("Caronte"));
+  } finally {
+    await harness.close();
+  }
+});
+
+test("mudar o Dot não reinicia o adapter ativo; o próximo adapter usa o valor novo", async () => {
+  const harness = await createHarness("texto");
+  try {
+    updateDot(harness.db, { name: "Caronte", enabled: true });
+    const first = createConversation(harness.manager);
+    await harness.manager.send(first.id, "Oi.");
+    await waitForState(harness, first.id, "idle");
+    const before = dotFlagValue(harness.spawnArgs[0]);
+    updateDot(harness.db, { name: "Ferry" });
+    assert.equal(harness.spawnArgs.length, 1);
+    assert.equal(dotFlagValue(harness.spawnArgs[0]), before);
+    const second = createConversation(harness.manager);
+    await harness.manager.send(second.id, "Oi.");
+    await waitForState(harness, second.id, "idle");
+    assert.equal(harness.spawnArgs.length, 2);
+    assert.ok(dotFlagValue(harness.spawnArgs[1])?.includes("Ferry"));
   } finally {
     await harness.close();
   }
