@@ -108,7 +108,19 @@ Repositório recriado do zero em 2026-10-31.
 30. **Sidebar e divisão** (aprovado em 2026-11-09): a sidebar tem largura ajustável e fecha deixando uma faixa com ícones de atalho, inspirada no Splitter de ui.productdevbook.com. Esse componente não está publicado no npm nem tem o código no GitHub, então o comportamento é feito com `react-resizable-panels`, já aprovada. "Dividir" abre sempre à direita, sem menu. O destaque ao arrastar um painel só aparece onde soltar muda o layout.
 
 ## M4 — estado
-Branch `m4-navegacao`, a partir da `main` com o M3. Feito: B1 (workspaces no serviço), F1 (abas e sidebar), B2 (resumo agregado), F2 (telas do workspace e do Início), B3 e F3 (caixa de entrada), B4 e F4 (busca), E2E dos fluxos do M4. Falta: F5 (sidebar e divisão), teste real, medição e PR.
+Branch `m4-navegacao`, a partir da `main` com o M3. Feito, nesta ordem: B1 (workspaces no serviço), F1 (abas e sidebar), F1b (ajustes do dono), B2 (resumo agregado), F2 (telas do workspace e do Início), B3 e F3 (caixa de entrada), B4 e F4 (busca), E2E dos fluxos, F5 (sidebar ajustável, faixa de ícones e divisão direta). Falta o PR.
+
+Testes (2026-11-09):
+- `npm run check`: contrato 40, serviço 348, desktop 41, interface 227, sem falhas. Build ok. E2E: 14 de 14.
+- Teste real no Electron, em banco e pastas temporárias, com Codex 0.167.0 `gpt-6-luna`, esforço `low`: 11 de 11. Cobriu permissão aprovada pela caixa de entrada, arquivo criado, caixa vazia depois, busca, resumo, ponto de restauração, continuar a sessão e mover o projeto de workspace no meio do turno. O Claude real não foi testado, para não gastar o limite (decisão 28).
+
+Medições:
+- Migração da busca com 50 mil mensagens: 0,35 s. Busca: menos de 50 ms.
+- App parado (build de produção, 30 s depois de dois turnos reais): serviço com CPU 0% e 33 MB (PSS); Electron com CPU 0,02% e 714 MB somando o working set (Browser 188, GPU 297, Utility 78, Tab 151). A soma conta memória compartilhada várias vezes e foi medida depois de uso, então não é comparável direto aos 622 MB do M3.
+
+Notas técnicas:
+- Painéis de workspaces visitados ficam montados e escondidos, para terminais e conversas não piscarem na troca de aba. Cada workspace visitado custa os assinantes de eventos dele.
+- O F5 foi feito sem a skill taste; a tela foi conferida à mão pelo orquestrador.
 
 ## M3 — estado em 2026-11-08 (fim da noite, sem o dono)
 Juntado na `main` em 2026-11-09 (PR #5, CI verde). Feito, nesta ordem: B1, F1, B3, F3, B2a, B2b, F2, B4a, B4b, F4.

@@ -21,6 +21,10 @@
 - **Caixa de entrada lê uma mensagem por conversa em erro** a cada recálculo. Só roda em mudança de estado, mas erros acumulados pesam; vale trazer num único SQL.
 - **`createSnapshot: sinal já abortado e prazo curto…`** (`git/restore-points.test.ts`) falhou uma vez com a máquina carregada e passou nas seguintes.
 - **Painel aberto de conversa cujo projeto mudou de workspace** continua no layout antigo; a sidebar já mostra no lugar novo.
+- **Letra duplicada ao nomear workspace:** uma vez o E2E digitou "Trabalho" e a aba mostrou "Trabalhoo". Não se repetiu em mais de 25 rodadas; causa desconhecida (olhar o `WorkspaceDialog`).
+- **Busca abre a conversa, mas não rola até a mensagem encontrada**: não existe mecanismo para isso.
+- **Conversa solta não muda de workspace:** só projetos têm "Mover para".
+- **Composer em painel estreito:** o botão de enviar desce para outra linha quando "Acesso total" está visível.
 
 ## Do M3
 - **Desfazer e outra conversa no mesmo repositório:** o desfazer recusa se já há turno rodando no repositório, mas um turno de outra conversa que comece *durante* o desfazer pode fotografar os arquivos pela metade. Janela curta; um bloqueio por repositório resolve.
