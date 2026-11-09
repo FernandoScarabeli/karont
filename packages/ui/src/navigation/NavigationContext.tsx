@@ -11,6 +11,13 @@ import {
 import { getBridge } from "../bridge/index.ts";
 import { getConversationIndexEntry } from "../conversation/useConversationIndex.ts";
 import { t } from "../i18n/pt-BR.ts";
+import {
+  hasOpenContent,
+  isOverviewVisible,
+  type OverviewOverride,
+  overrideAfterActiveTabClick,
+  shouldClearOverrideOnLayoutChange,
+} from "../projects/overviewVisibility.ts";
 import { getProject } from "../projects/useProjects.ts";
 import { getWorkspaces, setActiveWorkspace, useWorkspaces } from "../projects/useWorkspaces.ts";
 import {
@@ -61,8 +68,13 @@ type NavigationState = {
   layouts: Record<string, LayoutNode>;
   activePaneIds: Record<string, string>;
   statusMessage: string;
+  /** A tela do workspace (resumo) está por cima dos painéis do workspace ativo. */
+  workspaceOverviewVisible: boolean;
   navigate: (view: NavigationTarget) => void;
-  /** Ativa o workspace e mostra a área de trabalho dele. */
+  /**
+   * Ativa o workspace e mostra a área de trabalho dele. Na aba em que já se está, alterna entre a
+   * tela do workspace e as conversas abertas.
+   */
   openWorkspace: (workspaceId: string) => void;
   setActivePane: (paneId: string) => void;
   splitActivePane: (direction: "row" | "column", paneId?: string) => string | null;
@@ -84,6 +96,7 @@ type NavigationSnapshot = Pick<
   | "layouts"
   | "activePaneIds"
   | "statusMessage"
+  | "workspaceOverviewVisible"
 >;
 type NavigationActions = Omit<NavigationState, keyof NavigationSnapshot>;
 
@@ -100,13 +113,32 @@ export function NavigationProvider({ children }: PropsWithChildren) {
   const [view, setView] = useState<View>({ name: "home" });
   const [layouts, setLayouts] = useState<Record<string, LayoutNode>>({});
   const [activePaneIds, setActivePaneIds] = useState<Record<string, string>>({});
+  const [overviewOverrides, setOverviewOverrides] = useState<Record<string, OverviewOverride>>({});
   const [statusMessage, setStatusMessage] = useState("");
   const [layoutLoaded, setLayoutLoaded] = useState(false);
   const [navigationLoaded, setNavigationLoaded] = useState(false);
   const layout = layouts[activeWorkspaceId] ?? EMPTY_LAYOUT;
   const activePaneId = resolveActivePaneId(layout, activePaneIds[activeWorkspaceId]);
-  const navigationRef = useRef({ layout, activePaneId, layouts, activePaneIds, activeWorkspaceId });
-  navigationRef.current = { layout, activePaneId, layouts, activePaneIds, activeWorkspaceId };
+  const workspaceOverviewVisible =
+    layoutLoaded && isOverviewVisible(hasOpenContent(layout), overviewOverrides[activeWorkspaceId]);
+  const navigationRef = useRef({
+    layout,
+    activePaneId,
+    layouts,
+    activePaneIds,
+    activeWorkspaceId,
+    view,
+    workspaceOverviewVisible,
+  });
+  navigationRef.current = {
+    layout,
+    activePaneId,
+    layouts,
+    activePaneIds,
+    activeWorkspaceId,
+    view,
+    workspaceOverviewVisible,
+  };
   /** Último layout de cada workspace que já está salvo, para só salvar o que mudou. */
   const savedLayoutsRef = useRef(new Map<string, LayoutNode>());
   const workspacesReady = !workspacesState.loading;
@@ -142,8 +174,36 @@ export function NavigationProvider({ children }: PropsWithChildren) {
       setActivePaneFor(navigationRef.current.activeWorkspaceId, update),
     [setActivePaneFor],
   );
+  const setOverviewFor = useCallback((workspaceId: string, value: OverviewOverride | undefined) => {
+    setOverviewOverrides((current) => {
+      if (current[workspaceId] === value) return current;
+      const next = { ...current };
+      if (value) next[workspaceId] = value;
+      else delete next[workspaceId];
+      return next;
+    });
+  }, []);
   /** Aplica a mudança a todos os workspaces (uma conversa ou terminal pode estar em qualquer um). */
   const updateAllLayouts = useCallback((update: (current: LayoutNode) => LayoutNode) => {
+    // Quem perdeu conversa ou terminal volta a mostrar a tela do workspace.
+    const cleared: string[] = [];
+    for (const [id, value] of Object.entries(navigationRef.current.layouts)) {
+      const updated = update(value);
+      if (
+        updated !== value &&
+        shouldClearOverrideOnLayoutChange(hasOpenContent(value), hasOpenContent(updated))
+      ) {
+        cleared.push(id);
+      }
+    }
+    if (cleared.length > 0) {
+      setOverviewOverrides((current) => {
+        if (!cleared.some((id) => current[id])) return current;
+        const next = { ...current };
+        for (const id of cleared) delete next[id];
+        return next;
+      });
+    }
     setLayouts((current) => {
       let changed = false;
       const next: Record<string, LayoutNode> = {};
@@ -241,6 +301,7 @@ export function NavigationProvider({ children }: PropsWithChildren) {
     }
     setLayouts(prune);
     setActivePaneIds(prune);
+    setOverviewOverrides(prune);
   }, [layoutLoaded, workspacesReady, workspaceIdsKey]);
 
   useEffect(() => {
@@ -288,10 +349,25 @@ export function NavigationProvider({ children }: PropsWithChildren) {
     [setActivePaneId],
   );
 
-  const openWorkspace = useCallback((workspaceId: string) => {
-    setActiveWorkspace(workspaceId);
-    setView((current) => (current.name === "workspace" ? current : { name: "workspace" }));
-  }, []);
+  const openWorkspace = useCallback(
+    (workspaceId: string) => {
+      const current = navigationRef.current;
+      if (current.view.name === "workspace" && workspaceId === current.activeWorkspaceId) {
+        // Clique na aba em que já se está: alterna entre a tela do workspace e as conversas.
+        setOverviewFor(
+          workspaceId,
+          overrideAfterActiveTabClick(
+            hasOpenContent(current.layout),
+            current.workspaceOverviewVisible,
+          ),
+        );
+        return;
+      }
+      setActiveWorkspace(workspaceId);
+      setView((view) => (view.name === "workspace" ? view : { name: "workspace" }));
+    },
+    [setOverviewFor],
+  );
 
   const navigate = useCallback(
     (target: NavigationTarget) => {
@@ -325,10 +401,13 @@ export function NavigationProvider({ children }: PropsWithChildren) {
           : { kind: "new-conversation" };
         setLayoutFor(workspaceId, (layoutNow) => setPaneView(layoutNow, currentPaneId, paneView));
         setActivePaneFor(workspaceId, currentPaneId);
+        // "Nova conversa" abre limpa, só com o campo de mensagem.
+        setOverviewFor(workspaceId, "hide");
         showWorkspace();
         return;
       }
       if (target.name === "terminal") {
+        setOverviewFor(workspaceId, undefined);
         const selected = selectTerminalPane(currentLayout, currentPaneId, target.id);
         if (selected.tree !== currentLayout) setLayoutFor(workspaceId, selected.tree);
         setActivePaneFor(workspaceId, selected.paneId);
@@ -336,6 +415,7 @@ export function NavigationProvider({ children }: PropsWithChildren) {
         return;
       }
       if (target.name === "conversation") {
+        setOverviewFor(workspaceId, undefined);
         const existing = findPaneByConversation(currentLayout, target.id);
         if (existing) {
           setActivePaneFor(workspaceId, existing.id);
@@ -350,7 +430,7 @@ export function NavigationProvider({ children }: PropsWithChildren) {
       }
       setView(target);
     },
-    [setActivePaneFor, setLayoutFor],
+    [setActivePaneFor, setLayoutFor, setOverviewFor],
   );
 
   const splitActivePane = useCallback(
@@ -377,6 +457,7 @@ export function NavigationProvider({ children }: PropsWithChildren) {
     (conversationId: string) => {
       const { layout: currentLayout, activePaneId: currentPaneId } = navigationRef.current;
       const existing = findPaneByConversation(currentLayout, conversationId);
+      setOverviewFor(navigationRef.current.activeWorkspaceId, undefined);
       if (existing) {
         setActivePaneId(existing.id);
         setView((current) => (current.name === "workspace" ? current : { name: "workspace" }));
@@ -397,7 +478,7 @@ export function NavigationProvider({ children }: PropsWithChildren) {
       setStatusMessage(t.workspace.paneSplit);
       return nextPane.id;
     },
-    [setActivePaneId, setLayout],
+    [setActivePaneId, setLayout, setOverviewFor],
   );
 
   const closeConversationWorkspacePanes = useCallback(
@@ -424,6 +505,11 @@ export function NavigationProvider({ children }: PropsWithChildren) {
       const { layout: currentLayout, activePaneId: currentActivePaneId } = navigationRef.current;
       const nextLayout = closePaneInLayout(currentLayout, paneId);
       setLayout(nextLayout);
+      if (
+        shouldClearOverrideOnLayoutChange(hasOpenContent(currentLayout), hasOpenContent(nextLayout))
+      ) {
+        setOverviewFor(navigationRef.current.activeWorkspaceId, undefined);
+      }
       if (paneId === currentActivePaneId || !findPane(nextLayout, currentActivePaneId)) {
         setActivePaneId(
           findPane(nextLayout, paneId)?.id ?? listPanes(nextLayout)[0]?.id ?? "pane-1",
@@ -432,7 +518,7 @@ export function NavigationProvider({ children }: PropsWithChildren) {
       setView({ name: "workspace" });
       setStatusMessage(t.workspace.paneClosed);
     },
-    [setActivePaneId, setLayout],
+    [setActivePaneId, setLayout, setOverviewFor],
   );
 
   const closeTerminalWorkspacePane = useCallback(
@@ -474,8 +560,18 @@ export function NavigationProvider({ children }: PropsWithChildren) {
       layouts,
       activePaneIds,
       statusMessage,
+      workspaceOverviewVisible,
     }),
-    [view, activeWorkspaceId, layout, activePaneId, layouts, activePaneIds, statusMessage],
+    [
+      view,
+      activeWorkspaceId,
+      layout,
+      activePaneId,
+      layouts,
+      activePaneIds,
+      statusMessage,
+      workspaceOverviewVisible,
+    ],
   );
   const actions = useMemo(
     () => ({

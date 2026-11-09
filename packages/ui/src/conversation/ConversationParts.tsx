@@ -75,6 +75,7 @@ import { cleanMarkdownPreview, formatConversationText } from "./displayText.ts";
 import { getAllowedExternalUrl } from "./externalLinks.ts";
 import { FollowBottomContext } from "./followBottom.ts";
 import { splitMarkdownBlocks } from "./markdownBlocks.ts";
+import { formatMessageDateTime } from "./messageDate.ts";
 import { RestoreSummary } from "./RestoreSummary.tsx";
 import { rehypeCaret } from "./rehypeCaret.ts";
 import { SourceCitationBadge } from "./SourceCitationBadge.tsx";
@@ -144,20 +145,6 @@ function preloadHighlightPlugin(markdown: string): void {
   }
 }
 
-const messageDateFormatter = new Intl.DateTimeFormat("pt-BR", {
-  day: "numeric",
-  month: "short",
-});
-const messageDateFormatterWithYear = new Intl.DateTimeFormat("pt-BR", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
-const messageTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
 const ignoreAnnouncement = () => undefined;
 const EMPTY_CITATION_SOURCES: readonly MessageSource[] = [];
 const commandDurationFormatter = new Intl.NumberFormat("pt-BR", {
@@ -199,15 +186,6 @@ const ansiBackgroundClasses = [
   styles.ansiBackground14,
   styles.ansiBackground15,
 ] as const;
-
-function formatMessageDateTime(createdAt: string): string {
-  const date = new Date(createdAt);
-  const formatter =
-    date.getFullYear() === new Date().getFullYear()
-      ? messageDateFormatter
-      : messageDateFormatterWithYear;
-  return `${messageTimeFormatter.format(date)} · ${formatter.format(date)}`;
-}
 
 export type ResponseInput =
   | { partId: string; responseType: "permission"; decision: "allow" | "always" | "deny" }

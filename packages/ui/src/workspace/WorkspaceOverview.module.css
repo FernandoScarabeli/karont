@@ -1,0 +1,72 @@
+.page {
+  composes: scrollArea from "../components/ScrollArea/ScrollArea.module.css";
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: var(--k-sheet-padding);
+}
+
+.content {
+  display: flex;
+  width: 100%;
+  max-width: var(--k-overview-max-width);
+  flex-direction: column;
+  gap: var(--k-space-6);
+  margin-inline: auto;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+
+.title {
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-brand);
+  font-size: var(--k-text-28);
+  font-weight: var(--k-weight-brand);
+  line-height: var(--k-leading-tight);
+}
+
+.title:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.dayLine {
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-14);
+  line-height: var(--k-leading-normal);
+}
+
+.composer {
+  width: 100%;
+  max-width: var(--k-new-conversation-width);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--k-overview-card-min), 1fr));
+  gap: var(--k-space-3);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--k-space-3);
+  padding-block: var(--k-space-6);
+  text-align: center;
+}
+
+.emptyText {
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-14);
+  line-height: var(--k-leading-normal);
+}

@@ -4,11 +4,14 @@ import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { useWorkspaces } from "../projects/useWorkspaces.ts";
 import { LOCAL_WORKSPACE_KEY } from "../projects/workspaceState.ts";
 import { SettingsView } from "../settings/SettingsView.tsx";
+import { WorkspaceOverview } from "../workspace/WorkspaceOverview.tsx";
 import { WorkspacePanels } from "../workspace/WorkspacePanels.tsx";
+import { HomeOverview } from "./HomeOverview.tsx";
 import styles from "./Sheet.module.css";
 
 export function Sheet() {
-  const { view, activeWorkspaceId } = useNavigation();
+  const { view, activeWorkspaceId, workspaceOverviewVisible } = useNavigation();
+  const overviewShown = view.name === "workspace" && workspaceOverviewVisible;
   const { workspaces, loading } = useWorkspaces();
   /** Workspaces já visitados ficam montados (escondidos) para a troca de aba não piscar nem encerrar nada. */
   const visitedWorkspaces = useRef(new Set<string>());
@@ -24,9 +27,11 @@ export function Sheet() {
   ].filter((id) => visitedWorkspaces.current.has(id));
   const titleRef = useRef<HTMLHeadingElement>(null);
   const previousView = useRef(view);
+  const previousOverviewShown = useRef(overviewShown);
 
   useEffect(() => {
     const changed =
+      previousOverviewShown.current !== overviewShown ||
       previousView.current.name !== view.name ||
       (previousView.current.name === "settings" &&
         view.name === "settings" &&
@@ -42,12 +47,14 @@ export function Sheet() {
       focusTarget?.focus({ preventScroll: true });
     }
     previousView.current = view;
-  }, [view]);
+    previousOverviewShown.current = overviewShown;
+  }, [view, overviewShown]);
 
   return (
     <main className={`${styles.sheet} ${view.name === "workspace" ? styles.workspaceSheet : ""}`}>
       {mountedWorkspaceIds.map((id) => {
-        const visible = view.name === "workspace" && id === activeWorkspaceId;
+        // Com a tela do workspace por cima, os painéis seguem montados (terminais e conversas vivos).
+        const visible = view.name === "workspace" && id === activeWorkspaceId && !overviewShown;
         return (
           <div
             className={styles.workspaceHost}
@@ -59,6 +66,13 @@ export function Sheet() {
           </div>
         );
       })}
+      {overviewShown ? (
+        <WorkspaceOverview
+          key={activeWorkspaceId}
+          titleRef={titleRef}
+          workspaceId={activeWorkspaceId}
+        />
+      ) : null}
       {view.name === "settings" ? (
         <SettingsView titleRef={titleRef} />
       ) : view.name === "workspace" ? null : (
@@ -66,12 +80,7 @@ export function Sheet() {
           <h1 className={styles.pageTitle} ref={titleRef} tabIndex={-1}>
             {t.home.title}
           </h1>
-          <section aria-labelledby="home-empty-title" className={styles.emptyState}>
-            <h2 className={styles.emptyTitle} id="home-empty-title">
-              {t.home.emptyTitle}
-            </h2>
-            <p className={styles.emptyDescription}>{t.home.emptyDescription}</p>
-          </section>
+          <HomeOverview />
         </>
       )}
     </main>

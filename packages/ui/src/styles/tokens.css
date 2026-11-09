@@ -212,6 +212,8 @@
   --k-settings-content-max-width: 960px;
   --k-settings-prose-width: 68ch;
   --k-new-conversation-width: 760px;
+  --k-overview-card-min: 260px;
+  --k-overview-max-width: 960px;
   --k-new-conversation-prompt-height: 180px;
   --k-terminal-header-height: 52px;
   --k-composer-textarea-min-height: 40px;

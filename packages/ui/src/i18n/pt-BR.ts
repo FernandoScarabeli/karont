@@ -253,10 +253,31 @@ export const t = {
     noBridge: "Sem conexão com o serviço",
     versionPrefix: "v",
   },
+  overview: {
+    working: (count: number) => `${count} trabalhando`,
+    queued: (count: number) => `${count} na fila`,
+    waiting: (count: number) => (count === 1 ? "1 precisa de você" : `${count} precisam de você`),
+    error: (count: number) => `${count} com erro`,
+    conversationsToday: (count: number) =>
+      count === 1 ? "1 conversa hoje" : `${count} conversas hoje`,
+    noConversationsToday: "Nenhuma conversa hoje",
+    conversations: (count: number) =>
+      count === 0 ? "Nenhuma conversa" : count === 1 ? "1 conversa" : `${count} conversas`,
+    today: (count: number) => `${count} hoje`,
+    loadFailed: "Não foi possível carregar o resumo.",
+    projectsHeading: "Projetos",
+    noProjects: "Este workspace ainda não tem projetos.",
+    newProject: "Novo projeto",
+    noProject: "Sem projeto",
+    projectPickerLabel: "Projeto da nova conversa",
+    projectPickerTrigger: (name: string) => `Projeto: ${name}`,
+    composerLabel: (name: string) => `Nova conversa em ${name}`,
+    workspacesHeading: "Workspaces",
+    openProjectHint: "Abre uma conversa nova neste projeto",
+    openWorkspaceHint: "Abre este workspace",
+  },
   home: {
     title: "Início",
-    emptyTitle: "Tudo pronto para começar",
-    emptyDescription: "Os agentes, projetos e conversas vão aparecer aqui.",
   },
   conversation: {
     title: "Nova conversa",

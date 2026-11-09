@@ -8,6 +8,11 @@
   justify-content: flex-start;
 }
 
+.pageEmbedded {
+  display: block;
+  width: 100%;
+}
+
 .header {
   display: flex;
   min-height: var(--k-terminal-header-height);
@@ -50,6 +55,12 @@
   container-name: new-conversation;
   container-type: inline-size;
   transform: translateY(calc(-1 * var(--k-space-6)));
+}
+
+.composerSectionEmbedded {
+  width: 100%;
+  margin: 0;
+  transform: none;
 }
 
 .welcome {
