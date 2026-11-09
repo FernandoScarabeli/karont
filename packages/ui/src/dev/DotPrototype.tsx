@@ -1,24 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { type DotMood, type DotShape, EyeTracker } from "../dot/EyeTracker.tsx";
+import { useRef, useState } from "react";
+import { ColorWell } from "../components/ColorPicker/ColorPicker.tsx";
+import { DEFAULT_COLOR } from "../components/ColorPicker/color.ts";
+import { type DotMood, EyeTracker } from "../dot/EyeTracker.tsx";
 import styles from "./DotPrototype.module.css";
-
-type AccentId = "ivory" | "magenta" | "turquoise" | "lime" | "blue" | "coral";
-type Tone = "dark" | "light";
-
-const accents: readonly { id: AccentId; name: string; className: string }[] = [
-  { id: "ivory", name: "Marfim", className: styles.swatchIvory ?? "" },
-  { id: "magenta", name: "Magenta", className: styles.swatchMagenta ?? "" },
-  { id: "turquoise", name: "Turquesa", className: styles.swatchTurquoise ?? "" },
-  { id: "lime", name: "Lima", className: styles.swatchLime ?? "" },
-  { id: "blue", name: "Azul elétrico", className: styles.swatchBlue ?? "" },
-  { id: "coral", name: "Coral", className: styles.swatchCoral ?? "" },
-];
-
-const shapeOptions: readonly { value: DotShape; label: string }[] = [
-  { value: "flame", label: "Chama" },
-  { value: "veil", label: "Véu" },
-  { value: "wisp", label: "Fiapo" },
-];
 
 const moodOptions: readonly { value: DotMood; label: string }[] = [
   { value: "idle", label: "Parado" },
@@ -26,11 +10,6 @@ const moodOptions: readonly { value: DotMood; label: string }[] = [
   { value: "needs-you", label: "Precisa de você" },
   { value: "sleeping", label: "Dormindo" },
   { value: "done", label: "Terminou" },
-];
-
-const toneOptions: readonly { value: Tone; label: string }[] = [
-  { value: "dark", label: "Escuro" },
-  { value: "light", label: "Claro" },
 ];
 
 const chatSampleName = "Dot · via Codex";
@@ -63,34 +42,13 @@ function ChoiceGroup<T extends string>({ legend, options, value, onChange }: Cho
   );
 }
 
-function CheckIcon() {
-  return (
-    <svg aria-hidden="true" className={styles.check} fill="none" viewBox="0 0 16 16">
-      <path
-        d="M4 8.5 L6.8 11.2 L12 5.2"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2"
-      />
-    </svg>
-  );
-}
-
 export function DotPrototype() {
-  const pageRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const [shape, setShape] = useState<DotShape>("flame");
   const [mood, setMood] = useState<DotMood>("idle");
-  const [tone, setTone] = useState<Tone>("dark");
-  const [accent, setAccent] = useState<AccentId>("ivory");
-
-  useEffect(() => {
-    pageRef.current?.style.setProperty("--k-color-brand", `var(--k-accent-${accent})`);
-  }, [accent]);
+  const [color, setColor] = useState(DEFAULT_COLOR);
 
   return (
-    <main className={styles.page} ref={pageRef}>
+    <main className={styles.page}>
       <div className={styles.content}>
         <header className={styles.header}>
           <h1 className={styles.heading}>Dot · protótipo</h1>
@@ -102,7 +60,7 @@ export function DotPrototype() {
             Dot em tamanho grande
           </h2>
           <div className={styles.stage} ref={stageRef}>
-            <EyeTracker mood={mood} shape={shape} size={180} tone={tone} within={stageRef} />
+            <EyeTracker color={color} mood={mood} size={180} within={stageRef} />
           </div>
         </section>
 
@@ -111,26 +69,13 @@ export function DotPrototype() {
             Controles
           </h2>
           <div className={styles.controls}>
-            <ChoiceGroup legend="Forma" onChange={setShape} options={shapeOptions} value={shape} />
             <ChoiceGroup legend="Humor" onChange={setMood} options={moodOptions} value={mood} />
-            <ChoiceGroup legend="Corpo" onChange={setTone} options={toneOptions} value={tone} />
-            <fieldset className={styles.field}>
-              <legend className={styles.legend}>Cor de destaque</legend>
+            <div className={styles.field}>
+              <span className={styles.legend}>Cor do Dot</span>
               <div className={styles.choices}>
-                {accents.map((item) => (
-                  <button
-                    aria-label={item.name}
-                    aria-pressed={item.id === accent}
-                    className={`${styles.swatch} ${item.className}`}
-                    key={item.id}
-                    onClick={() => setAccent(item.id)}
-                    type="button"
-                  >
-                    {item.id === accent ? <CheckIcon /> : null}
-                  </button>
-                ))}
+                <ColorWell onChange={setColor} value={color} />
               </div>
-            </fieldset>
+            </div>
           </div>
         </section>
 
@@ -140,22 +85,22 @@ export function DotPrototype() {
           </h2>
           <div className={styles.sizes}>
             <span className={styles.chatSample}>
-              <EyeTracker mood={mood} shape={shape} size={20} still tone={tone} />
+              <EyeTracker color={color} mood={mood} size={20} still />
               <span className={styles.chatName}>{chatSampleName}</span>
             </span>
-            <EyeTracker mood={mood} shape={shape} size={40} still tone={tone} />
-            <EyeTracker mood={mood} shape={shape} size={96} still tone={tone} />
+            <EyeTracker color={color} mood={mood} size={40} still />
+            <EyeTracker color={color} mood={mood} size={96} still />
           </div>
         </section>
 
         <section aria-labelledby="dot-compare" className={styles.section}>
           <h2 className={styles.title} id="dot-compare">
-            Formas lado a lado
+            Os cinco humores
           </h2>
           <div className={styles.compare}>
-            {shapeOptions.map((option) => (
+            {moodOptions.map((option) => (
               <figure className={styles.figure} key={option.value}>
-                <EyeTracker mood={mood} shape={option.value} size={64} still tone={tone} />
+                <EyeTracker color={color} mood={option.value} size={64} still />
                 <figcaption className={styles.caption}>{option.label}</figcaption>
               </figure>
             ))}

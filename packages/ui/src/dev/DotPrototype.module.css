@@ -4,9 +4,6 @@
   --k-dot-control-min-width: 220px;
   --k-dot-stage-min-height: 380px;
   --k-dot-stage-room-top: 56px;
-  --k-dot-swatch-size: 28px;
-  --k-dot-check-size: 16px;
-  --k-dot-selected-ring: 2px;
   min-height: 100%;
   padding: var(--k-space-6) var(--k-space-4);
   background: var(--k-color-bg-sheet);
@@ -122,57 +119,9 @@
   font-weight: var(--k-weight-semibold);
 }
 
-.choice:focus-visible,
-.swatch:focus-visible {
+.choice:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-color-focus);
   outline-offset: var(--k-focus-ring-offset);
-}
-
-.swatch {
-  display: grid;
-  width: var(--k-dot-swatch-size);
-  height: var(--k-dot-swatch-size);
-  place-items: center;
-  padding: 0;
-  border: var(--k-border-width) solid var(--k-color-border-muted);
-  border-radius: var(--k-radius-full);
-  color: var(--k-color-on-primary);
-  cursor: pointer;
-}
-
-.swatch[aria-pressed="true"] {
-  box-shadow:
-    0 0 0 var(--k-focus-ring-offset) var(--k-color-bg-sheet),
-    0 0 0 calc(var(--k-focus-ring-offset) + var(--k-dot-selected-ring)) var(--k-color-text-primary);
-}
-
-.swatchIvory {
-  background: var(--k-accent-ivory);
-}
-
-.swatchMagenta {
-  background: var(--k-accent-magenta);
-}
-
-.swatchTurquoise {
-  background: var(--k-accent-turquoise);
-}
-
-.swatchLime {
-  background: var(--k-accent-lime);
-}
-
-.swatchBlue {
-  background: var(--k-accent-blue);
-}
-
-.swatchCoral {
-  background: var(--k-accent-coral);
-}
-
-.check {
-  width: var(--k-dot-check-size);
-  height: var(--k-dot-check-size);
 }
 
 .section {

@@ -944,6 +944,31 @@ export const t = {
       done: "Dot terminou",
     },
   },
+  colorPicker: {
+    /** Nome do conjunto: campo, matiz, hex e amostras. */
+    group: "Seletor de cor",
+    /** O campo de saturação (horizontal) e brilho (vertical). */
+    field: "Saturação e brilho",
+    fieldValue: (saturation: number, brightness: number) =>
+      `Saturação ${saturation}%, brilho ${brightness}%`,
+    hue: "Matiz",
+    hueValue: (degrees: number) => `${degrees} graus`,
+    hex: "Cor em hexadecimal",
+    swatches: "Cores prontas",
+    /** Nome de cada amostra pronta, pelo id. */
+    swatch: {
+      graphite: "Grafite",
+      ivory: "Marfim",
+      magenta: "Magenta",
+      turquoise: "Turquesa",
+      lime: "Lima",
+      blue: "Azul elétrico",
+      coral: "Coral",
+    },
+    /** Botão redondo que abre o seletor; leva a cor atual no nome. */
+    well: (hex: string) => `Cor do Dot, ${hex}`,
+    popover: "Escolher a cor do Dot",
+  },
   usage: {
     title: "Uso",
     refresh: "Atualizar uso",

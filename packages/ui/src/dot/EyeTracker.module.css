@@ -1,37 +1,108 @@
 /* ══ Eye tracker ═══════════════════════════════════════════
-   See EyeTracker.tsx. The frame holds the body, the room it
+   See EyeTracker.tsx. The frame holds the body, the room around
+   it for the signs (the "!", the z's, the spark), the room it
    floats in and the bubble, so nothing is cut off. */
 .eyt {
-  /* Medidas e tempos do Dot. O tamanho do corpo chega por --eyt-size. */
+  /* Medidas e tempos do Dot. O tamanho do corpo chega por --eyt-size,
+     as cores do corpo e dos olhos por --k-dot-body e --k-dot-eye. */
   --k-dot-fallback-size: 100px;
-  --k-dot-room: 0.08;
+  /* o espaço em volta do corpo, na mesma proporção do viewBox (144 x 130) */
+  --k-dot-box-width: 1.44;
+  --k-dot-box-height: 1.3;
+  --k-dot-box-top: 0.24;
   --k-dot-float: 0.035;
   --k-dot-float-duration: 5s;
   --k-dot-breath: 1.03;
   --k-dot-breath-duration: 4.2s;
-  --k-dot-poke-duration: 420ms;
-  --k-dot-poke-release: 160ms;
-  --k-dot-ease-elastic: cubic-bezier(0.24, 1.34, 0.38, 1);
-  --k-dot-squash-x: 1.07;
-  --k-dot-squash-y: 0.9;
-  --k-dot-outline-width: 3px;
   --k-dot-bubble-height: 34px;
   --k-dot-bubble-gap: 6px;
   --k-dot-caret-width: 1.5px;
   --k-dot-caret-height: 13px;
+  --k-dot-outline-width: 3px;
+
+  /* molas: o pop do "!" passa de 1 e volta (bounce de cerca de 0,35);
+     a suave passa uns 15%. Em movimento reduzido viram a curva simples. */
+  --k-dot-ease-pop: linear(
+    0,
+    0.243,
+    0.73,
+    1.148,
+    1.337,
+    1.301,
+    1.144,
+    0.984,
+    0.893,
+    0.886,
+    0.933,
+    0.991,
+    1.031,
+    1.041,
+    1.029,
+    1.009,
+    0.992,
+    0.986,
+    0.988,
+    0.995,
+    1.001,
+    1.005,
+    1
+  );
+  --k-dot-ease-soft: linear(
+    0,
+    0.213,
+    0.61,
+    0.946,
+    1.124,
+    1.162,
+    1.118,
+    1.053,
+    1.002,
+    0.977,
+    0.974,
+    0.982,
+    0.993,
+    1.001,
+    1.004,
+    1.004,
+    1
+  );
+  /* entrar com a mola é o dobro do tier lento; sair é o tier lento de saída, sem quique */
+  --k-dot-sign-in: calc(var(--k-motion-slow) * 2);
+  --k-dot-sign-out: var(--k-motion-slow-exit);
+  --k-dot-sign-from: 0.4;
+  --k-dot-sleep-from: 0.6;
+  --k-dot-wiggle-duration: 2s;
+  --k-dot-wiggle-angle: 14deg;
+  --k-dot-z-duration: 3.6s;
+  --k-dot-z-stagger: 1.2s;
+  --k-dot-z-from: 0.5;
+  --k-dot-z-to: 1.15;
+  --k-dot-z-stroke: 2.4;
+  /* a trilha de um z e a escadinha dos parados, em unidades do desenho */
+  --k-dot-z-y0: 10px;
+  --k-dot-z-x1: 7px;
+  --k-dot-z-y1: -4px;
+  --k-dot-z-x2: 4px;
+  --k-dot-z-y2: -17px;
+  --k-dot-z-x3: 13px;
+  --k-dot-z-y3: -30px;
+  --k-dot-stair-x2: 11px;
+  --k-dot-stair-y2: -5px;
+  --k-dot-stair-x3: 20px;
+  --k-dot-stair-y3: -22px;
+  --k-dot-stair-scale1: 0.6;
+  --k-dot-stair-scale2: 0.85;
+  --k-dot-stair-scale3: 1.1;
+  --k-dot-rim-pulse-duration: var(--k-duration-status-pulse-medium);
+  --k-dot-rim-pulse-low: 0.3;
+  --k-dot-orb-halo-opacity: 0.3;
+  --k-dot-orb-ring: 1.2px;
   --k-dot-body: var(--k-color-bg-control);
   --k-dot-eye: var(--k-color-brand);
   position: relative;
   display: grid;
-  width: var(--eyt-size, var(--k-dot-fallback-size));
-  padding-block: calc(var(--eyt-size, var(--k-dot-fallback-size)) * var(--k-dot-room));
+  width: calc(var(--eyt-size, var(--k-dot-fallback-size)) * var(--k-dot-box-width));
   place-items: center;
-}
-
-/* a light body takes the accent; the eyes take the ink on it */
-.eyt[data-tone="light"] {
-  --k-dot-body: var(--k-color-brand);
-  --k-dot-eye: var(--k-color-on-primary);
 }
 
 /* it floats, as if it did not touch the ground: the whole body
@@ -47,26 +118,37 @@
 
 .eytBall {
   display: block;
-  width: var(--eyt-size, var(--k-dot-fallback-size));
-  height: var(--eyt-size, var(--k-dot-fallback-size));
+  width: calc(var(--eyt-size, var(--k-dot-fallback-size)) * var(--k-dot-box-width));
+  height: calc(var(--eyt-size, var(--k-dot-fallback-size)) * var(--k-dot-box-height));
   overflow: visible;
 }
 
 /* the body is the Fill's own slab and the eyes its ink */
 .eytBody {
   fill: var(--k-dot-body);
-  stroke: transparent;
-  stroke-linejoin: round;
-  stroke-width: var(--k-dot-outline-width);
 }
 
 .eytEye {
   fill: var(--k-dot-eye);
 }
 
-/* it needs you: besides the colour and the name, an outline */
-.eyt[data-mood="needs-you"] .eytBody {
+/* a body too close to the app's own background to read as a shape
+   gets a quiet outline; when it needs you the outline is the
+   attention colour and it pulses, besides the colour and the name */
+.eytRim {
+  fill: none;
+  stroke: transparent;
+  stroke-linejoin: round;
+  stroke-width: var(--k-dot-outline-width);
+}
+
+.eyt[data-rim] .eytRim {
+  stroke: var(--k-color-border-strong);
+}
+
+.eyt[data-mood="needs-you"] .eytRim {
   stroke: var(--k-color-attention);
+  animation: eyt-rim-pulse var(--k-dot-rim-pulse-duration) ease-in-out infinite alternate;
 }
 
 /* asleep, it breathes slowly, from the hem */
@@ -79,7 +161,121 @@
   animation: eyt-breathe var(--k-dot-breath-duration) ease-in-out infinite alternate;
 }
 
-/* a press gives under the finger and springs back out */
+/* the "!": big, at the right of the head, in the attention colour.
+   It pops in on the spring and leaves quickly; every 2 s it shakes. */
+.eytBang {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  opacity: 0;
+  scale: var(--k-dot-sign-from);
+  transition:
+    opacity var(--k-dot-sign-out) var(--k-ease),
+    scale var(--k-dot-sign-out) var(--k-ease);
+}
+
+.eytBangShape {
+  fill: var(--k-color-attention);
+}
+
+.eyt[data-mood="needs-you"] .eytBang {
+  opacity: 1;
+  scale: 1;
+  transition:
+    opacity var(--k-motion-moderate) var(--k-ease),
+    scale var(--k-dot-sign-in) var(--k-dot-ease-pop);
+}
+
+.eyt[data-mood="needs-you"]:not([data-still]) .eytBang {
+  animation: eyt-wiggle var(--k-dot-wiggle-duration) ease-in-out var(--k-dot-sign-in) infinite;
+}
+
+/* the z's: three, one after another, born small at the side of the head,
+   climbing in a gentle curve as they grow, and gone. Still (or with motion
+   reduced) they stand on a little stair, small to big. */
+.eytSleep {
+  transform-box: fill-box;
+  transform-origin: 0 100%;
+  opacity: 0;
+  scale: var(--k-dot-sleep-from);
+  transition:
+    opacity var(--k-dot-sign-out) var(--k-ease),
+    scale var(--k-dot-sign-out) var(--k-ease);
+}
+
+.eyt[data-mood="sleeping"] .eytSleep {
+  opacity: 1;
+  scale: 1;
+  transition:
+    opacity var(--k-motion-slow) var(--k-ease),
+    scale var(--k-dot-sign-in) var(--k-dot-ease-soft);
+}
+
+.eytZ {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+.eytZ[data-n="1"] {
+  translate: 0 var(--k-dot-z-y0);
+  scale: var(--k-dot-stair-scale1);
+}
+
+.eytZ[data-n="2"] {
+  translate: var(--k-dot-stair-x2) var(--k-dot-stair-y2);
+  scale: var(--k-dot-stair-scale2);
+}
+
+.eytZ[data-n="3"] {
+  translate: var(--k-dot-stair-x3) var(--k-dot-stair-y3);
+  scale: var(--k-dot-stair-scale3);
+}
+
+.eytZGlyph {
+  fill: none;
+  stroke: var(--k-color-text-secondary);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: var(--k-dot-z-stroke);
+}
+
+.eyt[data-mood="sleeping"]:not([data-still]) .eytZ {
+  animation: eyt-z var(--k-dot-z-duration) ease-out infinite backwards;
+}
+
+.eyt[data-mood="sleeping"]:not([data-still]) .eytZ[data-n="2"] {
+  animation-delay: var(--k-dot-z-stagger);
+}
+
+.eyt[data-mood="sleeping"]:not([data-still]) .eytZ[data-n="3"] {
+  animation-delay: calc(var(--k-dot-z-stagger) * 2);
+}
+
+/* the spark: the accent colour with a soft halo, and a ring of the
+   app's ground so it reads over a body of the same colour. It fades
+   in and out with the mood. */
+.eytOrb {
+  opacity: 0;
+  transition: opacity var(--k-dot-sign-out) var(--k-ease);
+}
+
+.eyt[data-mood="working"] .eytOrb {
+  opacity: 1;
+  transition-duration: var(--k-motion-slow);
+}
+
+.eytOrbHalo {
+  fill: var(--k-color-brand);
+  opacity: var(--k-dot-orb-halo-opacity);
+}
+
+.eytOrbCore {
+  fill: var(--k-color-brand);
+  stroke: var(--k-color-bg-app);
+  stroke-width: var(--k-dot-orb-ring);
+}
+
+/* the press is the body's own: it squashes and the hem opens, on the
+   spring in the script. Only the focus ring is the button's. */
 .eytPoke {
   display: block;
   padding: 0;
@@ -87,15 +283,7 @@
   border-radius: var(--k-radius-2xl);
   background: transparent;
   cursor: pointer;
-  transform-origin: 50% 90%;
-  transition: scale var(--k-dot-poke-duration) var(--k-dot-ease-elastic);
   -webkit-tap-highlight-color: transparent;
-}
-
-.eytPoke:active {
-  scale: var(--k-dot-squash-x) var(--k-dot-squash-y);
-  transition-duration: var(--k-dot-poke-release);
-  transition-timing-function: ease;
 }
 
 .eytPoke:focus-visible {
@@ -106,7 +294,7 @@
 /* a press on the toy opens a chat bubble over it, centred on the face */
 .eytSay {
   position: absolute;
-  bottom: 100%;
+  bottom: calc(100% - var(--eyt-size, var(--k-dot-fallback-size)) * var(--k-dot-box-top));
   left: 50%;
   display: inline-flex;
   min-height: var(--k-dot-bubble-height);
@@ -176,18 +364,93 @@
   }
 }
 
+/* the outline breathes between full and faint */
+@keyframes eyt-rim-pulse {
+  to {
+    opacity: var(--k-dot-rim-pulse-low);
+  }
+}
+
+/* a shake in the first fifth of the cycle, a rest for the other four */
+@keyframes eyt-wiggle {
+  0%,
+  22%,
+  100% {
+    rotate: 0deg;
+  }
+  4% {
+    rotate: calc(var(--k-dot-wiggle-angle) * -1);
+  }
+  9% {
+    rotate: var(--k-dot-wiggle-angle);
+  }
+  14% {
+    rotate: calc(var(--k-dot-wiggle-angle) * -0.6);
+  }
+  18% {
+    rotate: calc(var(--k-dot-wiggle-angle) * 0.3);
+  }
+}
+
+/* a z climbs in a gentle S (the units are the drawing's: 100 across the body) */
+@keyframes eyt-z {
+  0% {
+    translate: 0 var(--k-dot-z-y0);
+    scale: var(--k-dot-z-from);
+    rotate: -10deg;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  35% {
+    translate: var(--k-dot-z-x1) var(--k-dot-z-y1);
+    rotate: 6deg;
+  }
+  65% {
+    translate: var(--k-dot-z-x2) var(--k-dot-z-y2);
+    rotate: -6deg;
+  }
+  100% {
+    translate: var(--k-dot-z-x3) var(--k-dot-z-y3);
+    scale: var(--k-dot-z-to);
+    rotate: 8deg;
+    opacity: 0;
+  }
+}
+
+/* Nada se mexe, mas o "!", os "z" e o pontinho continuam à vista, parados. */
 @media (prefers-reduced-motion: reduce) {
-  .eytFloat,
-  .eyt[data-mood="sleeping"] .eytBreathe {
-    animation: none;
+  .eyt {
+    --k-dot-ease-pop: var(--k-ease);
+    --k-dot-ease-soft: var(--k-ease);
   }
 
-  .eytPoke,
+  .eytBang,
+  .eytSleep,
+  .eytOrb,
   .eytSay {
     transition: none;
   }
 
+  .eytFloat {
+    animation: none;
+  }
+
   .eytPoke:active {
     scale: 0.96;
+  }
+
+  .eyt[data-mood="sleeping"] .eytBreathe,
+  .eyt[data-mood="needs-you"] .eytRim,
+  .eyt[data-mood="sleeping"] .eytSleep,
+  .eyt[data-mood="needs-you"] .eytBang {
+    animation: none;
+    transition: none;
+  }
+
+  .eyt[data-mood="needs-you"]:not([data-still]) .eytBang,
+  .eyt[data-mood="sleeping"]:not([data-still]) .eytZ {
+    animation: none;
   }
 }
