@@ -36,6 +36,8 @@ import {
 } from "../conversation/useConversationIndex.ts";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigationActions, useNavigationState } from "../navigation/NavigationContext.tsx";
+import { Avatar } from "../profile/Avatar.tsx";
+import { useProfile } from "../profile/ProfileContext.tsx";
 import { ProjectDialog } from "../projects/ProjectDialog.tsx";
 import { groupConversations } from "../projects/projectGroups.ts";
 import { getProjectIcon } from "../projects/projectIcons.ts";
@@ -232,6 +234,7 @@ type SidebarProps = {
 
 export function Sidebar({ collapsed }: SidebarProps) {
   const { view, layout, activePaneId, workspaceOverviewVisible } = useNavigationState();
+  const profile = useProfile();
   const { total: inboxTotal } = useInbox();
   const {
     closeConversationWorkspacePanes,
@@ -1211,6 +1214,18 @@ export function Sidebar({ collapsed }: SidebarProps) {
           </nav>
 
           <footer className={styles.footer}>
+            <button
+              aria-current={
+                view.name === "settings" && view.section === "profile" ? "page" : undefined
+              }
+              aria-label={profile.name ? t.shell.profileOf(profile.name) : t.shell.profile}
+              className={styles.profileButton}
+              onClick={() => navigate({ name: "settings", section: "profile" })}
+              type="button"
+            >
+              <Avatar avatar={profile.avatar} name={profile.name} size="sm" />
+              {profile.name ? <span className={styles.profileName}>{profile.name}</span> : null}
+            </button>
             <ServiceStatus />
             <IconButton
               aria-current={view.name === "settings" ? "page" : undefined}

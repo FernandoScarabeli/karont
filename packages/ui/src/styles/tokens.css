@@ -206,6 +206,11 @@
   --k-section-heading-height: 28px;
   --k-service-status-gap: 8px;
   --k-service-footer-gap: 4px;
+  --k-avatar-size-sm: 20px;
+  --k-avatar-size-lg: 72px;
+  --k-avatar-icon-sm: 12px;
+  --k-avatar-icon-lg: 32px;
+  --k-profile-button-max-width: 96px;
   --k-empty-state-gap: 8px;
   --k-empty-state-max-width: 360px;
   --k-dialog-width-sm: 420px;

@@ -4,6 +4,7 @@ import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { AgentsSection } from "./AgentsSection.tsx";
 import { GeneralSection } from "./GeneralSection.tsx";
+import { ProfileSection } from "./ProfileSection.tsx";
 import styles from "./SettingsView.module.css";
 
 export function SettingsView({ titleRef }: { titleRef: RefObject<HTMLHeadingElement | null> }) {
@@ -38,6 +39,17 @@ export function SettingsView({ titleRef }: { titleRef: RefObject<HTMLHeadingElem
             </li>
             <li>
               <button
+                aria-current={selectedSection === "profile" ? "page" : undefined}
+                className={styles.sectionLink}
+                onClick={() => navigate({ name: "settings", section: "profile" })}
+                ref={(element) => fluidHover.registerItem("settings-profile", element)}
+                type="button"
+              >
+                {t.settings.profile}
+              </button>
+            </li>
+            <li>
+              <button
                 aria-current={selectedSection === "agents" ? "page" : undefined}
                 className={styles.sectionLink}
                 onClick={() => navigate({ name: "settings", section: "agents" })}
@@ -49,7 +61,13 @@ export function SettingsView({ titleRef }: { titleRef: RefObject<HTMLHeadingElem
             </li>
           </ul>
         </nav>
-        {selectedSection === "general" ? <GeneralSection /> : <AgentsSection />}
+        {selectedSection === "general" ? (
+          <GeneralSection />
+        ) : selectedSection === "profile" ? (
+          <ProfileSection />
+        ) : (
+          <AgentsSection />
+        )}
       </div>
     </div>
   );

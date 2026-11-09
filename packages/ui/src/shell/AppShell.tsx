@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { NavigationProvider } from "../navigation/NavigationContext.tsx";
+import { ProfileProvider } from "../profile/ProfileContext.tsx";
 import { decideSearchShortcut } from "../projects/searchPanelState.ts";
 import styles from "./AppShell.module.css";
 import { Sheet } from "./Sheet.tsx";
@@ -58,17 +59,19 @@ export function AppShell() {
 
   return (
     <NavigationProvider>
-      <SidebarShellProvider className={styles.shell}>
-        <TopBar onOpenSearch={openSearch} />
-        <SidebarLayout sidebar={({ collapsed }) => <Sidebar collapsed={collapsed} />}>
-          <Sheet />
-        </SidebarLayout>
-      </SidebarShellProvider>
-      {searchLoaded ? (
-        <Suspense fallback={null}>
-          <SearchPanel onClose={closeSearch} open={searchOpen} />
-        </Suspense>
-      ) : null}
+      <ProfileProvider>
+        <SidebarShellProvider className={styles.shell}>
+          <TopBar onOpenSearch={openSearch} />
+          <SidebarLayout sidebar={({ collapsed }) => <Sidebar collapsed={collapsed} />}>
+            <Sheet />
+          </SidebarLayout>
+        </SidebarShellProvider>
+        {searchLoaded ? (
+          <Suspense fallback={null}>
+            <SearchPanel onClose={closeSearch} open={searchOpen} />
+          </Suspense>
+        ) : null}
+      </ProfileProvider>
     </NavigationProvider>
   );
 }
