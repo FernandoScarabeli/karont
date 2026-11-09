@@ -90,6 +90,9 @@ export const t = {
     search: "Buscar",
     searchAccessibleName: "Buscar",
     sidebar: "Barra lateral",
+    sidebarResize: "Largura da barra lateral",
+    sidebarClose: "Fechar barra lateral",
+    sidebarOpen: "Abrir barra lateral",
     primaryNavigation: "Navegação principal",
     newConversation: "Nova conversa",
     tasks: "Tarefas",
@@ -723,8 +726,6 @@ export const t = {
   workspace: {
     panels: "Painéis de conversas",
     split: "Dividir",
-    splitRight: "Dividir à direita",
-    splitBelow: "Dividir abaixo",
     closePane: (title: string) => `Fechar painel ${title}`,
     panelLimit: "O limite de seis painéis foi atingido.",
     panelActions: "Ações do painel",

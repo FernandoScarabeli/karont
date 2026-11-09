@@ -169,6 +169,9 @@
 
   --k-topbar-height: 48px;
   --k-sidebar-width: 232px;
+  --k-sidebar-min-width: 200px;
+  --k-sidebar-max-width: 400px;
+  --k-sidebar-rail-width: 48px;
   --k-sidebar-item-height: 32px;
   --k-sidebar-padding: 12px;
   --k-sidebar-section-gap: 24px;

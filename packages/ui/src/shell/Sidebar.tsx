@@ -11,6 +11,7 @@ import {
   GitFork,
   Inbox,
   ListTodo,
+  PanelLeftClose,
   Pencil,
   Pin,
   PinOff,
@@ -53,6 +54,7 @@ import {
 import { findPane, findPaneByConversation, paneCount } from "../workspace/layout.ts";
 import { ServiceStatus } from "./ServiceStatus.tsx";
 import styles from "./Sidebar.module.css";
+import { SidebarRail } from "./SidebarRail.tsx";
 
 const conversationActionsIcon = <Ellipsis aria-hidden="true" size={17} strokeWidth={1.8} />;
 const COLLAPSED_PROJECTS_SETTING = "sidebar.collapsedProjects";
@@ -225,7 +227,13 @@ const ConversationRow = memo(function ConversationRow({
   );
 });
 
-export function Sidebar() {
+type SidebarProps = {
+  collapsed: boolean;
+  onCollapse: () => void;
+  onExpand: () => void;
+};
+
+export function Sidebar({ collapsed, onCollapse, onExpand }: SidebarProps) {
   const { view, layout, activePaneId, workspaceOverviewVisible } = useNavigationState();
   const { total: inboxTotal } = useInbox();
   const {
@@ -1008,212 +1016,258 @@ export function Sidebar() {
     );
   };
 
+  const newConversationActive =
+    view.name === "workspace" &&
+    !workspaceOverviewVisible &&
+    activePane?.view.kind === "new-conversation" &&
+    !activePane.view.projectId;
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const openButtonRef = useRef<HTMLButtonElement>(null);
+  const focusAfterToggleRef = useRef(false);
+  const wasCollapsedRef = useRef(collapsed);
+  useEffect(() => {
+    if (wasCollapsedRef.current === collapsed) return;
+    wasCollapsedRef.current = collapsed;
+    if (!focusAfterToggleRef.current) return;
+    focusAfterToggleRef.current = false;
+    // O botão que tinha o foco acabou de ficar inerte: o foco vai para o botão do outro estado.
+    const frame = requestAnimationFrame(() =>
+      (collapsed ? openButtonRef : closeButtonRef).current?.focus(),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [collapsed]);
+
   return (
-    <aside aria-label={t.shell.sidebar} className={styles.sidebar}>
-      <nav
-        aria-label={t.shell.primaryNavigation}
-        className={`${styles.navigation} ${scrollAreaStyles.scrollArea}`}
-        ref={fluidHover.containerRef}
-      >
-        <FluidHoverHighlight controller={fluidHover} />
-        <div className={styles.primaryActions}>
-          <Button
-            aria-current={
-              view.name === "workspace" &&
-              !workspaceOverviewVisible &&
-              activePane?.view.kind === "new-conversation" &&
-              !activePane.view.projectId
-                ? "page"
-                : undefined
-            }
-            className={styles.navigationAction}
-            iconStart={<SquarePen aria-hidden="true" size={16} strokeWidth={1.75} />}
-            onClick={() => navigate({ name: "new-conversation" })}
-            ref={(element) => fluidHover.registerItem("new-conversation", element)}
-            variant="ghost"
+    <aside aria-label={t.shell.sidebar} className={styles.sidebar} data-collapsed={collapsed}>
+      {/* A barra recolhida só esconde o conteúdo: tudo continua montado (diálogos, listas, foco de retorno). */}
+      <div className={styles.expanded} inert={collapsed}>
+        <div className={styles.expandedInner}>
+          <nav
+            aria-label={t.shell.primaryNavigation}
+            className={`${styles.navigation} ${scrollAreaStyles.scrollArea}`}
+            ref={fluidHover.containerRef}
           >
-            {t.shell.newConversation}
-          </Button>
-          <Button
-            aria-current={view.name === "inbox" ? "page" : undefined}
-            aria-description={inboxTotal > 0 ? t.shell.inboxCount(inboxTotal) : undefined}
-            className={styles.navigationAction}
-            iconStart={<Inbox aria-hidden="true" size={16} strokeWidth={1.75} />}
-            onClick={() => navigate({ name: "inbox" })}
-            ref={(element) => fluidHover.registerItem("inbox", element)}
-            variant="ghost"
-          >
-            {t.shell.inbox}
-            {inboxTotal > 0 ? (
-              <span aria-hidden="true" className={styles.navigationCount}>
-                {inboxTotal}
-              </span>
-            ) : null}
-          </Button>
-          <Button
-            aria-description={t.shell.availableSoon}
-            className={styles.navigationAction}
-            disabled
-            iconStart={<ListTodo aria-hidden="true" size={16} strokeWidth={1.75} />}
-            ref={(element) => fluidHover.registerItem("tasks", element)}
-            variant="ghost"
-          >
-            {t.shell.tasks}
-          </Button>
-        </div>
-
-        {showArchived ? null : (
-          <section aria-labelledby="sidebar-projects-title" className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <h2 className={styles.sectionTitle} id="sidebar-projects-title">
-                {t.shell.projects}
-              </h2>
-              <IconButton
-                icon={<Plus aria-hidden="true" size={16} strokeWidth={1.8} />}
-                label={t.shell.newProject}
-                onClick={() => openProjectDialog(null)}
-                ref={newProjectRef}
-                size="sm"
-              />
-            </div>
-            {projectsState.error ? (
-              <p className={styles.emptyList} role="status">
-                <span>{t.shell.projectsLoadError}</span>
-              </p>
-            ) : null}
-            {workspaceProjects.length > 0 ? (
-              <ul aria-label={t.shell.projectList} className={styles.conversationList}>
-                {workspaceProjects.map(renderProject)}
-              </ul>
-            ) : projectsState.loading || projectsState.error || workspacesLoading ? null : (
-              <p className={styles.emptyList}>
-                <span>{t.shell.noProjects}</span>
-              </p>
-            )}
-          </section>
-        )}
-
-        <section aria-labelledby="sidebar-conversations-title" className={styles.section}>
-          <div className={styles.sectionHeader}>
-            {showArchived ? (
-              <div className={styles.sectionHeadingStart}>
-                <IconButton
-                  icon={<ArrowLeft aria-hidden="true" size={16} strokeWidth={1.8} />}
-                  label={t.shell.backToConversations}
-                  onClick={showRecentConversations}
-                  ref={archivedBackRef}
-                  size="sm"
-                />
-                <h2 className={styles.sectionTitle} id="sidebar-conversations-title">
-                  {t.shell.archivedConversations}
-                </h2>
-              </div>
-            ) : (
-              <h2 className={styles.sectionTitle} id="sidebar-conversations-title">
-                {t.shell.conversations}
-              </h2>
-            )}
-            {showArchived ? null : (
-              <div className={styles.sectionActions}>
-                <ActionMenu
-                  items={[
-                    {
-                      id: "view-archived",
-                      label: t.shell.viewArchivedConversations,
-                      icon: <Archive size={15} />,
-                      onSelect: viewArchivedConversations,
-                    },
-                  ]}
-                  label={t.shell.conversationSectionActions}
-                  onOpenChange={(open) => setMenu(open ? { kind: "section" } : null)}
-                  open={menu?.kind === "section"}
-                  triggerClassName={styles.sectionActionsMenu}
-                  triggerIcon={<Ellipsis aria-hidden="true" size={16} strokeWidth={1.8} />}
-                  triggerLabel={t.shell.conversationSectionActions}
-                />
-                <IconButton
-                  icon={<Plus aria-hidden="true" size={16} strokeWidth={1.8} />}
-                  label={t.shell.newLooseConversation}
+            <FluidHoverHighlight controller={fluidHover} />
+            <div className={styles.primaryActions}>
+              <div className={styles.newConversationRow}>
+                <Button
+                  aria-current={newConversationActive ? "page" : undefined}
+                  className={styles.navigationAction}
+                  iconStart={<SquarePen aria-hidden="true" size={16} strokeWidth={1.75} />}
                   onClick={() => navigate({ name: "new-conversation" })}
-                  ref={newLooseConversationRef}
+                  ref={(element) => fluidHover.registerItem("new-conversation", element)}
+                  variant="ghost"
+                >
+                  {t.shell.newConversation}
+                </Button>
+                <IconButton
+                  icon={<PanelLeftClose aria-hidden="true" size={16} strokeWidth={1.75} />}
+                  label={t.shell.sidebarClose}
+                  onClick={() => {
+                    focusAfterToggleRef.current = true;
+                    onCollapse();
+                  }}
+                  ref={closeButtonRef}
                   size="sm"
                 />
               </div>
-            )}
-          </div>
-
-          {error ? (
-            <p className={styles.emptyList} role="status">
-              <span>{t.shell.conversationsLoadError}</span>
-            </p>
-          ) : null}
-          {conversationIndex.error ? (
-            <p className={styles.emptyList} role="status">
-              <span>{t.shell.conversationsLoadError}</span>
-            </p>
-          ) : null}
-          {sidebarActionError ? (
-            <p className={styles.actionError} role="status">
-              {sidebarActionError}
-            </p>
-          ) : null}
-
-          {pinnedRows.length > 0 ? (
-            <>
-              <h3 className={styles.conversationSubheading}>{t.shell.pinnedConversations}</h3>
-              <ul aria-label={t.shell.pinnedConversations} className={styles.conversationList}>
-                {pinnedRows}
-              </ul>
-            </>
-          ) : null}
-          {recentRows.length > 0 ? (
-            <>
-              {pinnedRows.length > 0 ? (
-                <h3 className={styles.conversationSubheading}>{t.shell.recentConversations}</h3>
-              ) : null}
-              <ul
-                aria-label={
-                  showArchived ? t.shell.archivedConversations : t.shell.agentConversations
-                }
-                className={styles.conversationList}
+              <Button
+                aria-current={view.name === "inbox" ? "page" : undefined}
+                aria-description={inboxTotal > 0 ? t.shell.inboxCount(inboxTotal) : undefined}
+                className={styles.navigationAction}
+                iconStart={<Inbox aria-hidden="true" size={16} strokeWidth={1.75} />}
+                onClick={() => navigate({ name: "inbox" })}
+                ref={(element) => fluidHover.registerItem("inbox", element)}
+                variant="ghost"
               >
-                {recentRows}
-              </ul>
-            </>
-          ) : null}
-          {showArchived && !conversationIndex.loading && conversationList.length === 0 ? (
-            <p className={styles.emptyList}>
-              <span>{t.shell.noArchivedConversations}</span>
-            </p>
-          ) : null}
-          {!showArchived &&
-          !conversationIndex.loading &&
-          !projectsState.loading &&
-          groups.loose.length === 0 &&
-          terminalGroups.loose.length === 0 ? (
-            <p className={styles.emptyList}>
-              <span>{t.shell.noConversations}</span>
-            </p>
-          ) : null}
-          {!showArchived && terminalGroups.loose.length > 0 ? (
-            <ul aria-label={t.shell.conversations} className={styles.conversationList}>
-              {terminalGroups.loose.map(renderTerminal)}
-            </ul>
-          ) : null}
-        </section>
-      </nav>
+                {t.shell.inbox}
+                {inboxTotal > 0 ? (
+                  <span aria-hidden="true" className={styles.navigationCount}>
+                    {inboxTotal}
+                  </span>
+                ) : null}
+              </Button>
+              <Button
+                aria-description={t.shell.availableSoon}
+                className={styles.navigationAction}
+                disabled
+                iconStart={<ListTodo aria-hidden="true" size={16} strokeWidth={1.75} />}
+                ref={(element) => fluidHover.registerItem("tasks", element)}
+                variant="ghost"
+              >
+                {t.shell.tasks}
+              </Button>
+            </div>
 
-      <footer className={styles.footer}>
-        <ServiceStatus />
-        <IconButton
-          aria-current={view.name === "settings" ? "page" : undefined}
-          className={styles.settingsButton}
-          icon={<Settings aria-hidden="true" size={16} strokeWidth={1.75} />}
-          label={t.shell.settings}
-          onClick={() => navigate({ name: "settings", section: "general" })}
-          size="sm"
-        />
-      </footer>
+            {showArchived ? null : (
+              <section aria-labelledby="sidebar-projects-title" className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <h2 className={styles.sectionTitle} id="sidebar-projects-title">
+                    {t.shell.projects}
+                  </h2>
+                  <IconButton
+                    icon={<Plus aria-hidden="true" size={16} strokeWidth={1.8} />}
+                    label={t.shell.newProject}
+                    onClick={() => openProjectDialog(null)}
+                    ref={newProjectRef}
+                    size="sm"
+                  />
+                </div>
+                {projectsState.error ? (
+                  <p className={styles.emptyList} role="status">
+                    <span>{t.shell.projectsLoadError}</span>
+                  </p>
+                ) : null}
+                {workspaceProjects.length > 0 ? (
+                  <ul aria-label={t.shell.projectList} className={styles.conversationList}>
+                    {workspaceProjects.map(renderProject)}
+                  </ul>
+                ) : projectsState.loading || projectsState.error || workspacesLoading ? null : (
+                  <p className={styles.emptyList}>
+                    <span>{t.shell.noProjects}</span>
+                  </p>
+                )}
+              </section>
+            )}
+
+            <section aria-labelledby="sidebar-conversations-title" className={styles.section}>
+              <div className={styles.sectionHeader}>
+                {showArchived ? (
+                  <div className={styles.sectionHeadingStart}>
+                    <IconButton
+                      icon={<ArrowLeft aria-hidden="true" size={16} strokeWidth={1.8} />}
+                      label={t.shell.backToConversations}
+                      onClick={showRecentConversations}
+                      ref={archivedBackRef}
+                      size="sm"
+                    />
+                    <h2 className={styles.sectionTitle} id="sidebar-conversations-title">
+                      {t.shell.archivedConversations}
+                    </h2>
+                  </div>
+                ) : (
+                  <h2 className={styles.sectionTitle} id="sidebar-conversations-title">
+                    {t.shell.conversations}
+                  </h2>
+                )}
+                {showArchived ? null : (
+                  <div className={styles.sectionActions}>
+                    <ActionMenu
+                      items={[
+                        {
+                          id: "view-archived",
+                          label: t.shell.viewArchivedConversations,
+                          icon: <Archive size={15} />,
+                          onSelect: viewArchivedConversations,
+                        },
+                      ]}
+                      label={t.shell.conversationSectionActions}
+                      onOpenChange={(open) => setMenu(open ? { kind: "section" } : null)}
+                      open={menu?.kind === "section"}
+                      triggerClassName={styles.sectionActionsMenu}
+                      triggerIcon={<Ellipsis aria-hidden="true" size={16} strokeWidth={1.8} />}
+                      triggerLabel={t.shell.conversationSectionActions}
+                    />
+                    <IconButton
+                      icon={<Plus aria-hidden="true" size={16} strokeWidth={1.8} />}
+                      label={t.shell.newLooseConversation}
+                      onClick={() => navigate({ name: "new-conversation" })}
+                      ref={newLooseConversationRef}
+                      size="sm"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {error ? (
+                <p className={styles.emptyList} role="status">
+                  <span>{t.shell.conversationsLoadError}</span>
+                </p>
+              ) : null}
+              {conversationIndex.error ? (
+                <p className={styles.emptyList} role="status">
+                  <span>{t.shell.conversationsLoadError}</span>
+                </p>
+              ) : null}
+              {sidebarActionError ? (
+                <p className={styles.actionError} role="status">
+                  {sidebarActionError}
+                </p>
+              ) : null}
+
+              {pinnedRows.length > 0 ? (
+                <>
+                  <h3 className={styles.conversationSubheading}>{t.shell.pinnedConversations}</h3>
+                  <ul aria-label={t.shell.pinnedConversations} className={styles.conversationList}>
+                    {pinnedRows}
+                  </ul>
+                </>
+              ) : null}
+              {recentRows.length > 0 ? (
+                <>
+                  {pinnedRows.length > 0 ? (
+                    <h3 className={styles.conversationSubheading}>{t.shell.recentConversations}</h3>
+                  ) : null}
+                  <ul
+                    aria-label={
+                      showArchived ? t.shell.archivedConversations : t.shell.agentConversations
+                    }
+                    className={styles.conversationList}
+                  >
+                    {recentRows}
+                  </ul>
+                </>
+              ) : null}
+              {showArchived && !conversationIndex.loading && conversationList.length === 0 ? (
+                <p className={styles.emptyList}>
+                  <span>{t.shell.noArchivedConversations}</span>
+                </p>
+              ) : null}
+              {!showArchived &&
+              !conversationIndex.loading &&
+              !projectsState.loading &&
+              groups.loose.length === 0 &&
+              terminalGroups.loose.length === 0 ? (
+                <p className={styles.emptyList}>
+                  <span>{t.shell.noConversations}</span>
+                </p>
+              ) : null}
+              {!showArchived && terminalGroups.loose.length > 0 ? (
+                <ul aria-label={t.shell.conversations} className={styles.conversationList}>
+                  {terminalGroups.loose.map(renderTerminal)}
+                </ul>
+              ) : null}
+            </section>
+          </nav>
+
+          <footer className={styles.footer}>
+            <ServiceStatus />
+            <IconButton
+              aria-current={view.name === "settings" ? "page" : undefined}
+              className={styles.settingsButton}
+              icon={<Settings aria-hidden="true" size={16} strokeWidth={1.75} />}
+              label={t.shell.settings}
+              onClick={() => navigate({ name: "settings", section: "general" })}
+              size="sm"
+            />
+          </footer>
+        </div>
+      </div>
+      <SidebarRail
+        collapsed={collapsed}
+        inboxTotal={inboxTotal}
+        inboxActive={view.name === "inbox"}
+        newConversationActive={newConversationActive}
+        onExpand={() => {
+          focusAfterToggleRef.current = true;
+          onExpand();
+        }}
+        onInbox={() => navigate({ name: "inbox" })}
+        onNewConversation={() => navigate({ name: "new-conversation" })}
+        onSettings={() => navigate({ name: "settings", section: "general" })}
+        openButtonRef={openButtonRef}
+        settingsActive={view.name === "settings"}
+      />
       <Dialog
         description={
           terminalToClose?.exited ? t.terminal.closeExitedDescription : t.terminal.closeDescription

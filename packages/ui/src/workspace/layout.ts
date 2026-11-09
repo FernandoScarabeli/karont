@@ -200,6 +200,25 @@ export function movePane(
   return normalize(insert(remaining));
 }
 
+/**
+ * Verdadeiro quando mover o painel deixaria a mesma disposição (estrutura e ordem
+ * dos painéis), ignorando tamanhos e ids de grupos gerados.
+ */
+export function isNoOpMove(
+  tree: LayoutNode,
+  paneId: string,
+  targetPaneId: string,
+  edge: PaneEdge,
+): boolean {
+  if (paneId === targetPaneId) return true;
+  return layoutShape(movePane(tree, paneId, targetPaneId, edge)) === layoutShape(tree);
+}
+
+function layoutShape(node: LayoutNode): string {
+  if (node.type === "pane") return node.id;
+  return `${node.direction}(${node.children.map(layoutShape).join(",")})`;
+}
+
 export function setSizes(tree: LayoutNode, splitId: string, sizes: number[]): LayoutNode {
   if (tree.type === "pane") return tree;
   if (tree.id === splitId) {

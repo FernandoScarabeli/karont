@@ -19,6 +19,7 @@ import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { getTerminalDisplayTitles, useTerminals } from "../terminal/useTerminals.ts";
 import {
   EMPTY_LAYOUT,
+  isNoOpMove,
   type LayoutNode,
   type PaneEdge,
   type PaneNode,
@@ -183,6 +184,7 @@ export function WorkspacePanels({
               : direction === "up"
                 ? "top"
                 : "bottom";
+        if (isNoOpMove(layout, activePaneId, neighbor.paneId, edge)) return;
         moveWorkspacePane(activePaneId, neighbor.paneId, edge);
         window.requestAnimationFrame(() =>
           getPaneFocusTarget(paneElements.current.get(activePaneId))?.focus({
@@ -198,7 +200,7 @@ export function WorkspacePanels({
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [activePaneId, moveWorkspacePane, setActivePane, visible]);
+  }, [activePaneId, layout, moveWorkspacePane, setActivePane, visible]);
 
   const allPanes = collectPanes(layout);
   const activePane = allPanes.find((pane) => pane.id === activePaneId);
@@ -342,13 +344,30 @@ export function WorkspacePanels({
           onDragOver={(event) => {
             if (!draggedPaneId || draggedPaneId === pane.id) return;
             event.preventDefault();
-            setDropTarget({ paneId: pane.id, edge: edgeFromPointer(event) });
+            const edge = edgeFromPointer(event);
+            if (isNoOpMove(layout, draggedPaneId, pane.id, edge)) {
+              event.dataTransfer.dropEffect = "none";
+              setDropTarget((current) => (current?.paneId === pane.id ? null : current));
+              return;
+            }
+            event.dataTransfer.dropEffect = "move";
+            setDropTarget((current) =>
+              current?.paneId === pane.id && current.edge === edge
+                ? current
+                : { paneId: pane.id, edge },
+            );
           }}
           onDrop={(event) => {
             event.preventDefault();
             const sourcePaneId = event.dataTransfer.getData("text/plain") || draggedPaneId;
             const edge = dropTarget?.paneId === pane.id ? dropTarget.edge : edgeFromPointer(event);
-            if (sourcePaneId && sourcePaneId !== pane.id) movePanel(sourcePaneId, pane.id, edge);
+            if (
+              sourcePaneId &&
+              sourcePaneId !== pane.id &&
+              !isNoOpMove(layout, sourcePaneId, pane.id, edge)
+            ) {
+              movePanel(sourcePaneId, pane.id, edge);
+            }
             endDrag();
           }}
           onFocusCapture={() => setActivePane(pane.id)}
@@ -364,6 +383,7 @@ export function WorkspacePanels({
             <div
               aria-hidden="true"
               className={`${styles.dropZone} ${styles[`drop${capitalize(dropEdge)}`]}`}
+              data-drop-zone={dropEdge}
             />
           ) : null}
         </div>

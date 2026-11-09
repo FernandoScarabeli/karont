@@ -1,10 +1,45 @@
 .sidebar {
+  position: relative;
   display: flex;
+  min-width: 0;
   min-height: 0;
   flex-direction: column;
-  padding: var(--k-sidebar-padding);
-  border-right: var(--k-border-width) solid var(--k-color-border);
   background: var(--k-color-bg-app);
+}
+
+/* Recolhida, o conteúdo some (e fica inerte), mas continua montado; a faixa de ícones aparece por cima. */
+.expanded {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar[data-collapsed="true"] .expanded {
+  visibility: hidden;
+}
+
+/* Largura mínima fixa: o conteúdo não se espreme enquanto a barra abre ou fecha. */
+.expandedInner {
+  display: flex;
+  width: max(100%, var(--k-sidebar-min-width));
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  padding: var(--k-sidebar-padding);
+}
+
+.newConversationRow {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.newConversationRow > :first-child {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .navigation {

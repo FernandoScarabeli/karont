@@ -1,0 +1,51 @@
+.content {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content[data-animating="true"] > [data-panel] {
+  transition: flex-grow var(--k-motion-moderate) var(--k-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content[data-animating="true"] > [data-panel] {
+    transition: none;
+  }
+}
+
+.separator {
+  position: relative;
+  z-index: var(--k-layer-separator);
+  flex: 0 0 var(--k-border-width);
+  width: var(--k-border-width);
+  background: var(--k-color-border);
+  outline: none;
+  transition: background-color var(--k-motion-fast) var(--k-ease);
+}
+
+/* Área de pegar maior que a linha, sem ocupar espaço no layout. */
+.separator::before {
+  position: absolute;
+  inset-block: 0;
+  inset-inline: calc(var(--k-splitter-target) / -2);
+  content: "";
+}
+
+.separator:hover,
+.separator[data-separator="active"] {
+  background: var(--k-color-border-muted);
+}
+
+.separator:focus-visible {
+  background: var(--k-color-focus);
+}
+
+.panelBody {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+}

@@ -1,5 +1,5 @@
 import { Columns2, X } from "lucide-react";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { FluidHoverHighlight, useFluidHover } from "../components/FluidHover/FluidHover.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { t } from "../i18n/pt-BR.ts";
@@ -13,59 +13,11 @@ type PanelToolbarProps = {
 };
 
 export function PanelToolbar({ paneTitle, canSplit, onSplit, onClosePane }: PanelToolbarProps) {
-  const [isSplitOpen, setIsSplitOpen] = useState(false);
-  const splitTrigger = useRef<HTMLButtonElement>(null);
   const toolbarRef = useRef<HTMLFieldSetElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const toolbarHover = useFluidHover(toolbarRef, {
     axis: "x",
     isItemDisabled: (element) => element.matches(":disabled"),
   });
-  const menuHover = useFluidHover(menuRef, {
-    axis: "y",
-    isItemDisabled: (element) => element.matches(":disabled"),
-    gapClick: { maxDistance: 6 },
-    nearest: true,
-  });
-
-  useEffect(() => {
-    if (!isSplitOpen) return;
-    menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
-  }, [isSplitOpen]);
-
-  function closeMenu(restoreFocus = true) {
-    setIsSplitOpen(false);
-    if (!restoreFocus) return;
-    window.requestAnimationFrame(() => splitTrigger.current?.focus());
-  }
-
-  function handleMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeMenu();
-      return;
-    }
-
-    const items = Array.from(
-      menuRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [],
-    );
-    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
-    if (
-      event.key === "ArrowDown" ||
-      event.key === "ArrowUp" ||
-      event.key === "Home" ||
-      event.key === "End"
-    ) {
-      event.preventDefault();
-      const nextIndex =
-        event.key === "Home"
-          ? 0
-          : event.key === "End"
-            ? items.length - 1
-            : (currentIndex + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
-      items[nextIndex]?.focus();
-    }
-  }
 
   return (
     <fieldset
@@ -76,58 +28,16 @@ export function PanelToolbar({ paneTitle, canSplit, onSplit, onClosePane }: Pane
     >
       <legend className={styles.visuallyHidden}>{t.workspace.panelActions}</legend>
       <FluidHoverHighlight controller={toolbarHover} />
-      <div className={styles.menuWrap}>
-        <IconButton
-          aria-expanded={isSplitOpen}
-          aria-haspopup="menu"
-          icon={<Columns2 aria-hidden="true" size={16} strokeWidth={1.75} />}
-          label={t.workspace.split}
-          onClick={() => setIsSplitOpen((open) => !open)}
-          ref={(element) => {
-            splitTrigger.current = element;
-            toolbarHover.registerItem("split", element);
-          }}
-          size="sm"
-        />
-        {isSplitOpen ? (
-          <div
-            aria-label={t.workspace.split}
-            className={styles.menu}
-            onKeyDown={handleMenuKeyDown}
-            ref={menuHover.containerRef}
-            role="menu"
-          >
-            <FluidHoverHighlight controller={menuHover} />
-            <button
-              className={styles.menuItem}
-              disabled={!canSplit}
-              onClick={() => {
-                closeMenu(false);
-                onSplit("row");
-              }}
-              ref={(element) => menuHover.registerItem("split-right", element)}
-              role="menuitem"
-              type="button"
-            >
-              {t.workspace.splitRight}
-            </button>
-            <button
-              className={styles.menuItem}
-              disabled={!canSplit}
-              onClick={() => {
-                closeMenu(false);
-                onSplit("column");
-              }}
-              ref={(element) => menuHover.registerItem("split-below", element)}
-              role="menuitem"
-              type="button"
-            >
-              {t.workspace.splitBelow}
-            </button>
-            {!canSplit ? <p className={styles.menuNote}>{t.workspace.panelLimit}</p> : null}
-          </div>
-        ) : null}
-      </div>
+      <IconButton
+        disabled={!canSplit}
+        icon={<Columns2 aria-hidden="true" size={16} strokeWidth={1.75} />}
+        label={t.workspace.split}
+        onClick={() => onSplit("row")}
+        ref={(element) => {
+          toolbarHover.registerItem("split", element);
+        }}
+        size="sm"
+      />
 
       <IconButton
         icon={<X aria-hidden="true" size={16} strokeWidth={1.75} />}

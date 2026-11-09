@@ -4,6 +4,7 @@ import { decideSearchShortcut } from "../projects/searchPanelState.ts";
 import styles from "./AppShell.module.css";
 import { Sheet } from "./Sheet.tsx";
 import { Sidebar } from "./Sidebar.tsx";
+import { SidebarLayout } from "./SidebarLayout.tsx";
 import { TopBar } from "./TopBar.tsx";
 
 const SearchPanel = lazy(async () => {
@@ -58,10 +59,13 @@ export function AppShell() {
     <NavigationProvider>
       <div className={styles.shell}>
         <TopBar onOpenSearch={openSearch} />
-        <div className={styles.content}>
-          <Sidebar />
+        <SidebarLayout
+          sidebar={({ collapsed, collapse, expand }) => (
+            <Sidebar collapsed={collapsed} onCollapse={collapse} onExpand={expand} />
+          )}
+        >
           <Sheet />
-        </div>
+        </SidebarLayout>
       </div>
       {searchLoaded ? (
         <Suspense fallback={null}>
