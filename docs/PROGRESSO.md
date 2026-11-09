@@ -3,6 +3,7 @@
 Repositório recriado do zero em 2026-10-31.
 
 ## Estado
+- **Retomada do M6 pelo Codex (2026-11-09):** Claude interrompido pelo limite de uso; Fernando pediu continuidade. Protótipo recuperado e identidade/Configurações implementadas, integrados na `m6-dot`. Entrega reunida na branch `feat/m6-dot-identidade-configuracoes`, com commit e push solicitados pelo dono. Leia [RETOMADA-CODEX-M6.md](RETOMADA-CODEX-M6.md) para saber o que foi feito, testes, pendências e como continuar.
 - **M0 (esqueleto)** — concluído e na `main` (PR #1, 2026-10-31).
 - **M1 (agentes)** — concluído na branch `m1-agentes`; PR aberto para a `main` (2026-10-31).
   - [x] B1 Detecção de agentes + CLIs do usuário (serviço e contrato)
