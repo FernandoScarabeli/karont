@@ -1,17 +1,28 @@
+/* Largura fixa: os ícones não andam enquanto a barra abre e fecha. */
 .rail {
   position: absolute;
-  inset: 0;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: var(--k-sidebar-rail-width);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   align-items: center;
   padding: var(--k-space-2);
   background: var(--k-color-bg-app);
+  opacity: 0;
   visibility: hidden;
+  transition:
+    opacity var(--k-motion-fast-exit) var(--k-ease),
+    visibility 0s linear var(--k-motion-fast-exit);
 }
 
 .rail:not([inert]) {
+  opacity: 1;
   visibility: visible;
+  transition:
+    opacity var(--k-motion-fast) var(--k-ease),
+    visibility 0s;
 }
 
 .group {

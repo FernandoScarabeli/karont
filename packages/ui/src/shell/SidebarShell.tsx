@@ -17,7 +17,7 @@ import {
   type SidebarSetting,
 } from "./sidebarState.ts";
 
-export type SidebarTokens = SidebarLimits & { rail: number; target: number };
+export type SidebarTokens = SidebarLimits & { rail: number; target: number; border: number };
 
 export type SidebarPanelControls = { collapse: () => void; expand: () => void };
 
@@ -31,6 +31,10 @@ type SidebarShellValue = {
   /** Liga a animação curta de abrir e fechar (só botão e duplo clique). */
   animateNextChange: () => void;
   registerControls: (controls: SidebarPanelControls | null) => void;
+  /** O elemento do shell (dono da largura atual), para animações feitas fora do React. */
+  getShellElement: () => HTMLElement | null;
+  /** Há uma troca por botão em curso (ela anima por CSS). */
+  isButtonAnimating: () => boolean;
   toggle: () => void;
 };
 
@@ -49,6 +53,7 @@ function readTokens(): SidebarTokens {
     defaultWidth: readPixelToken("--k-sidebar-width", 232),
     rail: readPixelToken("--k-sidebar-rail-width", 48),
     target: readPixelToken("--k-splitter-target", 8),
+    border: readPixelToken("--k-border-width", 1),
   };
 }
 
@@ -138,6 +143,9 @@ function LoadedProvider({
     controlsRef.current = controls;
   }, []);
 
+  const getShellElement = useCallback(() => shellRef.current, []);
+  const isButtonAnimating = useCallback(() => shellRef.current?.dataset.animating === "true", []);
+
   const toggle = useCallback(() => {
     const controls = controlsRef.current;
     if (!controls) return;
@@ -154,9 +162,21 @@ function LoadedProvider({
       setCurrentWidth,
       animateNextChange,
       registerControls,
+      getShellElement,
+      isButtonAnimating,
       toggle,
     }),
-    [initial, tokens, collapsed, setCurrentWidth, animateNextChange, registerControls, toggle],
+    [
+      initial,
+      tokens,
+      collapsed,
+      setCurrentWidth,
+      animateNextChange,
+      registerControls,
+      getShellElement,
+      isButtonAnimating,
+      toggle,
+    ],
   );
 
   const startWidth = initial.collapsed ? tokens.rail : initial.width;

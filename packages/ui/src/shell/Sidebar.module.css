@@ -15,10 +15,18 @@
   flex: 1 1 auto;
   flex-direction: column;
   overflow: hidden;
+  opacity: 1;
+  transition:
+    opacity var(--k-motion-fast) var(--k-ease),
+    visibility 0s;
 }
 
 .sidebar[data-collapsed="true"] .expanded {
+  opacity: 0;
   visibility: hidden;
+  transition:
+    opacity var(--k-motion-fast-exit) var(--k-ease),
+    visibility 0s linear var(--k-motion-fast-exit);
 }
 
 /* Largura mínima fixa: o conteúdo não se espreme enquanto a barra abre ou fecha. */

@@ -1,9 +1,10 @@
-import { type ReactNode, useCallback, useEffect, useRef } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import { getBridge } from "../bridge/index.ts";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./SidebarLayout.module.css";
 import { useSidebarShell } from "./SidebarShell.tsx";
+import { SidebarCrossing } from "./sidebarCrossing.ts";
 import { SIDEBAR_SETTING, sameSidebarSetting } from "./sidebarState.ts";
 
 type SidebarLayoutProps = {
@@ -16,17 +17,27 @@ export function SidebarLayout({ sidebar, children }: SidebarLayoutProps) {
   const bridge = getBridge();
   const shell = useSidebarShell();
   const { initial, tokens, collapsed, setCollapsed, setCurrentWidth } = shell;
-  const { animateNextChange, registerControls, toggle } = shell;
+  const { animateNextChange, registerControls, toggle, getShellElement, isButtonAnimating } = shell;
   const panelRef = usePanelRef();
   const groupRef = useRef<HTMLDivElement>(null);
+  const sidebarElement = useRef<HTMLDivElement | null>(null);
+  const mainElement = useRef<HTMLDivElement | null>(null);
+  const crossing = useMemo(() => new SidebarCrossing(), []);
+  /** Último valor visto, para animar o pulo da biblioteca ao cruzar o limite. */
+  const lastValues = useRef<{ sidebarGrow: number; mainGrow: number; width: number } | null>(null);
+  const wasCollapsed = useRef(initial.collapsed);
   const widthRef = useRef(initial.width);
   const savedRef = useRef(initial);
 
   /** Largura exata em pixels a partir da porcentagem do layout (o DOM fica atrás durante a animação). */
-  const exactPixels = useCallback((percentage: number) => {
-    const total = groupRef.current?.offsetWidth ?? 0;
-    return (percentage / 100) * total;
-  }, []);
+  const exactPixels = useCallback(
+    (percentage: number) => {
+      // As porcentagens (e o flex-grow) valem para o espaço sem a linha da alça.
+      const total = (groupRef.current?.offsetWidth ?? 0) - tokens.border;
+      return (percentage / 100) * total;
+    },
+    [tokens.border],
+  );
 
   /** Salva só quando a alça é solta (ou a barra abre e fecha), e só se algo mudou. */
   const persist = useCallback(
@@ -43,6 +54,52 @@ export function SidebarLayout({ sidebar, children }: SidebarLayoutProps) {
     },
     [bridge, exactPixels, tokens.rail],
   );
+
+  /**
+   * Segue o estilo do painel no mesmo instante em que a biblioteca o escreve (MutationObserver roda
+   * antes do próximo quadro): atualiza a largura do topo, o estado recolhido e a animação da
+   * passagem pelo limite, sem atraso de um quadro e sem re-render por pixel.
+   */
+  useEffect(() => {
+    const sidebarEl = sidebarElement.current;
+    const mainEl = mainElement.current;
+    const shellEl = getShellElement();
+    if (!sidebarEl || !mainEl || !shellEl) return;
+    const sync = () => {
+      const sidebarGrow = Number.parseFloat(sidebarEl.style.flexGrow);
+      const mainGrow = Number.parseFloat(mainEl.style.flexGrow);
+      if (!Number.isFinite(sidebarGrow) || !Number.isFinite(mainGrow)) return;
+      const pixels = exactPixels(sidebarGrow);
+      setCurrentWidth(pixels);
+      const isCollapsed = pixels <= tokens.rail + 1;
+      setCollapsed(isCollapsed);
+      const next = { sidebarGrow, mainGrow, width: pixels };
+      const previous = lastValues.current;
+      if (isCollapsed !== wasCollapsed.current && previous && !isButtonAnimating()) {
+        // Cruzou o limite arrastando: anima só essa passagem.
+        crossing.start({ shell: shellEl, sidebar: sidebarEl, main: mainEl }, previous, next);
+      } else {
+        crossing.retarget(next);
+      }
+      lastValues.current = next;
+      wasCollapsed.current = isCollapsed;
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(sidebarEl, { attributes: true, attributeFilter: ["style"] });
+    return () => {
+      observer.disconnect();
+      crossing.cancel();
+    };
+  }, [
+    crossing,
+    exactPixels,
+    getShellElement,
+    isButtonAnimating,
+    setCollapsed,
+    setCurrentWidth,
+    tokens.rail,
+  ]);
 
   useEffect(() => {
     registerControls({
@@ -70,17 +127,12 @@ export function SidebarLayout({ sidebar, children }: SidebarLayoutProps) {
         className={styles.panelBody}
         collapsedSize={tokens.rail}
         collapsible
+        elementRef={sidebarElement}
         defaultSize={initial.collapsed ? tokens.rail : initial.width}
         groupResizeBehavior="preserve-pixel-size"
         id="sidebar"
         maxSize={tokens.max}
         minSize={tokens.min}
-        onResize={(size) => {
-          const pixels = exactPixels(size.asPercentage);
-          setCurrentWidth(pixels);
-          const isCollapsed = pixels <= tokens.rail + 1;
-          setCollapsed(isCollapsed);
-        }}
         panelRef={panelRef}
         style={{ overflow: "visible" }}
       >
@@ -93,7 +145,7 @@ export function SidebarLayout({ sidebar, children }: SidebarLayoutProps) {
         id="sidebar-separator"
         onDoubleClick={toggle}
       />
-      <Panel className={styles.panelBody} id="main">
+      <Panel className={styles.panelBody} elementRef={mainElement} id="main">
         {children}
       </Panel>
     </Group>

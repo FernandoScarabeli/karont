@@ -1,3 +1,10 @@
+/* Registrada para o topo poder animar a largura da sidebar junto com ela, sem re-render. */
+@property --k-sidebar-current-width {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 232px;
+}
+
 :root {
   color-scheme: dark;
   --k-color-bg-app: #0f0f10;
