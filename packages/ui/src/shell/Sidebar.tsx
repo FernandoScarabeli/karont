@@ -9,6 +9,7 @@ import {
   Columns2,
   Ellipsis,
   GitFork,
+  Inbox,
   ListTodo,
   Pencil,
   Pin,
@@ -38,6 +39,7 @@ import { useNavigationActions, useNavigationState } from "../navigation/Navigati
 import { ProjectDialog } from "../projects/ProjectDialog.tsx";
 import { groupConversations } from "../projects/projectGroups.ts";
 import { getProjectIcon } from "../projects/projectIcons.ts";
+import { useInbox } from "../projects/useInbox.ts";
 import { removeProjectFromStore, upsertProject, useProjects } from "../projects/useProjects.ts";
 import { useWorkspaces } from "../projects/useWorkspaces.ts";
 import { useWorktrees } from "../projects/useWorktrees.ts";
@@ -224,7 +226,8 @@ const ConversationRow = memo(function ConversationRow({
 });
 
 export function Sidebar() {
-  const { view, layout, activePaneId } = useNavigationState();
+  const { view, layout, activePaneId, workspaceOverviewVisible } = useNavigationState();
+  const { total: inboxTotal } = useInbox();
   const {
     closeConversationWorkspacePanes,
     closeTerminalWorkspacePane,
@@ -673,8 +676,10 @@ export function Sidebar() {
   const renderConversation = (conversation: Conversation) => {
     const isOpen =
       view.name === "workspace" && findPaneByConversation(layout, conversation.id) !== undefined;
+    // Com a tela do workspace por cima, o painel escondido não conta como ativo.
     const active =
       view.name === "workspace" &&
+      !workspaceOverviewVisible &&
       activePane?.view.kind === "chat" &&
       activePane.view.conversationId === conversation.id;
     const editing = editingConversationId === conversation.id;
@@ -1015,6 +1020,7 @@ export function Sidebar() {
           <Button
             aria-current={
               view.name === "workspace" &&
+              !workspaceOverviewVisible &&
               activePane?.view.kind === "new-conversation" &&
               !activePane.view.projectId
                 ? "page"
@@ -1027,6 +1033,22 @@ export function Sidebar() {
             variant="ghost"
           >
             {t.shell.newConversation}
+          </Button>
+          <Button
+            aria-current={view.name === "inbox" ? "page" : undefined}
+            aria-description={inboxTotal > 0 ? t.shell.inboxCount(inboxTotal) : undefined}
+            className={styles.navigationAction}
+            iconStart={<Inbox aria-hidden="true" size={16} strokeWidth={1.75} />}
+            onClick={() => navigate({ name: "inbox" })}
+            ref={(element) => fluidHover.registerItem("inbox", element)}
+            variant="ghost"
+          >
+            {t.shell.inbox}
+            {inboxTotal > 0 ? (
+              <span aria-hidden="true" className={styles.navigationCount}>
+                {inboxTotal}
+              </span>
+            ) : null}
           </Button>
           <Button
             aria-description={t.shell.availableSoon}

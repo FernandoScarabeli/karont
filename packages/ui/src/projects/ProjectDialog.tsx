@@ -206,6 +206,7 @@ export function ProjectDialog({
 
   return (
     <Dialog
+      allowOverflow
       description={editing ? undefined : t.projects.createDescription}
       footer={
         <>

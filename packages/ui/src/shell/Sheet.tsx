@@ -6,7 +6,9 @@ import { LOCAL_WORKSPACE_KEY } from "../projects/workspaceState.ts";
 import { SettingsView } from "../settings/SettingsView.tsx";
 import { WorkspaceOverview } from "../workspace/WorkspaceOverview.tsx";
 import { WorkspacePanels } from "../workspace/WorkspacePanels.tsx";
+import { HomeInbox } from "./HomeInbox.tsx";
 import { HomeOverview } from "./HomeOverview.tsx";
+import { InboxScreen } from "./InboxScreen.tsx";
 import styles from "./Sheet.module.css";
 
 export function Sheet() {
@@ -75,11 +77,19 @@ export function Sheet() {
       ) : null}
       {view.name === "settings" ? (
         <SettingsView titleRef={titleRef} />
-      ) : view.name === "workspace" ? null : (
+      ) : view.name === "workspace" ? null : view.name === "inbox" ? (
+        <>
+          <h1 className={styles.pageTitle} ref={titleRef} tabIndex={-1}>
+            {t.inbox.title}
+          </h1>
+          <InboxScreen titleRef={titleRef} />
+        </>
+      ) : (
         <>
           <h1 className={styles.pageTitle} ref={titleRef} tabIndex={-1}>
             {t.home.title}
           </h1>
+          <HomeInbox titleRef={titleRef} />
           <HomeOverview />
         </>
       )}

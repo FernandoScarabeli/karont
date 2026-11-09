@@ -94,6 +94,8 @@ export const t = {
     primaryNavigation: "Navegação principal",
     newConversation: "Nova conversa",
     tasks: "Tarefas",
+    inbox: "Caixa de entrada",
+    inboxCount: (count: number) => (count === 1 ? "1 item esperando" : `${count} itens esperando`),
     projects: "Projetos",
     newProject: "Novo projeto",
     noProjects: "Nenhum projeto ainda",
@@ -278,6 +280,20 @@ export const t = {
   },
   home: {
     title: "Início",
+  },
+  inbox: {
+    title: "Caixa de entrada",
+    needsYou: "Precisa de você",
+    empty: "Nada precisa de você",
+    remainder: (count: number) =>
+      count === 1 ? "Mais 1 item não aparece aqui." : `Mais ${count} itens não aparecem aqui.`,
+    loadFailed: "Não foi possível carregar a caixa de entrada.",
+    openConversation: (title: string) => `Abrir conversa: ${title}`,
+    dismiss: "Dispensar",
+    retry: "Tentar de novo",
+    dismissFailed: "Não foi possível dispensar.",
+    retryFailed: "Não foi possível tentar de novo.",
+    errorTitle: "Erro na resposta do agente",
   },
   conversation: {
     title: "Nova conversa",

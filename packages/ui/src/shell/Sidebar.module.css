@@ -36,6 +36,13 @@
   text-align: left;
 }
 
+.navigationCount {
+  margin-inline-start: auto;
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-12);
+  font-variant-numeric: tabular-nums;
+}
+
 .navigationAction:disabled {
   opacity: 1;
   color: var(--k-color-text-muted);

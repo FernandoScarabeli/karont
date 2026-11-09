@@ -2054,7 +2054,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-const PermissionPart = memo(function PermissionPart({
+export const PermissionPart = memo(function PermissionPart({
   part,
   onRespond,
   cwd,
@@ -2150,7 +2150,7 @@ const PermissionPart = memo(function PermissionPart({
   );
 });
 
-const QuestionPart = memo(function QuestionPart({
+export const QuestionPart = memo(function QuestionPart({
   part,
   onRespond,
 }: {
@@ -2276,14 +2276,17 @@ const QuestionPart = memo(function QuestionPart({
   );
 });
 
-const PlanPart = memo(function PlanPart({
+export const PlanPart = memo(function PlanPart({
   part,
   onRespond,
   onCopyCode,
+  onAdjust,
 }: {
   part: Extract<MessagePart, { type: "plan" }>;
   onRespond: OnRespond;
   onCopyCode?: (code: string) => void;
+  /** Quando existe, "Ajustar" chama isso em vez de abrir o campo de ajuste aqui. */
+  onAdjust?: () => void;
 }) {
   const [adjusting, setAdjusting] = useState(false);
   const [comment, setComment] = useState("");
@@ -2349,7 +2352,10 @@ const PlanPart = memo(function PlanPart({
             >
               {t.chat.approve}
             </Button>
-            <Button onClick={() => setAdjusting(true)} variant="secondary">
+            <Button
+              onClick={() => (onAdjust ? onAdjust() : setAdjusting(true))}
+              variant="secondary"
+            >
               {t.chat.adjust}
             </Button>
           </>

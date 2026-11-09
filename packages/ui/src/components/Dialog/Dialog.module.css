@@ -12,6 +12,11 @@
   overflow-wrap: anywhere;
 }
 
+.allowOverflow {
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
 .dialog::backdrop {
   background: var(--k-color-dialog-backdrop);
 }

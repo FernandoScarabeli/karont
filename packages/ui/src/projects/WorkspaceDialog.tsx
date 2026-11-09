@@ -106,6 +106,7 @@ export function WorkspaceDialog({
 
   return (
     <Dialog
+      allowOverflow
       description={editing ? undefined : t.workspaces.createDescription}
       footer={
         <>

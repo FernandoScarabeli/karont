@@ -49,6 +49,7 @@ import {
 export type View =
   | { name: "home" }
   | { name: "workspace" }
+  | { name: "inbox" }
   | { name: "settings"; section: "general" | "agents" };
 
 export type NavigationTarget =
@@ -306,6 +307,8 @@ export function NavigationProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (!bridge || !navigationLoaded) return;
+    // A caixa de entrada não é lembrada: ao abrir o app volta-se à última tela de antes dela.
+    if (view.name === "inbox") return;
     const lastView: PersistedView = view.name;
     void bridge.request("settings.set", { key: LAST_VIEW_SETTING, value: lastView }).catch(() => {
       setStatusMessage(t.workspace.navigationSaveFailed);
