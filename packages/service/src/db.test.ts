@@ -792,7 +792,7 @@ test("migra um banco na versão 17 com dados para workspaces, sem perder nada", 
     assert.equal(workspaces.length, 1);
     const pessoal = workspaces[0];
     assert.equal(pessoal?.name, "Pessoal");
-    assert.equal(pessoal?.icon, "house");
+    assert.equal(pessoal?.icon, "folder");
     assert.equal(pessoal?.position, 0);
     assert.equal(getConversation(db, "c17-solta")?.workspaceId, pessoal?.id);
     assert.equal(getConversation(db, "c17-proj")?.workspaceId, pessoal?.id);

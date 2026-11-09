@@ -1,16 +1,12 @@
 import type { AnyEvent, KarontBridge, RestorePointSummary } from "@karont/contract";
 import { t } from "../i18n/pt-BR.ts";
 
-/** Aviso que vale uma vez por conversa, no ponto mais antigo com aquele motivo. */
-export type RestoreNotice = "no-git" | "home";
-
 /** O que uma linha de mensagem precisa saber; o objeto só muda quando algo dela muda. */
 export type RestoreRowView = {
   point: RestorePointSummary | null;
-  notice: RestoreNotice | null;
 };
 
-export const EMPTY_RESTORE_VIEW: RestoreRowView = Object.freeze({ point: null, notice: null });
+export const EMPTY_RESTORE_VIEW: RestoreRowView = Object.freeze({ point: null });
 
 type ConversationEntry = {
   /** Do mais antigo para o mais novo: a ordem da lista, depois a de chegada dos eventos. */
@@ -53,22 +49,12 @@ export function createRestoreStore(getBridge: BridgeSource): RestoreStore {
 
   /** Recalcula as visões e avisa só as mensagens cuja visão mudou. */
   function refresh(entry: ConversationEntry) {
-    const oldestByReason = new Map<RestoreNotice, string>();
-    for (const id of entry.order) {
-      const point = entry.points.get(id);
-      if (point?.state !== "unavailable") continue;
-      if (point.reason !== "no-git" && point.reason !== "home") continue;
-      if (!oldestByReason.has(point.reason)) oldestByReason.set(point.reason, id);
-    }
     const changed: string[] = [];
     for (const id of entry.order) {
       const point = entry.points.get(id) ?? null;
-      let notice: RestoreNotice | null = null;
-      if (oldestByReason.get("no-git") === id) notice = "no-git";
-      else if (oldestByReason.get("home") === id) notice = "home";
       const previous = entry.views.get(id);
-      if (previous && previous.point === point && previous.notice === notice) continue;
-      entry.views.set(id, { point, notice });
+      if (previous && previous.point === point) continue;
+      entry.views.set(id, { point });
       changed.push(id);
     }
     for (const id of changed) {
@@ -169,13 +155,8 @@ export function restoreSummaryModel(view: RestoreRowView): RestoreSummaryModel |
     case "incomplete":
       return { kind: "message", text: t.restore.incomplete };
     case "unavailable":
-      if (point.reason === "no-git" || point.reason === "home") {
-        if (view.notice !== point.reason) return null;
-        return {
-          kind: "message",
-          text: point.reason === "no-git" ? t.restore.noGit : t.restore.home,
-        };
-      }
+      // Sem Git e pasta pessoal não têm aviso: só não há "Desfazer".
+      if (point.reason === "no-git" || point.reason === "home") return null;
       return { kind: "message", text: t.restore.unavailable };
   }
 }

@@ -7,6 +7,9 @@
   background: var(--k-color-bg-raised);
   color: var(--k-color-text-primary);
   box-shadow: var(--k-shadow-dialog);
+  white-space: normal;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
 }
 
 .dialog::backdrop {
@@ -17,11 +20,13 @@
   --k-radius-md: var(--k-radius-sm);
 
   display: grid;
+  min-width: 0;
   gap: var(--k-space-5);
   padding: var(--k-space-6);
 }
 
 .header {
+  min-width: 0;
   display: grid;
   gap: var(--k-space-2);
 }
@@ -46,6 +51,7 @@
 }
 
 .footer {
+  min-width: 0;
   display: flex;
   justify-content: flex-end;
   gap: var(--k-space-2);

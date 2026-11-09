@@ -138,7 +138,7 @@ export const migrations: { version: number; up: string }[] = [
       position INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     ) STRICT;
     INSERT INTO workspaces (id,name,icon,position,created_at,updated_at)
-      VALUES (lower(hex(randomblob(16))),'Pessoal','house',0,
+      VALUES (lower(hex(randomblob(16))),'Pessoal','folder',0,
         strftime('%Y-%m-%dT%H:%M:%fZ','now'),strftime('%Y-%m-%dT%H:%M:%fZ','now'));
     ALTER TABLE projects ADD COLUMN workspace_id TEXT REFERENCES workspaces(id);
     ALTER TABLE conversations ADD COLUMN workspace_id TEXT REFERENCES workspaces(id);

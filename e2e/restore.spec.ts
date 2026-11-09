@@ -83,7 +83,7 @@ async function exists(file: string) {
   );
 }
 
-test("mudanças: ver, avisar do que o usuário mexeu e desfazer; sem Git avisa uma vez", async () => {
+test("mudanças: ver, avisar do que o usuário mexeu e desfazer; sem Git não mostra aviso nem Desfazer", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "krestore-"));
   const repo = path.join(root, "repo");
   const plain = path.join(root, "sem-git");
@@ -237,7 +237,7 @@ test("mudanças: ver, avisar do que o usuário mexeu e desfazer; sem Git avisa u
       expect(await git(repo, "stash", "list")).toBe(before.stash);
       expect((await git(repo, "branch", "--show-current")).trim()).toBe("main");
 
-      // --- Pasta sem Git: o aviso aparece uma vez, mesmo depois de duas mensagens ---
+      // --- Pasta sem Git: nenhum aviso e nenhum Desfazer, mesmo depois de duas mensagens ---
       await navigation.getByRole("button", { name: "Conversa sem Git", exact: true }).click();
       await composer.fill("primeira");
       await composer.press("Enter");
@@ -245,7 +245,6 @@ test("mudanças: ver, avisar do que o usuário mexeu e desfazer; sem Git avisa u
       const notice = window.getByText(
         "Esta pasta não usa Git, então não dá para desfazer o que o agente alterar.",
       );
-      await expect(notice).toBeVisible();
       await composer.fill("segunda");
       await composer.press("Enter");
       await expect(window.getByText("Recebi: segunda")).toBeVisible();
@@ -255,7 +254,7 @@ test("mudanças: ver, avisar do que o usuário mexeu e desfazer; sem Git avisa u
           return (listed?.result?.points as unknown[] | undefined)?.length;
         })
         .toBe(2);
-      await expect(notice).toHaveCount(1);
+      await expect(notice).toHaveCount(0);
       await expect(window.getByRole("button", { name: "Desfazer", exact: true })).toHaveCount(0);
     } finally {
       for (const id of conversationIds) {

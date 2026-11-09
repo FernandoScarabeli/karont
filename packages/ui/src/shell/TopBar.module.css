@@ -69,6 +69,11 @@
   flex: 1 1 auto;
 }
 
+/* O espaço do "⋯" fica sempre reservado: o nome nunca passa por baixo dele e a aba não muda de largura. */
+.tabItem .tabButton {
+  padding-inline-end: calc(var(--k-control-height-sm) + var(--k-space-2));
+}
+
 .tabLabel {
   min-width: 0;
   overflow: hidden;

@@ -340,9 +340,7 @@ export const t = {
     },
     fullAccessTitle: "Ativar acesso total?",
     fullAccessDescription:
-      "O agente poderá executar qualquer comando e a pasta do projeto não fica isolada.",
-    fullAccessWarning:
-      "Com acesso total, o agente pode executar qualquer comando disponível à sua conta. A pasta escolhida não é uma sandbox: outros arquivos acessíveis à sua conta também podem ser alterados.",
+      "O agente poderá executar qualquer comando disponível à sua conta. A pasta escolhida não é uma sandbox: outros arquivos também podem ser alterados.",
     fullAccessConfirm: "Ativar acesso total",
     settingsSaveFailed: "Não foi possível salvar a preferência da conversa.",
     emptyTitle: (agent: string) => `Conversa com ${agent}`,
@@ -629,8 +627,6 @@ export const t = {
     incomplete: "Não foi possível registrar as mudanças desta resposta. Não há desfazer.",
     unavailable:
       "Não foi possível guardar o ponto de restauração. Não há desfazer para esta resposta.",
-    noGit: "Esta pasta não usa Git, então não dá para desfazer o que o agente alterar.",
-    home: "Conversas na pasta pessoal não têm desfazer.",
     panelTitle: "Mudanças desta resposta",
     closePanel: "Fechar mudanças",
     concurrentChanges:

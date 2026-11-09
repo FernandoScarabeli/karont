@@ -412,9 +412,7 @@ export function ComposerPreferences({
         open={confirmFull}
         returnFocusRef={configAnchorRef}
         title={t.chat.fullAccessTitle}
-      >
-        <p className={styles.warning}>{t.chat.fullAccessWarning}</p>
-      </Dialog>
+      />
     </div>
   );
 }

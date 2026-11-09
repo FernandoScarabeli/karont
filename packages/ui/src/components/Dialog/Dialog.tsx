@@ -6,7 +6,7 @@ export type DialogProps = {
   onClose: () => void;
   title: string;
   description?: string;
-  children: ReactNode;
+  children?: ReactNode;
   footer: ReactNode;
   initialFocusRef?: RefObject<HTMLElement | null>;
   returnFocusRef?: RefObject<HTMLElement | null>;
@@ -99,7 +99,7 @@ export function Dialog({
             </p>
           ) : null}
         </header>
-        <div className={styles.body}>{children}</div>
+        {children ? <div className={styles.body}>{children}</div> : null}
         <footer className={styles.footer}>{footer}</footer>
       </div>
     </dialog>

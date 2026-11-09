@@ -63,9 +63,9 @@ test("evento de mensagem nova que chega antes da lista fica depois dela na ordem
     point("m2", { state: "unavailable", reason: "no-git", changedFiles: 0 }),
   ]);
   await flush();
-  assert.equal(store.getView("c1", "m1").notice, "no-git");
-  assert.equal(store.getView("c1", "m2").notice, null);
-  assert.equal(store.getView("c1", "m3").notice, null);
+  for (const id of ["m1", "m2", "m3"]) {
+    assert.equal(restoreSummaryModel(store.getView("c1", id)), null);
+  }
 });
 
 test("a lista é pedida uma vez por conversa", () => {
@@ -77,7 +77,7 @@ test("a lista é pedida uma vez por conversa", () => {
   assert.equal(fake.listCount(), 2);
 });
 
-test("o aviso de sem Git aparece só no ponto mais antigo, o de pasta pessoal à parte", async () => {
+test("sem Git e pasta pessoal não mostram aviso nenhum", async () => {
   const fake = fakeBridge();
   const store = createRestoreStore(() => fake.bridge);
   store.subscribe("c1", "m1", () => {});
@@ -88,12 +88,9 @@ test("o aviso de sem Git aparece só no ponto mais antigo, o de pasta pessoal à
   ]);
   await flush();
   const models = ["m1", "m2", "m3"].map((id) => restoreSummaryModel(store.getView("c1", id)));
-  assert.equal(
-    models[0].text,
-    "Esta pasta não usa Git, então não dá para desfazer o que o agente alterar.",
-  );
+  assert.equal(models[0], null);
   assert.equal(models[1], null);
-  assert.equal(models[2].text, "Conversas na pasta pessoal não têm desfazer.");
+  assert.equal(models[2], null);
 });
 
 test("só a linha da mensagem que mudou é avisada", async () => {
@@ -128,14 +125,14 @@ test("a visão não muda de identidade quando nada mudou", async () => {
 });
 
 test("textos de singular e plural", () => {
-  const view = (changedFiles) => ({ point: point("m1", { changedFiles }), notice: null });
+  const view = (changedFiles) => ({ point: point("m1", { changedFiles }) });
   assert.equal(restoreSummaryModel(view(1)).text, "1 arquivo alterado");
   assert.equal(restoreSummaryModel(view(4)).text, "4 arquivos alterados");
   assert.equal(restoreSummaryModel(view(0)), null);
 });
 
 test("estados: desfeito, incompleto e sem ponto guardado", () => {
-  const with_ = (overrides) => restoreSummaryModel({ point: point("m1", overrides), notice: null });
+  const with_ = (overrides) => restoreSummaryModel({ point: point("m1", overrides) });
   assert.deepEqual(with_({ state: "undone" }), { kind: "undone", text: "Mudanças desfeitas" });
   assert.equal(
     with_({ state: "incomplete" }).text,
@@ -147,5 +144,5 @@ test("estados: desfeito, incompleto e sem ponto guardado", () => {
       "Não foi possível guardar o ponto de restauração. Não há desfazer para esta resposta.",
     );
   }
-  assert.equal(restoreSummaryModel({ point: null, notice: null }), null);
+  assert.equal(restoreSummaryModel({ point: null }), null);
 });
