@@ -114,6 +114,7 @@ Repositório recriado do zero em 2026-10-31.
     - A foto é reduzida pelo app e guardada no banco; o arquivo original não é tocado.
     - A cor escolhida muda só o destaque da marca. "Trabalhando" e "precisa de você" mantêm as cores deles.
     - Executor: subagentes Claude Sonnet 5.5, uma tarefa por vez, numa worktree própria, como no M3 e no M4.
+32. **Contador de uso** (2026-11-09): entra junto com o M5, na mesma branch. Mostra, por agente, a porcentagem usada em 5 horas e na semana e quando zera. Os números vêm só do que as CLIs já mandam durante as respostas; o app guarda o último valor e mostra há quanto tempo foi visto, sem ler credenciais nem abrir a CLI só para isso. Fica num ícone no rodapé da sidebar. Não substitui o painel de custos do M8, que é por Dot e em tokens.
 
 ## M5 — estado
 Branch `m5-primeira-abertura`, a partir da `main` com o M4. Feito, nesta ordem: B1 (migração 21, `KARONT_SKIP_ONBOARDING`, `system.diagnostics`), F1 (Perfil: nome, foto e botão no rodapé), F2 (Aparência e rodapé enxuto), F3 (Diagnóstico), F4 (primeira abertura, "Abrir de novo" e ajustes finais do rodapé). Falta o dono ver no preview e o PR.
