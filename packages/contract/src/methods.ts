@@ -113,6 +113,32 @@ export const projectSchema = z.strictObject({
 
 export type Project = z.infer<typeof projectSchema>;
 
+const countSchema = z.number().int().nonnegative();
+const lastActivitySchema = isoDateTimeSchema.nullable();
+
+export const overviewProjectSchema = z.strictObject({
+  projectId: z.string().min(1),
+  conversations: countSchema,
+  working: countSchema,
+  waiting: countSchema,
+  lastActivityAt: lastActivitySchema,
+});
+
+export const overviewWorkspaceSchema = z.strictObject({
+  workspaceId: workspaceIdSchema,
+  conversations: countSchema,
+  activeToday: countSchema,
+  working: countSchema,
+  queued: countSchema,
+  waiting: countSchema,
+  error: countSchema,
+  lastActivityAt: lastActivitySchema,
+  projects: z.array(overviewProjectSchema),
+});
+
+export type OverviewProject = z.infer<typeof overviewProjectSchema>;
+export type OverviewWorkspace = z.infer<typeof overviewWorkspaceSchema>;
+
 export const terminalInfoSchema = z.strictObject({
   id: z.string().min(1),
   title: z.string(),
@@ -427,6 +453,10 @@ export const methods = {
   "workspaces.reorder": {
     params: z.strictObject({ ids: z.array(workspaceIdSchema).min(1).max(200) }),
     result: z.strictObject({ workspaces: z.array(workspaceSchema) }),
+  },
+  "overview.get": {
+    params: z.strictObject({ since: isoDateTimeSchema }),
+    result: z.strictObject({ workspaces: z.array(overviewWorkspaceSchema) }),
   },
   ...restoreMethods,
   ...worktreeMethods,

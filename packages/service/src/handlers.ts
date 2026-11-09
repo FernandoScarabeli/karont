@@ -36,6 +36,7 @@ import {
   worktreeMergePreview,
   worktreeStatus,
 } from "./git/worktrees.ts";
+import { getOverview } from "./overview.ts";
 import { resolvePaths } from "./paths.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
 import { getSystemUserName } from "./user-name.ts";
@@ -380,6 +381,8 @@ export function createHandlers({
         await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
         return { removed: true };
       }
+      case "overview.get":
+        return getOverview(db, request.params.since);
       case "workspaces.list":
         return { workspaces: listWorkspaces(db) };
       case "workspaces.create": {
