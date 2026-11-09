@@ -122,6 +122,13 @@ Branch `m5-primeira-abertura`, a partir da `main` com o M4. Feito, nesta ordem: 
 
 Contador de uso (2026-11-09): `npm run check`: contrato 42, serviço 365, desktop 41, interface 264, sem falhas. E2E: 22 de 22, em 40 s. Teste real no Electron com Codex 0.167.0 `gpt-6-luna`, esforço `low`: 4 de 4, e o painel mostrou 8% em 5 horas e 39% na semana. O Claude real não foi testado (decisão 28); o leitor dele usa a saída real gravada nos fixtures.
 
+Uso sem mensagem e bloco fixo (decisão 33, B3 e F6, 2026-11-09): `npm run check`: contrato 42, serviço 382, desktop 41, interface 264, sem falhas. E2E: 22 de 22, em 38 s. Teste real no Electron, em banco vazio e sem nenhuma mensagem, só lendo o uso: 4 de 4, com Claude Code 2.1.319 e Codex 0.167.0; os números apareceram em cerca de 2 s e nenhum processo de CLI sobrou. App parado 30 s depois: Electron com CPU 0% e 727 MB somando o working set; serviço com 44 MB (PSS).
+
+Notas técnicas do uso:
+- O `get_usage` do Claude é interno da CLI e pode mudar. Se falhar, nada se perde: o último valor fica e os eventos das respostas continuam atualizando.
+- `get_usage` traz `utilization` de 0 a 100; o `rate_limit_event`, de 0 a 1.
+- Cada leitura abre a CLI, então os hooks globais do usuário rodam nela. Por isso a leitura é por eventos (abrir, foco depois de 2 min, janela que venceu, botão), sem polling, e na pasta de dados do Karont.
+
 Testes (2026-11-09):
 - `npm run check`: contrato 41, serviço 355, desktop 41, interface 251, sem falhas. Build ok. E2E: 21 de 21, em 41 s.
 - Telas conferidas no navegador, em banco temporário: foto real, foto pesada, arquivo falso, nome longo, seis cores, setas do teclado, cor mantida ao recarregar, serviço caído com a sidebar estreita e o fluxo inteiro da primeira abertura.
