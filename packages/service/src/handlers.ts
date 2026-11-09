@@ -136,6 +136,10 @@ export function createHandlers({
         return { key: request.params.key, value: request.params.value };
       case "queue.status":
         return conversationManager.queueStatus();
+      case "inbox.list":
+        return conversationManager.inboxList();
+      case "inbox.dismiss":
+        return { dismissed: conversationManager.dismissInboxError(request.params.conversationId) };
       case "agents.list":
         return agentRegistry.list();
       case "agents.detect":
@@ -369,6 +373,7 @@ export function createHandlers({
             event: "conversations.workspaceMoved",
             payload: { workspaceId: project.workspaceId, projectId: id },
           });
+          conversationManager.refreshInbox();
         }
         await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
         return { project };
@@ -378,6 +383,7 @@ export function createHandlers({
           throw new ServiceError("invalid_request", "O projeto não existe.");
         }
         await terminalManager.reassign({ removedProjectId: request.params.id });
+        conversationManager.refreshInbox();
         await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
         return { removed: true };
       }
@@ -411,6 +417,7 @@ export function createHandlers({
           event: "conversations.workspaceMoved",
           payload: { workspaceId: moved, fromWorkspaceId: request.params.id },
         });
+        conversationManager.refreshInbox();
         // O conteúdo do workspace apagado mudou de lugar: avisa as listas de projetos também.
         await broadcast({
           event: "workspaces.changed",

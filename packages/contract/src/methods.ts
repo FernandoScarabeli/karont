@@ -11,6 +11,7 @@ import {
   conversationSendParamsSchema,
   messageSchema,
 } from "./conversations.ts";
+import { inboxMethods } from "./inbox.ts";
 import { restoreMethods } from "./restore.ts";
 import { worktreeMethods } from "./worktrees.ts";
 
@@ -458,6 +459,7 @@ export const methods = {
     params: z.strictObject({ since: isoDateTimeSchema }),
     result: z.strictObject({ workspaces: z.array(overviewWorkspaceSchema) }),
   },
+  ...inboxMethods,
   ...restoreMethods,
   ...worktreeMethods,
   "terminals.list": {

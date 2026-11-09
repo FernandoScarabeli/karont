@@ -5,6 +5,7 @@ import {
   messagePartSchema,
   messageSchema,
 } from "./conversations.ts";
+import { inboxListSchema } from "./inbox.ts";
 import {
   projectSchema,
   queueStatusSchema,
@@ -46,6 +47,7 @@ export const events = {
   }),
   "folders.changed": z.strictObject({ folders: z.array(recentFolderSchema).max(8) }),
   "queue.changed": queueStatusSchema,
+  "inbox.changed": inboxListSchema,
   "restore.changed": z.strictObject({
     conversationId: z.string().min(1),
     point: restorePointSummarySchema,

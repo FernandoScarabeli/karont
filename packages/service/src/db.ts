@@ -147,6 +147,11 @@ export const migrations: { version: number; up: string }[] = [
     CREATE INDEX projects_workspace ON projects(workspace_id);
     CREATE INDEX conversations_workspace ON conversations(workspace_id);`,
   },
+  {
+    version: 19,
+    // Mensagem de erro que o usuário dispensou da caixa de entrada; um erro novo tem outro id.
+    up: "ALTER TABLE conversations ADD COLUMN error_dismissed_message_id TEXT;",
+  },
 ];
 
 /** Roda `work` numa transação; desfaz tudo se ela lançar. */
@@ -413,6 +418,51 @@ export function listMessages(db: DatabaseSync, conversationId: string): Conversa
       .prepare("SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at ASC,rowid ASC")
       .all(conversationId) as MessageRow[]
   ).map(mapMessage);
+}
+
+/** Última resposta do agente na conversa, ou `null` se ainda não houve. */
+export function getLastAgentMessage(
+  db: DatabaseSync,
+  conversationId: string,
+): ConversationMessage | null {
+  const row = db
+    .prepare(
+      "SELECT * FROM messages WHERE conversation_id=? AND author='agent' ORDER BY created_at DESC,rowid DESC LIMIT 1",
+    )
+    .get(conversationId) as MessageRow | undefined;
+  return row ? mapMessage(row) : null;
+}
+
+export function getErrorDismissedMessageId(
+  db: DatabaseSync,
+  conversationId: string,
+): string | null {
+  const row = db
+    .prepare("SELECT error_dismissed_message_id AS id FROM conversations WHERE id=?")
+    .get(conversationId) as { id: string | null } | undefined;
+  return row?.id ?? null;
+}
+
+export function setErrorDismissedMessageId(
+  db: DatabaseSync,
+  conversationId: string,
+  messageId: string,
+): void {
+  db.prepare("UPDATE conversations SET error_dismissed_message_id=? WHERE id=?").run(
+    messageId,
+    conversationId,
+  );
+}
+
+export function listConversationsInState(
+  db: DatabaseSync,
+  state: Conversation["state"],
+): Conversation[] {
+  return (
+    db
+      .prepare("SELECT * FROM conversations WHERE state=? AND archived_at IS NULL")
+      .all(state) as ConversationRow[]
+  ).map(mapConversation);
 }
 
 export function listMessagesPage(

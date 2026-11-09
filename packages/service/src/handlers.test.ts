@@ -2052,3 +2052,103 @@ test("restore.*: numa conversa em cópia separada a raiz é a da cópia, não a 
   assert.equal(await readFile(path.join(worktree.path, "antigo.txt"), "utf8"), "antigo\n");
   assert.equal(await readFile(path.join(repo, "antigo.txt"), "utf8"), "antigo\n");
 });
+
+test("caixa: inbox.list e inbox.dismiss pelos métodos; workspace movido e apagado gera inbox.changed", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-caixa-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, "app");
+  await mkdir(folder);
+  const events: AnyEvent[] = [];
+  const db = openDatabase(path.join(root, "karont.db"));
+  const emitters = new Map<string, Parameters<AdapterFactory>[1]>();
+  const adapterFactory: AdapterFactory = (conversation, emit) => {
+    emitters.set(conversation.id, emit);
+    return {
+      start: async () => undefined,
+      send: async () => emit({ kind: "state", state: "working" }),
+      respond: async () => undefined,
+      interrupt: async () => undefined,
+      dispose: async () => undefined,
+    };
+  };
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void events.push(event),
+    env: { PATH: "", KARONT_DISABLE_AGENT_DETECTION: "1" },
+    homeDir: root,
+    adapterFactory,
+  });
+  context.after(async () => {
+    await handlers.closeAgents();
+    db.close();
+  });
+  const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 40));
+  const inbox = () =>
+    callWs<{
+      items: Array<{ workspaceId: string; kind: string; conversationId: string }>;
+      total: number;
+    }>(handlers, "inbox.list", {});
+  const inboxEvents = () =>
+    events.flatMap((event) => (event.event === "inbox.changed" ? [event.payload] : []));
+  const a = await ws2(handlers, "A");
+  const b = await ws2(handlers, "B");
+  const { project } = await callWs<{ project: { id: string } }>(handlers, "projects.create", {
+    name: "App",
+    icon: "folder",
+    path: folder,
+    workspaceId: a.id,
+  });
+  const { conversation } = await callWs<{ conversation: { id: string } }>(
+    handlers,
+    "conversation.create",
+    { agent: "claude", cwd: folder, mode: "edit", projectId: project.id },
+  );
+  await callWs(handlers, "conversation.send", { id: conversation.id, text: "oi" });
+  const emit = emitters.get(conversation.id);
+  assert.ok(emit);
+  emit({ kind: "state", state: "waiting" });
+  emit({
+    kind: "part",
+    part: {
+      id: "perm",
+      type: "permission",
+      tool: "Bash",
+      summary: "ls",
+      options: ["allow", "deny"],
+      state: "pending",
+    },
+  });
+  await settle();
+  assert.equal((await inbox()).items[0]?.workspaceId, a.id);
+  assert.equal(inboxEvents().at(-1)?.items[0]?.workspaceId, a.id);
+
+  // Projeto movido: o workspaceId do item muda e sai evento.
+  const countBefore = inboxEvents().length;
+  await callWs(handlers, "projects.update", { id: project.id, workspaceId: b.id });
+  await settle();
+  assert.equal(inboxEvents().length, countBefore + 1);
+  assert.equal(inboxEvents().at(-1)?.items[0]?.workspaceId, b.id);
+  assert.equal((await inbox()).items[0]?.workspaceId, b.id);
+
+  // Workspace apagado: o item vai para o workspace que recebeu o conteúdo.
+  await callWs(handlers, "workspaces.remove", { id: b.id });
+  await settle();
+  assert.equal(inboxEvents().length, countBefore + 2);
+  const last = inboxEvents().at(-1)?.items[0]?.workspaceId;
+  assert.notEqual(last, b.id);
+  assert.equal((await inbox()).items[0]?.workspaceId, last);
+
+  // Projeto removido: a conversa fica solta, sem projectId no item, e sai evento.
+  await callWs(handlers, "projects.remove", { id: project.id });
+  await settle();
+  assert.equal(inboxEvents().length, countBefore + 3);
+  assert.equal("projectId" in (inboxEvents().at(-1)?.items[0] ?? {}), false);
+
+  // inbox.dismiss: sem erro para dispensar, devolve false.
+  assert.deepEqual(await callWs(handlers, "inbox.dismiss", { conversationId: conversation.id }), {
+    dismissed: false,
+  });
+});

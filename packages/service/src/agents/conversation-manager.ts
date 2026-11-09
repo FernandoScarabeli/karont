@@ -38,6 +38,8 @@ import {
   getAgentSession,
   getBranchContextPending,
   getConversation,
+  getErrorDismissedMessageId,
+  getLastAgentMessage,
   getRestorePoint,
   getSetting,
   isBranchForkPending,
@@ -59,6 +61,7 @@ import {
   setBranchSession,
   setConversationContextUsage,
   setConversationTitle,
+  setErrorDismissedMessageId,
   setMessageAgentTurnId,
   setRestorePointAfter,
   setRestorePointUndoCommit,
@@ -86,6 +89,7 @@ import {
   takeRestorePoint,
   undoRef,
 } from "../git/restore-points.ts";
+import { buildInbox, InboxPublisher, type LivePendingPart } from "../inbox.ts";
 import type {
   AdapterEvent,
   AdapterFactory,
@@ -256,6 +260,7 @@ export class ConversationManager {
   #deletingAll = false;
   readonly #agentOperations = new Set<Promise<unknown>>();
   #queue: QueuedTurn[] = [];
+  readonly #inbox: InboxPublisher;
   #lastQueueStatus = "";
   readonly #skillCache = new Map<string, { cachedAt: number; skills: ComposerSkill[] }>();
   readonly #skillLoads = new Map<string, Promise<ComposerSkill[]>>();
@@ -290,6 +295,11 @@ export class ConversationManager {
           ...titleOptions,
         }));
     this.#lastQueueStatus = JSON.stringify(this.queueStatus());
+    this.#inbox = new InboxPublisher(
+      () => this.inboxList(),
+      (list) =>
+        void this.#broadcast({ event: "inbox.changed", payload: list }).catch(() => undefined),
+    );
     const cached = readCodexModelCache(getSetting(this.#db, CODEX_MODELS_SETTING));
     if (cached) {
       this.#codexModelList = cached.modelList;
@@ -890,6 +900,7 @@ export class ConversationManager {
       if (deleted) {
         this.#discardRestorePoints(restorePoints);
         this.#contextUsage.delete(id);
+        this.#inbox.schedule();
         await this.#broadcast({ event: "conversation.removed", payload: { id } }).catch(
           () => undefined,
         );
@@ -949,6 +960,7 @@ export class ConversationManager {
         this.#latestUserAttachments.delete(id);
       }
       if (deleted > 0) {
+        this.#inbox.schedule();
         await this.#broadcast({ event: "conversation.deletedAll", payload: { deleted } }).catch(
           () => undefined,
         );
@@ -1169,6 +1181,7 @@ export class ConversationManager {
 
   async close(): Promise<void> {
     this.#closing = true;
+    this.#inbox.dispose();
     this.#queue = [];
     this.#abortRestoreOperations();
     await Promise.all(
@@ -1190,6 +1203,48 @@ export class ConversationManager {
     );
     this.#active.clear();
     this.#latestUserAttachments.clear();
+  }
+
+  /** Tudo o que precisa do usuário, respondível pelos mesmos métodos do chat. */
+  inboxList(): PayloadOf<"inbox.changed"> {
+    return buildInbox(this.#db, this.#livePendingParts());
+  }
+
+  /** Marca a lista para recálculo; chamado onde algo que ela mostra pode ter mudado. */
+  refreshInbox(): void {
+    this.#inbox.schedule();
+  }
+
+  /** Dispensa o erro atual da conversa da caixa. Não mexe no chat nem no estado da conversa. */
+  dismissInboxError(conversationId: string): boolean {
+    const conversation = getConversation(this.#db, conversationId);
+    if (conversation?.state !== "error") return false;
+    const message = getLastAgentMessage(this.#db, conversationId);
+    if (message?.status !== "error") return false;
+    if (getErrorDismissedMessageId(this.#db, conversationId) === message.id) return false;
+    setErrorDismissedMessageId(this.#db, conversationId, message.id);
+    this.#inbox.schedule();
+    return true;
+  }
+
+  // Só conta pendência cujo processo ainda existe: depois de um reinício `#pendingParts` está
+  // vazio, e uma pendência de resposta que já terminou (erro, parada) não aparece.
+  #livePendingParts(): LivePendingPart[] {
+    const live: LivePendingPart[] = [];
+    for (const [partId, { conversationId, messageId }] of this.#pendingParts) {
+      const active = this.#active.get(conversationId);
+      const message = active?.currentMessage;
+      if (!active || active.removed || message?.id !== messageId) continue;
+      if (!active.pendingPartIds.has(partId)) continue;
+      const part = message.parts.find((item) => item.id === partId);
+      if (
+        (part?.type === "permission" || part?.type === "question" || part?.type === "plan") &&
+        part.state === "pending"
+      ) {
+        live.push({ conversationId, messageId, part: { ...part, state: "pending" } });
+      }
+    }
+    return live;
   }
 
   queueStatus(): PayloadOf<"queue.changed"> {
@@ -1518,6 +1573,8 @@ export class ConversationManager {
       }
       message.updatedAt = this.#now();
       this.#flushMessageSave(active, message);
+      if (part.type === "permission" || part.type === "question" || part.type === "plan")
+        this.#inbox.schedule();
       await this.#emit({
         event: "conversation.partUpdated",
         payload: { conversationId, messageId: message.id, kind: "upsert", part },
@@ -2369,6 +2426,7 @@ export class ConversationManager {
   }
 
   async #stateEvent(conversation: Conversation, message?: ConversationMessage): Promise<void> {
+    this.#inbox.schedule();
     const stored = getConversation(this.#db, conversation.id);
     // Um turno longo segura o objeto antigo; o workspace atual vem do banco.
     const current = this.#ignoreClaudeFast(

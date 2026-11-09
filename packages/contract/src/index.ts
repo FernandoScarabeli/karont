@@ -38,8 +38,12 @@ export {
   conversationOptionsSchema,
   conversationSchema,
   conversationSendParamsSchema,
+  errorPartSchema,
   messagePartSchema,
   messageSchema,
+  permissionPartSchema,
+  planPartSchema,
+  questionPartSchema,
   reasoningEffortSchema,
 } from "./conversations.ts";
 export type {
@@ -68,6 +72,12 @@ export {
 } from "./envelopes.ts";
 export type { AnyEvent, EventName, PayloadOf } from "./events.ts";
 export { events } from "./events.ts";
+export type { InboxItem, InboxItemKind, InboxList } from "./inbox.ts";
+export {
+  inboxItemSchema,
+  inboxListSchema,
+  MAX_INBOX_ITEMS,
+} from "./inbox.ts";
 export type {
   Agent,
   JsonValue,

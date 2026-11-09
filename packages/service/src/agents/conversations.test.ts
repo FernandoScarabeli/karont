@@ -16,6 +16,7 @@ import type {
   ConversationMessage,
   MessagePart,
 } from "@karont/contract";
+import { methods } from "@karont/contract";
 import {
   addMessage,
   createConversation as createConversationRecord,
@@ -4006,4 +4007,396 @@ test("turno ativo: mover o projeto durante o turno emite e grava o workspace nov
   assert.ok(result.emitted.length > 0);
   assert.deepEqual(new Set(result.emitted), new Set([result.expected]));
   assert.equal(result.stored, result.expected);
+});
+
+// ---------------------------------------------------------------------------
+// Caixa de entrada (M4-B3)
+// ---------------------------------------------------------------------------
+
+type InboxPayload = PayloadOfInbox;
+type PayloadOfInbox = Extract<AnyEvent, { event: "inbox.changed" }>["payload"];
+
+async function createInboxRig() {
+  const rig = await createQueueRig(8);
+  const emitFor = (id: string) => {
+    const entry = rig.entries.get(id);
+    if (!entry) throw new Error("Adaptador ainda não iniciado.");
+    return entry.emit;
+  };
+  const inboxEvents = (): InboxPayload[] =>
+    rig.harness.events.flatMap((event) => (event.event === "inbox.changed" ? [event.payload] : []));
+  const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 30));
+  const list = () => rig.harness.manager.inboxList();
+  // Conversa com mensagem enviada e adaptador de pé.
+  const started = async () => {
+    const conversation = rig.create();
+    await rig.harness.manager.send(conversation.id, "faça");
+    await rig.until(() => rig.stateOf(conversation.id) === "working", "trabalhando");
+    return conversation;
+  };
+  const permission = (id: string, state: "pending" | "allowed" = "pending"): MessagePart => ({
+    id,
+    type: "permission",
+    tool: "Bash",
+    summary: `rodar ${id}`,
+    options: ["allow", "always", "deny"],
+    state,
+  });
+  const question = (id: string): MessagePart => ({
+    id,
+    type: "question",
+    questions: [
+      {
+        question: "Qual?",
+        options: [{ label: "A" }, { label: "B" }],
+        multiSelect: false,
+        freeText: true,
+      },
+    ],
+    state: "pending",
+  });
+  const waitFor = (predicate: () => boolean, label: string) => rig.until(predicate, label);
+  return { rig, emitFor, inboxEvents, settle, list, started, permission, question, waitFor };
+}
+
+test("caixa: permissão, pergunta, plano e erro viram itens com a parte do chat", async () => {
+  const { rig, emitFor, list, started, permission, question, waitFor } = await createInboxRig();
+  try {
+    assert.deepEqual(list(), { items: [], total: 0 });
+    const a = await started();
+    emitFor(a.id)({ kind: "state", state: "waiting" });
+    emitFor(a.id)({ kind: "part", part: permission("perm-1") });
+    await waitFor(() => list().total === 1, "permissão");
+    const [perm] = list().items;
+    assert.equal(perm?.kind, "permission");
+    assert.equal(perm?.id, "permission:perm-1");
+    assert.equal(perm?.partId, "perm-1");
+    assert.equal(perm?.conversationId, a.id);
+    assert.equal(perm?.conversationTitle, "Conversa de teste");
+    assert.equal(perm?.agent, "claude");
+    assert.equal(perm?.workspaceId, a.workspaceId);
+    assert.equal(perm?.messageId, rig.harness.manager.get(a.id)?.messages.at(-1)?.id);
+    assert.equal(perm?.kind === "permission" ? perm.part.summary : "", "rodar perm-1");
+    assert.equal(methods["inbox.list"].result.safeParse(list()).success, true);
+
+    const b = await started();
+    emitFor(b.id)({ kind: "state", state: "waiting" });
+    emitFor(b.id)({ kind: "part", part: question("perg-1") });
+    await waitFor(() => list().total === 2, "pergunta");
+    assert.deepEqual(
+      list().items.map((item) => item.kind),
+      ["permission", "question"],
+    );
+
+    // Plano: o turno acaba e a conversa fica aguardando aprovação.
+    const c = await started();
+    emitFor(c.id)({
+      kind: "part",
+      part: { id: "plano-1", type: "plan", markdown: "# P", state: "pending" },
+    });
+    rig.finish(c.id);
+    await waitFor(() => rig.stateOf(c.id) === "waiting" && list().total === 3, "plano");
+    const plan = list().items.find((item) => item.kind === "plan");
+    assert.equal(plan?.id, "plan:plano-1");
+    assert.equal(plan?.kind === "plan" ? plan.part.markdown : "", "# P");
+
+    // Erro: aparece com o texto do chat e se dá para tentar de novo.
+    const d = await started();
+    rig.finish(d.id, "error");
+    await waitFor(() => rig.stateOf(d.id) === "error" && list().total === 4, "erro");
+    const error = list().items.find((item) => item.kind === "error");
+    assert.equal(error?.conversationId, d.id);
+    assert.equal(error?.kind === "error" ? error.part.retryable : undefined, true);
+    assert.equal(error?.kind === "error" ? error.part.text : "", "falhou");
+    assert.equal(methods["inbox.list"].result.safeParse(list()).success, true);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("caixa: duas permissões na mesma conversa são dois itens; resolver uma deixa a outra", async () => {
+  const { rig, emitFor, list, inboxEvents, settle, started, permission, waitFor } =
+    await createInboxRig();
+  try {
+    const a = await started();
+    emitFor(a.id)({ kind: "state", state: "waiting" });
+    emitFor(a.id)({ kind: "part", part: permission("p1") });
+    await settle();
+    assert.equal(inboxEvents().length, 1);
+    // Segunda permissão com a conversa já em waiting.
+    emitFor(a.id)({ kind: "part", part: permission("p2") });
+    await waitFor(() => list().total === 2, "segunda permissão");
+    await settle();
+    assert.equal(inboxEvents().length, 2);
+    assert.deepEqual(
+      list().items.map((item) => item.partId),
+      ["p1", "p2"],
+    );
+    assert.equal(list().items[0]?.id, "permission:p1");
+    // Resolver uma, com a outra ainda aberta, também gera evento.
+    emitFor(a.id)({ kind: "part", part: permission("p1", "allowed") });
+    await waitFor(() => list().total === 1, "uma resolvida");
+    await settle();
+    assert.equal(inboxEvents().length, 3);
+    assert.deepEqual(
+      inboxEvents()
+        .at(-1)
+        ?.items.map((item) => item.partId),
+      ["p2"],
+    );
+    emitFor(a.id)({ kind: "part", part: permission("p2", "allowed") });
+    emitFor(a.id)({ kind: "state", state: "working" });
+    await waitFor(() => list().total === 0, "todas resolvidas");
+    await settle();
+    assert.equal(inboxEvents().length, 4);
+    assert.deepEqual(inboxEvents().at(-1), { items: [], total: 0 });
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("caixa: ordem dos mais antigos, arquivada fora, apagada some, título renomeado gera evento", async () => {
+  const { rig, emitFor, list, inboxEvents, settle, started, permission, waitFor } =
+    await createInboxRig();
+  try {
+    const a = await started();
+    emitFor(a.id)({ kind: "state", state: "waiting" });
+    emitFor(a.id)({ kind: "part", part: permission("pa") });
+    await waitFor(() => list().total === 1, "a");
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    const b = await started();
+    emitFor(b.id)({ kind: "state", state: "waiting" });
+    emitFor(b.id)({ kind: "part", part: permission("pb") });
+    await waitFor(() => list().total === 2, "b");
+    assert.deepEqual(
+      list().items.map((item) => item.conversationId),
+      [a.id, b.id],
+    );
+
+    await settle();
+    const before = inboxEvents().length;
+    await rig.harness.manager.rename(a.id, "Outro nome");
+    await settle();
+    assert.equal(inboxEvents().length, before + 1);
+    assert.equal(inboxEvents().at(-1)?.items[0]?.conversationTitle, "Outro nome");
+
+    await rig.harness.manager.setArchived(a.id, true);
+    await settle();
+    assert.deepEqual(
+      list().items.map((item) => item.conversationId),
+      [b.id],
+    );
+    assert.deepEqual(
+      inboxEvents()
+        .at(-1)
+        ?.items.map((item) => item.conversationId),
+      [b.id],
+    );
+    await rig.harness.manager.setArchived(a.id, false);
+    await settle();
+    assert.equal(list().total, 2);
+
+    await rig.harness.manager.remove(b.id);
+    await settle();
+    assert.deepEqual(
+      list().items.map((item) => item.conversationId),
+      [a.id],
+    );
+    assert.deepEqual(
+      inboxEvents()
+        .at(-1)
+        ?.items.map((item) => item.conversationId),
+      [a.id],
+    );
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("caixa: dispensar erro tira da lista sem mexer na conversa; erro novo volta; tentar de novo e nova mensagem tiram", async () => {
+  const { rig, list, inboxEvents, settle, started, waitFor } = await createInboxRig();
+  try {
+    const a = await started();
+    rig.finish(a.id, "error");
+    await waitFor(() => rig.stateOf(a.id) === "error" && list().total === 1, "erro");
+    const firstId = list().items[0]?.id;
+    assert.equal(firstId?.startsWith("error:"), true);
+    const messagesBefore = JSON.stringify(rig.harness.manager.get(a.id)?.messages);
+    assert.equal(rig.harness.manager.dismissInboxError(a.id), true);
+    await settle();
+    assert.deepEqual(list(), { items: [], total: 0 });
+    assert.deepEqual(inboxEvents().at(-1), { items: [], total: 0 });
+    assert.equal(rig.harness.manager.dismissInboxError(a.id), false);
+    // O chat e o estado continuam como estavam.
+    assert.equal(rig.stateOf(a.id), "error");
+    assert.equal(JSON.stringify(rig.harness.manager.get(a.id)?.messages), messagesBefore);
+
+    // Nova mensagem que falha de novo: erro novo, id novo, volta a aparecer.
+    await rig.harness.manager.send(a.id, "de novo");
+    // Mandar nova mensagem já tira o erro antigo da lista.
+    assert.equal(list().total, 0);
+    rig.finish(a.id, "error");
+    await waitFor(() => rig.stateOf(a.id) === "error" && list().total === 1, "erro novo");
+    assert.notEqual(list().items[0]?.id, firstId);
+    await settle();
+
+    // Tentar de novo tira o erro (a conversa volta a trabalhar).
+    await rig.harness.manager.retry(a.id);
+    await waitFor(() => list().total === 0, "retry tira");
+    await settle();
+    assert.deepEqual(inboxEvents().at(-1), { items: [], total: 0 });
+    rig.finish(a.id);
+    await waitFor(() => rig.stateOf(a.id) === "idle", "terminou");
+
+    // Erro sem dispensar sai ao apagar a conversa.
+    const b = await started();
+    rig.finish(b.id, "error");
+    await waitFor(() => list().total === 1, "erro de b");
+    await rig.harness.manager.remove(b.id);
+    await settle();
+    assert.equal(list().total, 0);
+    // Dispensar o que não é erro devolve false.
+    assert.equal(rig.harness.manager.dismissInboxError(a.id), false);
+    assert.equal(rig.harness.manager.dismissInboxError("nao-existe"), false);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("caixa: limite de 100 itens com total real, do mais antigo ao mais novo", async () => {
+  const { rig, list } = await createInboxRig();
+  try {
+    const db = rig.harness.db;
+    const ids: string[] = [];
+    for (let index = 0; index < 105; index += 1) {
+      const conversation = createConversationRecord(db, {
+        agent: "codex",
+        title: `Erro ${index}`,
+        cwd: os.tmpdir(),
+        mode: "edit",
+      });
+      conversation.state = "error";
+      updateConversation(db, conversation);
+      const stamp = new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString();
+      addMessage(db, {
+        id: `msg-${index}`,
+        conversationId: conversation.id,
+        author: "agent",
+        status: "error",
+        parts: [
+          {
+            id: `err-${index}`,
+            type: "error",
+            errorType: "failed",
+            text: "falhou",
+            retryable: true,
+            startedAt: Date.parse(stamp),
+            endedAt: Date.parse(stamp),
+          },
+        ],
+        createdAt: stamp,
+        updatedAt: stamp,
+      });
+      ids.push(conversation.id);
+    }
+    const result = list();
+    assert.equal(result.items.length, 100);
+    assert.equal(result.total, 105);
+    assert.equal(result.items[0]?.conversationId, ids[0]);
+    assert.equal(result.items[99]?.conversationId, ids[99]);
+    assert.equal(methods["inbox.list"].result.safeParse(result).success, true);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("caixa: texto chegando não gera evento e rajadas saem agrupadas", async () => {
+  const { rig, emitFor, inboxEvents, settle, started, permission, list, waitFor } =
+    await createInboxRig();
+  try {
+    const a = await started();
+    await settle();
+    const before = inboxEvents().length;
+    for (let index = 0; index < 20; index += 1) {
+      emitFor(a.id)({
+        kind: "text-delta",
+        partId: "t1",
+        partType: "text",
+        delta: `trecho ${index} `,
+      });
+    }
+    await settle();
+    await new Promise<void>((resolve) => setTimeout(resolve, 80));
+    assert.equal(inboxEvents().length, before);
+    // Três permissões em sequência: um evento só, com as três.
+    emitFor(a.id)({ kind: "state", state: "waiting" });
+    for (const id of ["r1", "r2", "r3"]) emitFor(a.id)({ kind: "part", part: permission(id) });
+    await waitFor(() => list().total === 3, "três");
+    await settle();
+    assert.equal(inboxEvents().length, before + 1);
+    assert.equal(inboxEvents().at(-1)?.total, 3);
+    // Mudança que não altera a lista (conversa de outro estado) não emite.
+    const other = rig.create();
+    await rig.harness.manager.rename(other.id, "Sem pendência");
+    await settle();
+    assert.equal(inboxEvents().length, before + 1);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("caixa: depois de reiniciar o serviço não sobra pendência respondível, só erro", async () => {
+  const { rig, emitFor, list, started, permission, waitFor } = await createInboxRig();
+  const dbPath = rig.harness.db.prepare("PRAGMA database_list").all() as Array<{ file: string }>;
+  const file = dbPath.find((entry) => entry.file)?.file;
+  assert.ok(file);
+  const failed = await started();
+  const waiting = await started();
+  const planning = await started();
+  try {
+    rig.finish(failed.id, "error");
+    emitFor(waiting.id)({ kind: "state", state: "waiting" });
+    emitFor(waiting.id)({ kind: "part", part: permission("morre") });
+    emitFor(planning.id)({
+      kind: "part",
+      part: { id: "plano-morre", type: "plan", markdown: "P", state: "pending" },
+    });
+    rig.finish(planning.id);
+    await waitFor(() => list().total === 3, "três pendências");
+    // Reinicia: fecha o serviço antigo e abre outro sobre o mesmo banco.
+    await rig.harness.manager.close();
+    const reopened = openDatabase(file);
+    const manager = new ConversationManager({
+      db: reopened,
+      broadcast: async () => undefined,
+      env: { ...process.env, KARONT_DISABLE_AGENT_DETECTION: "1" },
+    });
+    try {
+      assert.equal(manager.get(waiting.id)?.conversation.state, "idle");
+      assert.equal(manager.get(planning.id)?.conversation.state, "idle");
+      const after = manager.inboxList();
+      assert.deepEqual(
+        after.items.map((item) => item.kind),
+        ["error"],
+      );
+      assert.equal(after.items[0]?.conversationId, failed.id);
+      // Responder à permissão que morreu é recusado.
+      await assert.rejects(
+        manager.respond(waiting.id, "morre", {
+          responseType: "permission",
+          decision: "allow",
+        }),
+        /não está aguardando/,
+      );
+    } finally {
+      await manager.close();
+      reopened.close();
+    }
+  } finally {
+    try {
+      rig.harness.db.close();
+    } catch {
+      // Já fechado.
+    }
+  }
 });
