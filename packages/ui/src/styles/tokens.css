@@ -212,10 +212,11 @@
   --k-section-heading-height: 28px;
   --k-service-status-gap: 8px;
   --k-service-footer-gap: 4px;
-  --k-usage-content-width: 344px;
-  --k-usage-label-width: 52px;
-  --k-usage-percent-width: 36px;
-  --k-usage-reset-width: 116px;
+  --k-usage-label-width: 46px;
+  --k-usage-percent-width: 30px;
+  --k-usage-reset-width: 38px;
+  --k-usage-column-gap: 4px;
+  --k-duration-usage-spin: 900ms;
   --k-usage-bar-height: 6px;
   --k-avatar-size-sm: 20px;
   --k-avatar-size-lg: 72px;

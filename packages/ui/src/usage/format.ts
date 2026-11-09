@@ -18,10 +18,20 @@ export function formatDuration(ms: number): string {
   return hours === 0 ? `${days}d` : `${days}d ${hours}h`;
 }
 
-/** Há quanto tempo algo foi visto. `now` em milissegundos; data futura conta como agora. */
-export function formatAgo(iso: string, now: number): string {
+/** Tempo até zerar, em poucos caracteres: "<1 min", "20 min", "4h", "3d 5h", "3d". */
+export function formatResetShort(ms: number): string {
+  if (!(ms >= MINUTE_MS)) return "<1 min";
+  if (ms < HOUR_MS) return `${Math.floor(ms / MINUTE_MS)} min`;
+  if (ms < DAY_MS) return `${Math.floor(ms / HOUR_MS)}h`;
+  const days = Math.floor(ms / DAY_MS);
+  const hours = Math.floor((ms % DAY_MS) / HOUR_MS);
+  return hours === 0 ? `${days}d` : `${days}d ${hours}h`;
+}
+
+/** "Visto há quanto tempo", curto: "agora", "há 5 min", "há 2h", "há 3d". */
+export function formatAgoShort(iso: string, now: number): string {
   const elapsed = now - new Date(iso).getTime();
-  if (!(elapsed >= MINUTE_MS)) return "agora há pouco";
+  if (!(elapsed >= MINUTE_MS)) return "agora";
   if (elapsed < HOUR_MS) return `há ${Math.floor(elapsed / MINUTE_MS)} min`;
   if (elapsed < DAY_MS) return `há ${Math.floor(elapsed / HOUR_MS)}h`;
   return `há ${Math.floor(elapsed / DAY_MS)}d`;

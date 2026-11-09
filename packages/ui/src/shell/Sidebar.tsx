@@ -52,7 +52,7 @@ import {
   getTerminalDisplayTitles,
   useTerminals,
 } from "../terminal/useTerminals.ts";
-import { UsageButton } from "../usage/UsageButton.tsx";
+import { UsageBlock } from "../usage/UsageBlock.tsx";
 import { findPane, findPaneByConversation, paneCount } from "../workspace/layout.ts";
 import { ServiceStatus } from "./ServiceStatus.tsx";
 import styles from "./Sidebar.module.css";
@@ -1214,6 +1214,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
             </section>
           </nav>
 
+          <UsageBlock />
+
           <footer className={styles.footer}>
             <button
               aria-current={
@@ -1228,7 +1230,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
               {profile.name ? <span className={styles.profileName}>{profile.name}</span> : null}
             </button>
             <ServiceStatus />
-            <UsageButton />
             <IconButton
               aria-current={view.name === "settings" ? "page" : undefined}
               className={styles.settingsButton}

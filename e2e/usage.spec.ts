@@ -23,7 +23,7 @@ function isAlive(pid: number): boolean {
   }
 }
 
-test("painel de uso: vazio, valores reais e janela vencida", async () => {
+test("bloco de uso: oculto sem dados, valores reais e janela vencida", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ke2e-"));
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
@@ -44,14 +44,10 @@ test("painel de uso: vazio, valores reais e janela vencida", async () => {
     );
     servicePid = info.result?.pid;
 
-    const button = window.getByRole("button", { name: "Uso", exact: true });
+    const block = window.getByRole("region", { name: "Uso", exact: true });
 
-    // Sem dados: só a frase de vazio.
-    await button.click();
-    const panel = window.getByRole("dialog", { name: "Uso" });
-    await expect(panel.getByText("Converse com um agente para ver o uso aqui.")).toBeVisible();
-    await window.keyboard.press("Escape");
-    await expect(panel).toBeHidden();
+    // Sem dados: o bloco nem aparece.
+    await expect(block).toHaveCount(0);
 
     // Uma janela futura (27%) e uma vencida (91%, que não pode aparecer).
     const now = Date.now();
@@ -73,20 +69,24 @@ test("painel de uso: vazio, valores reais e janela vencida", async () => {
     );
     expect(saved.ok).toBe(true);
 
-    await button.click();
-    await expect(panel.getByText("27%")).toBeVisible();
-    await expect(panel.getByText("Já zerou")).toBeVisible();
-    await expect(panel.getByText("91%")).toHaveCount(0);
-    await expect(panel.getByText("—")).toBeVisible();
-    await expect(panel.getByText("Semana")).toBeVisible();
+    await window.reload();
+    await expect(window.getByRole("heading", { name: "Início", level: 1 })).toBeVisible();
+
+    await expect(block).toBeVisible();
+    await expect(block.getByText("27%")).toBeVisible();
+    await expect(block.getByText("zerou")).toBeVisible();
+    await expect(block.getByText("91%")).toHaveCount(0);
+    await expect(block.getByText("—")).toBeVisible();
+    await expect(block.getByText("Semana")).toBeVisible();
+    await expect(block.getByText("há 5 min")).toBeVisible();
     await expect(
-      panel.getByRole("progressbar", { name: /5 horas: 27% usado, zera em 3h/ }),
+      block.getByRole("progressbar", { name: /5 horas: 27% usado, zera em 3h/ }),
     ).toBeVisible();
 
-    // Esc fecha e o foco volta ao botão.
-    await window.keyboard.press("Escape");
-    await expect(panel).toBeHidden();
-    await expect(button).toBeFocused();
+    // Atualizar não quebra o bloco (sem CLI, a leitura falha em silêncio e o valor fica).
+    await block.getByRole("button", { name: "Atualizar uso" }).click();
+    await expect(block.getByRole("button", { name: "Atualizar uso" })).toBeEnabled();
+    await expect(block.getByText("27%")).toBeVisible();
 
     await app.close();
   } finally {

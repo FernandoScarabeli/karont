@@ -1,29 +1,37 @@
-.panel {
+.block {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
-  gap: var(--k-space-3);
+  gap: var(--k-space-2);
   box-sizing: border-box;
-  width: var(--k-usage-content-width);
-  max-width: 100%;
+  min-width: 0;
+  margin-block-start: var(--k-space-2);
+  padding-inline: var(--k-space-1);
 }
 
-.title {
-  margin: 0;
-  color: var(--k-color-text-primary);
-  font-size: var(--k-text-13);
-  font-weight: var(--k-weight-medium);
-  line-height: var(--k-leading-tight);
-}
-
-.message {
+.header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--k-space-2);
+}
+
+.title {
   margin: 0;
   color: var(--k-color-text-secondary);
-  font-size: var(--k-text-13);
-  line-height: var(--k-leading-normal);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+}
+
+.spinning {
+  animation: usageSpin var(--k-duration-usage-spin) linear infinite;
+}
+
+@keyframes usageSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .agents,
@@ -36,19 +44,21 @@
 .agents {
   display: flex;
   flex-direction: column;
-  gap: var(--k-space-4);
+  gap: var(--k-space-3);
 }
 
 .agent {
   display: flex;
   flex-direction: column;
-  gap: var(--k-space-2);
+  gap: var(--k-space-1);
+  min-width: 0;
 }
 
 .agentHeader {
   display: flex;
   align-items: center;
   gap: var(--k-space-2);
+  min-width: 0;
 }
 
 .agentIcon {
@@ -56,11 +66,12 @@
 }
 
 .agentName {
+  flex: 1 1 auto;
   margin: 0;
   min-width: 0;
   overflow: hidden;
   color: var(--k-color-text-primary);
-  font-size: var(--k-text-13);
+  font-size: var(--k-text-12);
   font-weight: var(--k-weight-medium);
   line-height: var(--k-leading-tight);
   text-overflow: ellipsis;
@@ -68,17 +79,16 @@
 }
 
 .updated {
-  margin-inline-start: auto;
   flex: 0 0 auto;
   color: var(--k-color-text-muted);
-  font-size: var(--k-text-12);
+  font-size: var(--k-text-11);
   white-space: nowrap;
 }
 
 .windows {
   display: flex;
   flex-direction: column;
-  gap: var(--k-space-2);
+  gap: var(--k-space-1);
 }
 
 .window {
@@ -87,9 +97,19 @@
     var(--k-usage-label-width) minmax(0, 1fr) var(--k-usage-percent-width)
     var(--k-usage-reset-width);
   align-items: center;
-  gap: var(--k-space-2);
-  font-size: var(--k-text-12);
+  column-gap: var(--k-usage-column-gap);
+  min-width: 0;
+  font-size: var(--k-text-11);
   line-height: var(--k-leading-tight);
+  white-space: nowrap;
+}
+
+.windowLabel,
+.percent,
+.reset {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
 }
 
 .windowLabel {
@@ -105,7 +125,6 @@
 .reset {
   color: var(--k-color-text-muted);
   text-align: end;
-  white-space: nowrap;
 }
 
 .bar {
@@ -148,4 +167,10 @@
 
 .barDanger::-moz-progress-bar {
   background: var(--k-color-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinning {
+    animation: none;
+  }
 }

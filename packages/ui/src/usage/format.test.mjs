@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatAgo, formatDuration, windowView } from "./format.ts";
+import { formatAgoShort, formatDuration, formatResetShort, windowView } from "./format.ts";
 
 const SEC = 1000;
 const MIN = 60 * SEC;
@@ -34,23 +34,35 @@ test("formatDuration: valor inválido ou negativo não quebra", () => {
   assert.equal(formatDuration(Number.NaN), "menos de 1 min");
 });
 
-test("formatAgo: limites", () => {
-  const now = Date.parse("2026-11-09T12:00:00.000Z");
-  const ago = (ms) => new Date(now - ms).toISOString();
-  assert.equal(formatAgo(ago(0), now), "agora há pouco");
-  assert.equal(formatAgo(ago(59 * SEC), now), "agora há pouco");
-  assert.equal(formatAgo(ago(60 * SEC), now), "há 1 min");
-  assert.equal(formatAgo(ago(5 * MIN), now), "há 5 min");
-  assert.equal(formatAgo(ago(59 * MIN), now), "há 59 min");
-  assert.equal(formatAgo(ago(60 * MIN), now), "há 1h");
-  assert.equal(formatAgo(ago(2 * HOUR + 40 * MIN), now), "há 2h");
-  assert.equal(formatAgo(ago(24 * HOUR), now), "há 1d");
-  assert.equal(formatAgo(ago(3 * DAY + 5 * HOUR), now), "há 3d");
+test("formatResetShort: limites", () => {
+  assert.equal(formatResetShort(0), "<1 min");
+  assert.equal(formatResetShort(59 * SEC), "<1 min");
+  assert.equal(formatResetShort(60 * SEC), "1 min");
+  assert.equal(formatResetShort(20 * MIN), "20 min");
+  assert.equal(formatResetShort(59 * MIN + 59 * SEC), "59 min");
+  assert.equal(formatResetShort(60 * MIN), "1h");
+  assert.equal(formatResetShort(4 * HOUR + 17 * MIN), "4h");
+  assert.equal(formatResetShort(23 * HOUR + 59 * MIN), "23h");
+  assert.equal(formatResetShort(24 * HOUR), "1d");
+  assert.equal(formatResetShort(3 * DAY + 59 * MIN), "3d");
+  assert.equal(formatResetShort(3 * DAY + 5 * HOUR + 40 * MIN), "3d 5h");
+  assert.equal(formatResetShort(-5), "<1 min");
+  assert.equal(formatResetShort(Number.NaN), "<1 min");
 });
 
-test("formatAgo: data no futuro conta como agora há pouco", () => {
+test("formatAgoShort: limites", () => {
   const now = Date.parse("2026-11-09T12:00:00.000Z");
-  assert.equal(formatAgo(new Date(now + 10 * MIN).toISOString(), now), "agora há pouco");
+  const ago = (ms) => new Date(now - ms).toISOString();
+  assert.equal(formatAgoShort(ago(0), now), "agora");
+  assert.equal(formatAgoShort(ago(59 * SEC), now), "agora");
+  assert.equal(formatAgoShort(ago(60 * SEC), now), "há 1 min");
+  assert.equal(formatAgoShort(ago(5 * MIN), now), "há 5 min");
+  assert.equal(formatAgoShort(ago(59 * MIN + 59 * SEC), now), "há 59 min");
+  assert.equal(formatAgoShort(ago(60 * MIN), now), "há 1h");
+  assert.equal(formatAgoShort(ago(2 * HOUR + 40 * MIN), now), "há 2h");
+  assert.equal(formatAgoShort(ago(24 * HOUR), now), "há 1d");
+  assert.equal(formatAgoShort(ago(3 * DAY + 5 * HOUR), now), "há 3d");
+  assert.equal(formatAgoShort(new Date(now + 10 * MIN).toISOString(), now), "agora");
 });
 
 test("windowView: janela em andamento", () => {
