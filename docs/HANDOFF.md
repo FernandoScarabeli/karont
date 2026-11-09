@@ -17,9 +17,9 @@ Você é o Claude Code que vai construir o Karont do zero a partir da [SPEC.md](
 - Ciclo de testes: na tarefa, só os rápidos (typecheck, lint, `node:test`, 1 E2E de fumaça). Completos só antes do merge do marco. Medir o tempo; se passar de ~3 min por rodada, simplificar.
 - Registre decisões do dono em `docs/PROGRESSO.md` (numeradas) e problemas fora do escopo em `docs/DIVIDAS.md`.
 
-### Executor no M3 e no M4
+### Executor do M3 ao M6
 
-No M3 e no M4 o executor é um subagente Claude Sonnet 5.5 (decisões 22 e 26 do `PROGRESSO.md`), uma tarefa por vez, numa worktree própria. O comando abaixo vale quando o Codex for o executor; nesse caso, use o esforço `high`.
+Do M3 ao M6 o executor é um subagente Claude Sonnet 5.5 (decisões 22, 26, 31 e 35 do `PROGRESSO.md`; no M6, com esforço `medium`), uma tarefa por vez, numa worktree própria. O comando abaixo vale quando o Codex for o executor; nesse caso, use o esforço `high`.
 
 A skill **taste** é a `design-taste-frontend`, em `~/.agents/skills` (decisão 25). Tarefas de tela leem o `SKILL.md` e `references/app-screens.md`.
 
