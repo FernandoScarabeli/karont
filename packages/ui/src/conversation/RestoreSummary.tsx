@@ -117,10 +117,10 @@ export const RestoreSummary = memo(function RestoreSummary({
           {previewError}
         </p>
       ) : null}
-      {preview ? (
+      {model?.kind === "changes" || preview ? (
         <Dialog
           // A mesma conta da linha acima: a prévia conta o renomeado como dois caminhos.
-          description={t.restore.undoDescription(view.point?.changedFiles ?? preview.files)}
+          description={t.restore.undoDescription(view.point?.changedFiles ?? preview?.files ?? 0)}
           footer={
             <>
               <Button disabled={undoing} onClick={closeDialog} ref={cancelRef}>
@@ -133,11 +133,11 @@ export const RestoreSummary = memo(function RestoreSummary({
           }
           initialFocusRef={cancelRef}
           onClose={closeDialog}
-          open
+          open={preview !== null}
           returnFocusRef={viewButtonRef}
           title={t.restore.undoTitle}
         >
-          <UndoWarnings preview={preview} />
+          {preview ? <UndoWarnings preview={preview} /> : null}
           {undoError ? (
             <p className={styles.dialogError} role="alert">
               <TriangleAlert aria-hidden="true" size={14} />

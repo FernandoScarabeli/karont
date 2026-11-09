@@ -86,6 +86,7 @@ import { closeRestorePanel, setRestoreBusy, useRestorePanelMessage } from "./res
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
 import { useQueueStatus } from "./useQueueStatus.ts";
+import { WorktreeStrip } from "./WorktreeStrip.tsx";
 import { getFinalRunningActions } from "./workingLabel.ts";
 
 type ComposerFile = ResultOf<"composer.files">["files"][number];
@@ -1546,11 +1547,26 @@ export function ConversationView({
             ) : null}
           </span>
         </div>
+        <WorktreeStrip
+          busy={isWorking || isQueued || isWaiting}
+          projectId={conversation.projectId}
+          worktreeId={conversation.worktreeId}
+        />
       </div>
     ) : (
       <ConversationLoadingStrip />
     );
-  }, [conversation, copyFolderPath, folderPath, gitInfo, gitInfoLoading, revealLoadedData]);
+  }, [
+    conversation,
+    copyFolderPath,
+    folderPath,
+    gitInfo,
+    gitInfoLoading,
+    isQueued,
+    isWaiting,
+    isWorking,
+    revealLoadedData,
+  ]);
   const composerStop = useCallback(() => void stopAgent(), [stopAgent]);
   const composerSubmit = useCallback(
     () =>

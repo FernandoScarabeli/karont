@@ -5,6 +5,7 @@ import type {
   Conversation,
   ConversationAttachment,
   ResultOf,
+  Worktree,
 } from "@karont/contract";
 import { BridgeError } from "@karont/contract";
 import { Folder, TriangleAlert } from "lucide-react";
@@ -33,6 +34,8 @@ import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { resolveInitialAgent, TERMINAL_CHOICE } from "../projects/initialAgent.ts";
 import { getProjectIcon } from "../projects/projectIcons.ts";
 import { useProject } from "../projects/useProjects.ts";
+import { upsertWorktree } from "../projects/useWorktrees.ts";
+import { shouldOfferSeparateCopy } from "../projects/worktreeOffer.ts";
 import {
   AttachmentChips,
   AttachmentPicker,
@@ -60,7 +63,7 @@ import {
 import { GitBranchLabel, useGitInfo } from "./GitBranch.tsx";
 import { resolveModelId } from "./modelCatalog.ts";
 import styles from "./NewConversationView.module.css";
-import { upsertConversation } from "./useConversationIndex.ts";
+import { upsertConversation, useConversationIndex } from "./useConversationIndex.ts";
 
 type ComposerFile = ResultOf<"composer.files">["files"][number];
 
@@ -103,6 +106,11 @@ export function NewConversationView({
   const [folderDialogPath, setFolderDialogPath] = useState("");
   const [folderDialogError, setFolderDialogError] = useState("");
   const [error, setError] = useState("");
+  const [offerOpen, setOfferOpen] = useState(false);
+  const [creatingCopy, setCreatingCopy] = useState(false);
+  const [offerError, setOfferError] = useState("");
+  const offerCopyRef = useRef<Worktree | null>(null);
+  const copyButtonRef = useRef<HTMLButtonElement>(null);
   const [agentsError, setAgentsError] = useState(false);
   const [models, setModels] = useState<AgentModels | null>(null);
   const [capabilities, setCapabilities] = useState<AgentCapabilities | null>(null);
@@ -254,6 +262,7 @@ export function NewConversationView({
   const gitPath = workingPath === PERSONAL_FOLDER ? homePath : workingPath;
   const suggestionCwd = workingPath === PERSONAL_FOLDER ? homePath : workingPath;
   const { info: gitInfo } = useGitInfo(gitPath, "new-conversation");
+  const activeConversations = useConversationIndex().conversations;
   const isPersonalFolderSelected =
     !project && (folderPath === PERSONAL_FOLDER || folderPath === homePath);
   const folderName = isPersonalFolderSelected ? PERSONAL_FOLDER : getFolderName(workingPath);
@@ -650,7 +659,11 @@ export function NewConversationView({
     }
   }
 
-  async function openAgentConversation(value: string) {
+  async function openAgentConversation(
+    value: string,
+    options: { skipOffer?: boolean; worktree?: Worktree; onError?: (message: string) => void } = {},
+  ) {
+    const reportError = options.onError ?? setError;
     if (!bridge || isOpening || !selectedAgent || (modelListAvailable && !currentModel)) return;
     if (selectedAgent.id !== "claude" && selectedAgent.id !== "codex") {
       setError(t.chat.agentUnavailable);
@@ -664,18 +677,34 @@ export function NewConversationView({
     );
     const files: ConversationAttachment[] = composerAttachments.getRequestAttachments();
     if (!text && files.length === 0) return;
+    if (
+      !options.skipOffer &&
+      !options.worktree &&
+      shouldOfferSeparateCopy({
+        projectId: project?.id,
+        isTerminal: false,
+        usesGit: Boolean(gitInfo && (gitInfo.branch || gitInfo.detached)),
+        conversations: activeConversations,
+      })
+    ) {
+      setOfferError("");
+      setOfferOpen(true);
+      return;
+    }
     setError("");
     setIsOpening(true);
     let created: Conversation | null = null;
     try {
       const cwd =
-        workingPath === PERSONAL_FOLDER
+        options.worktree?.path ??
+        (workingPath === PERSONAL_FOLDER
           ? (homePath ?? (await bridge.request("system.info", {})).homeDir)
-          : workingPath;
+          : workingPath);
       const result = await bridge.request("conversation.create", {
         agent: selectedAgent.id,
         cwd,
         ...(project ? { projectId: project.id } : {}),
+        ...(options.worktree ? { worktreeId: options.worktree.id } : {}),
         mode,
         title: t.conversation.title,
         ...(modelListAvailable && currentModel ? { model: currentModel } : {}),
@@ -695,9 +724,10 @@ export function NewConversationView({
         ...(selectedSkills.length ? { skills: selectedSkills } : {}),
       });
       composerAttachments.clear();
+      setOfferOpen(false);
       navigate({ name: "conversation", id: created.id });
     } catch (openError) {
-      setError(
+      reportError(
         openError instanceof BridgeError && openError.message
           ? openError.message
           : t.chat.createFailed,
@@ -705,6 +735,42 @@ export function NewConversationView({
     } finally {
       setIsOpening(false);
     }
+  }
+
+  function closeOffer() {
+    if (creatingCopy || isOpening) return;
+    setOfferOpen(false);
+    setOfferError("");
+  }
+
+  function continueInProjectFolder() {
+    setOfferOpen(false);
+    setOfferError("");
+    void openAgentConversation(command, { skipOffer: true });
+  }
+
+  async function chooseSeparateCopy() {
+    if (!bridge || !project || creatingCopy || isOpening) return;
+    setOfferError("");
+    let worktree = offerCopyRef.current;
+    if (!worktree) {
+      setCreatingCopy(true);
+      try {
+        worktree = (await bridge.request("worktrees.create", { projectId: project.id })).worktree;
+        offerCopyRef.current = worktree;
+        upsertWorktree(worktree);
+      } catch (createError) {
+        setOfferError(
+          createError instanceof BridgeError && createError.message
+            ? createError.message
+            : t.worktrees.createCopyFailed,
+        );
+        return;
+      } finally {
+        setCreatingCopy(false);
+      }
+    }
+    await openAgentConversation(command, { worktree, onError: setOfferError });
   }
 
   function submitComposer() {
@@ -966,6 +1032,44 @@ export function NewConversationView({
           <span>{error}</span>
         </p>
       ) : null}
+
+      <Dialog
+        description={t.worktrees.offerDescription}
+        footer={
+          <>
+            <Button
+              disabled={creatingCopy || isOpening}
+              onClick={() => void chooseSeparateCopy()}
+              ref={copyButtonRef}
+              variant="primary"
+            >
+              {creatingCopy ? t.worktrees.creatingCopy : t.worktrees.useCopy}
+            </Button>
+            <Button
+              disabled={creatingCopy || isOpening}
+              onClick={continueInProjectFolder}
+              variant="secondary"
+            >
+              {t.worktrees.keepFolder}
+            </Button>
+            <Button disabled={creatingCopy || isOpening} onClick={closeOffer} variant="ghost">
+              {t.worktrees.cancel}
+            </Button>
+          </>
+        }
+        initialFocusRef={copyButtonRef as RefObject<HTMLElement | null>}
+        onClose={closeOffer}
+        open={offerOpen}
+        title={t.worktrees.offerTitle}
+      >
+        <p className={styles.offerNotice}>{t.worktrees.offerNotice}</p>
+        {offerError ? (
+          <p className={styles.offerError} role="alert">
+            <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.8} />
+            <span>{offerError}</span>
+          </p>
+        ) : null}
+      </Dialog>
 
       <Dialog
         description={t.conversation.folderDialogDescription}

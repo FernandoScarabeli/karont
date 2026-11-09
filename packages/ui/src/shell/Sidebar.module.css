@@ -132,6 +132,13 @@
   line-height: var(--k-leading-normal);
 }
 
+.removeProjectNote {
+  margin: 0 0 var(--k-space-2);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
 .conversationItem {
   position: relative;
   width: 100%;

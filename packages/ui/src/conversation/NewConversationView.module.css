@@ -217,3 +217,20 @@
 .connectionMessage {
   color: var(--k-color-text-secondary);
 }
+
+.offerNotice {
+  margin: 0;
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}
+
+.offerError {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin: var(--k-space-2) 0 0;
+  color: var(--k-color-danger);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}

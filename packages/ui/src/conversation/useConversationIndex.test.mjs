@@ -20,6 +20,7 @@ const {
   applyConversationStateChange,
   getConversationIndexEntry,
   pruneRemovedProjects,
+  pruneRemovedWorktrees,
   removeConversationFromIndex,
   subscribeConversationIndex,
 } = await import("./useConversationIndex.ts");
@@ -129,5 +130,39 @@ test("conversation.list com o mesmo updatedAt não devolve o projectId removido"
   const entry = getConversationIndexEntry("conversa-arquivada");
   assert.equal(entry.projectId, undefined);
   assert.equal(entry.updatedAt, archived.updatedAt);
+  unsubscribe();
+});
+
+test("worktrees.changed tira o worktreeId só das conversas daquele projeto, sem requisição", () => {
+  const inCopy = projectConversation("conversa-na-copia", "projeto-w", { worktreeId: "w1" });
+  const kept = projectConversation("conversa-na-outra", "projeto-w", { worktreeId: "w2" });
+  const elsewhere = projectConversation("conversa-em-outro", "projeto-x", { worktreeId: "w1" });
+  const plain = projectConversation("conversa-sem-copia", "projeto-w");
+  for (const item of [inCopy, kept, elsewhere, plain]) applyConversationStateChange(item);
+  let notified = 0;
+  const unsubscribe = subscribeConversationIndex("active", () => {
+    notified += 1;
+  });
+  const requestsBefore = listRequests.length;
+  notified = 0;
+
+  for (const handler of bridgeHandlers) {
+    handler({
+      event: "worktrees.changed",
+      payload: { projectId: "projeto-w", worktrees: [{ id: "w2" }] },
+    });
+  }
+
+  const updated = getConversationIndexEntry("conversa-na-copia");
+  assert.equal(updated.worktreeId, undefined);
+  assert.equal(updated.updatedAt, inCopy.updatedAt);
+  assert.equal(getConversationIndexEntry("conversa-na-outra"), kept);
+  assert.equal(getConversationIndexEntry("conversa-em-outro"), elsewhere);
+  assert.equal(getConversationIndexEntry("conversa-sem-copia"), plain);
+  assert.equal(notified, 1);
+  assert.equal(listRequests.length, requestsBefore);
+
+  pruneRemovedWorktrees("projeto-w", new Set(["w2"]));
+  assert.equal(notified, 1, "sem mudança não notifica");
   unsubscribe();
 });

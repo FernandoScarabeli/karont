@@ -122,6 +122,13 @@ function connect() {
       pruneRemovedProjects(new Set(event.payload.projects.map((project) => project.id)));
       return;
     }
+    if (event.event === "worktrees.changed") {
+      pruneRemovedWorktrees(
+        event.payload.projectId,
+        new Set(event.payload.worktrees.map((worktree) => worktree.id)),
+      );
+      return;
+    }
     if (event.event !== "conversation.stateChanged") return;
     applyConversationStateChange(event.payload.conversation);
   });
@@ -210,11 +217,39 @@ function withoutProjectId(conversation: Conversation): Conversation {
  * não existe mais, sem mexer em `updatedAt`.
  */
 export function pruneRemovedProjects(existingProjectIds: ReadonlySet<string>) {
-  const isStale = (conversation: Conversation) =>
-    conversation.projectId !== undefined && !existingProjectIds.has(conversation.projectId);
+  pruneConversations(
+    (conversation) =>
+      conversation.projectId !== undefined && !existingProjectIds.has(conversation.projectId),
+    withoutProjectId,
+  );
+}
 
+function withoutWorktreeId(conversation: Conversation): Conversation {
+  const { worktreeId: _removed, ...rest } = conversation;
+  return rest;
+}
+
+/**
+ * Remover uma cópia separada também não emite `conversation.stateChanged`. Tiramos o
+ * `worktreeId` das conversas **daquele projeto** cuja cópia não está mais na lista,
+ * sem mexer em `updatedAt` e sem pedir nada ao serviço.
+ */
+export function pruneRemovedWorktrees(projectId: string, existingWorktreeIds: ReadonlySet<string>) {
+  pruneConversations(
+    (conversation) =>
+      conversation.projectId === projectId &&
+      conversation.worktreeId !== undefined &&
+      !existingWorktreeIds.has(conversation.worktreeId),
+    withoutWorktreeId,
+  );
+}
+
+function pruneConversations(
+  isStale: (conversation: Conversation) => boolean,
+  fix: (conversation: Conversation) => Conversation,
+) {
   for (const [id, conversation] of latestConversations) {
-    if (isStale(conversation)) latestConversations.set(id, withoutProjectId(conversation));
+    if (isStale(conversation)) latestConversations.set(id, fix(conversation));
   }
   for (const bucket of ["active", "archived"] as const) {
     const current = snapshots[bucket];
@@ -222,7 +257,7 @@ export function pruneRemovedProjects(existingProjectIds: ReadonlySet<string>) {
     snapshots[bucket] = {
       ...current,
       conversations: current.conversations.map((conversation) =>
-        isStale(conversation) ? withoutProjectId(conversation) : conversation,
+        isStale(conversation) ? fix(conversation) : conversation,
       ),
     };
     notify(bucket);

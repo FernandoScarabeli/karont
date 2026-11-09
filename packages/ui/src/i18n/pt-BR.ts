@@ -127,6 +127,7 @@ export const t = {
     pinnedConversations: "Fixadas",
     recentConversations: "Recentes",
     pinnedState: "Fixada",
+    separateCopyState: "Em cópia separada",
     archivedState: "Arquivada",
     conversationActions: (title: string) => `Ações da conversa: ${title}`,
     pinConversation: "Fixar",
@@ -202,6 +203,7 @@ export const t = {
     saveFailed: "Não foi possível salvar o projeto.",
     noBridge: "Sem conexão com o serviço",
     removeTitle: (name: string) => `Remover ${name}?`,
+    removeKeepsCopies: "As cópias separadas continuam no disco.",
     removeDescription:
       "A pasta e os arquivos não são apagados. As conversas do projeto viram conversas soltas.",
     removeAction: "Remover projeto",
@@ -517,6 +519,71 @@ export const t = {
     button: "Histórico",
     listAccessibleName: "Histórico das suas mensagens",
     messageLabel: (message: string) => `Mensagem sua: ${message}`,
+  },
+  worktrees: {
+    offerTitle: "Este projeto já tem um agente trabalhando",
+    offerDescription:
+      "Dois agentes na mesma pasta podem alterar os mesmos arquivos. Uma cópia separada usa outra pasta e outra branch, e depois você traz o trabalho de volta com um clique.",
+    offerNotice:
+      "A cópia começa do último commit. Não vem com mudanças não salvas, node_modules nem arquivos ignorados, como .env.",
+    useCopy: "Usar cópia separada",
+    creatingCopy: "Criando cópia…",
+    keepFolder: "Continuar na mesma pasta",
+    cancel: "Cancelar",
+    createCopyFailed: "Não foi possível criar a cópia separada.",
+    stripBranch: (branch: string) => `Cópia separada · ${branch}`,
+    bringBack: "Trazer de volta",
+    removeCopy: "Remover cópia",
+    checking: "Verificando…",
+    merged: (target: string) => `Trazido para ${target}.`,
+    mergePreviewFailed: "Não foi possível verificar o que será trazido.",
+    statusFailed: "Não foi possível verificar esta cópia.",
+    mergeTitle: (target: string | null) =>
+      target ? `Trazer de volta para ${target}?` : "Trazer de volta",
+    close: "Fechar",
+    bring: "Trazer",
+    bringing: "Trazendo…",
+    mergeFailed: "Não foi possível trazer o trabalho de volta.",
+    blocked: {
+      missing: "A pasta da cópia não está mais no disco.",
+      busy: "Há conversa trabalhando nesta cópia. Espere terminar.",
+      "target-busy": "Há um agente trabalhando na pasta do projeto. Espere terminar.",
+      detached:
+        "A pasta do projeto não está em nenhuma branch. Escolha uma branch antes de trazer.",
+      "target-merging": (target: string) =>
+        `A branch ${target} está no meio de um merge. Conclua ou cancele antes.`,
+      "target-dirty": (target: string) =>
+        `A branch ${target} tem alterações não salvas. Salve ou descarte antes de trazer.`,
+      nothing: "Não há nada novo nesta cópia para trazer.",
+    },
+    targetDirtyList: "Arquivos com alterações não salvas",
+    conflictsText: (target: string) =>
+      `Estes arquivos têm conflito com ${target}. O Karont não resolve conflitos sozinho.`,
+    conflictsList: "Arquivos em conflito",
+    targetFallback: "a branch do projeto",
+    filesArrive: (count: number, target: string) =>
+      count === 1 ? `1 arquivo chega em ${target}.` : `${count} arquivos chegam em ${target}.`,
+    uncommittedBecomeCommit: (count: number) =>
+      count === 1
+        ? "1 arquivo ainda não salvo vira um commit na branch da cópia."
+        : `${count} arquivos ainda não salvos viram um commit na branch da cópia.`,
+    removeTitle: "Remover esta cópia?",
+    removeDescription:
+      "A pasta da cópia será apagada. A conversa continua, mas não vai conseguir mandar novas mensagens.",
+    removeBusy: (count: number) =>
+      count === 1
+        ? "Há 1 conversa trabalhando nesta cópia. Espere terminar para remover."
+        : `Há ${count} conversas trabalhando nesta cópia. Espere terminar para remover.`,
+    removeDirty: (count: number) =>
+      count === 1
+        ? "1 arquivo com mudanças não salvas será perdido."
+        : `${count} arquivos com mudanças não salvas serão perdidos.`,
+    removeUnmerged: (count: number) =>
+      count === 1
+        ? "1 commit ainda não foi trazido. A branch fica guardada no repositório."
+        : `${count} commits ainda não foram trazidos. A branch fica guardada no repositório.`,
+    removing: "Removendo…",
+    removeFailed: "Não foi possível remover a cópia.",
   },
   restore: {
     filesChanged: (count: number) =>

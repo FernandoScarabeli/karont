@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Columns2,
   Ellipsis,
+  GitFork,
   ListTodo,
   Pencil,
   Pin,
@@ -37,6 +38,7 @@ import { ProjectDialog } from "../projects/ProjectDialog.tsx";
 import { groupConversations } from "../projects/projectGroups.ts";
 import { getProjectIcon } from "../projects/projectIcons.ts";
 import { removeProjectFromStore, upsertProject, useProjects } from "../projects/useProjects.ts";
+import { useWorktrees } from "../projects/useWorktrees.ts";
 import { TerminalCloseButton } from "../terminal/TerminalCloseButton.tsx";
 import {
   getTerminalDisplayDetails,
@@ -116,6 +118,7 @@ const ConversationRow = memo(function ConversationRow({
     stateText,
     isUnread ? t.shell.unreadResponse : "",
     conversation.pinnedAt ? t.shell.pinnedState : "",
+    conversation.worktreeId ? t.shell.separateCopyState : "",
     showArchived ? t.shell.archivedState : "",
   ]
     .filter(Boolean)
@@ -192,6 +195,9 @@ const ConversationRow = memo(function ConversationRow({
           {conversation.pinnedAt && !showArchived ? (
             <Pin aria-hidden="true" className={styles.pinnedMarker} size={13} />
           ) : null}
+          {conversation.worktreeId ? (
+            <GitFork aria-hidden="true" className={styles.pinnedMarker} size={13} />
+          ) : null}
           {statusClass ? (
             <span aria-hidden="true" className={`${styles.conversationStatusDot} ${statusClass}`} />
           ) : null}
@@ -252,6 +258,7 @@ export function Sidebar() {
   const collapsedTouchedRef = useRef(false);
   const [projectDialog, setProjectDialog] = useState<ProjectDialogState>(null);
   const [projectToRemove, setProjectToRemove] = useState<Project | null>(null);
+  const projectToRemoveWorktrees = useWorktrees(projectToRemove?.id).worktrees;
   const [isRemovingProject, setIsRemovingProject] = useState(false);
   const [removeProjectError, setRemoveProjectError] = useState("");
   const projectButtonRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -1246,6 +1253,9 @@ export function Sidebar() {
         returnFocusRef={removeProjectReturnFocusRef}
         title={t.projects.removeTitle(projectToRemove?.name ?? "")}
       >
+        {projectToRemoveWorktrees.length > 0 ? (
+          <p className={styles.removeProjectNote}>{t.projects.removeKeepsCopies}</p>
+        ) : null}
         {removeProjectError ? (
           <p className={styles.closeError} role="alert">
             {removeProjectError}
