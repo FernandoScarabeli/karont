@@ -1,0 +1,309 @@
+/* Medidas provisórias do protótipo. */
+.page {
+  --k-dot-content-max-width: 960px;
+  --k-dot-control-min-width: 220px;
+  --k-dot-swatch-size: 28px;
+  --k-dot-check-size: 16px;
+  --k-dot-selected-ring: 2px;
+  --k-dot-range-height: 20px;
+  --k-dot-chat-name-width: 6.5em;
+  min-height: 100%;
+  padding: var(--k-space-6) var(--k-space-4);
+  background: var(--k-color-bg-app);
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-sans);
+}
+
+.content {
+  display: grid;
+  gap: var(--k-space-8);
+  width: 100%;
+  max-width: var(--k-dot-content-max-width);
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  padding-bottom: var(--k-space-5);
+  border-bottom: var(--k-border-width) solid var(--k-color-border);
+}
+
+.heading {
+  margin: 0;
+  font-family: var(--k-font-brand);
+  font-size: var(--k-text-28);
+  font-weight: var(--k-weight-brand);
+  line-height: var(--k-leading-tight);
+}
+
+.badge {
+  margin: 0;
+  padding: var(--k-space-1) var(--k-space-3);
+  border: var(--k-border-width) solid var(--k-color-border-strong);
+  border-radius: var(--k-radius-full);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}
+
+.panel {
+  padding: var(--k-space-5);
+  border: var(--k-border-width) solid var(--k-color-border);
+  border-radius: var(--k-radius-xl);
+  background: var(--k-color-bg-sheet);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--k-dot-control-min-width)), 1fr));
+  gap: var(--k-space-5) var(--k-space-6);
+}
+
+.field {
+  display: grid;
+  align-content: start;
+  gap: var(--k-space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  display: block;
+  padding: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
+.choice {
+  min-height: var(--k-control-height-md);
+  padding: 0 var(--k-space-3);
+  border: var(--k-border-width) solid var(--k-color-border-strong);
+  border-radius: var(--k-radius-md);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  font: inherit;
+  font-size: var(--k-text-13);
+  cursor: pointer;
+}
+
+.choice:hover {
+  background: var(--k-color-bg-hover);
+}
+
+.choice[aria-pressed="true"] {
+  border-color: var(--k-color-border-muted);
+  background: var(--k-color-bg-control);
+  color: var(--k-color-text-primary);
+  font-weight: var(--k-weight-semibold);
+}
+
+.choice:focus-visible,
+.swatch:focus-visible,
+.range:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.rangeHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+}
+
+.rangeValue {
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
+  font-variant-numeric: tabular-nums;
+}
+
+.range {
+  width: 100%;
+  height: var(--k-dot-range-height);
+  margin: 0;
+  accent-color: var(--k-color-text-secondary);
+}
+
+.swatch {
+  display: grid;
+  width: var(--k-dot-swatch-size);
+  height: var(--k-dot-swatch-size);
+  place-items: center;
+  padding: 0;
+  border: var(--k-border-width) solid var(--k-color-border-muted);
+  border-radius: var(--k-radius-full);
+  color: var(--k-color-on-primary);
+  cursor: pointer;
+}
+
+.swatch[aria-pressed="true"] {
+  box-shadow:
+    0 0 0 var(--k-focus-ring-offset) var(--k-color-bg-sheet),
+    0 0 0 calc(var(--k-focus-ring-offset) + var(--k-dot-selected-ring)) var(--k-color-text-primary);
+}
+
+.swatchIvory {
+  background: var(--k-accent-ivory);
+}
+
+.swatchMagenta {
+  background: var(--k-accent-magenta);
+}
+
+.swatchTurquoise {
+  background: var(--k-accent-turquoise);
+}
+
+.swatchLime {
+  background: var(--k-accent-lime);
+}
+
+.swatchBlue {
+  background: var(--k-accent-blue);
+}
+
+.swatchCoral {
+  background: var(--k-accent-coral);
+}
+
+.check {
+  width: var(--k-dot-check-size);
+  height: var(--k-dot-check-size);
+}
+
+.section {
+  display: grid;
+  gap: var(--k-space-4);
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--k-text-16);
+  font-weight: var(--k-weight-semibold);
+  line-height: var(--k-leading-tight);
+}
+
+.tables {
+  display: grid;
+  gap: var(--k-space-6);
+}
+
+.tableWrap {
+  container: dot-table / inline-size;
+  min-width: 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--k-color-bg-app);
+  font-size: var(--k-text-13);
+}
+
+.caption {
+  padding-bottom: var(--k-space-2);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  font-weight: var(--k-weight-medium);
+  text-align: left;
+}
+
+.tableHead th,
+.moodCell {
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-regular);
+  text-align: left;
+}
+
+.tableHead th {
+  padding: var(--k-space-2) var(--k-space-3);
+  border-bottom: var(--k-border-width) solid var(--k-color-border-strong);
+}
+
+.row {
+  border-bottom: var(--k-border-width) solid var(--k-color-border);
+}
+
+.moodCell,
+.cell {
+  padding: var(--k-space-3);
+  background: var(--k-color-bg-app);
+  vertical-align: middle;
+}
+
+.cell > svg {
+  display: block;
+}
+
+.chatSample {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.chatName {
+  min-width: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-tight);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@container dot-table (max-width: 560px) {
+  .table,
+  .table tbody {
+    display: block;
+  }
+
+  .tableHead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    column-gap: var(--k-space-2);
+  }
+
+  .moodCell {
+    grid-column: 1 / -1;
+    padding-bottom: 0;
+  }
+
+  .cell {
+    padding-inline: var(--k-space-1);
+  }
+
+  .chatName {
+    max-width: var(--k-dot-chat-name-width);
+  }
+}
