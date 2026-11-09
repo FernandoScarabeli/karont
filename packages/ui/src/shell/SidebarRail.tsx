@@ -2,7 +2,11 @@ import { Inbox, ListTodo, Settings, SquarePen } from "lucide-react";
 import type { ReactNode } from "react";
 import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
+import { useUsageData, useUsageLayout } from "../usage/UsageContext.tsx";
+import { UsageRing } from "../usage/UsageRing.tsx";
+import { useMinuteClock } from "../usage/useMinuteClock.ts";
 import styles from "./SidebarRail.module.css";
+import { useSidebarShell } from "./SidebarShell.tsx";
 
 type RailButtonProps = {
   label: string;
@@ -42,6 +46,30 @@ function RailButton({
         ) : null}
       </button>
     </Tooltip>
+  );
+}
+
+/** Anéis de uso, sempre compactos. Sem dados, não existe (nem espaço). O relógio fica aqui dentro. */
+function RailUsage() {
+  const { rows } = useUsageData();
+  const { setCompact } = useUsageLayout();
+  const { collapsed, toggle } = useSidebarShell();
+  const now = useMinuteClock();
+  if (rows.length === 0) return null;
+
+  const open = () => {
+    setCompact(false);
+    if (collapsed) toggle();
+  };
+
+  return (
+    <ul className={styles.rings}>
+      {rows.map((row) => (
+        <li className={styles.ringItem} key={row.agent}>
+          <UsageRing now={now} onClick={open} row={row} tooltipSide="end" />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -91,12 +119,15 @@ export function SidebarRail({
           label={t.shell.tasks}
         />
       </div>
-      <RailButton
-        active={settingsActive}
-        icon={<Settings aria-hidden="true" size={16} strokeWidth={1.75} />}
-        label={t.shell.settings}
-        onClick={onSettings}
-      />
+      <div className={styles.bottom}>
+        <RailUsage />
+        <RailButton
+          active={settingsActive}
+          icon={<Settings aria-hidden="true" size={16} strokeWidth={1.75} />}
+          label={t.shell.settings}
+          onClick={onSettings}
+        />
+      </div>
     </div>
   );
 }

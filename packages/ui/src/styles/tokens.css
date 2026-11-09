@@ -218,6 +218,9 @@
   --k-usage-column-gap: 4px;
   --k-duration-usage-spin: 900ms;
   --k-usage-bar-height: 6px;
+  --k-usage-ring-size: 32px;
+  --k-usage-ring-icon-size: 16px;
+  --k-usage-ring-stroke: 3px;
   --k-avatar-size-sm: 20px;
   --k-avatar-size-lg: 72px;
   --k-avatar-icon-sm: 12px;

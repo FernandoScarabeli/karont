@@ -9,6 +9,8 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--k-space-2);
+  container-type: size;
+  gap: var(--k-space-2);
   background: var(--k-color-bg-app);
   opacity: 0;
   visibility: hidden;
@@ -26,6 +28,7 @@
 }
 
 .group {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: var(--k-space-1);
@@ -79,4 +82,44 @@
   font-variant-numeric: tabular-nums;
   line-height: var(--k-space-4);
   text-align: center;
+}
+
+/* Anéis de uso logo acima da engrenagem. A engrenagem nunca sai da faixa. */
+.bottom {
+  display: flex;
+  min-height: 0;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.rings {
+  display: flex;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  list-style: none;
+}
+
+.ringItem {
+  display: flex;
+}
+
+/*
+ * Só rola quando a faixa é baixa: rolar prenderia a dica (aberta para o lado) dentro do grupo.
+ * O ponto de quebra é literal porque @container não aceita variáveis.
+ */
+@container (max-height: 480px) {
+  .rings {
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .rings::-webkit-scrollbar {
+    display: none;
+  }
 }

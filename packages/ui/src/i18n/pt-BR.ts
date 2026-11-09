@@ -924,6 +924,8 @@ export const t = {
   usage: {
     title: "Uso",
     refresh: "Atualizar uso",
+    collapse: "Recolher uso",
+    expand: "Expandir uso",
     expired: "zerou",
     windowLabel: { five_hour: "5 h", weekly: "Semana" },
     windowSpoken: { five_hour: "5 horas", weekly: "semana" },
@@ -931,5 +933,15 @@ export const t = {
       percent === null
         ? `${agent}, ${window}: já zerou`
         : `${agent}, ${window}: ${percent}% usado${resets ? `, zera em ${resets}` : ""}`,
+    /** Parte do rótulo do anel, uma por janela: "5 horas, 49% usado, zera em 3h". */
+    ringPart: (window: string, percent: number | null, resets: string | null) =>
+      percent === null
+        ? `${window}, já zerou`
+        : `${window}, ${percent}% usado${resets ? `, zera em ${resets}` : ""}`,
+    ringLabel: (agent: string, parts: string[]) => `${agent}: ${parts.join("; ")}`,
+    /** Dica curta do anel: "Claude Code · 5 h 49% · Semana 68%". */
+    ringTip: (agent: string, parts: string[]) => [agent, ...parts].join(" · "),
+    ringTipPart: (window: string, percent: number | null) =>
+      percent === null ? `${window} zerou` : `${window} ${percent}%`,
   },
 } as const;

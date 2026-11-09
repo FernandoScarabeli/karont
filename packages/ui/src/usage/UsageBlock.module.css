@@ -16,6 +16,12 @@
   gap: var(--k-space-2);
 }
 
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
 .title {
   margin: 0;
   color: var(--k-color-text-secondary);
@@ -35,7 +41,8 @@
 }
 
 .agents,
-.windows {
+.windows,
+.rings {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -45,6 +52,27 @@
   display: flex;
   flex-direction: column;
   gap: var(--k-space-3);
+}
+
+.rings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
+.ringItem {
+  display: flex;
+}
+
+/* Troca entre compacto e expandido: entra com um fade curto. */
+.swap {
+  animation: usageSwap var(--k-motion-moderate) var(--k-ease);
+}
+
+@keyframes usageSwap {
+  from {
+    opacity: 0;
+  }
 }
 
 .agent {
@@ -170,7 +198,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spinning {
+  .spinning,
+  .swap {
     animation: none;
   }
 }

@@ -1,33 +1,16 @@
 import type { UsageWindow } from "@karont/contract";
-import { RefreshCw } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import { useId } from "react";
 import { AgentIcon } from "../agents/AgentIcon.tsx";
 import { IconButton } from "../components/IconButton/IconButton.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { formatAgoShort, formatDuration, formatResetShort, windowView } from "./format.ts";
 import styles from "./UsageBlock.module.css";
-import { useUsage } from "./useUsage.ts";
+import { useUsageData, useUsageLayout } from "./UsageContext.tsx";
+import { UsageRing } from "./UsageRing.tsx";
+import { useMinuteClock } from "./useMinuteClock.ts";
 
-const CLOCK_MS = 60_000;
 const ATTENTION_PERCENT = 80;
-const WINDOW_ORDER: UsageWindow["id"][] = ["five_hour", "weekly"];
-
-/** Relógio de 1 minuto, só com a janela visível. O estado fica aqui para não render a Sidebar. */
-function useMinuteClock(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const tick = () => {
-      if (document.visibilityState === "visible") setNow(Date.now());
-    };
-    const timer = setInterval(tick, CLOCK_MS);
-    document.addEventListener("visibilitychange", tick);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", tick);
-    };
-  }, []);
-  return now;
-}
 
 function barClass(percent: number | null): string {
   if (percent !== null && percent >= 100) return styles.barDanger ?? "";
@@ -75,17 +58,11 @@ function WindowRow({
 /** Uso dos agentes, sempre visível acima do perfil. Sem dados de nenhum agente, não existe. */
 export function UsageBlock() {
   const titleId = useId();
-  const { usage, names, refreshing, forceRefresh } = useUsage();
+  const { rows, refreshing, forceRefresh } = useUsageData();
+  const { ready, compact, setCompact } = useUsageLayout();
   const now = useMinuteClock();
 
-  const rows = usage
-    .map((item) => ({
-      ...item,
-      windows: WINDOW_ORDER.flatMap((id) => item.windows.filter((window) => window.id === id)),
-    }))
-    .filter((item) => item.windows.length > 0);
-
-  if (rows.length === 0) return null;
+  if (!ready || rows.length === 0) return null;
 
   return (
     <section aria-labelledby={titleId} className={styles.block}>
@@ -93,40 +70,67 @@ export function UsageBlock() {
         <h2 className={styles.title} id={titleId}>
           {t.usage.title}
         </h2>
-        <IconButton
-          disabled={refreshing}
-          icon={
-            <RefreshCw
-              aria-hidden="true"
-              className={refreshing ? styles.spinning : undefined}
-              size={14}
-              strokeWidth={1.75}
-            />
-          }
-          label={t.usage.refresh}
-          onClick={forceRefresh}
-          size="sm"
-        />
+        <div className={styles.actions}>
+          <IconButton
+            disabled={refreshing}
+            icon={
+              <RefreshCw
+                aria-hidden="true"
+                className={refreshing ? styles.spinning : undefined}
+                size={14}
+                strokeWidth={1.75}
+              />
+            }
+            label={t.usage.refresh}
+            onClick={forceRefresh}
+            size="sm"
+          />
+          <IconButton
+            aria-expanded={!compact}
+            icon={
+              compact ? (
+                <ChevronUp aria-hidden="true" size={14} strokeWidth={1.75} />
+              ) : (
+                <ChevronDown aria-hidden="true" size={14} strokeWidth={1.75} />
+              )
+            }
+            label={compact ? t.usage.expand : t.usage.collapse}
+            onClick={() => setCompact(!compact)}
+            size="sm"
+          />
+        </div>
       </div>
-      <ul className={styles.agents}>
-        {rows.map((item) => {
-          const name = names.get(item.agent) ?? item.agent;
-          return (
+      {compact ? (
+        <ul className={`${styles.rings} ${styles.swap}`}>
+          {rows.map((item) => (
+            <li className={styles.ringItem} key={item.agent}>
+              <UsageRing
+                now={now}
+                onClick={() => setCompact(false)}
+                row={item}
+                tooltipAlign="start"
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul className={`${styles.agents} ${styles.swap}`}>
+          {rows.map((item) => (
             <li className={styles.agent} key={item.agent}>
               <div className={styles.agentHeader}>
                 <AgentIcon agentId={item.agent} className={styles.agentIcon} />
-                <h3 className={styles.agentName}>{name}</h3>
+                <h3 className={styles.agentName}>{item.name}</h3>
                 <span className={styles.updated}>{formatAgoShort(item.observedAt, now)}</span>
               </div>
               <ul className={styles.windows}>
                 {item.windows.map((window) => (
-                  <WindowRow agentName={name} key={window.id} now={now} window={window} />
+                  <WindowRow agentName={item.name} key={window.id} now={now} window={window} />
                 ))}
               </ul>
             </li>
-          );
-        })}
-      </ul>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

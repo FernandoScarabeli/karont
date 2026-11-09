@@ -54,3 +54,22 @@ export function windowView(window: UsageWindow, now: number): WindowView {
   if (remaining <= 0) return { expired: true, percent: null, resetsIn: null };
   return { expired: false, percent: window.usedPercent, resetsIn: remaining };
 }
+
+/**
+ * A janela não vencida com a maior porcentagem (5 horas ou semana), para o anel.
+ * `null` quando todas venceram (ou não há janela). Em empate, vale a primeira.
+ */
+export function ringValue(
+  windows: readonly UsageWindow[],
+  now: number,
+): { percent: number; id: UsageWindow["id"] } | null {
+  let best: { percent: number; id: UsageWindow["id"] } | null = null;
+  for (const window of windows) {
+    const view = windowView(window, now);
+    if (view.percent === null) continue;
+    if (best === null || view.percent > best.percent) {
+      best = { percent: view.percent, id: window.id };
+    }
+  }
+  return best;
+}

@@ -5,6 +5,7 @@ import { Onboarding } from "../onboarding/Onboarding.tsx";
 import { OnboardingProvider, useOnboarding } from "../onboarding/OnboardingContext.tsx";
 import { ProfileProvider } from "../profile/ProfileContext.tsx";
 import { decideSearchShortcut } from "../projects/searchPanelState.ts";
+import { UsageProvider } from "../usage/UsageContext.tsx";
 import styles from "./AppShell.module.css";
 import { Sheet } from "./Sheet.tsx";
 import { Sidebar } from "./Sidebar.tsx";
@@ -91,9 +92,11 @@ export function AppShell() {
     <AccentProvider>
       <NavigationProvider>
         <ProfileProvider>
-          <OnboardingProvider>
-            <ShellContent />
-          </OnboardingProvider>
+          <UsageProvider>
+            <OnboardingProvider>
+              <ShellContent />
+            </OnboardingProvider>
+          </UsageProvider>
         </ProfileProvider>
       </NavigationProvider>
     </AccentProvider>

@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatAgoShort, formatDuration, formatResetShort, windowView } from "./format.ts";
+import {
+  formatAgoShort,
+  formatDuration,
+  formatResetShort,
+  ringValue,
+  windowView,
+} from "./format.ts";
 
 const SEC = 1000;
 const MIN = 60 * SEC;
@@ -105,4 +111,73 @@ test("windowView: janela vencida esconde a porcentagem antiga", () => {
     percent: 90,
     resetsIn: SEC,
   });
+});
+
+test("ringValue: escolhe a janela com a maior porcentagem", () => {
+  const now = Date.parse("2026-11-09T12:00:00.000Z");
+  const future = new Date(now + HOUR).toISOString();
+  assert.deepEqual(
+    ringValue(
+      [
+        { id: "five_hour", usedPercent: 49, resetsAt: future },
+        { id: "weekly", usedPercent: 68, resetsAt: future },
+      ],
+      now,
+    ),
+    { percent: 68, id: "weekly" },
+  );
+  assert.deepEqual(
+    ringValue(
+      [
+        { id: "five_hour", usedPercent: 90, resetsAt: future },
+        { id: "weekly", usedPercent: 68, resetsAt: future },
+      ],
+      now,
+    ),
+    { percent: 90, id: "five_hour" },
+  );
+});
+
+test("ringValue: ignora a janela vencida, mesmo a maior", () => {
+  const now = Date.parse("2026-11-09T12:00:00.000Z");
+  assert.deepEqual(
+    ringValue(
+      [
+        { id: "five_hour", usedPercent: 27, resetsAt: new Date(now + HOUR).toISOString() },
+        { id: "weekly", usedPercent: 91, resetsAt: new Date(now - MIN).toISOString() },
+      ],
+      now,
+    ),
+    { percent: 27, id: "five_hour" },
+  );
+});
+
+test("ringValue: todas vencidas ou nenhuma janela dá null", () => {
+  const now = Date.parse("2026-11-09T12:00:00.000Z");
+  const past = new Date(now - MIN).toISOString();
+  assert.equal(
+    ringValue(
+      [
+        { id: "five_hour", usedPercent: 50, resetsAt: past },
+        { id: "weekly", usedPercent: 91, resetsAt: past },
+      ],
+      now,
+    ),
+    null,
+  );
+  assert.equal(ringValue([], now), null);
+});
+
+test("ringValue: sem resetsAt a janela vale", () => {
+  const now = Date.parse("2026-11-09T12:00:00.000Z");
+  assert.deepEqual(
+    ringValue(
+      [
+        { id: "five_hour", usedPercent: 40, resetsAt: null },
+        { id: "weekly", usedPercent: 10, resetsAt: new Date(now + HOUR).toISOString() },
+      ],
+      now,
+    ),
+    { percent: 40, id: "five_hour" },
+  );
 });
