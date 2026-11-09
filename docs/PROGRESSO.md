@@ -105,9 +105,10 @@ Repositório recriado do zero em 2026-10-31.
 27. **Sem aviso de "não usa Git"** (2026-11-09): o dono mandou tirar o aviso do chat, sem etiqueta nem faixa no lugar. Sem Git, "ver mudanças" e "desfazer" só não aparecem.
 28. **Testes com agente real** (2026-11-09): usam o Codex `gpt-6-luna` em esforço `low`, para não gastar o limite do Claude. Se algo só puder ser testado no Claude real, perguntar antes.
 29. **Telas do M4** (aprovadas em 2026-11-09): a tela do workspace aparece sem conversa aberta na aba, ou ao clicar de novo na aba em que já se está. Tem a linha do dia, o campo de mensagem com escolha de projeto e um cartão por projeto. O Início tem o que precisa de você e um cartão por workspace. "Nova conversa" abre limpa, sem cartões. Cartão de projeto abre conversa nova nele; cartão de workspace abre a aba.
+30. **Sidebar e divisão** (aprovado em 2026-11-09): a sidebar tem largura ajustável e fecha deixando uma faixa com ícones de atalho, inspirada no Splitter de ui.productdevbook.com. Esse componente não está publicado no npm nem tem o código no GitHub, então o comportamento é feito com `react-resizable-panels`, já aprovada. "Dividir" abre sempre à direita, sem menu. O destaque ao arrastar um painel só aparece onde soltar muda o layout.
 
 ## M4 — estado
-Branch `m4-navegacao`, a partir da `main` com o M3. Feito: B1 (workspaces no serviço), F1 (abas e sidebar), B2 (resumo agregado).
+Branch `m4-navegacao`, a partir da `main` com o M3. Feito: B1 (workspaces no serviço), F1 (abas e sidebar), B2 (resumo agregado), F2 (telas do workspace e do Início), B3 e F3 (caixa de entrada), B4 e F4 (busca), E2E dos fluxos do M4. Falta: F5 (sidebar e divisão), teste real, medição e PR.
 
 ## M3 — estado em 2026-11-08 (fim da noite, sem o dono)
 Juntado na `main` em 2026-11-09 (PR #5, CI verde). Feito, nesta ordem: B1, F1, B3, F3, B2a, B2b, F2, B4a, B4b, F4.
