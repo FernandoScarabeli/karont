@@ -106,6 +106,14 @@ Repositório recriado do zero em 2026-10-31.
 28. **Testes com agente real** (2026-11-09): usam o Codex `gpt-6-luna` em esforço `low`, para não gastar o limite do Claude. Se algo só puder ser testado no Claude real, perguntar antes.
 29. **Telas do M4** (aprovadas em 2026-11-09): a tela do workspace aparece sem conversa aberta na aba, ou ao clicar de novo na aba em que já se está. Tem a linha do dia, o campo de mensagem com escolha de projeto e um cartão por projeto. O Início tem o que precisa de você e um cartão por workspace. "Nova conversa" abre limpa, sem cartões. Cartão de projeto abre conversa nova nele; cartão de workspace abre a aba.
 30. **Sidebar e divisão** (aprovado em 2026-11-09): a sidebar tem largura ajustável e fecha deixando uma faixa com ícones de atalho, inspirada no Splitter de ui.productdevbook.com. Esse componente não está publicado no npm nem tem o código no GitHub, então o comportamento é feito com `react-resizable-panels`, já aprovada. "Dividir" abre sempre à direita, sem menu. O destaque ao arrastar um painel só aparece onde soltar muda o layout.
+31. **Plano do M5** (aprovado em 2026-11-09):
+    - Ordem: B1 serviço (estado da primeira abertura e diagnóstico), F1 Perfil, F2 Aparência, F3 Diagnóstico, F4 Primeira abertura e fechamento.
+    - Primeira abertura em tela cheia, sem sidebar, um passo por vez, com voltar. O visual segue o que o app já tem.
+    - Quem já tem conversas ou projetos não vê a primeira abertura sozinho; "Abrir de novo" nas Configurações mostra sem apagar nada.
+    - Sem nenhum agente encontrado, a pessoa segue e termina num Terminal.
+    - A foto é reduzida pelo app e guardada no banco; o arquivo original não é tocado.
+    - A cor escolhida muda só o destaque da marca. "Trabalhando" e "precisa de você" mantêm as cores deles.
+    - Executor: subagentes Claude Sonnet 5.5, uma tarefa por vez, numa worktree própria, como no M3 e no M4.
 
 ## M4 — estado
 Branch `m4-navegacao`, a partir da `main` com o M3. Feito, nesta ordem: B1 (workspaces no serviço), F1 (abas e sidebar), F1b (ajustes do dono), B2 (resumo agregado), F2 (telas do workspace e do Início), B3 e F3 (caixa de entrada), B4 e F4 (busca), E2E dos fluxos, F5 (sidebar ajustável, faixa de ícones, botão junto da marca, composer em painel estreito, divisão direta com animação de 240 ms). Falta o PR.
