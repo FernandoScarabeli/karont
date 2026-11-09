@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import os from "node:os";
 import type { DatabaseSync } from "node:sqlite";
 import {
+  type AgentUsage,
   type AnyEvent,
   agentUsageSchema,
   CONTRACT_VERSION,
@@ -10,10 +11,13 @@ import {
   type ParsedRequest,
 } from "@karont/contract";
 import type { AdapterFactory, AgentAdapterRegistration } from "./agents/adapter.ts";
+import { createClaudeAdapterRegistration } from "./agents/claude-adapter.ts";
+import { createCodexAdapterRegistration } from "./agents/codex-adapter.ts";
 import { ConversationManager } from "./agents/conversation-manager.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
 import { AgentRegistry } from "./agents/registry.ts";
 import { USAGE_SETTING_PREFIX } from "./agents/usage.ts";
+import { UsageRefresher } from "./agents/usage-refresh.ts";
 import { DeltaCoalescer } from "./coalescer.ts";
 import {
   createProject,
@@ -117,6 +121,25 @@ export function createHandlers({
     env,
     ...(adapterFactory ? { adapterFactory } : {}),
     ...(agentRegistrations ? { agentRegistrations } : {}),
+  });
+  const listUsage = (): AgentUsage[] =>
+    listSettingsByPrefix(db, USAGE_SETTING_PREFIX).flatMap(({ value }) => {
+      const parsed = agentUsageSchema.safeParse(value);
+      return parsed.success ? [parsed.data] : [];
+    });
+  const usageRegistrations = new Map<string, AgentAdapterRegistration>([
+    ["claude", createClaudeAdapterRegistration({ env })],
+    ["codex", createCodexAdapterRegistration({ env })],
+    ...Object.entries(agentRegistrations ?? {}),
+  ]);
+  const usageRefresher = new UsageRefresher({
+    db,
+    dataDir,
+    foundAgents: async () =>
+      (await agentRegistry.list()).agents.filter((agent) => agent.found).map((agent) => agent.id),
+    registrations: () => usageRegistrations,
+    emit: broadcast,
+    list: listUsage,
   });
   const handle = async (request: ParsedRequest, conn: HandlerConnection): Promise<unknown> => {
     switch (request.method) {
@@ -339,12 +362,9 @@ export function createHandlers({
       case "restore.undo":
         return conversationManager.undo(request.params.conversationId, request.params.messageId);
       case "usage.list":
-        return {
-          usage: listSettingsByPrefix(db, USAGE_SETTING_PREFIX).flatMap(({ value }) => {
-            const parsed = agentUsageSchema.safeParse(value);
-            return parsed.success ? [parsed.data] : [];
-          }),
-        };
+        return { usage: listUsage() };
+      case "usage.refresh":
+        return { usage: await usageRefresher.refresh({ force: request.params.force === true }) };
       case "agent.models":
         return conversationManager.models(request.params.agent);
       case "agent.capabilities":
@@ -573,7 +593,10 @@ export function createHandlers({
   return {
     handle,
     closeTerminals: () => terminalManager.closeAll(),
-    closeAgents: () => conversationManager.close(),
+    closeAgents: async () => {
+      await usageRefresher.dispose();
+      await conversationManager.close();
+    },
   };
 }
 

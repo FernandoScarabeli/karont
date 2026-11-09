@@ -10,6 +10,7 @@ import {
   type MessagePart,
   type MessageSource,
   reasoningEffortSchema,
+  type UsageWindow,
 } from "@karont/contract";
 import { validateFolder } from "../folders.ts";
 import type {
@@ -20,13 +21,14 @@ import type {
   AdapterStartOptions,
   AgentAdapter,
   AgentAdapterRegistration,
+  UsageReadOptions,
 } from "./adapter.ts";
 import { claudeContextUsage } from "./context-usage.ts";
 import { resolveAgentCommand } from "./detect.ts";
 import { removeSkillMentions } from "./skill-mention.ts";
 import { makeMessageSource, mergeMessageSources } from "./source-metadata.ts";
 import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
-import { parseClaudeRateLimit } from "./usage.ts";
+import { parseClaudeRateLimit, parseClaudeUsage, runUsageProbe } from "./usage.ts";
 
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
 const MAX_STDOUT_LINE_BYTES = 32 * 1024 * 1024;
@@ -1138,6 +1140,71 @@ export function createClaudeAdapterRegistration(
     },
     loadSkills: createClaudeSkillLoader(options),
     loadModels: createClaudeModelLoader(options),
+    readUsage: createClaudeUsageReader(options),
+  };
+}
+
+// Lê o uso pelo `get_usage` da CLI, sem mandar mensagem ao modelo.
+export function createClaudeUsageReader(
+  options: ClaudeAdapterOptions & { timeoutMs?: number; killAfterMs?: number } = {},
+): (read: UsageReadOptions) => Promise<UsageWindow[]> {
+  return async ({ dataDir, signal }) => {
+    try {
+      const env = options.env ?? process.env;
+      const command =
+        env.KARONT_CLAUDE_CLI ||
+        (await resolveAgentCommand("claude", {
+          env,
+          homeDir: options.homeDir ?? os.homedir(),
+          platform: options.platform ?? process.platform,
+        })) ||
+        "claude";
+      return await runUsageProbe({
+        spawn: options.spawn ?? nodeSpawn,
+        command,
+        args: [
+          "-p",
+          "--input-format",
+          "stream-json",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--permission-mode",
+          "plan",
+          // A leitura de uso não pode aparecer no histórico de conversas do usuário.
+          "--no-session-persistence",
+        ],
+        cwd: dataDir,
+        env,
+        signal,
+        ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+        ...(options.killAfterMs === undefined ? {} : { killAfterMs: options.killAfterMs }),
+        onStart: (write) =>
+          write({
+            type: "control_request",
+            request_id: "karont-usage-init",
+            request: { subtype: "initialize" },
+          }),
+        onMessage: (message, write) => {
+          if (message.type !== "control_response") return undefined;
+          const response = message.response;
+          if (!isRecord(response)) return undefined;
+          if (response.request_id === "karont-usage-init") {
+            if (response.subtype !== "success") return [];
+            write({
+              type: "control_request",
+              request_id: "karont-usage-read",
+              request: { subtype: "get_usage" },
+            });
+            return undefined;
+          }
+          if (response.request_id !== "karont-usage-read") return undefined;
+          return response.subtype === "success" ? parseClaudeUsage(response.response) : [];
+        },
+      });
+    } catch {
+      return [];
+    }
   };
 }
 

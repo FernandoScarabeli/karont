@@ -22,4 +22,8 @@ export const usageMethods = {
     params: z.strictObject({}),
     result: z.strictObject({ usage: z.array(agentUsageSchema) }),
   },
+  "usage.refresh": {
+    params: z.strictObject({ force: z.boolean().optional() }),
+    result: z.strictObject({ usage: z.array(agentUsageSchema) }),
+  },
 } as const;

@@ -1,3 +1,4 @@
+import type { ChildProcess, SpawnOptions } from "node:child_process";
 import type { DatabaseSync } from "node:sqlite";
 import { type AgentUsage, agentUsageSchema, type UsageWindow } from "@karont/contract";
 import { getSetting, setSetting } from "../db.ts";
@@ -43,6 +44,35 @@ export function parseClaudeRateLimit(value: unknown): UsageWindow[] {
   const fiveHour = claudeWindow("five_hour", windows.five_hour);
   if (fiveHour) result.push(fiveHour);
   const weekly = claudeWindow("weekly", windows.seven_day);
+  if (weekly) result.push(weekly);
+  return result;
+}
+
+function isoFromText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function claudeUsageWindow(id: UsageWindow["id"], value: unknown): UsageWindow | undefined {
+  if (!isRecord(value)) return undefined;
+  const utilization = value.utilization;
+  // Aqui vai de 0 a 100 (no `rate_limit_event` vai de 0 a 1).
+  if (typeof utilization !== "number" || !Number.isFinite(utilization)) return undefined;
+  if (utilization < 0) return undefined;
+  // Acima de 100 é limite estourado: aparece como 100%.
+  return { id, usedPercent: clampPercent(utilization), resetsAt: isoFromText(value.resets_at) };
+}
+
+// Recebe `response.response` do `get_usage` do Claude. Formato estranho: sem leitura.
+export function parseClaudeUsage(value: unknown): UsageWindow[] {
+  if (!isRecord(value) || value.rate_limits_available !== true) return [];
+  const limits = value.rate_limits;
+  if (!isRecord(limits)) return [];
+  const result: UsageWindow[] = [];
+  const fiveHour = claudeUsageWindow("five_hour", limits.five_hour);
+  if (fiveHour) result.push(fiveHour);
+  const weekly = claudeUsageWindow("weekly", limits.seven_day);
   if (weekly) result.push(weekly);
   return result;
 }
@@ -123,4 +153,147 @@ export function recordUsage(
   } catch {
     return undefined;
   }
+}
+
+export const USAGE_PROBE_TIMEOUT_MS = 15_000;
+export const USAGE_PROBE_KILL_MS = 2_000;
+
+export type UsageProbeSpawn = (
+  command: string,
+  args: string[],
+  options: SpawnOptions,
+) => ChildProcess;
+
+export type UsageProbe = {
+  spawn: UsageProbeSpawn;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  signal?: AbortSignal | undefined;
+  timeoutMs?: number;
+  killAfterMs?: number;
+  /** Chamado uma vez com o processo aberto, para mandar a primeira linha. */
+  onStart(write: (message: Record<string, unknown>) => void): void;
+  /** Chamado a cada linha JSON. Devolve as janelas (ou `[]`) para terminar; `undefined` espera mais. */
+  onMessage(
+    message: Record<string, unknown>,
+    write: (message: Record<string, unknown>) => void,
+  ): UsageWindow[] | undefined;
+};
+
+// Abre uma CLI só para ler o uso. Nunca lança e sempre encerra o processo
+// (stdin fechado, SIGTERM e SIGKILL depois de `killAfterMs`).
+export function runUsageProbe(probe: UsageProbe): Promise<UsageWindow[]> {
+  const timeoutMs = probe.timeoutMs ?? USAGE_PROBE_TIMEOUT_MS;
+  const killAfterMs = probe.killAfterMs ?? USAGE_PROBE_KILL_MS;
+  return new Promise<UsageWindow[]>((resolve) => {
+    let child: ChildProcess | undefined;
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const terminate = () => {
+      const target = child;
+      if (!target) return;
+      try {
+        target.stdin?.end();
+      } catch {
+        // O processo pode já ter fechado a entrada.
+      }
+      if (target.exitCode !== null || target.signalCode !== null) return;
+      killTimer = setTimeout(() => {
+        try {
+          if (target.exitCode === null && target.signalCode === null) target.kill("SIGKILL");
+        } catch {
+          // Já encerrou.
+        }
+      }, killAfterMs);
+      target.once("exit", () => clearTimeout(killTimer));
+      try {
+        target.kill("SIGTERM");
+      } catch {
+        // Já encerrou.
+      }
+    };
+    const finish = (windows: UsageWindow[]) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      probe.signal?.removeEventListener("abort", onAbort);
+      terminate();
+      resolve(windows);
+    };
+    const onAbort = () => finish([]);
+    const write = (message: Record<string, unknown>) => {
+      try {
+        const stdin = child?.stdin;
+        if (stdin && !stdin.destroyed && !stdin.writableEnded)
+          stdin.write(`${JSON.stringify(message)}\n`, "utf8", () => undefined);
+      } catch {
+        finish([]);
+      }
+    };
+
+    if (probe.signal?.aborted) {
+      resolve([]);
+      return;
+    }
+    try {
+      child = probe.spawn(probe.command, probe.args, {
+        cwd: probe.cwd,
+        env: probe.env,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch {
+      resolve([]);
+      return;
+    }
+    const spawned = child;
+    probe.signal?.addEventListener("abort", onAbort, { once: true });
+    timeout = setTimeout(() => finish([]), timeoutMs);
+    spawned.once("error", () => finish([]));
+    spawned.once("close", () => finish([]));
+    spawned.stdin?.on("error", () => undefined);
+    spawned.stderr?.on("data", () => undefined);
+    spawned.stderr?.on("error", () => undefined);
+
+    let buffer = "";
+    const handleLine = (line: string) => {
+      if (settled || line.trim() === "") return;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (!isRecord(parsed)) return;
+      try {
+        const windows = probe.onMessage(parsed, write);
+        if (windows) finish(windows);
+      } catch {
+        finish([]);
+      }
+    };
+    spawned.stdout?.setEncoding?.("utf8");
+    spawned.stdout?.on("data", (chunk: Buffer | string) => {
+      buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      if (buffer.length > 4 * 1024 * 1024) {
+        finish([]);
+        return;
+      }
+      let index = buffer.indexOf("\n");
+      while (index >= 0) {
+        handleLine(buffer.slice(0, index));
+        buffer = buffer.slice(index + 1);
+        index = buffer.indexOf("\n");
+      }
+    });
+    spawned.stdout?.on("error", () => finish([]));
+    try {
+      probe.onStart(write);
+    } catch {
+      finish([]);
+    }
+  });
 }

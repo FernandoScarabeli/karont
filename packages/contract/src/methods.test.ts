@@ -493,4 +493,10 @@ test("usage.list valida resultado e usage.updated valida o evento", () => {
   assert.equal(events["usage.updated"].safeParse(usage).success, true);
   assert.equal(events["usage.updated"].safeParse({ ...usage, observedAt: "ontem" }).success, false);
   assert.equal(isMethodName("usage.list"), true);
+  assert.equal(isMethodName("usage.refresh"), true);
+  assert.equal(methods["usage.refresh"].params.safeParse({}).success, true);
+  assert.equal(methods["usage.refresh"].params.safeParse({ force: true }).success, true);
+  assert.equal(methods["usage.refresh"].params.safeParse({ force: "sim" }).success, false);
+  assert.equal(methods["usage.refresh"].params.safeParse({ x: 1 }).success, false);
+  assert.equal(methods["usage.refresh"].result.safeParse({ usage: [usage] }).success, true);
 });

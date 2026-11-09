@@ -2258,3 +2258,33 @@ test("usage.list devolve o uso guardado em ordem estável e ignora valor corromp
     db.close();
   }
 });
+
+test("usage.refresh com a detecção desligada não abre processo", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-usage-refresh-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  let reads = 0;
+  const registration = {
+    readUsage: async () => {
+      reads++;
+      return [];
+    },
+  } as unknown as AgentAdapterRegistration;
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    env: { PATH: "", KARONT_DISABLE_AGENT_DETECTION: "1" },
+    homeDir: root,
+    dataDir: root,
+    agentRegistrations: { claude: registration, codex: registration },
+  });
+  context.after(async () => {
+    await handlers.closeAgents();
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const result = await handlers.handle(request("usage.refresh", { force: true }), connection([]));
+  assert.deepEqual(result, { usage: [] });
+  assert.equal(reads, 0);
+});

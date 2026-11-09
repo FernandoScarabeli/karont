@@ -85,9 +85,18 @@ export type AdapterFactory = (
   emit: (event: AdapterEvent) => void,
 ) => AgentAdapter;
 
+export type UsageReadOptions = {
+  /** Pasta onde o processo de leitura roda; nunca uma pasta de projeto. */
+  dataDir: string;
+  /** Encerra o processo de leitura em curso. */
+  signal?: AbortSignal;
+};
+
 export type AgentAdapterRegistration = {
   factory: AdapterFactory;
   capabilities: AgentCapabilities;
   loadSkills?: (cwd: string) => Promise<ComposerSkill[]>;
   loadModels?: (cwd: string) => Promise<AdapterModelList>;
+  /** Lê as janelas de uso sem mandar mensagem. Devolve `[]` em qualquer falha. */
+  readUsage?: (options: UsageReadOptions) => Promise<UsageWindow[]>;
 };
