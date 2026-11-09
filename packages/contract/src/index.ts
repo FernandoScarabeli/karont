@@ -119,6 +119,9 @@ export type {
 } from "./validate.ts";
 export { isEventName, isMethodName, parseEvent, parseRequest, parseResult } from "./validate.ts";
 
+export type { Worktree, WorktreeStatus } from "./worktrees.ts";
+export { worktreeSchema, worktreeStatusSchema } from "./worktrees.ts";
+
 export interface KarontBridge {
   request<M extends MethodName>(method: M, params: ParamsOf<M>): Promise<ResultOf<M>>;
   onEvent(listener: (event: AnyEvent) => void): () => void;

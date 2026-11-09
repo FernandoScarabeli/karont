@@ -12,6 +12,7 @@ import {
   terminalInfoSchema,
 } from "./methods.ts";
 import { restorePointSummarySchema } from "./restore.ts";
+import { worktreeSchema } from "./worktrees.ts";
 
 export const events = {
   "dev.streamTest.delta": z.strictObject({
@@ -47,6 +48,10 @@ export const events = {
   "restore.changed": z.strictObject({
     conversationId: z.string().min(1),
     point: restorePointSummarySchema,
+  }),
+  "worktrees.changed": z.strictObject({
+    projectId: z.string().min(1),
+    worktrees: z.array(worktreeSchema),
   }),
   "projects.changed": z.strictObject({ projects: z.array(projectSchema) }),
   "conversation.messageCreated": z.strictObject({

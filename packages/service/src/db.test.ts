@@ -10,11 +10,13 @@ import {
   createConversation,
   createProject,
   createRestorePoint,
+  createWorktreeRecord,
   deleteRestorePoints,
   getAgentSession,
   getConversation,
   getRestorePoint,
   getSetting,
+  getWorktree,
   listConversations,
   listCustomAgents,
   listExcessRestorePoints,
@@ -87,7 +89,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    16,
+    17,
   );
   assert.equal(
     (
@@ -148,7 +150,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    16,
+    17,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();
@@ -392,7 +394,7 @@ test("migra um banco na versão 13 mantendo a conversa solta, sem projectId", as
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      16,
+      17,
     );
     const conversation = getConversation(db, "v13-1");
     assert.equal(conversation?.title, "Antes dos projetos");
@@ -504,7 +506,7 @@ test("migra um banco na versão 14 sem perder dados e cria restore_points", asyn
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      16,
+      17,
     );
     assert.equal(getConversation(db, "v14-1")?.title, "Antes");
     assert.equal(listMessages(db, "v14-1").length, 1);
@@ -546,7 +548,7 @@ test("migra um banco na versão 15 sem perder dados e acrescenta as colunas do d
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      16,
+      17,
     );
     const point = getRestorePoint(db, "m-15");
     assert.equal(point?.beforeCommit, "antes");
@@ -555,6 +557,86 @@ test("migra um banco na versão 15 sem perder dados e acrescenta as colunas do d
     assert.equal(point?.changedFiles, 0);
     assert.equal(point?.undoneAt, null);
     assert.equal(point?.undoCommit, null);
+  } finally {
+    db.close();
+  }
+});
+
+test("migra um banco na versão 16 sem perder dados e cria worktrees e conversations.worktree_id", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-v16-"));
+  const dbPath = path.join(root, "karont.db");
+  const legacyDb = new DatabaseSync(dbPath);
+  for (const migration of migrations.filter((entry) => entry.version <= 16)) {
+    legacyDb.exec(migration.up);
+    legacyDb.exec(`PRAGMA user_version = ${migration.version}`);
+  }
+  const stamp = "2026-11-01T10:00:00.000Z";
+  legacyDb
+    .prepare(
+      "INSERT INTO conversations (id,agent,title,cwd,mode,state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
+    )
+    .run("v16-1", "claude", "Antes", "/tmp/p", "edit", "idle", stamp, stamp);
+  legacyDb
+    .prepare(
+      "INSERT INTO messages (id,conversation_id,author,status,parts,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+    )
+    .run("m-16", "v16-1", "agent", "done", "[]", stamp, stamp);
+  legacyDb.close();
+
+  const db = openDatabase(dbPath);
+  try {
+    assert.equal(
+      (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+      17,
+    );
+    const before = getConversation(db, "v16-1");
+    assert.equal(before?.title, "Antes");
+    assert.equal(before?.worktreeId, undefined);
+    assert.equal(listMessages(db, "v16-1").length, 1);
+
+    const project = createProject(db, {
+      name: "P",
+      icon: "folder",
+      path: "/tmp/p",
+      defaultAgent: null,
+    });
+    const worktree = createWorktreeRecord(db, {
+      projectId: project.id,
+      repoRoot: "/tmp/p",
+      path: "/tmp/data/worktrees/p-abcdef",
+      branch: "karont/p-abcdef",
+      baseCommit: "abc",
+    });
+    const linked = createConversation(db, {
+      agent: "claude",
+      title: "Na cópia",
+      cwd: worktree.path,
+      mode: "edit",
+      worktreeId: worktree.id,
+    });
+    assert.equal(getConversation(db, linked.id)?.worktreeId, worktree.id);
+    // Remover a cópia deixa a conversa sem vínculo; remover o projeto deixa a cópia sem projeto.
+    db.prepare("DELETE FROM worktrees WHERE id=?").run(worktree.id);
+    assert.equal(getConversation(db, linked.id)?.worktreeId, undefined);
+    assert.equal(getWorktree(db, worktree.id), null);
+    const second = createWorktreeRecord(db, {
+      projectId: project.id,
+      repoRoot: "/tmp/p",
+      path: "/tmp/data/worktrees/p-123456",
+      branch: "karont/p-123456",
+      baseCommit: "abc",
+    });
+    removeProject(db, project.id);
+    assert.equal(getWorktree(db, second.id)?.projectId, null);
+    assert.throws(() =>
+      createWorktreeRecord(db, {
+        projectId: null,
+        repoRoot: "/tmp/p",
+        path: second.path,
+        branch: "x",
+        baseCommit: "abc",
+      }),
+    );
   } finally {
     db.close();
   }

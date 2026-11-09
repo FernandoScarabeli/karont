@@ -12,6 +12,7 @@ import {
   messageSchema,
 } from "./conversations.ts";
 import { restoreMethods } from "./restore.ts";
+import { worktreeMethods } from "./worktrees.ts";
 
 export const MAX_SETTING_BYTES = 65_536;
 
@@ -196,6 +197,7 @@ export const methods = {
       agent: z.enum(["claude", "codex"]),
       cwd: z.string().min(1).max(4_096),
       projectId: z.string().min(1).optional(),
+      worktreeId: z.string().min(1).optional(),
       mode: z.enum(["read-only", "edit", "full"]).default("edit"),
       title: z.string().min(1).max(240).optional(),
       model: z.string().min(1).max(80).optional(),
@@ -375,6 +377,7 @@ export const methods = {
     result: z.strictObject({ removed: z.literal(true) }),
   },
   ...restoreMethods,
+  ...worktreeMethods,
   "terminals.list": {
     params: emptyParamsSchema,
     result: z.strictObject({ terminals: z.array(terminalInfoSchema) }),

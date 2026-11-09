@@ -18,7 +18,9 @@ import {
   getProject,
   getProjectByPath,
   getSetting,
+  getWorktree,
   listProjects,
+  listWorktrees,
   recordRecentFolder,
   removeProject,
   setSetting,
@@ -26,6 +28,8 @@ import {
 } from "./db.ts";
 import { ServiceError } from "./errors.ts";
 import { gitInfo, listRecentFolders, validateFolder } from "./folders.ts";
+import { createWorktree, removeWorktree, worktreeStatus } from "./git/worktrees.ts";
+import { resolvePaths } from "./paths.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
 import { getSystemUserName } from "./user-name.ts";
 
@@ -45,6 +49,8 @@ export type HandlerOptions = {
   dev: boolean;
   emit: (event: AnyEvent, conn: HandlerConnection) => Promise<void>;
   env?: NodeJS.ProcessEnv;
+  /** Pasta de dados do Karont; as cópias separadas ficam em `<dataDir>/worktrees`. */
+  dataDir?: string;
   homeDir?: string;
   platform?: NodeJS.Platform;
   agentFs?: AgentDetectionFs;
@@ -61,6 +67,7 @@ export function createHandlers({
   dev,
   emit,
   env = process.env,
+  dataDir = resolvePaths(env).dataDir,
   homeDir = os.homedir(),
   platform = process.platform,
   agentFs,
@@ -138,6 +145,16 @@ export function createHandlers({
         }
         if (request.params.projectId && !getProject(db, request.params.projectId)) {
           throw new ServiceError("invalid_request", "O projeto não existe.");
+        }
+        if (request.params.worktreeId) {
+          const worktree = getWorktree(db, request.params.worktreeId);
+          if (!worktree) throw new ServiceError("invalid_request", "A cópia separada não existe.");
+          if (folder.path !== worktree.path) {
+            throw new ServiceError(
+              "invalid_request",
+              "A conversa precisa usar a pasta da cópia separada.",
+            );
+          }
         }
         return {
           conversation: conversationManager.create({
@@ -337,6 +354,38 @@ export function createHandlers({
         }
         await broadcast({ event: "projects.changed", payload: { projects: listProjects(db) } });
         return { removed: true };
+      }
+      case "worktrees.list":
+        return { worktrees: listWorktrees(db, request.params.projectId) };
+      case "worktrees.create": {
+        const worktree = await createWorktree(db, request.params.projectId, { dataDir, homeDir });
+        await broadcast({
+          event: "worktrees.changed",
+          payload: {
+            projectId: request.params.projectId,
+            worktrees: listWorktrees(db, request.params.projectId),
+          },
+        });
+        return { worktree };
+      }
+      case "worktrees.status":
+        return worktreeStatus(db, request.params.id);
+      case "worktrees.remove": {
+        const { worktree, branchKept } = await removeWorktree(db, request.params.id, {
+          dataDir,
+          homeDir,
+          force: request.params.force === true,
+        });
+        if (worktree.projectId) {
+          await broadcast({
+            event: "worktrees.changed",
+            payload: {
+              projectId: worktree.projectId,
+              worktrees: listWorktrees(db, worktree.projectId),
+            },
+          });
+        }
+        return { removed: true, branchKept };
       }
       case "terminals.list":
         return terminalManager.list();

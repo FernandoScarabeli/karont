@@ -1302,3 +1302,250 @@ test("restore.*: lista, mudanças, diff, prévia e desfazer pelos métodos, com 
     (error: unknown) => error instanceof ServiceError && error.code === "unavailable",
   );
 });
+
+async function worktreeScenario(context: { after: (fn: () => Promise<void> | void) => void }) {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "ks-wt-h-")));
+  const repo = path.join(root, "repo");
+  const dataDir = path.join(root, "data");
+  await mkdir(repo);
+  const git = (cwd: string, ...args: string[]) => {
+    const env = { ...process.env };
+    for (const name of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"]) delete env[name];
+    return execFileSync("git", args, { cwd, env, encoding: "utf8" });
+  };
+  git(repo, "init", "-q", "-b", "main");
+  git(repo, "config", "user.name", "Teste");
+  git(repo, "config", "user.email", "teste@example.com");
+  await writeFile(path.join(repo, "antigo.txt"), "antigo\n");
+  git(repo, "add", "-A");
+  git(repo, "commit", "-q", "-m", "inicial");
+
+  const events: AnyEvent[] = [];
+  const db = openDatabase(path.join(root, "karont.db"));
+  const emitters = new Map<string, Parameters<AdapterFactory>[1]>();
+  const writes: { cwd: string; wrote: boolean } = { cwd: "", wrote: false };
+  const adapterFactory: AdapterFactory = (conversation, emit) => {
+    emitters.set(conversation.id, emit);
+    return {
+      start: async () => undefined,
+      send: async () => {
+        await writeFile(path.join(conversation.cwd, "antigo.txt"), "mudado\n");
+        await writeFile(path.join(conversation.cwd, "criado.txt"), "criado\n");
+        writes.cwd = conversation.cwd;
+        writes.wrote = true;
+        emit({ kind: "state", state: "working" });
+      },
+      respond: async () => undefined,
+      interrupt: async () => undefined,
+      dispose: async () => undefined,
+    };
+  };
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    broadcast: async (event) => void events.push(event),
+    env: { PATH: process.env.PATH ?? "", KARONT_DISABLE_AGENT_DETECTION: "1" },
+    homeDir: root,
+    dataDir,
+    adapterFactory,
+  });
+  context.after(async () => {
+    await handlers.closeAgents();
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const conn = connection([]);
+  const call = async <M extends Parameters<typeof parseResult>[0]>(method: M, params: unknown) => {
+    const result = await handlers.handle(request(method, params), conn);
+    const parsed = parseResult(method, result);
+    assert.equal(parsed.ok, true, `${method} devolve o formato do contrato`);
+    return result as never;
+  };
+  const { project } = (await call("projects.create", {
+    name: "Repo",
+    icon: "folder",
+    path: repo,
+  })) as { project: { id: string } };
+  return { root, repo, dataDir, git, events, db, handlers, conn, call, project, emitters, writes };
+}
+
+test("worktrees.*: métodos, eventos, vínculo da conversa e remoção mantém as mensagens", async (context) => {
+  const { repo, dataDir, git, events, db, handlers, conn, call, project } =
+    await worktreeScenario(context);
+  const created = (await call("worktrees.create", { projectId: project.id })) as {
+    worktree: { id: string; path: string; branch: string; projectId: string };
+  };
+  const { worktree } = created;
+  assert.equal(path.dirname(worktree.path), path.join(dataDir, "worktrees"));
+  const changedEvents = () => events.filter((event) => event.event === "worktrees.changed");
+  assert.equal(changedEvents().length, 1);
+  assert.equal(changedEvents()[0]?.payload.projectId, project.id);
+  assert.deepEqual(
+    changedEvents()[0]?.payload.worktrees.map((entry: { id: string }) => entry.id),
+    [worktree.id],
+  );
+  const listed = (await call("worktrees.list", { projectId: project.id })) as {
+    worktrees: { id: string }[];
+  };
+  assert.deepEqual(
+    listed.worktrees.map((entry) => entry.id),
+    [worktree.id],
+  );
+  assert.deepEqual(await call("worktrees.status", { id: worktree.id }), {
+    dirtyFiles: 0,
+    unmergedCommits: 0,
+    busyConversations: 0,
+    missing: false,
+  });
+
+  // cwd errado e cópia inexistente: invalid_request.
+  for (const params of [
+    { cwd: repo, worktreeId: worktree.id },
+    { cwd: path.join(worktree.path, "."), worktreeId: "nao-existe" },
+    { cwd: path.dirname(worktree.path), worktreeId: worktree.id },
+  ]) {
+    await assert.rejects(
+      handlers.handle(
+        request("conversation.create", { agent: "claude", mode: "edit", ...params }),
+        conn,
+      ),
+      (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+    );
+  }
+  const { conversation } = (await call("conversation.create", {
+    agent: "claude",
+    cwd: worktree.path,
+    worktreeId: worktree.id,
+    projectId: project.id,
+    mode: "edit",
+  })) as { conversation: Conversation };
+  assert.equal(conversation.worktreeId, worktree.id);
+  assert.equal(conversation.cwd, worktree.path);
+
+  const now = new Date().toISOString();
+  addMessage(db, {
+    id: "agent-1",
+    conversationId: conversation.id,
+    author: "agent",
+    status: "done",
+    parts: [{ id: "p1", type: "text", markdown: "Oi" }],
+    createdAt: now,
+    updatedAt: now,
+  });
+  const branched = (await call("conversation.branch", {
+    id: conversation.id,
+    messageId: "agent-1",
+  })) as { conversation: Conversation };
+  assert.equal(branched.conversation.worktreeId, worktree.id);
+  assert.equal(branched.conversation.cwd, worktree.path);
+
+  // Remover: conversas ficam sem vínculo e mantêm as mensagens.
+  const removed = await call("worktrees.remove", { id: worktree.id });
+  assert.deepEqual(removed, { removed: true, branchKept: false });
+  assert.equal(changedEvents().length, 2);
+  assert.deepEqual(changedEvents()[1]?.payload.worktrees, []);
+  const after = (await call("conversation.get", { id: conversation.id })) as {
+    conversation: Conversation;
+    messages: unknown[];
+  };
+  assert.equal(after.conversation.worktreeId, undefined);
+  assert.equal(after.messages.length, 1);
+  const afterBranch = (await call("conversation.get", { id: branched.conversation.id })) as {
+    conversation: Conversation;
+    messages: unknown[];
+  };
+  assert.equal(afterBranch.conversation.worktreeId, undefined);
+  assert.equal(afterBranch.messages.length, 1);
+  assert.equal(git(repo, "worktree", "list").trim().split("\n").length, 1);
+  assert.deepEqual(await call("worktrees.list", { projectId: project.id }), { worktrees: [] });
+
+  await assert.rejects(
+    handlers.handle(request("worktrees.remove", { id: worktree.id }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+});
+
+test("worktrees.remove: conversa ocupada bloqueia mesmo com force e erros chegam em português", async (context) => {
+  const { db, handlers, conn, call, project } = await worktreeScenario(context);
+  const { worktree } = (await call("worktrees.create", { projectId: project.id })) as {
+    worktree: { id: string; path: string };
+  };
+  const { conversation } = (await call("conversation.create", {
+    agent: "claude",
+    cwd: worktree.path,
+    worktreeId: worktree.id,
+    mode: "edit",
+  })) as { conversation: Conversation };
+  db.prepare("UPDATE conversations SET state='working' WHERE id=?").run(conversation.id);
+  await assert.rejects(
+    handlers.handle(request("worktrees.remove", { id: worktree.id, force: true }), conn),
+    (error: unknown) =>
+      error instanceof ServiceError &&
+      error.code === "invalid_request" &&
+      /trabalhando/.test(error.message),
+  );
+  assert.equal(
+    ((await call("worktrees.status", { id: worktree.id })) as { busyConversations: number })
+      .busyConversations,
+    1,
+  );
+  await assert.rejects(
+    handlers.handle(request("worktrees.create", { projectId: "nada" }), conn),
+    (error: unknown) => error instanceof ServiceError && error.code === "invalid_request",
+  );
+});
+
+test("restore.*: numa conversa em cópia separada a raiz é a da cópia, não a do projeto", async (context) => {
+  const { repo, events, handlers, conn, call, project, emitters, writes } =
+    await worktreeScenario(context);
+  const { worktree } = (await call("worktrees.create", { projectId: project.id })) as {
+    worktree: { id: string; path: string };
+  };
+  const { conversation } = (await call("conversation.create", {
+    agent: "claude",
+    cwd: worktree.path,
+    worktreeId: worktree.id,
+    mode: "edit",
+  })) as { conversation: Conversation };
+  const sent = (await handlers.handle(
+    request("conversation.send", { id: conversation.id, text: "mexa" }),
+    conn,
+  )) as { agentMessage: { id: string } };
+  const messageId = sent.agentMessage.id;
+  for (let attempt = 0; attempt < 300 && !writes.wrote; attempt += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(writes.cwd, worktree.path);
+  emitters.get(conversation.id)?.({ kind: "turn-end", status: "done" });
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    const listed = (await call("restore.list", { conversationId: conversation.id })) as {
+      points: Array<{ state: string }>;
+    };
+    if (listed.points[0]?.state === "ready") break;
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  const changedEvent = events.find((event) => event.event === "restore.changed");
+  assert.equal(changedEvent?.payload.point.state, "ready");
+  assert.equal(changedEvent?.payload.point.changedFiles, 2);
+
+  // O projeto não foi tocado, e a cópia mostra 2 arquivos sujos.
+  assert.equal(await readFile(path.join(repo, "antigo.txt"), "utf8"), "antigo\n");
+  assert.equal(
+    ((await call("worktrees.status", { id: worktree.id })) as { dirtyFiles: number }).dirtyFiles,
+    2,
+  );
+  const refs = execFileSync("git", ["for-each-ref", "refs/karont/restore"], {
+    cwd: repo,
+    encoding: "utf8",
+  });
+  assert.match(refs, new RegExp(conversation.id)); // refs vivem no repositório compartilhado
+
+  assert.deepEqual(await call("restore.undo", { conversationId: conversation.id, messageId }), {
+    restored: 1,
+    removed: 1,
+  });
+  assert.equal(await readFile(path.join(worktree.path, "antigo.txt"), "utf8"), "antigo\n");
+  assert.equal(await readFile(path.join(repo, "antigo.txt"), "utf8"), "antigo\n");
+});

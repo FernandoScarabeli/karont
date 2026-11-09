@@ -503,6 +503,7 @@ export class ConversationManager {
       title: branchTitle,
       cwd: source.cwd,
       ...(source.projectId ? { projectId: source.projectId } : {}),
+      ...(source.worktreeId ? { worktreeId: source.worktreeId } : {}),
       mode: source.mode,
       ...(source.model ? { model: source.model } : {}),
       ...(source.effort ? { effort: source.effort } : {}),

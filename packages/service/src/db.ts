@@ -10,6 +10,7 @@ import type {
   MessagePart,
   Project,
   RecentFolder,
+  Worktree,
 } from "@karont/contract";
 
 export const migrations: { version: number; up: string }[] = [
@@ -117,6 +118,18 @@ export const migrations: { version: number; up: string }[] = [
     ALTER TABLE restore_points ADD COLUMN undone_at TEXT;
     ALTER TABLE restore_points ADD COLUMN undo_commit TEXT;`,
   },
+  {
+    version: 17,
+    up: `CREATE TABLE worktrees (
+      id TEXT PRIMARY KEY,
+      project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+      repo_root TEXT NOT NULL, path TEXT NOT NULL UNIQUE, branch TEXT NOT NULL,
+      base_commit TEXT NOT NULL, created_at TEXT NOT NULL, merged_at TEXT
+    ) STRICT;
+    CREATE INDEX worktrees_project ON worktrees(project_id);
+    ALTER TABLE conversations ADD COLUMN worktree_id TEXT REFERENCES worktrees(id) ON DELETE SET NULL;
+    CREATE INDEX conversations_worktree ON conversations(worktree_id);`,
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -140,6 +153,7 @@ export type NewConversation = Pick<Conversation, "agent" | "title" | "cwd" | "mo
       | "branchedFromMessageId"
       | "branchContext"
       | "projectId"
+      | "worktreeId"
     >
   >;
 
@@ -158,7 +172,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     updatedAt: now,
   };
   db.prepare(
-    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,fast,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at,branched_from_id,branched_from_message_id,branch_context_enabled,project_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO conversations (id,agent,title,cwd,mode,model,effort,plan,fast,state,created_at,updated_at,title_manually_set,pinned_at,archived_at,unread_at,branched_from_id,branched_from_message_id,branch_context_enabled,project_id,worktree_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     conversation.id,
     conversation.agent,
@@ -180,6 +194,7 @@ export function createConversation(db: DatabaseSync, input: NewConversation): Co
     conversation.branchedFromMessageId ?? null,
     conversation.branchContext ? 1 : 0,
     conversation.projectId ?? null,
+    conversation.worktreeId ?? null,
   );
   return conversation;
 }
@@ -523,6 +538,7 @@ type ConversationRow = {
   branched_from_message_id: string | null;
   branch_context_enabled: number;
   project_id: string | null;
+  worktree_id: string | null;
   state: Conversation["state"];
   created_at: string;
   updated_at: string;
@@ -547,6 +563,7 @@ function mapConversation(row: ConversationRow): Conversation {
     title: row.title,
     cwd: row.cwd,
     ...(row.project_id ? { projectId: row.project_id } : {}),
+    ...(row.worktree_id ? { worktreeId: row.worktree_id } : {}),
     mode: row.mode,
     ...(row.model ? { model: row.model } : {}),
     ...(row.effort ? { effort: row.effort } : {}),
@@ -781,6 +798,86 @@ export function updateProject(
 
 export function removeProject(db: DatabaseSync, id: string): boolean {
   return db.prepare("DELETE FROM projects WHERE id=?").run(id).changes > 0;
+}
+
+type WorktreeRow = {
+  id: string;
+  project_id: string | null;
+  repo_root: string;
+  path: string;
+  branch: string;
+  base_commit: string;
+  created_at: string;
+  merged_at: string | null;
+};
+
+function mapWorktree(row: WorktreeRow): Worktree {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    repoRoot: row.repo_root,
+    path: row.path,
+    branch: row.branch,
+    baseCommit: row.base_commit,
+    createdAt: row.created_at,
+    mergedAt: row.merged_at,
+  };
+}
+
+export function createWorktreeRecord(
+  db: DatabaseSync,
+  input: Pick<Worktree, "projectId" | "repoRoot" | "path" | "branch" | "baseCommit"> &
+    Partial<Pick<Worktree, "id">>,
+): Worktree {
+  const worktree: Worktree = {
+    id: input.id ?? randomUUID(),
+    projectId: input.projectId,
+    repoRoot: input.repoRoot,
+    path: input.path,
+    branch: input.branch,
+    baseCommit: input.baseCommit,
+    createdAt: new Date().toISOString(),
+    mergedAt: null,
+  };
+  db.prepare(
+    "INSERT INTO worktrees (id,project_id,repo_root,path,branch,base_commit,created_at,merged_at) VALUES (?,?,?,?,?,?,?,?)",
+  ).run(
+    worktree.id,
+    worktree.projectId,
+    worktree.repoRoot,
+    worktree.path,
+    worktree.branch,
+    worktree.baseCommit,
+    worktree.createdAt,
+    null,
+  );
+  return worktree;
+}
+
+export function getWorktree(db: DatabaseSync, id: string): Worktree | null {
+  const row = db.prepare("SELECT * FROM worktrees WHERE id=?").get(id) as WorktreeRow | undefined;
+  return row ? mapWorktree(row) : null;
+}
+
+/** Mais novas primeiro. */
+export function listWorktrees(db: DatabaseSync, projectId: string): Worktree[] {
+  const rows = db
+    .prepare("SELECT * FROM worktrees WHERE project_id=? ORDER BY created_at DESC, rowid DESC")
+    .all(projectId) as WorktreeRow[];
+  return rows.map(mapWorktree);
+}
+
+export function deleteWorktreeRecord(db: DatabaseSync, id: string): boolean {
+  return db.prepare("DELETE FROM worktrees WHERE id=?").run(id).changes > 0;
+}
+
+export function countBusyWorktreeConversations(db: DatabaseSync, worktreeId: string): number {
+  const row = db
+    .prepare(
+      "SELECT COUNT(*) AS count FROM conversations WHERE worktree_id=? AND state IN ('queued','working','waiting')",
+    )
+    .get(worktreeId) as { count: number };
+  return row.count;
 }
 
 export type RestorePointRecord = {
