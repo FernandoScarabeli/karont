@@ -125,6 +125,8 @@ Contador de uso (2026-11-09): `npm run check`: contrato 42, serviço 365, deskto
 
 Uso sem mensagem e bloco fixo (decisão 33, B3 e F6, 2026-11-09): `npm run check`: contrato 42, serviço 382, desktop 41, interface 264, sem falhas. E2E: 22 de 22, em 38 s. Teste real no Electron, em banco vazio e sem nenhuma mensagem, só lendo o uso: 4 de 4, com Claude Code 2.1.319 e Codex 0.167.0; os números apareceram em cerca de 2 s e nenhum processo de CLI sobrou. App parado 30 s depois: Electron com CPU 0% e 727 MB somando o working set; serviço com 44 MB (PSS).
 
+Uso compacto (decisão 34, F7, 2026-11-09): `npm run check`: contrato 42, serviço 382, desktop 41, interface 268, sem falhas. E2E: 23 de 23, em 40 s. Conferido no Electron com os dados reais: chevron, anéis no bloco e na faixa de ícones, dica e anel que reabre a sidebar.
+
 Notas técnicas do uso:
 - O `get_usage` do Claude é interno da CLI e pode mudar. Se falhar, nada se perde: o último valor fica e os eventos das respostas continuam atualizando.
 - `get_usage` traz `utilization` de 0 a 100; o `rate_limit_event`, de 0 a 1.
