@@ -50,7 +50,7 @@ export type View =
   | { name: "home" }
   | { name: "workspace" }
   | { name: "inbox" }
-  | { name: "settings"; section: "general" | "profile" | "appearance" | "agents" };
+  | { name: "settings"; section: "general" | "profile" | "appearance" | "agents" | "diagnostics" };
 
 export type NavigationTarget =
   | View

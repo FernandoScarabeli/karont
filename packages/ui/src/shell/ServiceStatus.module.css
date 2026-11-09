@@ -1,9 +1,8 @@
 .status {
   display: flex;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   align-items: center;
   gap: var(--k-service-status-gap);
-  min-width: 0;
   color: var(--k-color-text-secondary);
 }
 
@@ -28,7 +27,7 @@
 }
 
 .label {
-  min-width: 0;
+  white-space: nowrap;
   color: var(--k-color-text-secondary);
   font-size: var(--k-text-12);
   line-height: var(--k-leading-normal);
