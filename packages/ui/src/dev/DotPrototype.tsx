@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { type DotMood, type DotShape, EyeTracker } from "../dot/EyeTracker.tsx";
 import styles from "./DotPrototype.module.css";
-import { characterComponent, type DotCharacterId, dotCharacters } from "./dot/characters.ts";
-import { Room, type RoomTime } from "./dot/Room.tsx";
-import { type DotMood, dotMoods, moodNames } from "./dot/types.ts";
 
 type AccentId = "ivory" | "magenta" | "turquoise" | "lime" | "blue" | "coral";
+type Tone = "dark" | "light";
 
 const accents: readonly { id: AccentId; name: string; className: string }[] = [
   { id: "ivory", name: "Marfim", className: styles.swatchIvory ?? "" },
@@ -15,18 +14,26 @@ const accents: readonly { id: AccentId; name: string; className: string }[] = [
   { id: "coral", name: "Coral", className: styles.swatchCoral ?? "" },
 ];
 
-const timeOptions: readonly { value: RoomTime; label: string }[] = [
-  { value: "day", label: "Dia" },
-  { value: "night", label: "Noite" },
+const shapeOptions: readonly { value: DotShape; label: string }[] = [
+  { value: "flame", label: "Chama" },
+  { value: "veil", label: "Véu" },
+  { value: "wisp", label: "Fiapo" },
+];
+
+const moodOptions: readonly { value: DotMood; label: string }[] = [
+  { value: "idle", label: "Parado" },
+  { value: "working", label: "Trabalhando" },
+  { value: "needs-you", label: "Precisa de você" },
+  { value: "sleeping", label: "Dormindo" },
+  { value: "done", label: "Terminou" },
+];
+
+const toneOptions: readonly { value: Tone; label: string }[] = [
+  { value: "dark", label: "Escuro" },
+  { value: "light", label: "Claro" },
 ];
 
 const chatSampleName = "Dot · via Codex";
-const sampleSizes = [20, 40, 120] as const;
-
-function initialTime(): RoomTime {
-  const hour = new Date().getHours();
-  return hour >= 6 && hour < 18 ? "day" : "night";
-}
 
 type ChoiceGroupProps<T extends string> = {
   legend: string;
@@ -56,32 +63,6 @@ function ChoiceGroup<T extends string>({ legend, options, value, onChange }: Cho
   );
 }
 
-type RangeFieldProps = {
-  label: string;
-  max: number;
-  value: number;
-  onChange: (value: number) => void;
-};
-
-function RangeField({ label, max, value, onChange }: RangeFieldProps) {
-  return (
-    <label className={styles.field}>
-      <span className={styles.rangeHead}>
-        <span className={styles.legend}>{label}</span>
-        <output className={styles.rangeValue}>{value}</output>
-      </span>
-      <input
-        className={styles.range}
-        max={max}
-        min={0}
-        onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
-        type="range"
-        value={value}
-      />
-    </label>
-  );
-}
-
 function CheckIcon() {
   return (
     <svg aria-hidden="true" className={styles.check} fill="none" viewBox="0 0 16 16">
@@ -96,57 +77,12 @@ function CheckIcon() {
   );
 }
 
-function ComparisonTable({ character }: { character: (typeof dotCharacters)[number] }) {
-  const Character = characterComponent(character.id);
-
-  return (
-    <div className={styles.tableWrap}>
-      <table className={styles.table}>
-        <caption className={styles.caption}>{character.name}</caption>
-        <thead className={styles.tableHead}>
-          <tr>
-            <th scope="col">Humor</th>
-            <th scope="col">20 px</th>
-            <th scope="col">40 px</th>
-            <th scope="col">120 px</th>
-          </tr>
-        </thead>
-        <tbody>
-          {dotMoods.map((mood) => (
-            <tr className={styles.row} key={mood}>
-              <th className={styles.moodCell} scope="row">
-                {moodNames[mood]}
-              </th>
-              <td className={styles.cell}>
-                <span className={styles.srOnly}>20 px</span>
-                <span className={styles.chatSample}>
-                  <Character mood={mood} size={sampleSizes[0]} />
-                  <span className={styles.chatName}>{chatSampleName}</span>
-                </span>
-              </td>
-              <td className={styles.cell}>
-                <span className={styles.srOnly}>40 px</span>
-                <Character mood={mood} size={sampleSizes[1]} />
-              </td>
-              <td className={styles.cell}>
-                <span className={styles.srOnly}>120 px</span>
-                <Character mood={mood} size={sampleSizes[2]} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export function DotPrototype() {
   const pageRef = useRef<HTMLElement>(null);
-  const [character, setCharacter] = useState<DotCharacterId>("point");
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [shape, setShape] = useState<DotShape>("flame");
   const [mood, setMood] = useState<DotMood>("idle");
-  const [time, setTime] = useState<RoomTime>(initialTime);
-  const [memories, setMemories] = useState(12);
-  const [pending, setPending] = useState(3);
+  const [tone, setTone] = useState<Tone>("dark");
   const [accent, setAccent] = useState<AccentId>("ivory");
 
   useEffect(() => {
@@ -161,26 +97,23 @@ export function DotPrototype() {
           <p className={styles.badge}>Dados de exemplo</p>
         </header>
 
+        <section aria-labelledby="dot-stage" className={styles.section}>
+          <h2 className={styles.srOnly} id="dot-stage">
+            Dot em tamanho grande
+          </h2>
+          <div className={styles.stage} ref={stageRef}>
+            <EyeTracker mood={mood} shape={shape} size={180} tone={tone} within={stageRef} />
+          </div>
+        </section>
+
         <section aria-labelledby="dot-controls" className={styles.panel}>
           <h2 className={styles.srOnly} id="dot-controls">
             Controles
           </h2>
           <div className={styles.controls}>
-            <ChoiceGroup
-              legend="Personagem"
-              onChange={setCharacter}
-              options={dotCharacters.map((item) => ({ value: item.id, label: item.name }))}
-              value={character}
-            />
-            <ChoiceGroup
-              legend="Humor"
-              onChange={setMood}
-              options={dotMoods.map((item) => ({ value: item, label: moodNames[item] }))}
-              value={mood}
-            />
-            <ChoiceGroup legend="Janela" onChange={setTime} options={timeOptions} value={time} />
-            <RangeField label="Memórias" max={50} onChange={setMemories} value={memories} />
-            <RangeField label="Pendentes" max={20} onChange={setPending} value={pending} />
+            <ChoiceGroup legend="Forma" onChange={setShape} options={shapeOptions} value={shape} />
+            <ChoiceGroup legend="Humor" onChange={setMood} options={moodOptions} value={mood} />
+            <ChoiceGroup legend="Corpo" onChange={setTone} options={toneOptions} value={tone} />
             <fieldset className={styles.field}>
               <legend className={styles.legend}>Cor de destaque</legend>
               <div className={styles.choices}>
@@ -201,26 +134,30 @@ export function DotPrototype() {
           </div>
         </section>
 
-        <section aria-labelledby="dot-room" className={styles.section}>
-          <h2 className={styles.title} id="dot-room">
-            Salinha
+        <section aria-labelledby="dot-sizes" className={styles.section}>
+          <h2 className={styles.title} id="dot-sizes">
+            Tamanhos
           </h2>
-          <Room
-            character={character}
-            memories={memories}
-            mood={mood}
-            pending={pending}
-            time={time}
-          />
+          <div className={styles.sizes}>
+            <span className={styles.chatSample}>
+              <EyeTracker mood={mood} shape={shape} size={20} still tone={tone} />
+              <span className={styles.chatName}>{chatSampleName}</span>
+            </span>
+            <EyeTracker mood={mood} shape={shape} size={40} still tone={tone} />
+            <EyeTracker mood={mood} shape={shape} size={96} still tone={tone} />
+          </div>
         </section>
 
         <section aria-labelledby="dot-compare" className={styles.section}>
           <h2 className={styles.title} id="dot-compare">
-            Comparação
+            Formas lado a lado
           </h2>
-          <div className={styles.tables}>
-            {dotCharacters.map((item) => (
-              <ComparisonTable character={item} key={item.id} />
+          <div className={styles.compare}>
+            {shapeOptions.map((option) => (
+              <figure className={styles.figure} key={option.value}>
+                <EyeTracker mood={mood} shape={option.value} size={64} still tone={tone} />
+                <figcaption className={styles.caption}>{option.label}</figcaption>
+              </figure>
             ))}
           </div>
         </section>

@@ -921,6 +921,29 @@ export const t = {
     finishFailed: "Não foi possível concluir. Tente de novo.",
     noBridge: "Sem conexão com o serviço.",
   },
+  dot: {
+    /** Nome acessível do botão que cutuca o Dot. */
+    poke: "Cutucar o Dot",
+    /** Falas ao cutucar. Nunca a mesma duas vezes seguidas. */
+    lines: [
+      "Ainda não é minha hora.",
+      "Trouxe a moeda?",
+      "Boop.",
+      "Isso faz cócegas.",
+      "Tô de olho.",
+      "De novo? Tá.",
+      "Já atravessei essa.",
+      "Achou uma alma.",
+    ],
+    /** Estado do Dot em texto, para quem não vê os olhos. */
+    mood: {
+      idle: "Dot parado",
+      working: "Dot trabalhando",
+      "needs-you": "Dot precisa de você",
+      sleeping: "Dot dormindo",
+      done: "Dot terminou",
+    },
+  },
   usage: {
     title: "Uso",
     refresh: "Atualizar uso",
