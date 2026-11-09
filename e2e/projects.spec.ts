@@ -20,6 +20,7 @@ test("projetos: criar, agrupar conversas, fechar o grupo, remover e erro de past
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
     KARONT_RUNTIME_DIR: path.join(root, "run"),
+    KARONT_SKIP_ONBOARDING: "1",
     KARONT_DATA_DIR: path.join(root, "data"),
     KARONT_DISABLE_AGENT_DETECTION: "1",
   };

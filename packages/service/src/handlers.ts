@@ -2,16 +2,22 @@ import { randomUUID } from "node:crypto";
 import os from "node:os";
 import type { DatabaseSync } from "node:sqlite";
 import {
+  type AgentUsage,
   type AnyEvent,
+  agentUsageSchema,
   CONTRACT_VERSION,
   type JsonValue,
   MAX_CONCURRENT_AGENTS_SETTING,
   type ParsedRequest,
 } from "@karont/contract";
 import type { AdapterFactory, AgentAdapterRegistration } from "./agents/adapter.ts";
+import { createClaudeAdapterRegistration } from "./agents/claude-adapter.ts";
+import { createCodexAdapterRegistration } from "./agents/codex-adapter.ts";
 import { ConversationManager } from "./agents/conversation-manager.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
 import { AgentRegistry } from "./agents/registry.ts";
+import { USAGE_SETTING_PREFIX } from "./agents/usage.ts";
+import { UsageRefresher } from "./agents/usage-refresh.ts";
 import { DeltaCoalescer } from "./coalescer.ts";
 import {
   createProject,
@@ -20,6 +26,7 @@ import {
   getSetting,
   getWorktree,
   listProjects,
+  listSettingsByPrefix,
   listWorkspaces,
   listWorktrees,
   recordRecentFolder,
@@ -37,7 +44,7 @@ import {
   worktreeStatus,
 } from "./git/worktrees.ts";
 import { getOverview } from "./overview.ts";
-import { resolvePaths } from "./paths.ts";
+import { resolvePaths, type ServicePaths } from "./paths.ts";
 import { searchAll } from "./search.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
 import { getSystemUserName } from "./user-name.ts";
@@ -67,6 +74,8 @@ export type HandlerOptions = {
   env?: NodeJS.ProcessEnv;
   /** Pasta de dados do Karont; as cópias separadas ficam em `<dataDir>/worktrees`. */
   dataDir?: string;
+  /** Caminhos reais do serviço, expostos (sem o segredo) por `system.diagnostics`. */
+  paths?: ServicePaths;
   homeDir?: string;
   platform?: NodeJS.Platform;
   agentFs?: AgentDetectionFs;
@@ -83,7 +92,8 @@ export function createHandlers({
   dev,
   emit,
   env = process.env,
-  dataDir = resolvePaths(env).dataDir,
+  paths = resolvePaths(env),
+  dataDir = paths.dataDir,
   homeDir = os.homedir(),
   platform = process.platform,
   agentFs,
@@ -112,6 +122,25 @@ export function createHandlers({
     ...(adapterFactory ? { adapterFactory } : {}),
     ...(agentRegistrations ? { agentRegistrations } : {}),
   });
+  const listUsage = (): AgentUsage[] =>
+    listSettingsByPrefix(db, USAGE_SETTING_PREFIX).flatMap(({ value }) => {
+      const parsed = agentUsageSchema.safeParse(value);
+      return parsed.success ? [parsed.data] : [];
+    });
+  const usageRegistrations = new Map<string, AgentAdapterRegistration>([
+    ["claude", createClaudeAdapterRegistration({ env })],
+    ["codex", createCodexAdapterRegistration({ env })],
+    ...Object.entries(agentRegistrations ?? {}),
+  ]);
+  const usageRefresher = new UsageRefresher({
+    db,
+    dataDir,
+    foundAgents: async () =>
+      (await agentRegistry.list()).agents.filter((agent) => agent.found).map((agent) => agent.id),
+    registrations: () => usageRegistrations,
+    emit: broadcast,
+    list: listUsage,
+  });
   const handle = async (request: ParsedRequest, conn: HandlerConnection): Promise<unknown> => {
     switch (request.method) {
       case "system.ping":
@@ -126,6 +155,26 @@ export function createHandlers({
           platform: process.platform,
           homeDir,
         };
+      case "system.diagnostics": {
+        const { agents, detectedAt } = await agentRegistry.list();
+        return {
+          serviceVersion: SERVICE_VERSION,
+          contractVersion: CONTRACT_VERSION,
+          nodeVersion: process.versions.node,
+          platform: process.platform,
+          pid: process.pid,
+          startedAt,
+          paths: {
+            homeDir,
+            dataDir: paths.dataDir,
+            dbPath: paths.dbPath,
+            runtimeDir: paths.runtimeDir,
+            socketPath: paths.socketPath,
+          },
+          agents,
+          detectedAt,
+        };
+      }
       case "system.userName":
         return { name: await getSystemUserName({ platform }) };
       case "settings.get":
@@ -312,6 +361,10 @@ export function createHandlers({
         );
       case "restore.undo":
         return conversationManager.undo(request.params.conversationId, request.params.messageId);
+      case "usage.list":
+        return { usage: listUsage() };
+      case "usage.refresh":
+        return { usage: await usageRefresher.refresh({ force: request.params.force === true }) };
       case "agent.models":
         return conversationManager.models(request.params.agent);
       case "agent.capabilities":
@@ -540,7 +593,10 @@ export function createHandlers({
   return {
     handle,
     closeTerminals: () => terminalManager.closeAll(),
-    closeAgents: () => conversationManager.close(),
+    closeAgents: async () => {
+      await usageRefresher.dispose();
+      await conversationManager.close();
+    },
   };
 }
 

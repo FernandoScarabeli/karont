@@ -29,6 +29,12 @@
   --k-color-status-needs-you: #e38c76;
   --k-color-focus: var(--k-color-primary);
   --k-color-brand: #f3eee3;
+  --k-accent-ivory: #f3eee3;
+  --k-accent-magenta: #ff4f8b;
+  --k-accent-turquoise: #2dd4c4;
+  --k-accent-lime: #c6f135;
+  --k-accent-blue: #5b8cff;
+  --k-accent-coral: #ff7a59;
   --k-color-ok: #6fcf97;
   --k-color-diff-added-bg: color-mix(in srgb, var(--k-color-ok) 9%, transparent);
   --k-color-diff-removed-bg: color-mix(in srgb, var(--k-color-danger) 8%, transparent);
@@ -206,6 +212,21 @@
   --k-section-heading-height: 28px;
   --k-service-status-gap: 8px;
   --k-service-footer-gap: 4px;
+  --k-usage-label-width: 46px;
+  --k-usage-percent-width: 30px;
+  --k-usage-reset-width: 38px;
+  --k-usage-column-gap: 4px;
+  --k-duration-usage-spin: 900ms;
+  --k-usage-bar-height: 6px;
+  --k-usage-ring-size: 32px;
+  --k-usage-ring-icon-size: 16px;
+  --k-usage-ring-stroke: 3px;
+  --k-avatar-size-sm: 20px;
+  --k-avatar-size-lg: 72px;
+  --k-avatar-icon-sm: 12px;
+  --k-avatar-icon-lg: 32px;
+  --k-swatch-size: 28px;
+  --k-swatch-icon-size: 16px;
   --k-empty-state-gap: 8px;
   --k-empty-state-max-width: 360px;
   --k-dialog-width-sm: 420px;
@@ -221,6 +242,9 @@
   --k-layer-drop-zone: 2;
   --k-layer-menu: 3;
   --k-layer-popover: 4;
+  --k-layer-onboarding: 10;
+  --k-onboarding-width: 480px;
+  --k-onboarding-list-max-height: 176px;
   --k-settings-nav-width: 160px;
   --k-settings-content-max-width: 960px;
   --k-settings-prose-width: 68ch;
@@ -294,6 +318,37 @@
   --k-color-code-comment: #8d8d94;
   --k-color-code-title: #7db4e0;
   --k-color-code-meta: #e5a93b;
+}
+
+/* Cor de destaque: só no tema escuro. As cores de estado não mudam. */
+:root[data-accent="magenta"]:not([data-theme="light"]) {
+  --k-color-brand: var(--k-accent-magenta);
+  --k-color-primary: var(--k-accent-magenta);
+  --k-color-primary-hover: color-mix(in srgb, var(--k-accent-magenta) 70%, #ffffff);
+}
+
+:root[data-accent="turquoise"]:not([data-theme="light"]) {
+  --k-color-brand: var(--k-accent-turquoise);
+  --k-color-primary: var(--k-accent-turquoise);
+  --k-color-primary-hover: color-mix(in srgb, var(--k-accent-turquoise) 70%, #ffffff);
+}
+
+:root[data-accent="lime"]:not([data-theme="light"]) {
+  --k-color-brand: var(--k-accent-lime);
+  --k-color-primary: var(--k-accent-lime);
+  --k-color-primary-hover: color-mix(in srgb, var(--k-accent-lime) 70%, #ffffff);
+}
+
+:root[data-accent="blue"]:not([data-theme="light"]) {
+  --k-color-brand: var(--k-accent-blue);
+  --k-color-primary: var(--k-accent-blue);
+  --k-color-primary-hover: color-mix(in srgb, var(--k-accent-blue) 70%, #ffffff);
+}
+
+:root[data-accent="coral"]:not([data-theme="light"]) {
+  --k-color-brand: var(--k-accent-coral);
+  --k-color-primary: var(--k-accent-coral);
+  --k-color-primary-hover: color-mix(in srgb, var(--k-accent-coral) 70%, #ffffff);
 }
 
 :root[data-theme="light"] {

@@ -31,6 +31,7 @@ import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { TextField } from "../components/TextField/TextField.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
+import { useOnboarding } from "../onboarding/OnboardingContext.tsx";
 import { resolveInitialAgent, TERMINAL_CHOICE } from "../projects/initialAgent.ts";
 import { getProjectIcon } from "../projects/projectIcons.ts";
 import { useProject } from "../projects/useProjects.ts";
@@ -104,6 +105,8 @@ export function NewConversationView({
 }) {
   const bridge = getBridge();
   const { navigate } = useNavigation();
+  // Ao concluir a primeira abertura, as preferências gravadas lá valem de novo, mesmo com esta tela já montada.
+  const { completions: onboardingCompletions } = useOnboarding();
   const { project, loading: projectsLoading } = useProject(projectId);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentsLoaded, setAgentsLoaded] = useState(false);
@@ -167,7 +170,13 @@ export function NewConversationView({
     [bridge],
   );
 
+  const seenCompletionsRef = useRef(onboardingCompletions);
   useEffect(() => {
+    if (seenCompletionsRef.current !== onboardingCompletions) {
+      seenCompletionsRef.current = onboardingCompletions;
+      setManualChoice(null);
+      folderTouchedRef.current = false;
+    }
     if (!bridge) return;
     let mounted = true;
 
@@ -249,7 +258,7 @@ export function NewConversationView({
     return () => {
       mounted = false;
     };
-  }, [bridge, saveSetting, updateFolderPath]);
+  }, [bridge, saveSetting, updateFolderPath, onboardingCompletions]);
 
   const choice = resolveInitialAgent({
     manualChoice,

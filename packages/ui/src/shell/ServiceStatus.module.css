@@ -1,9 +1,9 @@
 .status {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   align-items: center;
   gap: var(--k-service-status-gap);
-  min-width: 0;
   color: var(--k-color-text-secondary);
 }
 
@@ -29,6 +29,9 @@
 
 .label {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--k-color-text-secondary);
   font-size: var(--k-text-12);
   line-height: var(--k-leading-normal);
@@ -40,4 +43,25 @@
   font-family: var(--k-font-mono);
   font-size: var(--k-text-11);
   line-height: var(--k-leading-normal);
+}
+
+/* Escondido só para a vista: leitores de tela continuam lendo o texto. */
+.visuallyHidden {
+  position: absolute;
+  width: var(--k-border-width);
+  height: var(--k-border-width);
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.dotFocusable {
+  position: relative;
+  border-radius: var(--k-radius-full);
+}
+
+.dotFocusable:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
 }

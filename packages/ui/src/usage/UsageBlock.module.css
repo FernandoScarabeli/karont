@@ -1,0 +1,205 @@
+.block {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  box-sizing: border-box;
+  min-width: 0;
+  margin-block-start: var(--k-space-2);
+  padding-inline: var(--k-space-1);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.title {
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+}
+
+.spinning {
+  animation: usageSpin var(--k-duration-usage-spin) linear infinite;
+}
+
+@keyframes usageSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.agents,
+.windows,
+.rings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agents {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+}
+
+.rings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
+.ringItem {
+  display: flex;
+}
+
+/* Troca entre compacto e expandido: entra com um fade curto. */
+.swap {
+  animation: usageSwap var(--k-motion-moderate) var(--k-ease);
+}
+
+@keyframes usageSwap {
+  from {
+    opacity: 0;
+  }
+}
+
+.agent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+
+.agentHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+
+.agentIcon {
+  flex: 0 0 auto;
+}
+
+.agentName {
+  flex: 1 1 auto;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-12);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.updated {
+  flex: 0 0 auto;
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-11);
+  white-space: nowrap;
+}
+
+.windows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.window {
+  display: grid;
+  grid-template-columns:
+    var(--k-usage-label-width) minmax(0, 1fr) var(--k-usage-percent-width)
+    var(--k-usage-reset-width);
+  align-items: center;
+  column-gap: var(--k-usage-column-gap);
+  min-width: 0;
+  font-size: var(--k-text-11);
+  line-height: var(--k-leading-tight);
+  white-space: nowrap;
+}
+
+.windowLabel,
+.percent,
+.reset {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.windowLabel {
+  color: var(--k-color-text-secondary);
+}
+
+.percent {
+  color: var(--k-color-text-primary);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.reset {
+  color: var(--k-color-text-muted);
+  text-align: end;
+}
+
+.bar {
+  appearance: none;
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--k-usage-bar-height);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--k-radius-full);
+  background: var(--k-color-bg-control);
+}
+
+.bar::-webkit-progress-bar {
+  background: var(--k-color-bg-control);
+  border-radius: var(--k-radius-full);
+}
+
+.bar::-webkit-progress-value {
+  border-radius: var(--k-radius-full);
+  background: var(--k-color-text-secondary);
+}
+
+.bar::-moz-progress-bar {
+  border-radius: var(--k-radius-full);
+  background: var(--k-color-text-secondary);
+}
+
+.barAttention::-webkit-progress-value {
+  background: var(--k-color-attention);
+}
+
+.barAttention::-moz-progress-bar {
+  background: var(--k-color-attention);
+}
+
+.barDanger::-webkit-progress-value {
+  background: var(--k-color-danger);
+}
+
+.barDanger::-moz-progress-bar {
+  background: var(--k-color-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinning,
+  .swap {
+    animation: none;
+  }
+}

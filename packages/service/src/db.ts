@@ -180,6 +180,16 @@ export const migrations: { version: number; up: string }[] = [
       FROM message_search_map map JOIN message_search_seed seed ON seed.message_id = map.message_id;
     DROP TABLE message_search_seed;`,
   },
+  {
+    version: 21,
+    // Primeira abertura: quem já usa o app (tem conversa ou projeto) não a vê. Banco novo fica sem
+    // a chave. O valor é JSON (texto com aspas), como `setSetting` grava.
+    up: `INSERT OR IGNORE INTO settings (key, value, updated_at)
+      SELECT 'onboarding.completedAt',
+        json_quote(strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      WHERE EXISTS (SELECT 1 FROM conversations) OR EXISTS (SELECT 1 FROM projects);`,
+  },
 ];
 
 /** Roda `work` numa transação; desfaz tudo se ela lançar. */
@@ -782,6 +792,24 @@ export function setSetting(db: DatabaseSync, key: string, value: JsonValue): voi
   db.prepare(
     "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
   ).run(key, serialized, new Date().toISOString());
+}
+
+export function listSettingsByPrefix(
+  db: DatabaseSync,
+  prefix: string,
+): { key: string; value: JsonValue }[] {
+  const rows = db
+    .prepare("SELECT key, value FROM settings WHERE substr(key, 1, ?) = ? ORDER BY key ASC")
+    .all(prefix.length, prefix) as { key: string; value: string }[];
+  const result: { key: string; value: JsonValue }[] = [];
+  for (const row of rows) {
+    try {
+      result.push({ key: row.key, value: JSON.parse(row.value) as JsonValue });
+    } catch {
+      // valor corrompido: ignora
+    }
+  }
+  return result;
 }
 
 export function listCustomAgents(db: DatabaseSync): CustomAgentRecord[] {

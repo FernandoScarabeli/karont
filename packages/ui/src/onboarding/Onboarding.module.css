@@ -1,0 +1,324 @@
+.cover {
+  position: fixed;
+  inset: 0;
+  z-index: var(--k-layer-onboarding);
+  background: var(--k-color-bg-app);
+}
+
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: var(--k-layer-onboarding);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--k-color-bg-app);
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-sans);
+}
+
+.header,
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-4);
+  padding: var(--k-space-4) var(--k-space-6);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-topbar-brand-gap);
+}
+
+.brandName {
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-brand);
+  font-size: var(--k-text-14);
+  font-weight: var(--k-weight-brand);
+}
+
+.body {
+  display: grid;
+  min-height: 0;
+  overflow-y: auto;
+  padding-inline: var(--k-space-6);
+}
+
+/* margin-block: auto centraliza sem cortar o topo quando o conteúdo passa da altura. */
+.step {
+  display: grid;
+  align-content: start;
+  gap: var(--k-space-4);
+  width: 100%;
+  max-width: var(--k-onboarding-width);
+  min-width: 0;
+  margin-block: auto;
+  margin-inline: auto;
+  padding-block: var(--k-space-4);
+  animation: stepIn var(--k-motion-moderate) var(--k-ease) both;
+}
+
+@keyframes stepIn {
+  from {
+    opacity: 0;
+    transform: translateY(var(--k-space-2));
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step {
+    animation: none;
+  }
+}
+
+.welcomeTitle,
+.title {
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-brand);
+  font-weight: var(--k-weight-brand);
+  line-height: var(--k-leading-tight);
+}
+
+.welcomeTitle {
+  font-size: var(--k-text-32);
+}
+
+.title {
+  font-size: var(--k-text-24);
+}
+
+.welcomeTitle:focus,
+.title:focus {
+  outline: none;
+}
+
+.lead {
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-15);
+  line-height: var(--k-leading-normal);
+}
+
+.note {
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+.actions {
+  display: flex;
+  margin-block-start: var(--k-space-2);
+}
+
+.actionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-3);
+}
+
+.group {
+  display: grid;
+  min-width: 0;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  padding: 0;
+  margin-block-end: var(--k-space-2);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-normal);
+}
+
+.choices {
+  display: grid;
+  gap: var(--k-space-2);
+}
+
+.choice {
+  position: relative;
+  display: flex;
+  min-height: var(--k-space-10);
+  align-items: center;
+  gap: var(--k-space-3);
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-width) solid var(--k-color-border);
+  border-radius: var(--k-radius-md);
+  background: var(--k-color-bg-raised);
+  color: var(--k-color-text-primary);
+  cursor: pointer;
+  transition:
+    background-color var(--k-motion-fast) var(--k-ease),
+    border-color var(--k-motion-fast) var(--k-ease);
+}
+
+.choice:hover {
+  background: var(--k-color-bg-hover);
+}
+
+.choice:has(.radio:checked) {
+  border-color: var(--k-color-border-muted);
+  background: var(--k-color-bg-control);
+}
+
+.choice:has(.radio:focus-visible) {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+/* Escondido só para a vista: o rótulo inteiro é o alvo do clique e o radio recebe o foco. */
+.radio {
+  position: absolute;
+  width: var(--k-border-width);
+  height: var(--k-border-width);
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  clip-path: inset(50%);
+}
+
+.choiceName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--k-text-14);
+  font-weight: var(--k-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.choiceCheck {
+  flex: 0 0 auto;
+  color: var(--k-color-text-primary);
+}
+
+.statusList {
+  display: grid;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.statusItem {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-3);
+  padding: var(--k-space-1) var(--k-space-3);
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+}
+
+.dim {
+  color: var(--k-color-text-muted);
+}
+
+.statusName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusMark {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--k-space-1);
+  font-size: var(--k-text-12);
+}
+
+.missing {
+  max-height: var(--k-onboarding-list-max-height);
+  overflow-y: auto;
+  border-radius: var(--k-radius-md);
+}
+
+.missing:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.addForm {
+  display: grid;
+  gap: var(--k-space-3);
+}
+
+.photoRow {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-4);
+}
+
+/* Escondido só para a vista: o botão "Escolher foto" é quem recebe o foco e abre o seletor. */
+.fileInput {
+  position: absolute;
+  width: var(--k-border-width);
+  height: var(--k-border-width);
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  clip-path: inset(50%);
+}
+
+.folder {
+  display: grid;
+  gap: var(--k-space-1);
+  margin: 0;
+}
+
+.folderLabel {
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+}
+
+.folderPath {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--k-color-text-primary);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-13);
+}
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  margin: 0;
+  color: var(--k-color-danger);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+.stepLabel {
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+}
+
+.footerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}

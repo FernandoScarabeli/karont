@@ -14,6 +14,7 @@ import {
   workspaceSchema,
 } from "./methods.ts";
 import { restorePointSummarySchema } from "./restore.ts";
+import { agentUsageSchema } from "./usage.ts";
 import { worktreeSchema } from "./worktrees.ts";
 
 export const events = {
@@ -52,6 +53,7 @@ export const events = {
     conversationId: z.string().min(1),
     point: restorePointSummarySchema,
   }),
+  "usage.updated": agentUsageSchema,
   "worktrees.changed": z.strictObject({
     projectId: z.string().min(1),
     worktrees: z.array(worktreeSchema),

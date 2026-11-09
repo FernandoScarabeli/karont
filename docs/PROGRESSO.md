@@ -106,6 +106,44 @@ Repositório recriado do zero em 2026-10-31.
 28. **Testes com agente real** (2026-11-09): usam o Codex `gpt-6-luna` em esforço `low`, para não gastar o limite do Claude. Se algo só puder ser testado no Claude real, perguntar antes.
 29. **Telas do M4** (aprovadas em 2026-11-09): a tela do workspace aparece sem conversa aberta na aba, ou ao clicar de novo na aba em que já se está. Tem a linha do dia, o campo de mensagem com escolha de projeto e um cartão por projeto. O Início tem o que precisa de você e um cartão por workspace. "Nova conversa" abre limpa, sem cartões. Cartão de projeto abre conversa nova nele; cartão de workspace abre a aba.
 30. **Sidebar e divisão** (aprovado em 2026-11-09): a sidebar tem largura ajustável e fecha deixando uma faixa com ícones de atalho, inspirada no Splitter de ui.productdevbook.com. Esse componente não está publicado no npm nem tem o código no GitHub, então o comportamento é feito com `react-resizable-panels`, já aprovada. "Dividir" abre sempre à direita, sem menu. O destaque ao arrastar um painel só aparece onde soltar muda o layout.
+31. **Plano do M5** (aprovado em 2026-11-09):
+    - Ordem: B1 serviço (estado da primeira abertura e diagnóstico), F1 Perfil, F2 Aparência, F3 Diagnóstico, F4 Primeira abertura e fechamento.
+    - Primeira abertura em tela cheia, sem sidebar, um passo por vez, com voltar. O visual segue o que o app já tem.
+    - Quem já tem conversas ou projetos não vê a primeira abertura sozinho; "Abrir de novo" nas Configurações mostra sem apagar nada.
+    - Sem nenhum agente encontrado, a pessoa segue e termina num Terminal.
+    - A foto é reduzida pelo app e guardada no banco; o arquivo original não é tocado.
+    - A cor escolhida muda só o destaque da marca. "Trabalhando" e "precisa de você" mantêm as cores deles.
+    - Executor: subagentes Claude Sonnet 5.5, uma tarefa por vez, numa worktree própria, como no M3 e no M4.
+32. **Contador de uso** (2026-11-09): entra junto com o M5, na mesma branch. Mostra, por agente, a porcentagem usada em 5 horas e na semana e quando zera. Os números vêm só do que as CLIs já mandam durante as respostas; o app guarda o último valor e mostra há quanto tempo foi visto, sem ler credenciais nem abrir a CLI só para isso. Fica num ícone no rodapé da sidebar. Não substitui o painel de custos do M8, que é por Dot e em tokens.
+33. **Uso sem precisar de mensagem** (2026-11-09, substitui parte da decisão 32): o dono não quer mandar mensagem para ver o uso. O app abre a CLI por um instante, só para perguntar o uso, sem turno nem gasto de tokens (Claude: `get_usage` pelo canal de controle; Codex: `account/rateLimits/read`). Quem lê credenciais é a própria CLI; a regra 1 continua valendo. Atualiza ao abrir o app, ao voltar à janela se passaram 2 minutos e por um botão, sem polling. O bloco fica sempre visível acima do perfil, na sidebar.
+34. **Uso compacto** (2026-11-09): o bloco de uso ganha um chevron que o reduz a anéis, um por agente, com o ícone dentro, e a escolha fica salva. Com a sidebar fechada, os anéis aparecem na faixa de ícones. Referência visual do dono: anel verde, laranja perto do limite. O anel mostra a janela mais perto do limite, 5 horas ou semana; os dois números ficam na dica.
+
+## M5 — estado
+Branch `m5-primeira-abertura`, a partir da `main` com o M4. Feito, nesta ordem: B1 (migração 21, `KARONT_SKIP_ONBOARDING`, `system.diagnostics`), F1 (Perfil: nome, foto e botão no rodapé), F2 (Aparência e rodapé enxuto), F3 (Diagnóstico), F4 (primeira abertura, "Abrir de novo" e ajustes finais do rodapé). Depois, o contador de uso (decisões 32 a 34): B2 e B3 (serviço), F5, F6 e F7 (tela). PR aberto em 2026-11-09, com o ok do dono.
+
+Contador de uso (2026-11-09): `npm run check`: contrato 42, serviço 365, desktop 41, interface 264, sem falhas. E2E: 22 de 22, em 40 s. Teste real no Electron com Codex 0.167.0 `gpt-6-luna`, esforço `low`: 4 de 4, e o painel mostrou 8% em 5 horas e 39% na semana. O Claude real não foi testado (decisão 28); o leitor dele usa a saída real gravada nos fixtures.
+
+Uso sem mensagem e bloco fixo (decisão 33, B3 e F6, 2026-11-09): `npm run check`: contrato 42, serviço 382, desktop 41, interface 264, sem falhas. E2E: 22 de 22, em 38 s. Teste real no Electron, em banco vazio e sem nenhuma mensagem, só lendo o uso: 4 de 4, com Claude Code 2.1.319 e Codex 0.167.0; os números apareceram em cerca de 2 s e nenhum processo de CLI sobrou. App parado 30 s depois: Electron com CPU 0% e 727 MB somando o working set; serviço com 44 MB (PSS).
+
+Uso compacto (decisão 34, F7, 2026-11-09): `npm run check`: contrato 42, serviço 382, desktop 41, interface 268, sem falhas. E2E: 23 de 23, em 40 s. Conferido no Electron com os dados reais: chevron, anéis no bloco e na faixa de ícones, dica e anel que reabre a sidebar.
+
+Notas técnicas do uso:
+- O `get_usage` do Claude é interno da CLI e pode mudar. Se falhar, nada se perde: o último valor fica e os eventos das respostas continuam atualizando.
+- `get_usage` traz `utilization` de 0 a 100; o `rate_limit_event`, de 0 a 1.
+- Cada leitura abre a CLI, então os hooks globais do usuário rodam nela. Por isso a leitura é por eventos (abrir, foco depois de 2 min, janela que venceu, botão), sem polling, e na pasta de dados do Karont.
+
+Testes (2026-11-09):
+- `npm run check`: contrato 41, serviço 355, desktop 41, interface 251, sem falhas. Build ok. E2E: 21 de 21, em 41 s.
+- Telas conferidas no navegador, em banco temporário: foto real, foto pesada, arquivo falso, nome longo, seis cores, setas do teclado, cor mantida ao recarregar, serviço caído com a sidebar estreita e o fluxo inteiro da primeira abertura.
+- Teste real no Electron, em banco e pastas temporárias, com Codex 0.167.0 `gpt-6-luna`, esforço `low`: 8 de 9. O nono era uma conferência errada do próprio script; a captura mostra a pasta escolhida no seletor. Cobriu primeira abertura em banco novo, Claude e Codex detectados, foto sob a CSP real, projeto com agente padrão, resposta no chat e diagnóstico. O Claude real não foi testado (decisão 28).
+
+Medições (build de produção, 30 s depois de um turno real): serviço com CPU 0% e 44 MB (PSS); Electron com CPU 0,02% e 774 MB somando o working set (Browser 193, GPU 326, Utility 82, Tab 172). A soma conta memória compartilhada várias vezes, como no M4 (714 MB).
+
+Notas técnicas:
+- A cor de destaque troca `--k-color-brand` e `--k-color-primary`, só no tema escuro: só a marca quase não mudaria nada na tela. As cores de estado não mudam (decisão 31).
+- A CSP só permite `img-src 'self' data:`, por isso a foto é preparada com `createImageBitmap` e canvas, sem `blob:`.
+- A primeira abertura fica sobre o shell, que continua montado e `inert`: reabrir não derruba terminais nem conversas.
+- O Playwright conta como presentes os elementos dentro de `inert`.
 
 ## M4 — estado
 Branch `m4-navegacao`, a partir da `main` com o M3. Feito, nesta ordem: B1 (workspaces no serviço), F1 (abas e sidebar), F1b (ajustes do dono), B2 (resumo agregado), F2 (telas do workspace e do Início), B3 e F3 (caixa de entrada), B4 e F4 (busca), E2E dos fluxos, F5 (sidebar ajustável, faixa de ícones, botão junto da marca, composer em painel estreito, divisão direta com animação de 240 ms). Falta o PR.

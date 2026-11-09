@@ -92,6 +92,7 @@ test("cópia separada: oferecer, trabalhar, trazer de volta, conflito e remover"
     HOME: home,
     PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`,
     KARONT_RUNTIME_DIR: path.join(root, "run"),
+    KARONT_SKIP_ONBOARDING: "1",
     KARONT_DATA_DIR: path.join(root, "data"),
     KARONT_CLAUDE_CLI: fakeCli,
   };

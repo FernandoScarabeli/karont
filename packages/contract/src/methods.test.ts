@@ -439,3 +439,64 @@ test("conversations.workspaceMoved exige exatamente um entre fromWorkspaceId e p
     false,
   );
 });
+
+test("system.diagnostics aceita parâmetros vazios e recusa resultado inválido", () => {
+  const valid = {
+    serviceVersion: "0.0.0",
+    contractVersion: 1,
+    nodeVersion: "24.0.0",
+    platform: "linux",
+    pid: 1,
+    startedAt: "2026-11-01T10:00:00.000Z",
+    paths: {
+      homeDir: "/home/u",
+      dataDir: "/home/u/.local/share/karont",
+      dbPath: "/home/u/.local/share/karont/karont.db",
+      runtimeDir: "/run/user/1000/karont",
+      socketPath: "/run/user/1000/karont/service.sock",
+    },
+    agents: [],
+    detectedAt: "2026-11-01T10:00:00.000Z",
+  };
+  assert.equal(methods["system.diagnostics"].params.safeParse({}).success, true);
+  assert.equal(methods["system.diagnostics"].params.safeParse({ x: 1 }).success, false);
+  assert.equal(methods["system.diagnostics"].result.safeParse(valid).success, true);
+  assert.equal(
+    methods["system.diagnostics"].result.safeParse({ ...valid, pid: "1" }).success,
+    false,
+  );
+  assert.equal(
+    methods["system.diagnostics"].result.safeParse({
+      ...valid,
+      paths: { ...valid.paths, secretPath: "/x" },
+    }).success,
+    false,
+  );
+  const { agents: _agents, ...semAgentes } = valid;
+  assert.equal(methods["system.diagnostics"].result.safeParse(semAgentes).success, false);
+});
+
+test("usage.list valida resultado e usage.updated valida o evento", () => {
+  const usage = {
+    agent: "codex",
+    windows: [{ id: "five_hour", usedPercent: 20, resetsAt: "2026-11-09T12:00:00.000Z" }],
+    observedAt: "2026-11-09T10:00:00.000Z",
+  };
+  assert.equal(methods["usage.list"].params.safeParse({}).success, true);
+  assert.equal(methods["usage.list"].params.safeParse({ x: 1 }).success, false);
+  assert.equal(methods["usage.list"].result.safeParse({ usage: [usage] }).success, true);
+  assert.equal(methods["usage.list"].result.safeParse({ usage: [] }).success, true);
+  const badWindow = { ...usage, windows: [{ id: "daily", usedPercent: 20, resetsAt: null }] };
+  assert.equal(methods["usage.list"].result.safeParse({ usage: [badWindow] }).success, false);
+  const over = { ...usage, windows: [{ id: "weekly", usedPercent: 101, resetsAt: null }] };
+  assert.equal(methods["usage.list"].result.safeParse({ usage: [over] }).success, false);
+  assert.equal(events["usage.updated"].safeParse(usage).success, true);
+  assert.equal(events["usage.updated"].safeParse({ ...usage, observedAt: "ontem" }).success, false);
+  assert.equal(isMethodName("usage.list"), true);
+  assert.equal(isMethodName("usage.refresh"), true);
+  assert.equal(methods["usage.refresh"].params.safeParse({}).success, true);
+  assert.equal(methods["usage.refresh"].params.safeParse({ force: true }).success, true);
+  assert.equal(methods["usage.refresh"].params.safeParse({ force: "sim" }).success, false);
+  assert.equal(methods["usage.refresh"].params.safeParse({ x: 1 }).success, false);
+  assert.equal(methods["usage.refresh"].result.safeParse({ usage: [usage] }).success, true);
+});

@@ -16,6 +16,7 @@ test("pain√©is: dois terminais lado a lado, sem violar a CSP; fechar o painel n√
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
     KARONT_RUNTIME_DIR: path.join(root, "run"),
+    KARONT_SKIP_ONBOARDING: "1",
     KARONT_DATA_DIR: path.join(root, "data"),
     KARONT_DISABLE_AGENT_DETECTION: "1",
   };
@@ -85,6 +86,7 @@ async function launchEmpty() {
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
     KARONT_RUNTIME_DIR: path.join(root, "run"),
+    KARONT_SKIP_ONBOARDING: "1",
     KARONT_DATA_DIR: path.join(root, "data"),
     KARONT_DISABLE_AGENT_DETECTION: "1",
   };

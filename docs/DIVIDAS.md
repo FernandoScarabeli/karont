@@ -16,6 +16,14 @@
 - Medição (preview, resposta de ~14 mil caracteres): serviço ~1–2% de CPU e 52 MB; aba da interface 12–20% de CPU durante o streaming (antes 60–110%), 0% parada. Repetir no Electron empacotado.
 - A skill `unslop` não está instalada no Codex; as revisões de UI usaram taste lint + Impeccable.
 
+## Do M5
+- **E2E que falha antes de pegar o pid deixa o serviço vivo:** o `finally` só encerra o serviço se `servicePid` já existir. Foi assim que sobraram 14 serviços do M4, cerca de 1,5 GB. O certo é o harness encerrar pelo `KARONT_RUNTIME_DIR` da rodada.
+- **Saudação da Nova conversa não acompanha o Perfil:** `NewConversationView` lê o nome ao montar. Trocar o nome com essa tela já aberta só aparece ao reabri-la.
+- **Faixa de ícones da sidebar não mostra o perfil nem o uso:** só o rodapé da sidebar aberta tem esses botões.
+- **`openDatabase(":memory:")` cria um arquivo com esse nome na pasta atual:** a função trata o caminho como arquivo comum. Nos testes, use uma pasta temporária.
+- **Evento de uso fora de um turno é descartado pelo manager.** Nas saídas gravadas, todos chegam durante o turno, e a leitura direta cobre o resto.
+- **Teste de cópia separada roda com a detecção ligada:** ele precisa achar a CLI falsa, então o app também tenta ler o uso das CLIs que estiverem no `PATH`. Falha em silêncio e não afeta o resultado, mas o certo é uma variável que aponte só para a CLI falsa.
+
 ## Do M4
 - **Pendência depois de reiniciar o serviço:** permissão, pergunta ou plano continuam `pending` na mensagem salva e o chat ainda mostra os botões, mas responder é recusado. A caixa de entrada já não mostra esses itens.
 - **Caixa de entrada lê uma mensagem por conversa em erro** a cada recálculo. Só roda em mudança de estado, mas erros acumulados pesam; vale trazer num único SQL.

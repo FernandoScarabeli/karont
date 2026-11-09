@@ -13,6 +13,7 @@ import {
   type MessagePart,
   type MessageSource,
   reasoningEffortSchema,
+  type UsageWindow,
 } from "@karont/contract";
 import { validateFolder } from "../folders.ts";
 import type {
@@ -23,6 +24,7 @@ import type {
   AgentAdapter,
   AgentAdapterRegistration,
   CodexBranchPoint,
+  UsageReadOptions,
 } from "./adapter.ts";
 import { AgentCliError } from "./claude-adapter.ts";
 import { codexContextUsage } from "./context-usage.ts";
@@ -30,6 +32,7 @@ import { resolveAgentCommand } from "./detect.ts";
 import { removeSkillMentions } from "./skill-mention.ts";
 import { makeMessageSource, mergeMessageSources } from "./source-metadata.ts";
 import { mapCodexSpecialAction, truncateUtf8 } from "./tool-actions.ts";
+import { parseCodexRateLimits, runUsageProbe } from "./usage.ts";
 
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
 const RPC_TIMEOUT_MS = 30_000;
@@ -721,6 +724,11 @@ export class CodexAdapter implements AgentAdapter {
       if (usage) this.#emit({ kind: "context-usage", ...usage });
       return;
     }
+    if (method === "account/rateLimits/updated") {
+      const windows = parseCodexRateLimits(params);
+      if (windows.length > 0) this.#emit({ kind: "usage", windows });
+      return;
+    }
     if (method === "skills/changed") {
       this.#skillsLoaded = false;
       return;
@@ -1329,6 +1337,58 @@ export function createCodexAdapterRegistration(
     },
     loadSkills: createCodexSkillLoader(options),
     loadModels: createCodexModelLoader(options),
+    readUsage: createCodexUsageReader(options),
+  };
+}
+
+// Lê o uso por `account/rateLimits/read`, sem abrir conversa nem mandar mensagem.
+export function createCodexUsageReader(
+  options: CodexAdapterOptions & { timeoutMs?: number; killAfterMs?: number } = {},
+): (read: UsageReadOptions) => Promise<UsageWindow[]> {
+  return async ({ dataDir, signal }) => {
+    try {
+      const env = options.env ?? process.env;
+      const command =
+        env.KARONT_CODEX_CLI ||
+        (await resolveAgentCommand("codex", {
+          env,
+          homeDir: options.homeDir ?? os.homedir(),
+          platform: options.platform ?? process.platform,
+        })) ||
+        "codex";
+      return await runUsageProbe({
+        spawn: options.spawn ?? nodeSpawn,
+        command,
+        args: ["app-server", "--stdio"],
+        cwd: dataDir,
+        env,
+        signal,
+        ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+        ...(options.killAfterMs === undefined ? {} : { killAfterMs: options.killAfterMs }),
+        onStart: (write) =>
+          write({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "initialize",
+            params: {
+              clientInfo: { name: "karont", version: "0.0.0", title: "Karont" },
+              capabilities: { experimentalApi: true },
+            },
+          }),
+        onMessage: (message, write) => {
+          if (message.id === 1) {
+            if (message.error !== undefined || !isRecord(message.result)) return [];
+            write({ jsonrpc: "2.0", method: "initialized", params: {} });
+            write({ jsonrpc: "2.0", id: 2, method: "account/rateLimits/read", params: {} });
+            return undefined;
+          }
+          if (message.id !== 2) return undefined;
+          return message.error === undefined ? parseCodexRateLimits(message.result) : [];
+        },
+      });
+    } catch {
+      return [];
+    }
   };
 }
 

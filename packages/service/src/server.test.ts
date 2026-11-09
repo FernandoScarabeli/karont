@@ -5,11 +5,12 @@ import net, { type Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
-import { BridgeError, MAX_FRAME_BYTES } from "@karont/contract";
+import { BridgeError, MAX_FRAME_BYTES, ONBOARDING_COMPLETED_SETTING } from "@karont/contract";
 import { computeMac, readSecret } from "./auth.ts";
 import { connectService, type ServiceClient } from "./client.ts";
+import { getSetting, openDatabase, setSetting } from "./db.ts";
 import type { ServicePaths } from "./paths.ts";
-import { ServiceAlreadyRunningError, startService } from "./server.ts";
+import { ServiceAlreadyRunningError, skipOnboardingIfRequested, startService } from "./server.ts";
 import type { TerminalPty } from "./terminals/manager.ts";
 import { encodeFrame, FrameDecoder } from "./wire.ts";
 
@@ -627,3 +628,27 @@ async function waitUntil(condition: () => boolean): Promise<void> {
   }
   assert.equal(condition(), true);
 }
+
+test("KARONT_SKIP_ONBOARDING=1 grava a primeira abertura; sem a variável não grava nem sobrescreve", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-onb-"));
+  tempRoots.add(root);
+  const db = openDatabase(path.join(root, "karont.db"));
+  try {
+    skipOnboardingIfRequested(db, {});
+    assert.equal(getSetting(db, ONBOARDING_COMPLETED_SETTING), null);
+    skipOnboardingIfRequested(db, { KARONT_SKIP_ONBOARDING: "0" });
+    skipOnboardingIfRequested(db, { KARONT_SKIP_ONBOARDING: "true" });
+    assert.equal(getSetting(db, ONBOARDING_COMPLETED_SETTING), null);
+
+    skipOnboardingIfRequested(db, { KARONT_SKIP_ONBOARDING: "1" });
+    const saved = getSetting(db, ONBOARDING_COMPLETED_SETTING);
+    assert.equal(typeof saved, "string");
+    assert.equal(new Date(saved as string).toISOString(), saved);
+
+    setSetting(db, ONBOARDING_COMPLETED_SETTING, "2020-01-01T00:00:00.000Z");
+    skipOnboardingIfRequested(db, { KARONT_SKIP_ONBOARDING: "1" });
+    assert.equal(getSetting(db, ONBOARDING_COMPLETED_SETTING), "2020-01-01T00:00:00.000Z");
+  } finally {
+    db.close();
+  }
+});

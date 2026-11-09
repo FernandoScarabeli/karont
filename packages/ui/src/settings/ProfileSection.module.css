@@ -1,0 +1,91 @@
+.section {
+  display: grid;
+  align-content: start;
+  gap: var(--k-space-4);
+  min-width: 0;
+}
+
+.heading {
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-16);
+  font-weight: var(--k-weight-semibold);
+  line-height: var(--k-leading-tight);
+}
+
+.photoRow {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-4);
+}
+
+.photoActions {
+  display: grid;
+  min-width: 0;
+  gap: var(--k-space-2);
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+/* Escondido só para a vista: o botão "Escolher foto" é quem recebe o foco e abre o seletor. */
+.fileInput {
+  position: absolute;
+  width: var(--k-border-width);
+  height: var(--k-border-width);
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  clip-path: inset(50%);
+}
+
+.nameGroup {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: var(--k-space-3);
+}
+
+.nameActions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+}
+
+.statusMessage {
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+.errorMessage {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  margin: 0;
+  color: var(--k-color-danger);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}
+
+.errorMessage svg {
+  flex: 0 0 auto;
+  margin-block-start: var(--k-space-1);
+}
+
+.announcement {
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-normal);
+}

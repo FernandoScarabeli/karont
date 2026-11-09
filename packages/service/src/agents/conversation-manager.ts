@@ -105,6 +105,7 @@ import {
 } from "./claude-adapter.ts";
 import { createCodexAdapterRegistration, createCodexModelLoader } from "./codex-adapter.ts";
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
+import { recordUsage } from "./usage.ts";
 
 const CODEX_MODELS_SETTING = "agent.codex.models";
 const SKILL_CACHE_TTL_MS = 5 * 60_000;
@@ -1499,6 +1500,11 @@ export class ConversationManager {
         event: "conversation.contextUsage",
         payload: { conversationId, ...usage },
       });
+      return;
+    }
+    if (event.kind === "usage") {
+      const usage = recordUsage(this.#db, active.agent, event.windows, this.#now());
+      if (usage) await this.#emit({ event: "usage.updated", payload: usage });
       return;
     }
     if (event.kind === "context-usage-unknown") {

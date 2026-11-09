@@ -1,11 +1,18 @@
 import type { Stats } from "node:fs";
 import { chmod, lstat, unlink } from "node:fs/promises";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
-import { type AnyEvent, authFrameSchema, CONTRACT_VERSION, parseRequest } from "@karont/contract";
+import type { DatabaseSync } from "node:sqlite";
+import {
+  type AnyEvent,
+  authFrameSchema,
+  CONTRACT_VERSION,
+  ONBOARDING_COMPLETED_SETTING,
+  parseRequest,
+} from "@karont/contract";
 import type { AdapterFactory } from "./agents/adapter.ts";
 import { createNonce, createSecret, verifyMac } from "./auth.ts";
 import { ConnectionClosedError, FrameWriter } from "./connection.ts";
-import { openDatabase } from "./db.ts";
+import { getSetting, openDatabase, setSetting } from "./db.ts";
 import { createHandlers, type HandlerConnection, ServiceError } from "./handlers.ts";
 import { ensurePrivateDir, type ServicePaths } from "./paths.ts";
 import { TerminalOutputFlow } from "./terminal-output.ts";
@@ -41,6 +48,16 @@ type ConnectionState = {
   outputFlow: TerminalOutputFlow;
 };
 
+/**
+ * Para os testes E2E: com `KARONT_SKIP_ONBOARDING=1`, marca a primeira abertura como concluída
+ * se ainda não estiver. Qualquer outro valor não faz nada e um valor existente é preservado.
+ */
+export function skipOnboardingIfRequested(db: DatabaseSync, env: NodeJS.ProcessEnv): void {
+  if (env.KARONT_SKIP_ONBOARDING !== "1") return;
+  if (getSetting(db, ONBOARDING_COMPLETED_SETTING) !== null) return;
+  setSetting(db, ONBOARDING_COMPLETED_SETTING, new Date().toISOString());
+}
+
 export async function startService({
   paths,
   dev,
@@ -60,6 +77,7 @@ export async function startService({
   await removeStaleSocket(paths.socketPath);
 
   const db = openDatabase(paths.dbPath);
+  skipOnboardingIfRequested(db, env);
   let secret: Buffer;
   try {
     secret = await createSecret(paths.secretPath);
@@ -76,6 +94,7 @@ export async function startService({
     startedAt,
     dev,
     env,
+    paths,
     ...(homeDir ? { homeDir } : {}),
     ...(ptyFactory ? { ptyFactory } : {}),
     ...(adapterFactory ? { adapterFactory } : {}),

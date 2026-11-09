@@ -24,7 +24,7 @@ import {
 } from "@karont/contract";
 import type { AdapterFactory, AgentAdapter, AgentAdapterRegistration } from "./agents/adapter.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
-import { addMessage, openDatabase, recordRecentFolder } from "./db.ts";
+import { addMessage, openDatabase, recordRecentFolder, setSetting } from "./db.ts";
 import type { HandlerConnection } from "./handlers.ts";
 import { createHandlers, ServiceError } from "./handlers.ts";
 import type { TerminalPty } from "./terminals/manager.ts";
@@ -2151,4 +2151,140 @@ test("caixa: inbox.list e inbox.dismiss pelos métodos; workspace movido e apaga
   assert.deepEqual(await callWs(handlers, "inbox.dismiss", { conversationId: conversation.id }), {
     dismissed: false,
   });
+});
+
+test("system.diagnostics traz caminhos reais, sem segredo, e respeita a detecção desligada", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-diag-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const db = openDatabase(path.join(root, "karont.db"));
+  context.after(() => db.close());
+  const paths = {
+    runtimeDir: path.join(root, "run"),
+    socketPath: path.join(root, "run", "service.sock"),
+    secretPath: path.join(root, "run", "service.secret-SEGREDO"),
+    dataDir: path.join(root, "data"),
+    dbPath: path.join(root, "data", "karont.db"),
+  };
+  const handlers = createHandlers({
+    db,
+    startedAt: "2026-10-31T00:00:00.000Z",
+    dev: false,
+    emit: async () => undefined,
+    env: { PATH: "", KARONT_DISABLE_AGENT_DETECTION: "1" },
+    homeDir: root,
+    paths,
+  });
+  const conn = connection([]);
+  const result = await handlers.handle(request("system.diagnostics", {}), conn);
+  const info = (await handlers.handle(request("system.info", {}), conn)) as {
+    serviceVersion: string;
+    contractVersion: number;
+    pid: number;
+    startedAt: string;
+    nodeVersion: string;
+    platform: string;
+  };
+  const parsed = parseResult("system.diagnostics", result);
+  assert.equal(parsed.ok, true);
+  const diagnostics = result as {
+    paths: Record<string, string>;
+    agents: { found: boolean }[];
+    detectedAt: string;
+  } & typeof info;
+  assert.deepEqual(diagnostics.paths, {
+    homeDir: root,
+    dataDir: paths.dataDir,
+    dbPath: paths.dbPath,
+    runtimeDir: paths.runtimeDir,
+    socketPath: paths.socketPath,
+  });
+  const serialized = JSON.stringify(result);
+  assert.equal(serialized.includes("secretPath"), false);
+  assert.equal(serialized.includes("SEGREDO"), false);
+  for (const key of [
+    "serviceVersion",
+    "contractVersion",
+    "pid",
+    "startedAt",
+    "nodeVersion",
+    "platform",
+  ] as const) {
+    assert.equal(diagnostics[key], info[key]);
+  }
+  const listed = (await handlers.handle(request("agents.list", {}), conn)) as {
+    agents: unknown[];
+    detectedAt: string;
+  };
+  assert.deepEqual(diagnostics.agents, listed.agents);
+  assert.equal(diagnostics.detectedAt, listed.detectedAt);
+  assert.equal(
+    diagnostics.agents.some((agent) => agent.found),
+    false,
+  );
+});
+
+test("usage.list devolve o uso guardado em ordem estável e ignora valor corrompido", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  try {
+    const handlers = createHandlers({
+      db,
+      startedAt: "2026-10-31T00:00:00.000Z",
+      dev: false,
+      emit: async () => undefined,
+      env: { PATH: "" },
+      homeDir: root,
+    });
+    const conn = connection([]);
+    assert.deepEqual(await handlers.handle(request("usage.list", {}), conn), { usage: [] });
+    const codex = {
+      agent: "codex",
+      windows: [{ id: "five_hour", usedPercent: 20, resetsAt: null }],
+      observedAt: "2026-11-09T10:00:00.000Z",
+    };
+    const claude = {
+      agent: "claude",
+      windows: [{ id: "weekly", usedPercent: 44, resetsAt: "2026-11-09T12:00:00.000Z" }],
+      observedAt: "2026-11-09T10:00:00.000Z",
+    };
+    setSetting(db, "usage.latest.codex", codex);
+    setSetting(db, "usage.latest.claude", claude);
+    setSetting(db, "usage.latest.quebrado", { agent: "quebrado", windows: "x" });
+    setSetting(db, "outra.coisa", codex);
+    assert.deepEqual(await handlers.handle(request("usage.list", {}), conn), {
+      usage: [claude, codex],
+    });
+  } finally {
+    db.close();
+  }
+});
+
+test("usage.refresh com a detecção desligada não abre processo", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "karont-usage-refresh-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  let reads = 0;
+  const registration = {
+    readUsage: async () => {
+      reads++;
+      return [];
+    },
+  } as unknown as AgentAdapterRegistration;
+  const handlers = createHandlers({
+    db,
+    startedAt: new Date().toISOString(),
+    dev: false,
+    emit: async () => undefined,
+    env: { PATH: "", KARONT_DISABLE_AGENT_DETECTION: "1" },
+    homeDir: root,
+    dataDir: root,
+    agentRegistrations: { claude: registration, codex: registration },
+  });
+  context.after(async () => {
+    await handlers.closeAgents();
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const result = await handlers.handle(request("usage.refresh", { force: true }), connection([]));
+  assert.deepEqual(result, { usage: [] });
+  assert.equal(reads, 0);
 });
