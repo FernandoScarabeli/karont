@@ -327,6 +327,10 @@
   animation: conversationStatusPulse var(--k-duration-status-pulse-slow) ease-in-out infinite;
 }
 
+.conversationStatusQueued {
+  background: var(--k-color-text-muted);
+}
+
 .conversationStatusNeedsYou {
   background: var(--k-color-status-needs-you);
 }

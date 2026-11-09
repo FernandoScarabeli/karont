@@ -107,6 +107,7 @@ export const t = {
         .filter(Boolean)
         .join(", "),
     projectStatusWorking: "com conversa trabalhando",
+    projectStatusQueued: "com conversa na fila",
     projectStatusWaiting: "com conversa esperando você",
     newConversationInProject: (name: string) => `Nova conversa em ${name}`,
     projectActions: (name: string) => `Ações de ${name}`,
@@ -339,6 +340,14 @@ export const t = {
     researchingAction: (action: string) => `Pesquisando ${action}`,
     waiting: "Precisa de você",
     idle: "Pronto",
+    queued: "Na fila",
+    queueLabel: (position: number, running: number) => {
+      const prefix = position > 1 ? `Na fila, posição ${position}` : "Na fila";
+      if (running < 1) return "Na fila";
+      return `${prefix}: ${running === 1 ? "1 agente trabalhando" : `${running} agentes trabalhando`}`;
+    },
+    queueAdjustLimit: "Ajustar limite",
+    queueStopTooltip: "Tirar da fila",
     conversationError: "A resposta falhou",
     stop: "Parar",
     messageInput: "Pergunte qualquer coisa · @ arquivos, / comandos",
@@ -567,6 +576,13 @@ export const t = {
     closeBehaviorQuit: "Fechar tudo",
     closeBehaviorQuitDescription: "Encerra agentes e terminais e sai do Karont.",
     preferenceSaved: "Preferência salva",
+    agentLimitTitle: "Agentes ao mesmo tempo",
+    agentLimitDescription:
+      "Acima desse limite, novas mensagens esperam na fila. Agente aguardando sua resposta continua ocupando vaga.",
+    agentLimitDecrease: "Diminuir limite",
+    agentLimitIncrease: "Aumentar limite",
+    agentLimitValue: (limit: number) => `${limit} ${limit === 1 ? "agente" : "agentes"}`,
+    agentLimitSaveFailed: "Não foi possível salvar o limite de agentes.",
     userNameLabel: "Como te chamar",
     userNamePlaceholder: "Seu primeiro nome",
     userNameSave: "Salvar nome",

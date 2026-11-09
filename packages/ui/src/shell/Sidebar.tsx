@@ -106,9 +106,11 @@ const ConversationRow = memo(function ConversationRow({
       ? t.chat.working
       : conversation.state === "waiting"
         ? t.chat.waiting
-        : conversation.state === "error"
-          ? t.shell.conversationError
-          : t.chat.idle;
+        : conversation.state === "queued"
+          ? t.chat.queued
+          : conversation.state === "error"
+            ? t.shell.conversationError
+            : t.chat.idle;
   const isUnread = Boolean(conversation.unreadAt) && !openAndVisible;
   const stateDetails = [
     stateText,
@@ -123,11 +125,13 @@ const ConversationRow = memo(function ConversationRow({
       ? styles.conversationStatusNeedsYou
       : conversation.state === "working"
         ? styles.conversationStatusWorking
-        : conversation.state === "error"
-          ? styles.conversationStatusError
-          : isUnread
-            ? styles.conversationStatusUnread
-            : "";
+        : conversation.state === "queued"
+          ? styles.conversationStatusQueued
+          : conversation.state === "error"
+            ? styles.conversationStatusError
+            : isUnread
+              ? styles.conversationStatusUnread
+              : "";
   const registerButton = useCallback(
     (element: HTMLButtonElement | null) => onRegisterConversationButton(conversation.id, element),
     [conversation.id, onRegisterConversationButton],
@@ -798,20 +802,25 @@ export function Sidebar() {
     const expanded = !collapsedProjects.includes(project.id);
     const hasWaiting = conversations.some((conversation) => conversation.state === "waiting");
     const hasWorking = conversations.some((conversation) => conversation.state === "working");
+    const hasQueued = conversations.some((conversation) => conversation.state === "queued");
     const statusClass = expanded
       ? ""
       : hasWaiting
         ? styles.conversationStatusNeedsYou
         : hasWorking
           ? styles.conversationStatusWorking
-          : "";
+          : hasQueued
+            ? styles.conversationStatusQueued
+            : "";
     const statusText = expanded
       ? ""
       : hasWaiting
         ? t.shell.projectStatusWaiting
         : hasWorking
           ? t.shell.projectStatusWorking
-          : "";
+          : hasQueued
+            ? t.shell.projectStatusQueued
+            : "";
     const menuOpen = menu?.kind === "project" && menu.id === project.id;
     const ProjectIcon = getProjectIcon(project.icon);
     const Chevron = expanded ? ChevronDown : ChevronRight;

@@ -1,5 +1,5 @@
 import type { Conversation, ConversationMessage } from "@karont/contract";
-import { MessageSquareText, TriangleAlert } from "lucide-react";
+import { Clock, MessageSquareText, TriangleAlert } from "lucide-react";
 import { memo, type RefObject } from "react";
 import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
 import { t } from "../i18n/pt-BR.ts";
@@ -31,6 +31,9 @@ export type ConversationMessageListProps = {
   latestMessage?: ConversationMessage;
   shouldShowWorkingIndicator: boolean;
   workingIndicatorProps: WorkingIndicatorProps;
+  /** Texto do aviso de fila; `null` quando a conversa não está na fila. */
+  queuedLabel: string | null;
+  onAdjustQueueLimit: () => void;
   messageListRef: RefObject<HTMLDivElement | null>;
   followState: FollowState;
   olderMessagesSentinelRef: RefObject<HTMLDivElement | null>;
@@ -61,6 +64,8 @@ export const ConversationMessageList = memo(function ConversationMessageList({
   latestMessage,
   shouldShowWorkingIndicator,
   workingIndicatorProps,
+  queuedLabel,
+  onAdjustQueueLimit,
   messageListRef,
   followState,
   olderMessagesSentinelRef,
@@ -122,6 +127,14 @@ export const ConversationMessageList = memo(function ConversationMessageList({
       ) : null}
       {messages.map((message) => {
         const isLatestMessage = message.id === latestMessageId;
+        // Na fila a resposta ainda não existe: o bloco vazio só afastaria o aviso da mensagem.
+        if (
+          queuedLabel !== null &&
+          isLatestMessage &&
+          message.author === "agent" &&
+          message.parts.length === 0
+        )
+          return null;
         const hasWorkingIndicator =
           message.author === "agent" && isLatestMessage && shouldShowWorkingIndicator;
         return (
@@ -147,6 +160,15 @@ export const ConversationMessageList = memo(function ConversationMessageList({
       {latestMessage?.author !== "agent" && shouldShowWorkingIndicator ? (
         <div className={styles.workingFallback}>
           <WorkingIndicator {...workingIndicatorProps} onExitComplete={onWorkingIndicatorExit} />
+        </div>
+      ) : null}
+      {queuedLabel !== null ? (
+        <div className={styles.queuedNotice}>
+          <Clock aria-hidden="true" className={styles.queuedIcon} size={14} strokeWidth={1.8} />
+          <span role="status">{queuedLabel}</span>
+          <button className={styles.queuedAction} onClick={onAdjustQueueLimit} type="button">
+            {t.chat.queueAdjustLimit}
+          </button>
         </div>
       ) : null}
       <div aria-hidden="true" className={styles.bottomSentinel} ref={bottomSentinelRef} />

@@ -171,6 +171,49 @@
   overflow-anchor: none;
 }
 
+.queuedNotice {
+  display: flex;
+  width: min(100%, var(--k-chat-content-max-width));
+  min-width: 0;
+  min-height: var(--k-control-height-sm);
+  flex: 0 0 auto;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin-inline: auto;
+  color: var(--k-color-text-muted);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-tight);
+  overflow-anchor: none;
+}
+
+.queuedIcon {
+  flex: 0 0 auto;
+}
+
+.queuedAction {
+  min-height: var(--k-control-height-sm);
+  padding-inline: var(--k-space-2);
+  border: var(--k-border-width) solid transparent;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-color-text-secondary);
+  font-family: var(--k-font-sans);
+  font-size: var(--k-text-13);
+  cursor: pointer;
+}
+
+.queuedAction:hover,
+.queuedAction:focus-visible {
+  background: var(--k-color-bg-hover);
+  color: var(--k-color-text-primary);
+}
+
+.queuedAction:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-color-focus);
+  outline-offset: var(--k-chat-focus-outline-offset);
+}
+
 .messageList[data-reveal="true"] > :not(.bottomSentinel) {
   animation: conversationDataReveal var(--k-motion-fast) var(--k-ease) both;
 }

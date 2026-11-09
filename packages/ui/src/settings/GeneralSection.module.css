@@ -189,3 +189,44 @@
 .dataFeedback {
   min-width: 0;
 }
+
+.limitGroup {
+  display: grid;
+  min-width: 0;
+  gap: var(--k-space-3);
+  margin-block-start: var(--k-space-2);
+  padding-block-start: var(--k-space-4);
+  border-block-start: var(--k-border-width) solid var(--k-color-border);
+}
+
+.limitHeading {
+  margin: 0;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-16);
+  font-weight: var(--k-weight-semibold);
+  line-height: var(--k-leading-tight);
+}
+
+.limitControl {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-3);
+}
+
+.limitValue {
+  min-width: calc(var(--k-space-6) * 2);
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-14);
+  font-weight: var(--k-weight-medium);
+  line-height: var(--k-leading-normal);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.limitDescription {
+  margin: 0;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-normal);
+}

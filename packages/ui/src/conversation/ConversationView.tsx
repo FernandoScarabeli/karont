@@ -80,8 +80,10 @@ import {
   OLDER_MESSAGE_LOAD_ROOT_MARGIN_PX,
   olderMessageCursor,
 } from "./messageWindow.ts";
+import { queueLabel } from "./queueLabel.ts";
 import { useConversation } from "./useConversation.ts";
 import { upsertConversation } from "./useConversationIndex.ts";
+import { useQueueStatus } from "./useQueueStatus.ts";
 import { getFinalRunningActions } from "./workingLabel.ts";
 
 type ComposerFile = ResultOf<"composer.files">["files"][number];
@@ -714,8 +716,15 @@ export function ConversationView({
     return () => window.cancelAnimationFrame(frame);
   }, [canLoadOlderMessages, loadOlderMessages, olderPageVersion]);
   const isWorking = conversation?.state === "working";
+  // Na fila o agente ainda não começou: não é "trabalhando", mas bloqueia o mesmo que ele.
+  const isQueued = conversation?.state === "queued";
   const isWaiting = conversation?.state === "waiting";
-  const workingActive = isWorking || isStopping;
+  const queueStatus = useQueueStatus().status;
+  const queuedLabel = isQueued ? queueLabel(queueStatus, id) : null;
+  const adjustQueueLimit = useCallback(() => {
+    navigate({ name: "settings", section: "general" });
+  }, [navigate]);
+  const workingActive = isWorking || (isStopping && !isQueued);
   const shouldShowWorkingIndicator =
     !isWaiting &&
     (workingActive ||
@@ -1053,6 +1062,7 @@ export function ConversationView({
         loading ||
         (!text && files.length === 0) ||
         isWorking ||
+        isQueued ||
         isWaiting ||
         isSending ||
         sendPendingRef.current
@@ -1123,6 +1133,7 @@ export function ConversationView({
       currentConversation,
       id,
       isSending,
+      isQueued,
       isWaiting,
       isWorking,
       capabilities?.skills,
@@ -1193,7 +1204,16 @@ export function ConversationView({
 
   const branchMessage = useCallback(
     async (messageId: string) => {
-      if (!bridge || !currentConversation || loading || isWorking || isWaiting || isSending) return;
+      if (
+        !bridge ||
+        !currentConversation ||
+        loading ||
+        isWorking ||
+        isQueued ||
+        isWaiting ||
+        isSending
+      )
+        return;
       setInteractionError("");
       try {
         const result = await bridge.request("conversation.branch", { id, messageId });
@@ -1213,6 +1233,7 @@ export function ConversationView({
       currentConversation,
       id,
       isSending,
+      isQueued,
       isWaiting,
       isWorking,
       loading,
@@ -1420,7 +1441,9 @@ export function ConversationView({
           </Tooltip>
           <ComposerPreferences
             activePopover={activePopover}
-            disabled={loading || isWorking || isWaiting || isResponding || isSending || !bridge}
+            disabled={
+              loading || isWorking || isQueued || isWaiting || isResponding || isSending || !bridge
+            }
             effort={visibleConversation?.effort ?? ""}
             fastMode={visibleConversation?.fast ?? false}
             mode={visibleConversation?.mode ?? "edit"}
@@ -1451,6 +1474,7 @@ export function ConversationView({
       conversation,
       isResponding,
       isSending,
+      isQueued,
       isWaiting,
       isWorking,
       currentModels,
@@ -1629,8 +1653,8 @@ export function ConversationView({
       >
         <FollowBottomContext value={pinToBottom}>
           <ConversationMessageList
-            canBranch={!loading && !isWorking && !isWaiting && !isSending}
-            canRetry={!loading && !isWorking && !isWaiting && !isSending}
+            canBranch={!loading && !isWorking && !isQueued && !isWaiting && !isSending}
+            canRetry={!loading && !isWorking && !isQueued && !isWaiting && !isSending}
             conversation={retainedConversation}
             error={error}
             highlightedMessageId={highlightedMessageId}
@@ -1656,6 +1680,8 @@ export function ConversationView({
             showSlowLoading={showSlowLoading}
             totalMessageCount={orderedMessages.length}
             workingIndicatorProps={workingIndicatorProps}
+            queuedLabel={queuedLabel}
+            onAdjustQueueLimit={adjustQueueLimit}
           />
         </FollowBottomContext>
         {historyOpen ? <div aria-hidden="true" className={styles.historyBackdrop} /> : null}
@@ -1692,7 +1718,7 @@ export function ConversationView({
         <Composer
           ariaDescription={t.conversation.composerKeyboardDescription}
           below={composerBelow}
-          busy={isWorking}
+          busy={isWorking || isQueued}
           disabled={isWaiting || isResponding || isSending || isCompacting}
           leading={composerLeading}
           trailing={
@@ -1743,8 +1769,10 @@ export function ConversationView({
             isSending ||
             isCompacting
           }
-          submitLabel={isWorking ? t.chat.stop : t.chat.send}
-          submitTooltipLabel={isWorking ? t.chat.stop : t.chat.sendTooltip}
+          submitLabel={isWorking || isQueued ? t.chat.stop : t.chat.send}
+          submitTooltipLabel={
+            isQueued ? t.chat.queueStopTooltip : isWorking ? t.chat.stop : t.chat.sendTooltip
+          }
           dragActive={composerAttachments.isDragging}
           dropMessage={t.chat.dropAttachments}
           value={draft}
