@@ -2152,3 +2152,73 @@ test("caixa: inbox.list e inbox.dismiss pelos métodos; workspace movido e apaga
     dismissed: false,
   });
 });
+
+test("system.diagnostics traz caminhos reais, sem segredo, e respeita a detecção desligada", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-diag-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const db = openDatabase(path.join(root, "karont.db"));
+  context.after(() => db.close());
+  const paths = {
+    runtimeDir: path.join(root, "run"),
+    socketPath: path.join(root, "run", "service.sock"),
+    secretPath: path.join(root, "run", "service.secret-SEGREDO"),
+    dataDir: path.join(root, "data"),
+    dbPath: path.join(root, "data", "karont.db"),
+  };
+  const handlers = createHandlers({
+    db,
+    startedAt: "2026-10-31T00:00:00.000Z",
+    dev: false,
+    emit: async () => undefined,
+    env: { PATH: "", KARONT_DISABLE_AGENT_DETECTION: "1" },
+    homeDir: root,
+    paths,
+  });
+  const conn = connection([]);
+  const result = await handlers.handle(request("system.diagnostics", {}), conn);
+  const info = (await handlers.handle(request("system.info", {}), conn)) as {
+    serviceVersion: string;
+    contractVersion: number;
+    pid: number;
+    startedAt: string;
+    nodeVersion: string;
+    platform: string;
+  };
+  const parsed = parseResult("system.diagnostics", result);
+  assert.equal(parsed.ok, true);
+  const diagnostics = result as {
+    paths: Record<string, string>;
+    agents: { found: boolean }[];
+    detectedAt: string;
+  } & typeof info;
+  assert.deepEqual(diagnostics.paths, {
+    homeDir: root,
+    dataDir: paths.dataDir,
+    dbPath: paths.dbPath,
+    runtimeDir: paths.runtimeDir,
+    socketPath: paths.socketPath,
+  });
+  const serialized = JSON.stringify(result);
+  assert.equal(serialized.includes("secretPath"), false);
+  assert.equal(serialized.includes("SEGREDO"), false);
+  for (const key of [
+    "serviceVersion",
+    "contractVersion",
+    "pid",
+    "startedAt",
+    "nodeVersion",
+    "platform",
+  ] as const) {
+    assert.equal(diagnostics[key], info[key]);
+  }
+  const listed = (await handlers.handle(request("agents.list", {}), conn)) as {
+    agents: unknown[];
+    detectedAt: string;
+  };
+  assert.deepEqual(diagnostics.agents, listed.agents);
+  assert.equal(diagnostics.detectedAt, listed.detectedAt);
+  assert.equal(
+    diagnostics.agents.some((agent) => agent.found),
+    false,
+  );
+});

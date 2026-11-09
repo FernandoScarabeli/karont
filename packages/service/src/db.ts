@@ -180,6 +180,16 @@ export const migrations: { version: number; up: string }[] = [
       FROM message_search_map map JOIN message_search_seed seed ON seed.message_id = map.message_id;
     DROP TABLE message_search_seed;`,
   },
+  {
+    version: 21,
+    // Primeira abertura: quem já usa o app (tem conversa ou projeto) não a vê. Banco novo fica sem
+    // a chave. O valor é JSON (texto com aspas), como `setSetting` grava.
+    up: `INSERT OR IGNORE INTO settings (key, value, updated_at)
+      SELECT 'onboarding.completedAt',
+        json_quote(strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      WHERE EXISTS (SELECT 1 FROM conversations) OR EXISTS (SELECT 1 FROM projects);`,
+  },
 ];
 
 /** Roda `work` numa transação; desfaz tudo se ela lançar. */

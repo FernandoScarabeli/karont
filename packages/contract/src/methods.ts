@@ -21,6 +21,8 @@ export const MAX_SETTING_BYTES = 65_536;
 export const DEFAULT_MAX_CONCURRENT_AGENTS = 4;
 export const MAX_CONCURRENT_AGENTS_LIMIT = 16;
 export const MAX_CONCURRENT_AGENTS_SETTING = "agents.maxConcurrent";
+/** Data ISO (texto) em que a primeira abertura foi concluída; lida e gravada por `settings.get`/`settings.set`. */
+export const ONBOARDING_COMPLETED_SETTING = "onboarding.completedAt";
 
 export const queueStatusSchema = z.strictObject({
   limit: z.number().int().min(1),
@@ -212,6 +214,26 @@ export const methods = {
       nodeVersion: z.string(),
       platform: z.string(),
       homeDir: z.string(),
+    }),
+  },
+  "system.diagnostics": {
+    params: emptyParamsSchema,
+    result: z.strictObject({
+      serviceVersion: z.string(),
+      contractVersion: z.number().int(),
+      nodeVersion: z.string(),
+      platform: z.string(),
+      pid: z.number().int(),
+      startedAt: isoDateTimeSchema,
+      paths: z.strictObject({
+        homeDir: z.string(),
+        dataDir: z.string(),
+        dbPath: z.string(),
+        runtimeDir: z.string(),
+        socketPath: z.string(),
+      }),
+      agents: z.array(agentSchema),
+      detectedAt: isoDateTimeSchema,
     }),
   },
   "system.userName": {

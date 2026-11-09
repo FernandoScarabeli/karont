@@ -94,7 +94,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    20,
+    21,
   );
   assert.equal(
     (
@@ -155,7 +155,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    20,
+    21,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();
@@ -399,7 +399,7 @@ test("migra um banco na versão 13 mantendo a conversa solta, sem projectId", as
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      20,
+      21,
     );
     const conversation = getConversation(db, "v13-1");
     assert.equal(conversation?.title, "Antes dos projetos");
@@ -511,7 +511,7 @@ test("migra um banco na versão 14 sem perder dados e cria restore_points", asyn
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      20,
+      21,
     );
     assert.equal(getConversation(db, "v14-1")?.title, "Antes");
     assert.equal(listMessages(db, "v14-1").length, 1);
@@ -553,7 +553,7 @@ test("migra um banco na versão 15 sem perder dados e acrescenta as colunas do d
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      20,
+      21,
     );
     const point = getRestorePoint(db, "m-15");
     assert.equal(point?.beforeCommit, "antes");
@@ -592,7 +592,7 @@ test("migra um banco na versão 16 sem perder dados e cria worktrees e conversat
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      20,
+      21,
     );
     const before = getConversation(db, "v16-1");
     assert.equal(before?.title, "Antes");
@@ -788,7 +788,7 @@ test("migra um banco na versão 17 com dados para workspaces, sem perder nada", 
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      20,
+      21,
     );
     const workspaces = listWorkspaces(db);
     assert.equal(workspaces.length, 1);
@@ -844,7 +844,7 @@ test("migra um banco na versão 18 com dados: acrescenta error_dismissed_message
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      20,
+      21,
     );
     const conversation = getConversation(db, "c18");
     assert.equal(conversation?.title, "Com erro");
@@ -862,6 +862,117 @@ test("migra um banco na versão 18 com dados: acrescenta error_dismissed_message
       mode: "edit",
     });
     assert.equal(getErrorDismissedMessageId(db, created.id), null);
+  } finally {
+    db.close();
+  }
+});
+
+function legacyV20(dbPath: string): DatabaseSync {
+  const legacyDb = new DatabaseSync(dbPath);
+  for (const migration of migrations.filter((entry) => entry.version <= 20)) {
+    legacyDb.exec(migration.up);
+    legacyDb.exec(`PRAGMA user_version = ${migration.version}`);
+  }
+  return legacyDb;
+}
+
+function expectCompletedAt(db: DatabaseSync): void {
+  const row = db
+    .prepare("SELECT value FROM settings WHERE key = 'onboarding.completedAt'")
+    .get() as { value: string };
+  const parsed = JSON.parse(row.value) as unknown;
+  assert.equal(typeof parsed, "string");
+  assert.equal(new Date(parsed as string).toISOString(), parsed);
+  assert.equal(getSetting(db, "onboarding.completedAt"), parsed);
+}
+
+test("migração 21: banco novo fica sem onboarding.completedAt", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-v21-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  try {
+    assert.equal(getSetting(db, "onboarding.completedAt"), null);
+  } finally {
+    db.close();
+  }
+});
+
+test("migração 21: banco na versão 20 com conversa ganha onboarding.completedAt", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-v21-"));
+  const dbPath = path.join(root, "karont.db");
+  const legacyDb = legacyV20(dbPath);
+  const stamp = "2026-11-01T10:00:00.000Z";
+  const workspaceId = (legacyDb.prepare("SELECT id FROM workspaces").get() as { id: string }).id;
+  legacyDb
+    .prepare(
+      "INSERT INTO conversations (id,agent,title,cwd,mode,state,created_at,updated_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
+    )
+    .run("c20", "claude", "Antiga", "/tmp", "edit", "idle", stamp, stamp, workspaceId);
+  legacyDb.close();
+  const db = openDatabase(dbPath);
+  try {
+    expectCompletedAt(db);
+  } finally {
+    db.close();
+  }
+});
+
+test("migração 21: banco na versão 20 com projeto ganha onboarding.completedAt", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-v21-"));
+  const dbPath = path.join(root, "karont.db");
+  const legacyDb = legacyV20(dbPath);
+  const workspaceId = (legacyDb.prepare("SELECT id FROM workspaces").get() as { id: string }).id;
+  legacyDb
+    .prepare(
+      "INSERT INTO projects (id,name,icon,path,created_at,updated_at,workspace_id) VALUES (?,?,?,?,?,?,?)",
+    )
+    .run(
+      "p20",
+      "Projeto",
+      "folder",
+      "/tmp/p20",
+      "2026-11-01T10:00:00.000Z",
+      "2026-11-01T10:00:00.000Z",
+      workspaceId,
+    );
+  legacyDb.close();
+  const db = openDatabase(dbPath);
+  try {
+    expectCompletedAt(db);
+  } finally {
+    db.close();
+  }
+});
+
+test("migração 21: banco na versão 20 vazio não ganha a chave", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-v21-"));
+  const dbPath = path.join(root, "karont.db");
+  legacyV20(dbPath).close();
+  const db = openDatabase(dbPath);
+  try {
+    assert.equal(getSetting(db, "onboarding.completedAt"), null);
+  } finally {
+    db.close();
+  }
+});
+
+test("migração 21: valor já existente não é sobrescrito", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-v21-"));
+  const dbPath = path.join(root, "karont.db");
+  const legacyDb = legacyV20(dbPath);
+  const stamp = "2026-11-01T10:00:00.000Z";
+  const workspaceId = (legacyDb.prepare("SELECT id FROM workspaces").get() as { id: string }).id;
+  legacyDb
+    .prepare(
+      "INSERT INTO conversations (id,agent,title,cwd,mode,state,created_at,updated_at,workspace_id) VALUES (?,?,?,?,?,?,?,?,?)",
+    )
+    .run("c20", "claude", "Antiga", "/tmp", "edit", "idle", stamp, stamp, workspaceId);
+  legacyDb
+    .prepare("INSERT INTO settings (key, value, updated_at) VALUES (?,?,?)")
+    .run("onboarding.completedAt", JSON.stringify("2020-01-01T00:00:00.000Z"), stamp);
+  legacyDb.close();
+  const db = openDatabase(dbPath);
+  try {
+    assert.equal(getSetting(db, "onboarding.completedAt"), "2020-01-01T00:00:00.000Z");
   } finally {
     db.close();
   }

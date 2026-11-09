@@ -37,7 +37,7 @@ import {
   worktreeStatus,
 } from "./git/worktrees.ts";
 import { getOverview } from "./overview.ts";
-import { resolvePaths } from "./paths.ts";
+import { resolvePaths, type ServicePaths } from "./paths.ts";
 import { searchAll } from "./search.ts";
 import { TerminalManager, type TerminalPtyFactory } from "./terminals/manager.ts";
 import { getSystemUserName } from "./user-name.ts";
@@ -67,6 +67,8 @@ export type HandlerOptions = {
   env?: NodeJS.ProcessEnv;
   /** Pasta de dados do Karont; as cópias separadas ficam em `<dataDir>/worktrees`. */
   dataDir?: string;
+  /** Caminhos reais do serviço, expostos (sem o segredo) por `system.diagnostics`. */
+  paths?: ServicePaths;
   homeDir?: string;
   platform?: NodeJS.Platform;
   agentFs?: AgentDetectionFs;
@@ -83,7 +85,8 @@ export function createHandlers({
   dev,
   emit,
   env = process.env,
-  dataDir = resolvePaths(env).dataDir,
+  paths = resolvePaths(env),
+  dataDir = paths.dataDir,
   homeDir = os.homedir(),
   platform = process.platform,
   agentFs,
@@ -126,6 +129,26 @@ export function createHandlers({
           platform: process.platform,
           homeDir,
         };
+      case "system.diagnostics": {
+        const { agents, detectedAt } = await agentRegistry.list();
+        return {
+          serviceVersion: SERVICE_VERSION,
+          contractVersion: CONTRACT_VERSION,
+          nodeVersion: process.versions.node,
+          platform: process.platform,
+          pid: process.pid,
+          startedAt,
+          paths: {
+            homeDir,
+            dataDir: paths.dataDir,
+            dbPath: paths.dbPath,
+            runtimeDir: paths.runtimeDir,
+            socketPath: paths.socketPath,
+          },
+          agents,
+          detectedAt,
+        };
+      }
       case "system.userName":
         return { name: await getSystemUserName({ platform }) };
       case "settings.get":

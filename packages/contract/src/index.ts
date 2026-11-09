@@ -100,6 +100,7 @@ export {
   MAX_CONCURRENT_AGENTS_SETTING,
   MAX_SETTING_BYTES,
   methods,
+  ONBOARDING_COMPLETED_SETTING,
   overviewProjectSchema,
   overviewWorkspaceSchema,
   projectSchema,

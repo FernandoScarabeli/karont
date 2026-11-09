@@ -439,3 +439,39 @@ test("conversations.workspaceMoved exige exatamente um entre fromWorkspaceId e p
     false,
   );
 });
+
+test("system.diagnostics aceita parâmetros vazios e recusa resultado inválido", () => {
+  const valid = {
+    serviceVersion: "0.0.0",
+    contractVersion: 1,
+    nodeVersion: "24.0.0",
+    platform: "linux",
+    pid: 1,
+    startedAt: "2026-11-01T10:00:00.000Z",
+    paths: {
+      homeDir: "/home/u",
+      dataDir: "/home/u/.local/share/karont",
+      dbPath: "/home/u/.local/share/karont/karont.db",
+      runtimeDir: "/run/user/1000/karont",
+      socketPath: "/run/user/1000/karont/service.sock",
+    },
+    agents: [],
+    detectedAt: "2026-11-01T10:00:00.000Z",
+  };
+  assert.equal(methods["system.diagnostics"].params.safeParse({}).success, true);
+  assert.equal(methods["system.diagnostics"].params.safeParse({ x: 1 }).success, false);
+  assert.equal(methods["system.diagnostics"].result.safeParse(valid).success, true);
+  assert.equal(
+    methods["system.diagnostics"].result.safeParse({ ...valid, pid: "1" }).success,
+    false,
+  );
+  assert.equal(
+    methods["system.diagnostics"].result.safeParse({
+      ...valid,
+      paths: { ...valid.paths, secretPath: "/x" },
+    }).success,
+    false,
+  );
+  const { agents: _agents, ...semAgentes } = valid;
+  assert.equal(methods["system.diagnostics"].result.safeParse(semAgentes).success, false);
+});
