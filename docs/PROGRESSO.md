@@ -137,6 +137,8 @@ Repositório recriado do zero em 2026-10-31.
     - Olhos e corpo seguem o ponteiro, com base no Eye tracker do Bencho (MIT, © 2026 Lorenzo Cabra; o aviso fica no arquivo). O BoopFace (MIT) é só inspiração de comportamento e não entra como dependência.
     - A pessoa escolhe a cor do Dot num seletor completo, feito no app sem dependência nova, no modelo do color picker do BoardUI. A cor dos olhos se ajusta sozinha pelo contraste. Isso substitui "na cor de destaque".
     - **A salinha fica de lado por enquanto**: o dono não gostou do quarto nem quis a barquinha. Mesmo com a SPEC ainda citando a salinha no M6, ela não faz parte da entrega. Sem ela, nome, cor, personalidade e memórias ficam numa seção **Dot** das Configurações.
+38. **Tela Dots na sidebar** (2026-11-09, substitui a seção Dot das Configurações da decisão 37): o dono não quer criar o Dot nas Configurações. Nome, cor, personalidade e ativação vão para uma tela **Dots**, com item próprio na sidebar. Não é a salinha: sem quarto nem objetos. Continua um Dot só até o M8 (decisão 36).
+39. **Quando a personalidade vale** (2026-11-09): nome e cor mudam na hora; personalidade e ativação valem a partir da próxima conversa aberta, para não reiniciar o Agente no meio do trabalho.
 
 ## M5 — estado
 Branch `m5-primeira-abertura`, a partir da `main` com o M4. Feito, nesta ordem: B1 (migração 21, `KARONT_SKIP_ONBOARDING`, `system.diagnostics`), F1 (Perfil: nome, foto e botão no rodapé), F2 (Aparência e rodapé enxuto), F3 (Diagnóstico), F4 (primeira abertura, "Abrir de novo" e ajustes finais do rodapé). Depois, o contador de uso (decisões 32 a 34): B2 e B3 (serviço), F5, F6 e F7 (tela). Juntado na `main` (PR #7).
