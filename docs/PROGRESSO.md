@@ -299,3 +299,7 @@ O orquestrador revisou a entrega do Codex e rodou no Electron o que o sandbox de
 ## M6 B2, tela Dots e F2 (2026-11-09)
 
 O Dot chegou às conversas. O serviço passa nome e jeito de falar ao Claude (`--append-system-prompt`) e ao Codex (`developerInstructions`), em conversa nova e ao retomar (decisão 39). Nova tela Dots na sidebar (decisão 38). As respostas mostram rosto, nome e "via Agente"; o rosto é estático em 20 px e muda de humor com o estado real da conversa. `npm run check`: contrato 43, serviço 396, desktop 41, interface 299, sem falhas. E2E: 26 de 26. Teste real: Codex 0.167.0 `gpt-6-luna` em `low`, em banco temporário, respondeu "Caronte" ao ser perguntado do nome. O Claude real fica para o fechamento do M6, com o ok do dono. Os executores das telas leram só parte da skill taste (F1b) ou não a leram (F2); falta a revisão de design antes do PR. Próximo: B3/F3, memórias aprovadas pelo dono.
+
+## Próximo passo do M6 (2026-11-09)
+
+Proposta feita ao dono, para confirmar ao retomar: adiantar **vários Dots** do M8 para agora, antes das memórias, porque cada Dot terá as suas. Tela Dots com lista, Novo Dot e apagar; seletor de Dot ao lado do de Agente, valendo para a próxima conversa aberta; um Dot padrão; opção "Sem Dot" no lugar do botão de ativar. Trabalho em equipe entre Dots continua no M8. Depois: B3/F3 memórias aprovadas, B4/F4 sugestões, F5 crachá, B5/F6 bom dia e boa noite e fechamento. Antes do PR para a `main`: revisão de design com a skill taste nas telas Dots e no cabeçalho do chat, e teste real no Claude com o ok do dono.
