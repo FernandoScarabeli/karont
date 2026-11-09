@@ -111,7 +111,7 @@ Repositório recriado do zero em 2026-10-31.
 Branch `m4-navegacao`, a partir da `main` com o M3. Feito, nesta ordem: B1 (workspaces no serviço), F1 (abas e sidebar), F1b (ajustes do dono), B2 (resumo agregado), F2 (telas do workspace e do Início), B3 e F3 (caixa de entrada), B4 e F4 (busca), E2E dos fluxos, F5 (sidebar ajustável, faixa de ícones, botão junto da marca, composer em painel estreito, divisão direta com animação de 240 ms). Falta o PR.
 
 Testes (2026-11-09):
-- `npm run check`: contrato 40, serviço 348, desktop 41, interface 227, sem falhas. Build ok. E2E: 19 de 19.
+- `npm run check`: contrato 40, serviço 348, desktop 41, interface 227, sem falhas. Build ok. E2E: 20 de 20.
 - Teste real no Electron, em banco e pastas temporárias, com Codex 0.167.0 `gpt-6-luna`, esforço `low`: 11 de 11. Cobriu permissão aprovada pela caixa de entrada, arquivo criado, caixa vazia depois, busca, resumo, ponto de restauração, continuar a sessão e mover o projeto de workspace no meio do turno. O Claude real não foi testado, para não gastar o limite (decisão 28).
 
 Medições:
