@@ -1,5 +1,5 @@
-import { Inbox, ListTodo, PanelLeftOpen, Settings, SquarePen } from "lucide-react";
-import type { ReactNode, Ref } from "react";
+import { Inbox, ListTodo, Settings, SquarePen } from "lucide-react";
+import type { ReactNode } from "react";
 import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./SidebarRail.module.css";
@@ -12,7 +12,6 @@ type RailButtonProps = {
   disabled?: boolean;
   description?: string;
   count?: number;
-  buttonRef?: Ref<HTMLButtonElement>;
 };
 
 function RailButton({
@@ -23,7 +22,6 @@ function RailButton({
   disabled,
   description,
   count,
-  buttonRef,
 }: RailButtonProps) {
   return (
     <Tooltip label={label} side="end">
@@ -34,7 +32,6 @@ function RailButton({
         className={styles.button}
         disabled={disabled}
         onClick={onClick}
-        ref={buttonRef}
         type="button"
       >
         {icon}
@@ -54,11 +51,9 @@ type SidebarRailProps = {
   inboxActive: boolean;
   newConversationActive: boolean;
   settingsActive: boolean;
-  onExpand: () => void;
   onNewConversation: () => void;
   onInbox: () => void;
   onSettings: () => void;
-  openButtonRef: Ref<HTMLButtonElement>;
 };
 
 /** Faixa fina de ícones da barra lateral recolhida; cada botão faz o mesmo que o item da sidebar. */
@@ -68,21 +63,13 @@ export function SidebarRail({
   inboxActive,
   newConversationActive,
   settingsActive,
-  onExpand,
   onNewConversation,
   onInbox,
   onSettings,
-  openButtonRef,
 }: SidebarRailProps) {
   return (
     <div className={styles.rail} inert={!collapsed}>
       <div className={styles.group}>
-        <RailButton
-          buttonRef={openButtonRef}
-          icon={<PanelLeftOpen aria-hidden="true" size={16} strokeWidth={1.75} />}
-          label={t.shell.sidebarOpen}
-          onClick={onExpand}
-        />
         <RailButton
           active={newConversationActive}
           icon={<SquarePen aria-hidden="true" size={16} strokeWidth={1.75} />}

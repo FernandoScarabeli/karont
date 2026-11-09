@@ -14,7 +14,7 @@
 
 .modelName {
   display: block;
-  min-width: 0;
+  min-width: var(--k-space-6);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -380,5 +380,27 @@
   .switchTrack,
   .switchThumb {
     transition: none;
+  }
+}
+
+/*
+ * Responde à largura do cartão do composer (o painel), não à da janela.
+ * Ordem de encolhimento: nome do agente (nos módulos das telas), modelo com reticências,
+ * selo só com o ícone, modelo só com a seta; abaixo disso os controles quebram de linha.
+ * Os pontos de quebra são literais porque @container não aceita variáveis.
+ */
+@container composer (max-width: 560px) {
+  .badgeLabel {
+    display: none;
+  }
+}
+
+@container composer (max-width: 380px) {
+  .options {
+    display: contents;
+  }
+
+  .modelName {
+    display: none;
   }
 }

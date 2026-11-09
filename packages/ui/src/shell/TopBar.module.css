@@ -1,6 +1,8 @@
 .topbar {
   display: grid;
-  grid-template-columns: var(--k-sidebar-width) minmax(0, 1fr);
+  /* A largura da marca é a da sidebar mais a linha da alça; a variável vem do shell. */
+  grid-template-columns: calc(var(--k-sidebar-current-width) + var(--k-border-width)) minmax(0, 1fr);
+  transition: grid-template-columns var(--k-sidebar-anim, 0s) var(--k-ease);
   min-width: 0;
   height: var(--k-topbar-height);
   border-bottom: var(--k-border-width) solid var(--k-color-border);
@@ -9,10 +11,30 @@
 
 .brandArea {
   display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-topbar-brand-gap);
+  padding-inline: var(--k-space-4) var(--k-space-2);
+  border-right: var(--k-border-width) solid var(--k-color-border);
+}
+
+.brand {
+  display: flex;
+  min-width: 0;
   align-items: center;
   gap: var(--k-topbar-brand-gap);
-  padding-inline: var(--k-space-4);
-  border-right: var(--k-border-width) solid var(--k-color-border);
+  overflow: hidden;
+}
+
+/* Recolhida, só o botão fica, centrado com os ícones da faixa. */
+.brandArea:has([data-collapsed="true"]) {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.brandArea:has([data-collapsed="true"]) .brand {
+  display: none;
 }
 
 .brandName {

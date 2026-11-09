@@ -57,7 +57,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   if (value.type === "control_request") {
     send({
       type: "control_response",
-      response: { subtype: "success", request_id: value.request_id, response: { commands: [], models: [] } },
+      response: { subtype: "success", request_id: value.request_id, response: { commands: [], models: [{ value: "gpt-6-luna", displayName: "GPT-6-Luna", supportsEffort: true, supportedEffortLevels: ["low", "medium", "high"] }] } },
     });
     return;
   }
@@ -679,6 +679,100 @@ test("busca: Ctrl K, acento, destaque, setas, outro workspace, terminal e entrad
     await input.fill(" AND (*");
     await expect(search.getByText("Nada encontrado")).toBeVisible();
     await expect(search.getByText("Não foi possível buscar.")).toHaveCount(0);
+  } finally {
+    await kit.close();
+  }
+});
+
+test("composer em painel estreito: nada se sobrepõe nem sai do cartão, e o enviar fica na primeira linha", async () => {
+  const kit = await launch();
+  const { window } = kit;
+  try {
+    const folder = await kit.folder("projeto-estreito");
+    await ok(
+      kit.request("conversation.create", {
+        agent: "claude",
+        title: "Conversa estreita",
+        cwd: folder,
+        mode: "full",
+        model: "gpt-6-luna",
+      }),
+    );
+    await kit.reload();
+    await sidebarItem(window, "Conversa estreita").click();
+    const form = window
+      .locator("form")
+      .filter({ has: window.locator("textarea") })
+      .first();
+    const submit = form.getByRole("button", { name: /Enviar/ });
+    await expect(submit).toBeVisible();
+    await expect(form.getByRole("button", { name: /Acesso total/ })).toBeVisible();
+
+    for (const width of [180, 260, 340, 420, 520, 640, 800, 1200]) {
+      await form.evaluate((element, value) => {
+        const wrapper = (element as unknown as { parentElement: { style: { width: string } } })
+          .parentElement;
+        wrapper.style.width = `${value}px`;
+      }, width);
+      await window.evaluate("new Promise((resolve) => requestAnimationFrame(resolve))");
+
+      const card = await form.boundingBox();
+      if (!card) throw new Error("composer sem caixa");
+      const buttons = form.getByRole("button");
+      const count = await buttons.count();
+      const boxes: { name: string; x: number; y: number; width: number; height: number }[] = [];
+      for (let index = 0; index < count; index += 1) {
+        const button = buttons.nth(index);
+        const box = await button.boundingBox();
+        if (!box || box.width === 0) continue;
+        boxes.push({ name: (await button.getAttribute("aria-label")) ?? "", ...box });
+      }
+      expect(boxes.length, `controles visíveis a ${width}px`).toBeGreaterThanOrEqual(5);
+
+      // Nenhum controle passa da borda do cartão nem se sobrepõe a outro.
+      for (const box of boxes) {
+        expect(box.x, `${box.name} a ${width}px`).toBeGreaterThanOrEqual(card.x - 1);
+        expect(box.x + box.width, `${box.name} a ${width}px`).toBeLessThanOrEqual(
+          card.x + card.width + 1,
+        );
+      }
+      for (const [index, first] of boxes.entries()) {
+        for (const second of boxes.slice(index + 1)) {
+          const overlapX =
+            Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x);
+          const overlapY =
+            Math.min(first.y + first.height, second.y + second.height) -
+            Math.max(first.y, second.y);
+          expect(
+            overlapX > 1 && overlapY > 1,
+            `${first.name} sobrepõe ${second.name} a ${width}px`,
+          ).toBe(false);
+        }
+      }
+
+      // O enviar está na primeira linha dos controles, à direita de todos nela.
+      const send = boxes.find((box) => /Enviar/.test(box.name));
+      if (!send) throw new Error("sem botão enviar");
+      const topRow = Math.min(...boxes.map((box) => box.y));
+      expect(
+        Math.abs(send.y + send.height / 2 - (topRow + 18)),
+        `enviar a ${width}px`,
+      ).toBeLessThan(8);
+      for (const box of boxes) {
+        if (box !== send && Math.abs(box.y - send.y) < 20) {
+          expect(
+            box.x + box.width,
+            `${box.name} à esquerda do enviar a ${width}px`,
+          ).toBeLessThanOrEqual(send.x + 1);
+        }
+      }
+    }
+
+    // Mesmo no menor painel, o nome acessível diz agente, modelo e acesso.
+    await expect(form.getByRole("button", { name: /Modelo: GPT-6-Luna/ })).toBeVisible();
+    await expect(form.getByRole("button", { name: /Acesso total/ })).toBeVisible();
+    await expect(form.getByText("Claude Code", { exact: true })).toBeAttached();
+    await expect(form.getByText("Agente: Claude Code")).toBeAttached();
   } finally {
     await kit.close();
   }

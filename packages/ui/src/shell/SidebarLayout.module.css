@@ -4,14 +4,9 @@
   overflow: hidden;
 }
 
-.content[data-animating="true"] > [data-panel] {
-  transition: flex-grow var(--k-motion-moderate) var(--k-ease);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .content[data-animating="true"] > [data-panel] {
-    transition: none;
-  }
+/* A duração vem do shell: só é maior que zero nas trocas por botão, e some com prefers-reduced-motion. */
+.content > [data-panel] {
+  transition: flex-grow var(--k-sidebar-anim, 0s) var(--k-ease);
 }
 
 .separator {

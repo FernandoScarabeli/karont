@@ -282,7 +282,7 @@ export function ComposerPreferences({
           </button>
         </Tooltip>
         {planMode ? (
-          <Tooltip label={t.chat.configTooltip} open={active("config")}>
+          <Tooltip label={t.chat.planBadgeAccessibleName} open={active("config")}>
             <button
               aria-controls={configPopoverId}
               aria-expanded={active("config")}
@@ -298,12 +298,12 @@ export function ComposerPreferences({
               type="button"
             >
               <ListTodo aria-hidden="true" size={13} />
-              <span>{t.chat.planMode}</span>
+              <span className={styles.badgeLabel}>{t.chat.planMode}</span>
             </button>
           </Tooltip>
         ) : null}
         {fullAccess ? (
-          <Tooltip label={t.chat.configTooltip} open={active("config")}>
+          <Tooltip label={t.chat.fullAccessBadgeAccessibleName} open={active("config")}>
             <button
               aria-controls={configPopoverId}
               aria-expanded={active("config")}
@@ -319,7 +319,7 @@ export function ComposerPreferences({
               type="button"
             >
               <TriangleAlert aria-hidden="true" size={13} />
-              <span>{t.chat.modes.full}</span>
+              <span className={styles.badgeLabel}>{t.chat.modes.full}</span>
             </button>
           </Tooltip>
         ) : null}

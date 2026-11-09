@@ -42,6 +42,12 @@
   transform: translate(calc(-1 * var(--k-space-1)), -50%);
 }
 
+.root[data-side="bottom"] .bubble {
+  top: calc(100% + var(--k-space-1));
+  bottom: auto;
+  transform: translate(-50%, calc(-1 * var(--k-space-1)));
+}
+
 .root[data-align="start"] .bubble {
   left: 0;
   transform: translate(0, var(--k-space-1));
@@ -84,10 +90,34 @@
   transform: translate(0, var(--k-space-1));
 }
 
+.root[data-side="bottom"][data-align="start"] .bubble {
+  left: 0;
+  transform: translate(0, calc(-1 * var(--k-space-1)));
+}
+
+.root[data-side="bottom"][data-align="end"] .bubble {
+  right: 0;
+  left: auto;
+  transform: translate(0, calc(-1 * var(--k-space-1)));
+}
+
 .root[data-side="end"]:hover .bubble,
 .root[data-side="end"]:has(:focus-visible) .bubble,
 .root[data-side="end"][data-visible="true"] .bubble {
   transform: translate(0, -50%);
+}
+
+.root[data-side="bottom"]:hover .bubble,
+.root[data-side="bottom"]:has(:focus-visible) .bubble,
+.root[data-side="bottom"][data-visible="true"] .bubble {
+  transform: translate(-50%, 0);
+}
+
+.root[data-side="bottom"][data-align="start"]:hover .bubble,
+.root[data-side="bottom"][data-align="start"]:has(:focus-visible) .bubble,
+.root[data-side="bottom"][data-align="end"]:hover .bubble,
+.root[data-side="bottom"][data-align="end"]:has(:focus-visible) .bubble {
+  transform: translate(0, 0);
 }
 
 @media (prefers-reduced-motion: reduce) {

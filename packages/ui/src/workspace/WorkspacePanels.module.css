@@ -95,6 +95,11 @@
   background: var(--k-color-border-strong);
 }
 
+/* Durante a divisão animada a divisória não pega: pressionar nela termina o movimento. */
+.group[data-splitting="true"] .separator {
+  pointer-events: none;
+}
+
 .dropZone {
   position: absolute;
   z-index: var(--k-layer-drop-zone);

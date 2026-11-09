@@ -8,3 +8,13 @@
   overflow: hidden;
   background: var(--k-color-bg-app);
 }
+
+.shell[data-animating="true"] {
+  --k-sidebar-anim: var(--k-motion-moderate);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-animating="true"] {
+    --k-sidebar-anim: 0s;
+  }
+}

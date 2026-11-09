@@ -31,17 +31,6 @@
   padding: var(--k-sidebar-padding);
 }
 
-.newConversationRow {
-  display: flex;
-  align-items: center;
-  gap: var(--k-space-1);
-}
-
-.newConversationRow > :first-child {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
 .navigation {
   position: relative;
   display: flex;

@@ -117,6 +117,7 @@ test("Dividir abre à direita num clique; arrastar para o lado atual não muda n
     // Um clique, sem menu: o painel novo nasce à direita.
     await window.getByRole("button", { name: "Dividir" }).first().click();
     await expect(regions).toHaveCount(2);
+    await expect(window.locator("[data-splitting]")).toHaveCount(0);
     await expect(window.getByRole("menu")).toHaveCount(0);
     await expect(window.getByRole("button", { name: "Dividir à direita" })).toHaveCount(0);
     const left = regions.nth(0);
@@ -207,6 +208,12 @@ test("barra lateral: arrastar muda a largura, recolher vira faixa de ícones e o
     const handle = window.getByRole("separator", { name: "Largura da barra lateral" });
     const close = window.getByRole("button", { name: "Fechar barra lateral" });
     const open = window.getByRole("button", { name: "Abrir barra lateral" });
+    // O bloco da marca tem a largura da sidebar mais a linha da alça, o tempo todo.
+    const brand = window.locator("header > div").first();
+    const brandMatches = async () => {
+      const [asideBox, brandBox] = await Promise.all([aside.boundingBox(), brand.boundingBox()]);
+      return Math.abs((brandBox?.width ?? 0) - ((asideBox?.width ?? 0) + 1)) <= 1;
+    };
 
     // Largura padrão; nada foi salvo só por abrir.
     await expect.poll(widthOf).toBeCloseTo(232, 0);
@@ -223,6 +230,7 @@ test("barra lateral: arrastar muda a largura, recolher vira faixa de ícones e o
     expect(await savedValue()).toBeNull();
     await window.mouse.up();
     await expect.poll(widthOf).toBeCloseTo(292, -1);
+    await expect.poll(brandMatches).toBe(true);
     await expect.poll(savedValue).toMatchObject({ collapsed: false });
     const draggedWidth = ((await savedValue()) as { width: number }).width;
     expect(draggedWidth).toBeGreaterThan(280);
@@ -238,8 +246,11 @@ test("barra lateral: arrastar muda a largura, recolher vira faixa de ícones e o
 
     // Fechar: faixa de ícones, foco no botão de abrir, conteúdo fora do alcance.
     await close.click();
+    // É o mesmo botão no topo: o foco continua nele, agora com o nome de abrir.
     await expect(open).toBeFocused();
     await expect.poll(widthOf).toBeCloseTo(48, 0);
+    await expect.poll(brandMatches).toBe(true);
+    await expect(window.getByText("karont", { exact: true })).toBeHidden();
     await expect(window.getByRole("heading", { name: "Projetos" })).toBeHidden();
     await expect(close).toBeHidden();
     await expect.poll(savedValue).toMatchObject({ collapsed: true });
@@ -267,6 +278,8 @@ test("barra lateral: arrastar muda a largura, recolher vira faixa de ícones e o
     // Abrir: volta à largura salva e o foco vai para o botão de fechar.
     await open.click();
     await expect(close).toBeFocused();
+    await expect.poll(brandMatches).toBe(true);
+    await expect(window.getByText("karont", { exact: true })).toBeVisible();
     await expect.poll(widthOf).toBeCloseTo(savedWidth, 0);
     await expect.poll(savedValue).toEqual({ width: savedWidth, collapsed: false });
 
@@ -285,3 +298,49 @@ test("barra lateral: arrastar muda a largura, recolher vira faixa de ícones e o
     await rm(root, { recursive: true, force: true });
   }
 });
+
+for (const reducedMotion of [false, true]) {
+  test(`Dividir ${reducedMotion ? "sem animação (movimento reduzido)" : "animado"}: no fim o painel novo está à direita, com metade da largura e o foco, mesmo com cliques seguidos`, async () => {
+    const { app, window, root } = await launchEmpty();
+    try {
+      await window.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
+      await window.getByRole("button", { name: "Nova conversa", exact: true }).click();
+      const regions = window.locator('[role="region"][data-active]');
+      await expect(regions).toHaveCount(1);
+      const splitting = window.locator("[data-splitting]");
+
+      await window.getByRole("button", { name: "Dividir" }).first().click();
+      await expect(regions).toHaveCount(2);
+      // Termina o movimento: nada de largura fixa nem marca de animação sobrando.
+      await expect(splitting).toHaveCount(0);
+      const [left, right] = await Promise.all([
+        regions.nth(0).boundingBox(),
+        regions.nth(1).boundingBox(),
+      ]);
+      if (!left || !right) throw new Error("painéis sem caixa");
+      expect(left.x).toBeLessThan(right.x);
+      expect(Math.abs(left.width - right.width)).toBeLessThanOrEqual(2);
+      await expect
+        .poll(() => regions.nth(1).evaluate((element) => element.matches(":focus-within")))
+        .toBe(true);
+
+      // Dividir de novo, em seguida: três painéis, sem tamanho errado no fim.
+      await window.getByRole("button", { name: "Dividir" }).nth(1).click();
+      await window.getByRole("button", { name: "Dividir" }).nth(2).click();
+      await expect(regions).toHaveCount(4);
+      await expect(splitting).toHaveCount(0);
+      const widths = await regions.evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().width),
+      );
+      const total = widths.reduce((sum, width) => sum + width, 0);
+      for (const width of widths) {
+        expect(width).toBeGreaterThan(total * 0.12);
+        expect(width).toBeLessThan(total * 0.6);
+      }
+    } finally {
+      await stopService(window).catch(() => {});
+      await app.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}

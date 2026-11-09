@@ -9,6 +9,8 @@
   display: grid;
   gap: var(--k-space-2);
   min-width: 0;
+  container-name: composer;
+  container-type: inline-size;
   padding: var(--k-space-3) var(--k-space-4);
   border: var(--k-border-width) solid var(--k-color-border);
   border-radius: var(--k-radius-2xl);
@@ -170,11 +172,12 @@
   font-family: var(--k-font-mono); /* taste-skill-ignore: literal shell command. */
 }
 
+/* O enviar e o anel de contexto ficam sempre na primeira linha, à direita; os controles encolhem ou quebram. */
 .footer {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-wrap: nowrap;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--k-space-3);
 }
@@ -182,7 +185,8 @@
 .leading {
   display: flex;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  padding-block-start: calc((var(--k-composer-submit-size) - var(--k-control-height-md)) / 2);
   flex-wrap: nowrap;
   align-items: center;
   gap: var(--k-space-1);
@@ -190,6 +194,7 @@
 
 .actions {
   display: inline-flex;
+  min-height: var(--k-composer-submit-size);
   flex: 0 0 auto;
   align-items: center;
   gap: var(--k-space-2);

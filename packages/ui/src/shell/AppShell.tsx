@@ -5,6 +5,7 @@ import styles from "./AppShell.module.css";
 import { Sheet } from "./Sheet.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { SidebarLayout } from "./SidebarLayout.tsx";
+import { SidebarShellProvider } from "./SidebarShell.tsx";
 import { TopBar } from "./TopBar.tsx";
 
 const SearchPanel = lazy(async () => {
@@ -57,16 +58,12 @@ export function AppShell() {
 
   return (
     <NavigationProvider>
-      <div className={styles.shell}>
+      <SidebarShellProvider className={styles.shell}>
         <TopBar onOpenSearch={openSearch} />
-        <SidebarLayout
-          sidebar={({ collapsed, collapse, expand }) => (
-            <Sidebar collapsed={collapsed} onCollapse={collapse} onExpand={expand} />
-          )}
-        >
+        <SidebarLayout sidebar={({ collapsed }) => <Sidebar collapsed={collapsed} />}>
           <Sheet />
         </SidebarLayout>
-      </div>
+      </SidebarShellProvider>
       {searchLoaded ? (
         <Suspense fallback={null}>
           <SearchPanel onClose={closeSearch} open={searchOpen} />
