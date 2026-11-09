@@ -1,0 +1,35 @@
+.header {
+  --dot-header-face-width: calc(var(--k-space-5) * 1.44);
+
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin-block-end: var(--k-space-1);
+}
+
+.face {
+  display: inline-flex;
+  width: var(--dot-header-face-width);
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--k-color-text-primary);
+  font-size: var(--k-text-13);
+  line-height: var(--k-leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.via {
+  flex: none;
+  color: var(--k-color-text-secondary);
+  font-size: var(--k-text-12);
+  line-height: var(--k-leading-tight);
+  white-space: nowrap;
+}

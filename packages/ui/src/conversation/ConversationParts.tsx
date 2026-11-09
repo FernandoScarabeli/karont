@@ -49,6 +49,7 @@ import remarkGfm from "remark-gfm";
 import { Button } from "../components/Button/Button.tsx";
 import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
 import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
+import type { DotMood } from "../dot/EyeTracker.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { MOTION_EXIT_MS } from "../styles/motion.ts";
 import {
@@ -71,6 +72,7 @@ import { formatAttachmentSize } from "./attachmentUtils.ts";
 import styles from "./ConversationParts.module.css";
 import { createCitationMarkdownComponents } from "./citationMarkdown.ts";
 import { formatWorkDuration, splitFinalAnswer } from "./conversationDisplay.ts";
+import { DotMessageHeader } from "./DotMessageHeader.tsx";
 import { cleanMarkdownPreview, formatConversationText } from "./displayText.ts";
 import { getAllowedExternalUrl } from "./externalLinks.ts";
 import { FollowBottomContext } from "./followBottom.ts";
@@ -249,12 +251,15 @@ export const MessageRow = memo(function MessageRow({
   onAnnounce,
   cwd,
   agent,
+  dotMood = "idle",
   historyHighlighted = false,
   workingIndicator,
   onWorkingIndicatorExit,
 }: {
   message: ConversationMessage;
   agent?: AgentErrorAgent;
+  /** Humor do rosto do Dot no cabeçalho da resposta. */
+  dotMood?: DotMood;
   onCopy: (text: string) => Promise<boolean>;
   onCopyCode?: (code: string) => void;
   onEdit: (text: string) => void;
@@ -431,6 +436,7 @@ export const MessageRow = memo(function MessageRow({
         </>
       ) : (
         <>
+          <DotMessageHeader agent={agent} mood={dotMood} />
           {message.status === "done" && !typewriterLive ? (
             <>
               {message.parts.length > visibleParts.length ? (

@@ -2,6 +2,7 @@ import type { Conversation, ConversationMessage } from "@karont/contract";
 import { Clock, MessageSquareText, TriangleAlert } from "lucide-react";
 import { memo, type RefObject } from "react";
 import scrollAreaStyles from "../components/ScrollArea/ScrollArea.module.css";
+import { chatMood } from "../dot/chatMood.ts";
 import { t } from "../i18n/pt-BR.ts";
 import { agentDisplayName } from "./ComposerPreferences.tsx";
 import { MessageRow, type ResponseInput } from "./ConversationParts.tsx";
@@ -143,6 +144,11 @@ export const ConversationMessageList = memo(function ConversationMessageList({
             message={message}
             historyHighlighted={highlightedMessageId === message.id}
             agent={conversation?.agent}
+            dotMood={chatMood({
+              isLatest: isLatestMessage,
+              conversationState: conversation?.state,
+              messageStatus: message.status,
+            })}
             cwd={conversation?.cwd ?? ""}
             onAnnounce={onAnnounce}
             onCopy={onCopy}

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -23,7 +23,38 @@ const request = (window: Page, method: string, params: unknown) =>
     [method, params] as const,
   );
 
-async function launch(root: string) {
+/** Imita o `stream-json` do Claude Code: responde ao initialize e, a cada mensagem, devolve um texto. */
+const FAKE_CLAUDE = `#!/usr/bin/env node
+const readline = require("node:readline");
+const args = process.argv.slice(2);
+const flag = (name) => args[args.indexOf(name) + 1];
+const sessionId = flag("--session-id") || flag("--resume") || "00000000-0000-4000-8000-000000000001";
+const send = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
+let turn = 0;
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  let value;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    return;
+  }
+  if (value.type === "control_request") {
+    send({ type: "control_response", response: { subtype: "success", request_id: value.request_id, response: { commands: [], models: [] } } });
+    return;
+  }
+  if (value.type !== "user") return;
+  turn += 1;
+  const reply = "Resposta do agente falso";
+  send({ type: "system", subtype: "init", cwd: process.cwd(), session_id: sessionId, tools: [] });
+  send({ type: "stream_event", session_id: sessionId, parent_tool_use_id: null, event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } } });
+  send({ type: "stream_event", session_id: sessionId, parent_tool_use_id: null, event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: reply } } });
+  send({ type: "assistant", session_id: sessionId, parent_tool_use_id: null, message: { id: "msg_" + turn, type: "message", role: "assistant", model: "claude-fake", content: [{ type: "text", text: reply }], usage: {} } });
+  send({ type: "stream_event", session_id: sessionId, parent_tool_use_id: null, event: { type: "content_block_stop", index: 0 } });
+  send({ type: "result", subtype: "success", is_error: false, session_id: sessionId, stop_reason: "end_turn", terminal_reason: "completed", permission_denials: [] });
+});
+`;
+
+async function launch(root: string, fakeCli?: string) {
   const app = await electron.launch({
     args: [mainEntry],
     chromiumSandbox: true,
@@ -33,6 +64,7 @@ async function launch(root: string) {
       KARONT_DATA_DIR: path.join(root, "data"),
       KARONT_SKIP_ONBOARDING: "1",
       KARONT_DISABLE_AGENT_DETECTION: "1",
+      ...(fakeCli ? { KARONT_CLAUDE_CLI: fakeCli } : {}),
     },
   });
   const window = await app.firstWindow();
@@ -137,6 +169,44 @@ test("Dot: Fechar tudo encerra o app mesmo com edição pendente", async () => {
         // o serviço já saiu
       }
     }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Dot no chat: nome e "via Claude Code" na resposta, e some com o Dot desligado', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "kdot-chat-"));
+  const fakeCli = path.join(root, "claude-falso.js");
+  await writeFile(fakeCli, FAKE_CLAUDE);
+  await chmod(fakeCli, 0o755);
+  const { app, window, pid } = await launch(root, fakeCli);
+  try {
+    const renamed = await request(window, "dot.update", { name: "Caronte" });
+    expect(renamed.ok).toBe(true);
+    const created = await request(window, "conversation.create", {
+      agent: "claude",
+      cwd: root,
+      title: "Conversa com Dot",
+    });
+    expect(created.ok).toBe(true);
+    await window.reload();
+    await expect(window.getByText("Serviço conectado")).toBeVisible();
+    await sidebar(window).getByRole("button", { name: "Conversa com Dot", exact: true }).click();
+
+    const composer = window.locator("textarea").first();
+    await composer.fill("Oi");
+    await composer.press("Enter");
+
+    const answer = window.getByRole("article", { name: "Mensagem do agente" });
+    await expect(answer.getByText("Resposta do agente falso")).toBeVisible();
+    await expect(answer.getByText("Caronte", { exact: true })).toBeVisible();
+    await expect(answer.getByText("via Claude Code", { exact: true })).toBeVisible();
+
+    await request(window, "dot.update", { enabled: false });
+    await expect(answer.getByText("Caronte", { exact: true })).toHaveCount(0);
+    await expect(answer.getByText("via Claude Code", { exact: true })).toHaveCount(0);
+    await expect(answer.getByText("Resposta do agente falso")).toBeVisible();
+  } finally {
+    await shutDown(app, pid);
     await rm(root, { recursive: true, force: true });
   }
 });

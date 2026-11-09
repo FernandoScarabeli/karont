@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { AccentProvider } from "../appearance/AccentProvider.tsx";
+import { DotProvider } from "../dot/DotContext.tsx";
 import { NavigationProvider } from "../navigation/NavigationContext.tsx";
 import { Onboarding } from "../onboarding/Onboarding.tsx";
 import { OnboardingProvider, useOnboarding } from "../onboarding/OnboardingContext.tsx";
@@ -93,9 +94,11 @@ export function AppShell() {
       <NavigationProvider>
         <ProfileProvider>
           <UsageProvider>
-            <OnboardingProvider>
-              <ShellContent />
-            </OnboardingProvider>
+            <DotProvider>
+              <OnboardingProvider>
+                <ShellContent />
+              </OnboardingProvider>
+            </DotProvider>
           </UsageProvider>
         </ProfileProvider>
       </NavigationProvider>

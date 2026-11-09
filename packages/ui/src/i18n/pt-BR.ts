@@ -949,6 +949,10 @@ export const t = {
     finishFailed: "Não foi possível concluir. Tente de novo.",
     noBridge: "Sem conexão com o serviço.",
   },
+  dotChat: {
+    /** Discreto, ao lado do nome do Dot numa resposta do Agente. */
+    via: (agent: string) => `via ${agent}`,
+  },
   dot: {
     /** Nome acessível do botão que cutuca o Dot. */
     poke: "Cutucar o Dot",
