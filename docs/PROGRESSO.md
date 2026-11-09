@@ -119,7 +119,7 @@ Repositório recriado do zero em 2026-10-31.
 34. **Uso compacto** (2026-11-09): o bloco de uso ganha um chevron que o reduz a anéis, um por agente, com o ícone dentro, e a escolha fica salva. Com a sidebar fechada, os anéis aparecem na faixa de ícones. Referência visual do dono: anel verde, laranja perto do limite. O anel mostra a janela mais perto do limite, 5 horas ou semana; os dois números ficam na dica.
 
 ## M5 — estado
-Branch `m5-primeira-abertura`, a partir da `main` com o M4. Feito, nesta ordem: B1 (migração 21, `KARONT_SKIP_ONBOARDING`, `system.diagnostics`), F1 (Perfil: nome, foto e botão no rodapé), F2 (Aparência e rodapé enxuto), F3 (Diagnóstico), F4 (primeira abertura, "Abrir de novo" e ajustes finais do rodapé). Depois, o contador de uso (decisão 32): B2 (serviço) e F5 (painel no rodapé). Falta o dono ver no preview e o PR.
+Branch `m5-primeira-abertura`, a partir da `main` com o M4. Feito, nesta ordem: B1 (migração 21, `KARONT_SKIP_ONBOARDING`, `system.diagnostics`), F1 (Perfil: nome, foto e botão no rodapé), F2 (Aparência e rodapé enxuto), F3 (Diagnóstico), F4 (primeira abertura, "Abrir de novo" e ajustes finais do rodapé). Depois, o contador de uso (decisões 32 a 34): B2 e B3 (serviço), F5, F6 e F7 (tela). PR aberto em 2026-11-09, com o ok do dono.
 
 Contador de uso (2026-11-09): `npm run check`: contrato 42, serviço 365, desktop 41, interface 264, sem falhas. E2E: 22 de 22, em 40 s. Teste real no Electron com Codex 0.167.0 `gpt-6-luna`, esforço `low`: 4 de 4, e o painel mostrou 8% em 5 horas e 39% na semana. O Claude real não foi testado (decisão 28); o leitor dele usa a saída real gravada nos fixtures.
 
