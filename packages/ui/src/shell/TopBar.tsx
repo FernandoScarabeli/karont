@@ -27,6 +27,7 @@ import {
 import { WorkspaceDialog } from "../projects/WorkspaceDialog.tsx";
 import { removalTarget, type WorkspaceMark, workspaceMarks } from "../projects/workspaceState.ts";
 import { BrandMark } from "./BrandMark.tsx";
+import { SidebarToggle } from "./SidebarToggle.tsx";
 import styles from "./TopBar.module.css";
 
 const tabActionsIcon = <Ellipsis aria-hidden="true" size={16} strokeWidth={1.8} />;
@@ -238,8 +239,11 @@ export function TopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
   return (
     <header className={styles.topbar}>
       <div className={styles.brandArea}>
-        <BrandMark />
-        <span className={styles.brandName}>{t.brand.name}</span>
+        <div className={styles.brand}>
+          <BrandMark />
+          <span className={styles.brandName}>{t.brand.name}</span>
+        </div>
+        <SidebarToggle />
       </div>
       <div className={styles.toolbar}>
         <nav aria-label={t.shell.areasNavigation} className={styles.areas}>

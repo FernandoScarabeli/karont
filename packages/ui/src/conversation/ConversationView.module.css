@@ -517,3 +517,20 @@
     animation: none;
   }
 }
+
+/* Largura do painel (cartão do composer): o nome do agente vira só o ícone. */
+@container composer (max-width: 680px) {
+  .agentName {
+    position: absolute;
+    width: var(--k-border-width);
+    height: var(--k-border-width);
+    clip-path: inset(50%);
+  }
+}
+
+@container composer (max-width: 380px) {
+  .composerControls {
+    flex-wrap: wrap;
+    row-gap: var(--k-space-1);
+  }
+}

@@ -7,6 +7,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -28,6 +29,7 @@ import {
   type SplitNode,
 } from "./layout.ts";
 import { PanelToolbar } from "./PanelToolbar.tsx";
+import { animateSplit } from "./splitAnimation.ts";
 import styles from "./WorkspacePanels.module.css";
 
 const ConversationView = lazy(async () => {
@@ -108,6 +110,8 @@ export function WorkspacePanels({
   const paneElements = useRef(new Map<string, HTMLDivElement>());
   const [draggedPaneId, setDraggedPaneId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DragTarget>(null);
+  /** Painel criado pelo clique em Dividir: só ele anima; arrastar, fechar e restaurar não. */
+  const pendingSplitPaneId = useRef<string | null>(null);
   const terminalTitles = getTerminalDisplayTitles(terminals);
   const terminalById = new Map(terminals.map((terminal) => [terminal.id, terminal]));
 
@@ -202,6 +206,16 @@ export function WorkspacePanels({
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [activePaneId, layout, moveWorkspacePane, setActivePane, visible]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roda quando o layout muda, depois que o painel novo está no DOM.
+  useLayoutEffect(() => {
+    const paneId = pendingSplitPaneId.current;
+    if (!paneId) return;
+    const surface = paneElements.current.get(paneId);
+    if (!surface) return;
+    pendingSplitPaneId.current = null;
+    animateSplit(surface);
+  }, [layout]);
+
   const allPanes = collectPanes(layout);
   const activePane = allPanes.find((pane) => pane.id === activePaneId);
   const activeViewKind = activePane?.view.kind ?? "new-conversation";
@@ -267,7 +281,10 @@ export function WorkspacePanels({
         onClosePane={() => closePanel(pane.id)}
         onSplit={(direction) => {
           const newPaneId = splitActivePane(direction, pane.id);
-          if (newPaneId) focusPaneContext(newPaneId);
+          if (newPaneId) {
+            pendingSplitPaneId.current = newPaneId;
+            focusPaneContext(newPaneId);
+          }
         }}
         paneTitle={paneTitle}
       />

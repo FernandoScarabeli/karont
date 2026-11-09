@@ -114,7 +114,7 @@ export function ComposerMenu({
 
   return (
     <div className={styles.wrap}>
-      <Tooltip align={tooltipAlign} label={tooltipLabel} open={open}>
+      <Tooltip align={tooltipAlign} className={styles.tooltip} label={tooltipLabel} open={open}>
         <button
           aria-controls={listboxId}
           aria-expanded={open}

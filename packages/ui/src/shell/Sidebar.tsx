@@ -11,7 +11,6 @@ import {
   GitFork,
   Inbox,
   ListTodo,
-  PanelLeftClose,
   Pencil,
   Pin,
   PinOff,
@@ -229,11 +228,9 @@ const ConversationRow = memo(function ConversationRow({
 
 type SidebarProps = {
   collapsed: boolean;
-  onCollapse: () => void;
-  onExpand: () => void;
 };
 
-export function Sidebar({ collapsed, onCollapse, onExpand }: SidebarProps) {
+export function Sidebar({ collapsed }: SidebarProps) {
   const { view, layout, activePaneId, workspaceOverviewVisible } = useNavigationState();
   const { total: inboxTotal } = useInbox();
   const {
@@ -1021,21 +1018,6 @@ export function Sidebar({ collapsed, onCollapse, onExpand }: SidebarProps) {
     !workspaceOverviewVisible &&
     activePane?.view.kind === "new-conversation" &&
     !activePane.view.projectId;
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const openButtonRef = useRef<HTMLButtonElement>(null);
-  const focusAfterToggleRef = useRef(false);
-  const wasCollapsedRef = useRef(collapsed);
-  useEffect(() => {
-    if (wasCollapsedRef.current === collapsed) return;
-    wasCollapsedRef.current = collapsed;
-    if (!focusAfterToggleRef.current) return;
-    focusAfterToggleRef.current = false;
-    // O botão que tinha o foco acabou de ficar inerte: o foco vai para o botão do outro estado.
-    const frame = requestAnimationFrame(() =>
-      (collapsed ? openButtonRef : closeButtonRef).current?.focus(),
-    );
-    return () => cancelAnimationFrame(frame);
-  }, [collapsed]);
 
   return (
     <aside aria-label={t.shell.sidebar} className={styles.sidebar} data-collapsed={collapsed}>
@@ -1049,28 +1031,16 @@ export function Sidebar({ collapsed, onCollapse, onExpand }: SidebarProps) {
           >
             <FluidHoverHighlight controller={fluidHover} />
             <div className={styles.primaryActions}>
-              <div className={styles.newConversationRow}>
-                <Button
-                  aria-current={newConversationActive ? "page" : undefined}
-                  className={styles.navigationAction}
-                  iconStart={<SquarePen aria-hidden="true" size={16} strokeWidth={1.75} />}
-                  onClick={() => navigate({ name: "new-conversation" })}
-                  ref={(element) => fluidHover.registerItem("new-conversation", element)}
-                  variant="ghost"
-                >
-                  {t.shell.newConversation}
-                </Button>
-                <IconButton
-                  icon={<PanelLeftClose aria-hidden="true" size={16} strokeWidth={1.75} />}
-                  label={t.shell.sidebarClose}
-                  onClick={() => {
-                    focusAfterToggleRef.current = true;
-                    onCollapse();
-                  }}
-                  ref={closeButtonRef}
-                  size="sm"
-                />
-              </div>
+              <Button
+                aria-current={newConversationActive ? "page" : undefined}
+                className={styles.navigationAction}
+                iconStart={<SquarePen aria-hidden="true" size={16} strokeWidth={1.75} />}
+                onClick={() => navigate({ name: "new-conversation" })}
+                ref={(element) => fluidHover.registerItem("new-conversation", element)}
+                variant="ghost"
+              >
+                {t.shell.newConversation}
+              </Button>
               <Button
                 aria-current={view.name === "inbox" ? "page" : undefined}
                 aria-description={inboxTotal > 0 ? t.shell.inboxCount(inboxTotal) : undefined}
@@ -1258,14 +1228,9 @@ export function Sidebar({ collapsed, onCollapse, onExpand }: SidebarProps) {
         inboxTotal={inboxTotal}
         inboxActive={view.name === "inbox"}
         newConversationActive={newConversationActive}
-        onExpand={() => {
-          focusAfterToggleRef.current = true;
-          onExpand();
-        }}
         onInbox={() => navigate({ name: "inbox" })}
         onNewConversation={() => navigate({ name: "new-conversation" })}
         onSettings={() => navigate({ name: "settings", section: "general" })}
-        openButtonRef={openButtonRef}
         settingsActive={view.name === "settings"}
       />
       <Dialog

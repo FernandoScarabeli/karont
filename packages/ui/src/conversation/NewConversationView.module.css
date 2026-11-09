@@ -245,3 +245,17 @@
   font-size: var(--k-text-13);
   line-height: var(--k-leading-normal);
 }
+
+/* Largura do painel (cartão do composer): o nome do agente vira só o ícone. */
+@container composer (max-width: 680px) {
+  .agentName {
+    display: none;
+  }
+}
+
+@container composer (max-width: 380px) {
+  .controls {
+    flex-wrap: wrap;
+    row-gap: var(--k-space-1);
+  }
+}

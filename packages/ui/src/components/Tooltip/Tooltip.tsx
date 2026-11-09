@@ -2,7 +2,7 @@ import { memo, type ReactNode, useMemo } from "react";
 import styles from "./Tooltip.module.css";
 
 export type TooltipAlign = "center" | "start" | "end";
-export type TooltipSide = "top" | "end";
+export type TooltipSide = "top" | "end" | "bottom";
 
 export const Tooltip = memo(function Tooltip({
   children,
@@ -16,7 +16,7 @@ export const Tooltip = memo(function Tooltip({
   children: ReactNode;
   label: string;
   align?: TooltipAlign;
-  /** `end` abre ao lado (à direita), para botões em faixas estreitas. */
+  /** `end` abre à direita e `bottom` embaixo, para botões em faixas estreitas ou no topo da janela. */
   side?: TooltipSide;
   className?: string;
   open?: boolean;
