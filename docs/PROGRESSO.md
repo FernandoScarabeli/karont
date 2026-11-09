@@ -89,6 +89,30 @@ Repositório recriado do zero em 2026-10-31.
     - Trazer de volta: as mudanças não commitadas viram commit na branch da própria worktree, e depois vem o merge, só com o clique.
     - Remover projeto não apaga a pasta, e as conversas dele viram soltas.
 
+24. **Ícone do projeto em menu** (2026-11-08): o seletor de ícones abre a partir de um botão ao lado do nome, em vez de mostrar a grade inteira. Animação feita com a skill `animate`.
+
+25. **Skill taste no M3** (2026-11-08): a skill `design-taste-frontend`, em `~/.agents/skills`, faz o papel da **taste** do `AGENTS.md`. Ela é voltada a sites, então as telas usam só a parte de telas de aplicativo (`references/app-screens.md`), sem nova direção visual.
+
+## M3 — estado em 2026-11-08 (fim da noite, sem o dono)
+Branch `m3-projetos`, local. **Sem push e sem PR**: o dono testa antes e manda subir. Feito, nesta ordem: B1, F1, B3, F3, B2a, B2b, F2, B4a, B4b, F4.
+
+Testes (`17ef182` e os docs):
+- `npm run check`: contrato 38, serviço 312, desktop 41, interface 164, sem falhas. Build ok. E2E: 8 de 8.
+- Teste real com as CLIs instaladas, em banco e pastas temporárias, nos modelos mais baratos (Claude Code 2.1.319 com Haiku; Codex 0.167.0 com `gpt-6-luna`, esforço `low`): 38 de 38. Cobriu criar, apagar, renomear e alterar arquivo; ver mudanças; desfazer sem mudar HEAD, stash e status; continuar a sessão; agente na cópia separada e continuar a sessão nela; ramo de conversa na cópia; trazer de volta; remover cópia; fila com limite 1.
+- **Ainda falta o CI**, que só roda quando houver PR.
+
+Medições:
+- Foto do ponto de restauração: ~40 ms num repositório real de 5,4 mil arquivos; ~100 ms em 50 mil arquivos. Não havia repositório muito maior na máquina; acima de 10 s a mensagem segue sem desfazer.
+- App parado (Electron empacotado, 30 s depois de abrir): CPU ~0,1%. Serviço 41 MB (PSS). Soma do working set dos processos do Electron: 622 MB, com memória compartilhada contada várias vezes, então **não** é comparável aos ~340 MB de PSS do M2: o sandbox do Chromium impede ler o PSS dos processos filhos.
+
+Decisões técnicas que valem lembrar:
+- Vagas da fila são derivadas do estado das conversas, sem contador: nenhum caminho de saída prende vaga.
+- A cópia do index temporário mantém o horário do original. Sem isso, o Git deixa passar uma edição de mesmo tamanho feita no mesmo instante ("racy git") e a foto sai errada.
+- O desfazer grava o estado atual em `refs/karont/restore/<conversa>/<mensagem>/undo` antes de tocar em qualquer arquivo.
+- Aprovar um plano não entra na fila, porque o processo já está aberto. Pode passar do limite por um momento.
+- O `<dialog>` modal deixa o resto da página inerte: popover em portal abre atrás dele. Dentro de diálogo, use painel no próprio diálogo.
+- Cópias separadas ficam em `<dataDir>/worktrees`, com branch `karont/<projeto>-<6 hex>`.
+
 ## M2 — estado em 2026-10-31 (fim da sessão sem o dono)
 Branch `m2-chat` (sem PR). Feito e testado com as CLIs reais no preview (Haiku / GPT-5.6-Luna):
 - Chat com Claude Code (processo aberto, `stream-json`, `--permission-prompts host --permission-prompt-tool stdio`) e Codex (`codex app-server --stdio`).
