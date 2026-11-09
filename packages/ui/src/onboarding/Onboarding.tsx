@@ -108,13 +108,8 @@ function OnboardingScreen() {
     void loadAgents();
   }, [loadAgents]);
 
-  // O foco vai para o título de cada passo.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: o passo é o gatilho.
-  useEffect(() => {
-    titleRef.current?.focus();
-  }, [step]);
-
-  // Reaberta: Esc sai sem mudar nada, e o foco volta a quem abriu.
+  // Reaberta: Esc sai sem mudar nada, e o foco volta a quem abriu. Tem de vir antes do efeito do
+  // título, senão guarda o título em vez do botão que abriu.
   useEffect(() => {
     if (mode !== "reopen") return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -131,6 +126,12 @@ function OnboardingScreen() {
       });
     };
   }, [mode, close]);
+
+  // O foco vai para o título de cada passo.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: o passo é o gatilho.
+  useEffect(() => {
+    titleRef.current?.focus();
+  }, [step]);
 
   async function complete(path: string | null) {
     if (busy) return;

@@ -40,7 +40,8 @@ test("primeira abertura: passa pelos passos, termina na Nova conversa, não volt
     ).toBeVisible();
     await expect(screen.getByText("Passo 1 de 4")).toBeVisible();
     await expect(screen.getByRole("button", { name: "Fechar" })).toHaveCount(0);
-    await expect(window.getByRole("navigation", { name: "Navegação principal" })).toHaveCount(0);
+    // O shell continua montado por baixo, mas bloqueado.
+    await expect(window.locator('[inert] nav[aria-label="Navegação principal"]')).toHaveCount(1);
     await window.keyboard.press("Control+K");
     await expect(window.getByRole("dialog", { name: "Buscar" })).toHaveCount(0);
     const info = await request(window, "system.info", {});
@@ -115,6 +116,7 @@ test("primeira abertura: passa pelos passos, termina na Nova conversa, não volt
     await expect(reopened).toBeVisible();
     await again.keyboard.press("Escape");
     await expect(reopened).toHaveCount(0);
+    await expect(again.getByRole("button", { name: "Abrir de novo" })).toBeFocused();
 
     await second.close();
   } finally {
