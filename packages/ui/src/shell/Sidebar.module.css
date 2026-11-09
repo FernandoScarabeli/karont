@@ -476,11 +476,10 @@
 
 .profileButton {
   display: flex;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   align-items: center;
   gap: var(--k-space-2);
   min-width: 0;
-  max-width: var(--k-profile-button-max-width);
   padding: var(--k-space-1);
   border: var(--k-border-width) solid transparent;
   border-radius: var(--k-radius-md);

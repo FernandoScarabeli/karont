@@ -3,6 +3,7 @@ import { FluidHoverHighlight, useFluidHover } from "../components/FluidHover/Flu
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { AgentsSection } from "./AgentsSection.tsx";
+import { AppearanceSection } from "./AppearanceSection.tsx";
 import { GeneralSection } from "./GeneralSection.tsx";
 import { ProfileSection } from "./ProfileSection.tsx";
 import styles from "./SettingsView.module.css";
@@ -50,6 +51,17 @@ export function SettingsView({ titleRef }: { titleRef: RefObject<HTMLHeadingElem
             </li>
             <li>
               <button
+                aria-current={selectedSection === "appearance" ? "page" : undefined}
+                className={styles.sectionLink}
+                onClick={() => navigate({ name: "settings", section: "appearance" })}
+                ref={(element) => fluidHover.registerItem("settings-appearance", element)}
+                type="button"
+              >
+                {t.settings.appearance}
+              </button>
+            </li>
+            <li>
+              <button
                 aria-current={selectedSection === "agents" ? "page" : undefined}
                 className={styles.sectionLink}
                 onClick={() => navigate({ name: "settings", section: "agents" })}
@@ -65,6 +77,8 @@ export function SettingsView({ titleRef }: { titleRef: RefObject<HTMLHeadingElem
           <GeneralSection />
         ) : selectedSection === "profile" ? (
           <ProfileSection />
+        ) : selectedSection === "appearance" ? (
+          <AppearanceSection />
         ) : (
           <AgentsSection />
         )}

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test src/conversation/*.test.mjs src/profile/*.test.mjs src/projects/*.test.mjs src/components/FluidHover/*.test.mjs src/shell/*.test.mjs src/workspace/*.test.mjs",
+    "test": "node --test src/appearance/*.test.mjs src/conversation/*.test.mjs src/profile/*.test.mjs src/projects/*.test.mjs src/components/FluidHover/*.test.mjs src/shell/*.test.mjs src/workspace/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

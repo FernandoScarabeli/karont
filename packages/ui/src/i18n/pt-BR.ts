@@ -267,6 +267,7 @@ export const t = {
   },
   service: {
     connected: "Serviço conectado",
+    connectedTooltip: "Conectado ao serviço",
     connecting: "Conectando ao serviço…",
     disconnected: "Serviço desconectado",
     noBridge: "Sem conexão com o serviço",
@@ -788,6 +789,10 @@ export const t = {
     sectionsNavigation: "Seções das configurações",
     general: "Geral",
     profile: "Perfil",
+    appearance: "Aparência",
+    accentTitle: "Cor de destaque",
+    accentSaved: "Cor salva",
+    accentSaveFailed: "Não foi possível salvar a cor.",
     closeBehaviorTitle: "Ao fechar a janela",
     closeBehaviorAsk: "Perguntar sempre",
     closeBehaviorAskDescription: "O Karont pergunta o que fazer toda vez.",
