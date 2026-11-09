@@ -28,20 +28,26 @@ import {
   completeBranchFork,
   countConversations,
   createConversation,
+  createRestorePoint,
   deleteAllConversations,
   deleteConversation,
+  deleteRestorePoints,
   getAgentSession,
   getBranchContextPending,
   getConversation,
+  getRestorePoint,
   getSetting,
   isBranchForkPending,
   listConversationContextUsage,
   listConversationStates,
   listConversations,
+  listExcessRestorePoints,
   listMessages,
   listMessagesPage,
+  listRestorePoints,
   listSlotConversationStates,
   markConversationSeen,
+  markRestorePointsConcurrent,
   type NewConversation,
   saveMessage,
   setAgentSession,
@@ -50,10 +56,20 @@ import {
   setConversationContextUsage,
   setConversationTitle,
   setMessageAgentTurnId,
+  setRestorePointAfter,
   setSetting,
   updateConversation,
 } from "../db.ts";
 import { ServiceError } from "../errors.ts";
+import {
+  DEFAULT_RESTORE_TIMEOUT_MS,
+  deleteRestoreRefs,
+  type RestoreSnapshotOutcome,
+  type RestoreSnapshotRequest,
+  restoreRef,
+  restoreRefs,
+  takeRestorePoint,
+} from "../git/restore-points.ts";
 import type {
   AdapterEvent,
   AdapterFactory,
@@ -75,6 +91,14 @@ const SKILL_CACHE_TTL_MS = 5 * 60_000;
 const BRANCH_CONTEXT_LIMIT = 24_000;
 const MAX_ATTACHMENT_CACHE_CONVERSATIONS = 3;
 const MAX_ATTACHMENT_CACHE_BYTES = 25 * 1024 * 1024;
+const MAX_RESTORE_POINTS_PER_CONVERSATION = 50;
+const INTERRUPTED_BY_USER_TEXT = "Resposta interrompida pelo usuário.";
+
+type PendingRestoreSnapshot = {
+  controller: AbortController;
+  message: ConversationMessage;
+  stopped: boolean;
+};
 
 type ActiveConversation = {
   adapter: AgentAdapter;
@@ -122,6 +146,10 @@ export type ConversationManagerOptions = {
   codexSkillLoader?: (cwd: string) => Promise<ComposerSkill[]>;
   claudeSkillLoader?: (cwd: string) => Promise<ComposerSkill[]>;
   now?: () => string;
+  /** Pasta pessoal: nunca recebe ponto de restauração. Padrão: `os.homedir()`. */
+  homeDir?: string;
+  /** Substitui o módulo Git (testes simulam foto lenta ou com falha). */
+  restoreSnapshot?: (request: RestoreSnapshotRequest) => Promise<RestoreSnapshotOutcome>;
   titleGenerator?: (
     agent: Conversation["agent"],
     userMessage: string,
@@ -148,6 +176,15 @@ export class ConversationManager {
     { messageId: string; attachments: ConversationAttachment[]; sizeBytes: number }
   >();
   readonly #removedConversationIds = new Set<string>();
+  readonly #homeDir: string;
+  readonly #restoreSnapshot: (request: RestoreSnapshotRequest) => Promise<RestoreSnapshotOutcome>;
+  // Fotos em andamento (antes e depois), por controlador, para remove/deleteAll/close abortarem.
+  readonly #restoreOps = new Map<AbortController, string>();
+  readonly #pendingRestoreSnapshots = new Map<string, PendingRestoreSnapshot>();
+  readonly #restoreChains = new Map<string, Promise<void>>();
+  readonly #afterSnapshotsInFlight = new Set<string>();
+  readonly #repoTurns = new Map<string, Set<string>>();
+  readonly #repoByMessage = new Map<string, string>();
   readonly #pendingParts = new Map<string, { conversationId: string; messageId: string }>();
   readonly #titleRequests = new Map<string, { userMessage: string; attempted: boolean }>();
   #codexModelList: AdapterModelList = {
@@ -188,6 +225,8 @@ export class ConversationManager {
     ]);
     this.#adapterFactoryOverride = options.adapterFactory;
     this.#now = options.now ?? (() => new Date().toISOString());
+    this.#homeDir = options.homeDir ?? os.homedir();
+    this.#restoreSnapshot = options.restoreSnapshot ?? takeRestorePoint;
     this.#titleGenerator =
       options.titleGenerator ??
       ((agent, userMessage, agentResponse, titleOptions) =>
@@ -614,6 +653,22 @@ export class ConversationManager {
       this.#drainQueue();
       return true;
     }
+    const pendingSnapshot = this.#pendingRestoreSnapshots.get(id);
+    if (pendingSnapshot && !pendingSnapshot.stopped) {
+      pendingSnapshot.stopped = true;
+      pendingSnapshot.controller.abort();
+      const conversation = getConversation(this.#db, id);
+      if (conversation) {
+        await this.#finishWithError(
+          conversation,
+          pendingSnapshot.message,
+          "interrupted",
+          INTERRUPTED_BY_USER_TEXT,
+        );
+      }
+      this.#drainQueue();
+      return true;
+    }
     const active = this.#active.get(id);
     if (!active?.currentMessage) return false;
     if (!active.turnStarted) {
@@ -632,7 +687,7 @@ export class ConversationManager {
       await this.#handleAdapterEvent(id, {
         kind: "turn-end",
         status: "interrupted",
-        error: { type: "interrupted", text: "Resposta interrompida pelo usuário." },
+        error: { type: "interrupted", text: INTERRUPTED_BY_USER_TEXT },
       });
       if (active.idleTimer) clearTimeout(active.idleTimer);
       await this.#disposeAdapter(active);
@@ -749,6 +804,7 @@ export class ConversationManager {
     this.#assertNotDeletingAll();
     this.#removedConversationIds.add(id);
     this.#dequeue(id);
+    this.#abortRestoreOperations(id);
     try {
       const active = this.#active.get(id);
       if (active) {
@@ -761,8 +817,12 @@ export class ConversationManager {
         this.#titleRequests.delete(id);
         this.#latestUserAttachments.delete(id);
       }
+      // As linhas somem em cascata: lê antes para apagar as refs depois.
+      const restorePoints = listRestorePoints(this.#db, id);
       const deleted = deleteConversation(this.#db, id);
+      this.#restoreChains.delete(id);
       if (deleted) {
+        this.#discardRestorePoints(restorePoints);
         this.#contextUsage.delete(id);
         await this.#broadcast({ event: "conversation.removed", payload: { id } }).catch(
           () => undefined,
@@ -779,6 +839,7 @@ export class ConversationManager {
     this.#assertNotDeletingAll();
     this.#deletingAll = true;
     this.#queue = [];
+    this.#abortRestoreOperations();
     try {
       const activeBeforeDeleteAll = [...this.#active.entries()];
       for (const { id } of listConversationStates(this.#db)) {
@@ -811,7 +872,10 @@ export class ConversationManager {
       await Promise.all(active.map(([, session]) => session.eventQueue));
       for (const [id] of active) this.#active.delete(id);
 
+      const restorePoints = conversations.flatMap(({ id }) => listRestorePoints(this.#db, id));
       const deleted = deleteAllConversations(this.#db);
+      this.#restoreChains.clear();
+      this.#discardRestorePoints(restorePoints);
       const deletedIds = new Set(conversations.map(({ id }) => id));
       for (const id of deletedIds) {
         this.#contextUsage.delete(id);
@@ -1040,6 +1104,10 @@ export class ConversationManager {
   async close(): Promise<void> {
     this.#closing = true;
     this.#queue = [];
+    this.#abortRestoreOperations();
+    await Promise.all(
+      [...this.#restoreChains.values()].map((chain) => chain.catch(() => undefined)),
+    );
     const adapters = [...this.#active.values()];
     await Promise.all(
       adapters.map(async (active) => {
@@ -1196,6 +1264,7 @@ export class ConversationManager {
     skills: Array<Pick<ComposerSkill, "name" | "path">>,
     operation: "send" | "compact",
   ): Promise<void> {
+    if (!(await this.#prepareRestorePoint(conversation, message, operation))) return;
     let active = this.#active.get(conversation.id);
     if (!active) {
       const previousSession = getAgentSession(this.#db, conversation.id);
@@ -1360,6 +1429,7 @@ export class ConversationManager {
         message.status = "streaming";
         message.updatedAt = this.#now();
         saveMessage(this.#db, message);
+        this.#resumeRepoTurn(message.id);
       }
       conversation.state = event.state;
       conversation.updatedAt = this.#now();
@@ -1499,6 +1569,7 @@ export class ConversationManager {
       const pendingPlan =
         event.status === "done" &&
         message.parts.some((part) => part.type === "plan" && part.state === "pending");
+      this.#scheduleAfterSnapshot(conversationId, message.id, !pendingPlan);
       if (!pendingPlan) {
         active.currentMessage = undefined;
         for (const partId of active.pendingPartIds) this.#pendingParts.delete(partId);
@@ -1683,8 +1754,285 @@ export class ConversationManager {
     conversation.updatedAt = completedAt;
     if (message.status === "error") conversation.unreadAt = completedAt;
     updateConversation(this.#db, conversation);
+    this.#scheduleAfterSnapshot(conversation.id, message.id, true);
     await this.#stateEvent(conversation, message);
     if (active?.currentMessage?.id === message.id) active.currentMessage = undefined;
+  }
+
+  #restoreTimeoutMs(): number {
+    const configured = Number(this.#env.KARONT_RESTORE_TIMEOUT_MS);
+    return Number.isFinite(configured) && configured > 0
+      ? Math.min(configured, 10 * 60_000)
+      : DEFAULT_RESTORE_TIMEOUT_MS;
+  }
+
+  #abortRestoreOperations(conversationId?: string): void {
+    for (const [controller, owner] of this.#restoreOps) {
+      if (conversationId === undefined || owner === conversationId) controller.abort();
+    }
+  }
+
+  /**
+   * Foto "antes" do turno. Devolve falso quando o turno não deve seguir (parado, conversa apagada,
+   * apagar todas ou fechamento). Falha ou tempo esgotado só gravam o motivo: a mensagem segue.
+   */
+  async #prepareRestorePoint(
+    conversation: Conversation,
+    message: ConversationMessage,
+    operation: "send" | "compact",
+  ): Promise<boolean> {
+    if (operation === "compact") return true;
+    const conversationId = conversation.id;
+    const mustStop = (controller?: AbortController) =>
+      this.#closing ||
+      this.#deletingAll ||
+      controller?.signal.aborted === true ||
+      !getConversation(this.#db, conversationId);
+    if (mustStop()) return false;
+    const controller = new AbortController();
+    const pending: PendingRestoreSnapshot = { controller, message, stopped: false };
+    this.#restoreOps.set(controller, conversationId);
+    this.#pendingRestoreSnapshots.set(conversationId, pending);
+    let outcome: RestoreSnapshotOutcome | undefined;
+    try {
+      const previous = this.#restoreChains.get(conversationId);
+      if (previous) await raceAbort(previous, controller.signal);
+      if (!controller.signal.aborted) {
+        outcome = await this.#takeSnapshot(
+          {
+            phase: "before",
+            cwd: conversation.cwd,
+            repoRoot: null,
+            conversationId,
+            messageId: message.id,
+          },
+          controller.signal,
+        );
+      }
+    } catch {
+      outcome = { repoRoot: null, unavailable: "failed" };
+    } finally {
+      this.#restoreOps.delete(controller);
+      if (this.#pendingRestoreSnapshots.get(conversationId) === pending) {
+        this.#pendingRestoreSnapshots.delete(conversationId);
+      }
+    }
+    if (!outcome || mustStop(controller)) {
+      if (outcome && "commit" in outcome) {
+        this.#deleteRefsInBackground(outcome.repoRoot, restoreRefs(conversationId, message.id));
+      }
+      return false;
+    }
+    const repoRoot = outcome.repoRoot;
+    try {
+      createRestorePoint(this.#db, {
+        messageId: message.id,
+        conversationId,
+        repoRoot: "commit" in outcome ? repoRoot : null,
+        beforeCommit: "commit" in outcome ? outcome.commit : null,
+        headBefore: "commit" in outcome ? outcome.head : null,
+        unavailableReason: "unavailable" in outcome ? outcome.unavailable : null,
+        now: this.#now(),
+      });
+    } catch {
+      // Sem a linha não há desfazer, mas a mensagem precisa seguir: voltar aqui a deixaria presa.
+      return true;
+    }
+    if ("commit" in outcome) {
+      this.#registerRepoTurn(outcome.repoRoot, message.id);
+      this.#pruneRestorePoints(conversationId);
+    }
+    return true;
+  }
+
+  /** Chama o módulo Git (ou o substituto) com tempo total e aborto, sem nunca lançar. */
+  async #takeSnapshot(
+    base: Omit<RestoreSnapshotRequest, "signal" | "timeoutMs" | "homeDir">,
+    parent: AbortSignal,
+  ): Promise<RestoreSnapshotOutcome> {
+    const timeoutMs = this.#restoreTimeoutMs();
+    const child = new AbortController();
+    let timedOut = false;
+    let decided = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.abort();
+    }, timeoutMs);
+    const onParentAbort = () => child.abort();
+    if (parent.aborted) child.abort();
+    else parent.addEventListener("abort", onParentAbort, { once: true });
+    const discardLate = (outcome: RestoreSnapshotOutcome) => {
+      if ("commit" in outcome) {
+        // Só a ref desta foto: uma "depois" atrasada não pode levar a "antes", que continua válida.
+        this.#deleteRefsInBackground(outcome.repoRoot, [
+          restoreRef(base.conversationId, base.messageId, base.phase),
+        ]);
+      }
+    };
+    try {
+      return await new Promise<RestoreSnapshotOutcome>((resolve) => {
+        const onAbort = () => {
+          if (decided) return;
+          decided = true;
+          resolve({ repoRoot: base.repoRoot, unavailable: timedOut ? "timeout" : "failed" });
+        };
+        if (child.signal.aborted) onAbort();
+        else child.signal.addEventListener("abort", onAbort, { once: true });
+        Promise.resolve()
+          .then(() =>
+            this.#restoreSnapshot({
+              ...base,
+              homeDir: this.#homeDir,
+              signal: child.signal,
+              timeoutMs,
+            }),
+          )
+          .then(
+            (outcome) => {
+              if (decided) discardLate(outcome);
+              else {
+                decided = true;
+                resolve(outcome);
+              }
+            },
+            () => {
+              if (decided) return;
+              decided = true;
+              resolve({ repoRoot: base.repoRoot, unavailable: "failed" });
+            },
+          );
+      });
+    } finally {
+      clearTimeout(timer);
+      parent.removeEventListener("abort", onParentAbort);
+    }
+  }
+
+  #registerRepoTurn(repoRoot: string, messageId: string): void {
+    let turns = this.#repoTurns.get(repoRoot);
+    if (!turns) {
+      turns = new Set();
+      this.#repoTurns.set(repoRoot, turns);
+    }
+    turns.add(messageId);
+    this.#repoByMessage.set(messageId, repoRoot);
+    if (turns.size > 1) {
+      try {
+        markRestorePointsConcurrent(this.#db, [...turns], this.#now());
+      } catch {
+        // Melhor esforço: o aviso de concorrência não pode derrubar a mensagem.
+      }
+    }
+  }
+
+  /** Plano aprovado: o agente volta a escrever na mesma mensagem, e o turno volta a contar. */
+  #resumeRepoTurn(messageId: string): void {
+    const row = getRestorePoint(this.#db, messageId);
+    if (row?.repoRoot && row.beforeCommit && !row.afterCommit) {
+      this.#registerRepoTurn(row.repoRoot, messageId);
+    }
+  }
+
+  #releaseRepoTurn(messageId: string): void {
+    const repoRoot = this.#repoByMessage.get(messageId);
+    if (repoRoot === undefined) return;
+    this.#repoByMessage.delete(messageId);
+    const turns = this.#repoTurns.get(repoRoot);
+    turns?.delete(messageId);
+    if (turns?.size === 0) this.#repoTurns.delete(repoRoot);
+  }
+
+  /** Foto "depois": idempotente, em segundo plano e depois da foto anterior da mesma conversa. */
+  #scheduleAfterSnapshot(conversationId: string, messageId: string, snapshot: boolean): void {
+    if (!snapshot) {
+      this.#releaseRepoTurn(messageId);
+      return;
+    }
+    if (this.#afterSnapshotsInFlight.has(messageId)) return;
+    const row = getRestorePoint(this.#db, messageId);
+    if (!row?.beforeCommit || row.afterCommit || !row.repoRoot) {
+      this.#releaseRepoTurn(messageId);
+      return;
+    }
+    const repoRoot = row.repoRoot;
+    this.#afterSnapshotsInFlight.add(messageId);
+    const controller = new AbortController();
+    this.#restoreOps.set(controller, conversationId);
+    const previous = this.#restoreChains.get(conversationId) ?? Promise.resolve();
+    const task: Promise<void> = previous
+      .then(async () => {
+        const conversation = getConversation(this.#db, conversationId);
+        if (!conversation || controller.signal.aborted || this.#closing) return;
+        const outcome = await this.#takeSnapshot(
+          { phase: "after", cwd: conversation.cwd, repoRoot, conversationId, messageId },
+          controller.signal,
+        );
+        if (!("commit" in outcome)) return;
+        const saved = setRestorePointAfter(
+          this.#db,
+          messageId,
+          outcome.commit,
+          outcome.head,
+          this.#now(),
+        );
+        // A conversa foi apagada durante a foto: a ref ficaria órfã.
+        if (!saved) this.#deleteRefsInBackground(repoRoot, restoreRefs(conversationId, messageId));
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        this.#restoreOps.delete(controller);
+        this.#afterSnapshotsInFlight.delete(messageId);
+        this.#releaseRepoTurn(messageId);
+        if (this.#restoreChains.get(conversationId) === task) {
+          this.#restoreChains.delete(conversationId);
+        }
+      });
+    this.#restoreChains.set(conversationId, task);
+    void this.#trackAgentOperation(task);
+  }
+
+  /** Fica com os últimos pontos da conversa; apaga refs e linhas dos excedentes em segundo plano. */
+  #pruneRestorePoints(conversationId: string): void {
+    const excess = listExcessRestorePoints(
+      this.#db,
+      conversationId,
+      MAX_RESTORE_POINTS_PER_CONVERSATION,
+    );
+    if (excess.length === 0) return;
+    const task = (async () => {
+      await this.#deleteRefsForPoints(excess);
+      deleteRestorePoints(
+        this.#db,
+        excess.map((point) => point.messageId),
+      );
+    })().catch(() => undefined);
+    void this.#trackAgentOperation(task);
+  }
+
+  #discardRestorePoints(
+    points: Array<{ messageId: string; conversationId: string; repoRoot: string | null }>,
+  ): void {
+    for (const point of points) this.#releaseRepoTurn(point.messageId);
+    if (points.length === 0) return;
+    void this.#trackAgentOperation(this.#deleteRefsForPoints(points).catch(() => undefined));
+  }
+
+  async #deleteRefsForPoints(
+    points: Array<{ messageId: string; conversationId: string; repoRoot: string | null }>,
+  ): Promise<void> {
+    const byRoot = new Map<string, string[]>();
+    for (const point of points) {
+      if (!point.repoRoot) continue;
+      const refs = byRoot.get(point.repoRoot) ?? [];
+      refs.push(...restoreRefs(point.conversationId, point.messageId));
+      byRoot.set(point.repoRoot, refs);
+    }
+    for (const [root, refs] of byRoot) await deleteRestoreRefs(root, refs);
+  }
+
+  #deleteRefsInBackground(repoRoot: string | null, refs: string[]): void {
+    if (!repoRoot) return;
+    void this.#trackAgentOperation(deleteRestoreRefs(repoRoot, refs).then(() => undefined));
   }
 
   #newAgentMessage(conversationId: string): ConversationMessage {
@@ -1971,4 +2319,26 @@ function skillCacheKey(agent: string, cwd: string): string {
 
 function cloneSkills(skills: ComposerSkill[]): ComposerSkill[] {
   return skills.map((skill) => ({ ...skill }));
+}
+
+/** Espera `promise`, mas volta na hora se o sinal abortar. */
+function raceAbort(promise: Promise<unknown>, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = () => resolve();
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      () => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      },
+      () => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      },
+    );
+  });
 }

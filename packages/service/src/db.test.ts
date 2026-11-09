@@ -9,15 +9,21 @@ import {
   addMessage,
   createConversation,
   createProject,
+  createRestorePoint,
+  deleteRestorePoints,
   getAgentSession,
   getConversation,
+  getRestorePoint,
   getSetting,
   listConversations,
   listCustomAgents,
+  listExcessRestorePoints,
   listMessages,
   listMessagesPage,
   listProjects,
   listRecentFolderRecords,
+  listRestorePoints,
+  markRestorePointsConcurrent,
   migrations,
   openDatabase,
   recordRecentFolder,
@@ -25,6 +31,7 @@ import {
   removeProject,
   setAgentSession,
   setConversationTitle,
+  setRestorePointAfter,
   setSetting,
   updateProject,
 } from "./db.ts";
@@ -78,7 +85,7 @@ test("migra settings e pastas recentes, persiste user_version e permite reabrir"
   let db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    14,
+    15,
   );
   assert.equal(
     (
@@ -139,7 +146,7 @@ test("migrações 2 e 3 aplicam sobre a versão 1", async () => {
   const db = openDatabase(dbPath);
   assert.equal(
     (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    14,
+    15,
   );
   assert.deepEqual(listCustomAgents(db), []);
   db.close();
@@ -383,7 +390,7 @@ test("migra um banco na versão 13 mantendo a conversa solta, sem projectId", as
   try {
     assert.equal(
       (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      14,
+      15,
     );
     const conversation = getConversation(db, "v13-1");
     assert.equal(conversation?.title, "Antes dos projetos");
@@ -449,6 +456,120 @@ test("CRUD de projetos: path único, atualização sem mudar a pasta e remoção
     assert.equal("projectId" in loose, false);
     assert.equal(listMessages(db, conversation.id).length, 1);
     assert.equal(getAgentSession(db, conversation.id), "sessao-1");
+  } finally {
+    db.close();
+  }
+});
+
+test("migra um banco na versão 14 sem perder dados e cria restore_points", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-v14-"));
+  const dbPath = path.join(root, "karont.db");
+  const legacyDb = new DatabaseSync(dbPath);
+  for (const migration of migrations.filter((entry) => entry.version <= 14)) {
+    legacyDb.exec(migration.up);
+    legacyDb.exec(`PRAGMA user_version = ${migration.version}`);
+  }
+  legacyDb
+    .prepare(
+      "INSERT INTO conversations (id,agent,title,cwd,mode,state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
+    )
+    .run(
+      "v14-1",
+      "claude",
+      "Antes",
+      "/tmp/p",
+      "edit",
+      "idle",
+      "2026-11-01T10:00:00.000Z",
+      "2026-11-01T10:00:00.000Z",
+    );
+  legacyDb
+    .prepare(
+      "INSERT INTO messages (id,conversation_id,author,status,parts,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+    )
+    .run(
+      "m-1",
+      "v14-1",
+      "user",
+      "done",
+      "[]",
+      "2026-11-01T10:00:00.000Z",
+      "2026-11-01T10:00:00.000Z",
+    );
+  legacyDb.close();
+
+  const db = openDatabase(dbPath);
+  try {
+    assert.equal(
+      (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+      15,
+    );
+    assert.equal(getConversation(db, "v14-1")?.title, "Antes");
+    assert.equal(listMessages(db, "v14-1").length, 1);
+    assert.deepEqual(listRestorePoints(db, "v14-1"), []);
+  } finally {
+    db.close();
+  }
+});
+
+test("restore_points: cria, atualiza o depois, marca concorrência, lista excedentes e apaga em cascata", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-rp-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  try {
+    const conversation = createConversation(db, {
+      agent: "claude",
+      title: "Pontos",
+      cwd: "/tmp/p",
+      mode: "edit",
+    });
+    const ids = ["m1", "m2", "m3"];
+    for (const [index, id] of ids.entries()) {
+      const now = `2026-11-01T10:00:0${index}.000Z`;
+      addMessage(db, {
+        id,
+        conversationId: conversation.id,
+        author: "agent",
+        status: "done",
+        parts: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      createRestorePoint(db, {
+        messageId: id,
+        conversationId: conversation.id,
+        repoRoot: id === "m3" ? null : "/repo",
+        beforeCommit: id === "m3" ? null : `before-${id}`,
+        headBefore: null,
+        unavailableReason: id === "m3" ? "no-git" : null,
+        now,
+      });
+    }
+    assert.equal(getRestorePoint(db, "m1")?.concurrent, false);
+    assert.equal(getRestorePoint(db, "m3")?.unavailableReason, "no-git");
+    assert.equal(
+      setRestorePointAfter(db, "m1", "after-m1", "head", "2026-11-01T11:00:00.000Z"),
+      true,
+    );
+    assert.equal(setRestorePointAfter(db, "nada", "x", null, "2026-11-01T11:00:00.000Z"), false);
+    assert.equal(getRestorePoint(db, "m1")?.afterCommit, "after-m1");
+    markRestorePointsConcurrent(db, ["m1", "m2"], "2026-11-01T11:00:00.000Z");
+    assert.deepEqual(
+      listRestorePoints(db, conversation.id).map((point) => [point.messageId, point.concurrent]),
+      [
+        ["m1", true],
+        ["m2", true],
+        ["m3", false],
+      ],
+    );
+    assert.deepEqual(
+      listExcessRestorePoints(db, conversation.id, 1).map((point) => point.messageId),
+      ["m1", "m2"],
+    );
+    assert.deepEqual(listExcessRestorePoints(db, conversation.id, 3), []);
+    deleteRestorePoints(db, ["m1"]);
+    assert.equal(getRestorePoint(db, "m1"), null);
+    db.prepare("DELETE FROM conversations WHERE id=?").run(conversation.id);
+    assert.deepEqual(listRestorePoints(db, conversation.id), []);
   } finally {
     db.close();
   }

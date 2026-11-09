@@ -99,6 +99,18 @@ export const migrations: { version: number; up: string }[] = [
     ALTER TABLE conversations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
     CREATE INDEX conversations_project ON conversations(project_id);`,
   },
+  {
+    version: 15,
+    up: `CREATE TABLE restore_points (
+      message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      repo_root TEXT, before_commit TEXT, after_commit TEXT, head_before TEXT, head_after TEXT,
+      unavailable_reason TEXT,
+      concurrent INTEGER NOT NULL DEFAULT 0 CHECK (concurrent IN (0, 1)),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE INDEX restore_points_conversation ON restore_points(conversation_id, created_at);`,
+  },
 ];
 
 export type RecentFolderRecord = Pick<RecentFolder, "path" | "usedAt">;
@@ -763,6 +775,144 @@ export function updateProject(
 
 export function removeProject(db: DatabaseSync, id: string): boolean {
   return db.prepare("DELETE FROM projects WHERE id=?").run(id).changes > 0;
+}
+
+export type RestorePointRecord = {
+  messageId: string;
+  conversationId: string;
+  repoRoot: string | null;
+  beforeCommit: string | null;
+  afterCommit: string | null;
+  headBefore: string | null;
+  headAfter: string | null;
+  unavailableReason: string | null;
+  concurrent: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type RestorePointRow = {
+  message_id: string;
+  conversation_id: string;
+  repo_root: string | null;
+  before_commit: string | null;
+  after_commit: string | null;
+  head_before: string | null;
+  head_after: string | null;
+  unavailable_reason: string | null;
+  concurrent: number;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapRestorePoint(row: RestorePointRow): RestorePointRecord {
+  return {
+    messageId: row.message_id,
+    conversationId: row.conversation_id,
+    repoRoot: row.repo_root,
+    beforeCommit: row.before_commit,
+    afterCommit: row.after_commit,
+    headBefore: row.head_before,
+    headAfter: row.head_after,
+    unavailableReason: row.unavailable_reason,
+    concurrent: row.concurrent === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createRestorePoint(
+  db: DatabaseSync,
+  input: {
+    messageId: string;
+    conversationId: string;
+    repoRoot?: string | null;
+    beforeCommit?: string | null;
+    headBefore?: string | null;
+    unavailableReason?: string | null;
+    concurrent?: boolean;
+    now: string;
+  },
+): void {
+  db.prepare(
+    `INSERT INTO restore_points
+      (message_id,conversation_id,repo_root,before_commit,head_before,unavailable_reason,concurrent,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?)`,
+  ).run(
+    input.messageId,
+    input.conversationId,
+    input.repoRoot ?? null,
+    input.beforeCommit ?? null,
+    input.headBefore ?? null,
+    input.unavailableReason ?? null,
+    input.concurrent ? 1 : 0,
+    input.now,
+    input.now,
+  );
+}
+
+export function getRestorePoint(db: DatabaseSync, messageId: string): RestorePointRecord | null {
+  const row = db.prepare("SELECT * FROM restore_points WHERE message_id=?").get(messageId) as
+    | RestorePointRow
+    | undefined;
+  return row ? mapRestorePoint(row) : null;
+}
+
+/** Devolve falso se a linha não existe mais (conversa apagada durante a foto). */
+export function setRestorePointAfter(
+  db: DatabaseSync,
+  messageId: string,
+  afterCommit: string,
+  headAfter: string | null,
+  now: string,
+): boolean {
+  return (
+    db
+      .prepare(
+        "UPDATE restore_points SET after_commit=?,head_after=?,updated_at=? WHERE message_id=?",
+      )
+      .run(afterCommit, headAfter, now, messageId).changes > 0
+  );
+}
+
+export function markRestorePointsConcurrent(
+  db: DatabaseSync,
+  messageIds: readonly string[],
+  now: string,
+): void {
+  const statement = db.prepare(
+    "UPDATE restore_points SET concurrent=1,updated_at=? WHERE message_id=?",
+  );
+  for (const messageId of messageIds) statement.run(now, messageId);
+}
+
+export function listRestorePoints(db: DatabaseSync, conversationId: string): RestorePointRecord[] {
+  const rows = db
+    .prepare(
+      "SELECT * FROM restore_points WHERE conversation_id=? ORDER BY created_at ASC, rowid ASC",
+    )
+    .all(conversationId) as RestorePointRow[];
+  return rows.map(mapRestorePoint);
+}
+
+/** Pontos além dos `keep` mais novos da conversa, do mais antigo para o mais novo. */
+export function listExcessRestorePoints(
+  db: DatabaseSync,
+  conversationId: string,
+  keep: number,
+): RestorePointRecord[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM restore_points WHERE conversation_id=?
+        ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?`,
+    )
+    .all(conversationId, keep) as RestorePointRow[];
+  return rows.map(mapRestorePoint).reverse();
+}
+
+export function deleteRestorePoints(db: DatabaseSync, messageIds: readonly string[]): void {
+  const statement = db.prepare("DELETE FROM restore_points WHERE message_id=?");
+  for (const messageId of messageIds) statement.run(messageId);
 }
 
 function readUserVersion(db: DatabaseSync): number {

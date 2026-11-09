@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { type ChildProcess, execFileSync, type SpawnOptions } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -21,20 +21,28 @@ import {
   createConversation as createConversationRecord,
   getAgentSession,
   getMessage,
+  getRestorePoint,
   isBranchForkPending,
+  listRestorePoints,
   openDatabase,
   setAgentSession,
   setSetting,
   updateConversation,
 } from "../db.ts";
-import type { AdapterFactory, AdapterModelList, AgentAdapterRegistration } from "./adapter.ts";
+import type { RestoreSnapshotOutcome, RestoreSnapshotRequest } from "../git/restore-points.ts";
+import type {
+  AdapterEvent,
+  AdapterFactory,
+  AdapterModelList,
+  AgentAdapterRegistration,
+} from "./adapter.ts";
 import {
   AgentCliError,
   ClaudeAdapter,
   createClaudeModelLoader,
   createClaudeSkillLoader,
 } from "./claude-adapter.ts";
-import { ConversationManager } from "./conversation-manager.ts";
+import { ConversationManager, type ConversationManagerOptions } from "./conversation-manager.ts";
 import { createFakeClaudeSpawn, type FakeClaudeSpawn } from "./testing/fake-claude-process.ts";
 import { generateConversationTitle, type TitleGeneratorOptions } from "./title-generator.ts";
 
@@ -106,6 +114,8 @@ async function createHarness(
     claudeModelLoader?: (cwd: string) => Promise<AdapterModelList>;
     adapterFactory?: AdapterFactory;
     agentRegistrations?: Readonly<Record<string, AgentAdapterRegistration>>;
+    homeDir?: string;
+    restoreSnapshot?: ConversationManagerOptions["restoreSnapshot"];
   } = {},
 ): Promise<Harness> {
   const root = await mkdtemp(path.join(os.tmpdir(), "karont-conversations-"));
@@ -158,6 +168,8 @@ async function createHarness(
       ? { agentRegistrations: fakeOptions.agentRegistrations }
       : {}),
     ...(fakeOptions.titleGenerator ? { titleGenerator: fakeOptions.titleGenerator } : {}),
+    ...(fakeOptions.homeDir ? { homeDir: fakeOptions.homeDir } : {}),
+    ...(fakeOptions.restoreSnapshot ? { restoreSnapshot: fakeOptions.restoreSnapshot } : {}),
   });
   return {
     manager,
@@ -2575,14 +2587,30 @@ async function createQueueRig(limit: number | undefined, failStartFor: Set<strin
   );
   if (limit !== undefined) setSetting(harness.db, "agents.maxConcurrent", limit);
   const create = () => createConversation(harness.manager);
-  const finish = (id: string, status: "done" | "error" = "done") =>
-    entries
-      .get(id)
-      ?.emit(
-        status === "error"
-          ? { kind: "turn-end", status, error: { type: "failed", text: "falhou" } }
-          : { kind: "turn-end", status },
-      );
+  // O adaptador só recebe a mensagem depois da foto de restauração (assíncrona): espera o envio.
+  const finish = (id: string, status: "done" | "error" = "done") => {
+    const emitEnd = () =>
+      entries
+        .get(id)
+        ?.emit(
+          status === "error"
+            ? { kind: "turn-end", status, error: { type: "failed", text: "falhou" } }
+            : { kind: "turn-end", status },
+        );
+    if (entries.get(id)?.sends) {
+      emitEnd();
+      return;
+    }
+    void (async () => {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+        if (entries.get(id)?.sends) {
+          emitEnd();
+          return;
+        }
+      }
+    })();
+  };
   const stateOf = (id: string) => harness.manager.get(id)?.conversation.state;
   const until = async (predicate: () => boolean, label: string) => {
     for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -2661,6 +2689,8 @@ test("fila: envios simultâneos nunca passam do limite", async () => {
       conversations.filter((conversation) => rig.stateOf(conversation.id) === "working").length,
       2,
     );
+    // O adaptador só nasce depois da foto de restauração, que é assíncrona.
+    await rig.until(() => rig.entries.size === 2, "dois adaptadores criados");
     assert.equal(rig.entries.size, 2);
     // Esvazia a fila por completo sem nunca passar do limite.
     for (let round = 0; round < 7; round += 1) {
@@ -2948,6 +2978,577 @@ test("fila: mandar mensagem, tentar de novo e ramificar numa conversa na fila d�
     await assert.rejects(rig.harness.manager.retry(b.id), /em andamento/);
     await assert.rejects(rig.harness.manager.branch(b.id, sentB.agentMessage.id), /Espere/);
     await assert.rejects(rig.harness.manager.setOptions(b.id, { mode: "full" }), /parada/);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Pontos de restauração (M3-B2a)
+// ---------------------------------------------------------------------------
+
+function cleanGitEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const name of [
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_PREFIX",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+  ])
+    delete env[name];
+  return env;
+}
+
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync("git", args, { cwd, env: cleanGitEnv(), encoding: "utf8" });
+}
+
+async function createTestRepo(withCommit = true): Promise<string> {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "karont-rp-repo-")));
+  git(root, "init", "-q", "-b", "main");
+  git(root, "config", "user.name", "Teste");
+  git(root, "config", "user.email", "teste@example.com");
+  if (withCommit) {
+    await writeFile(path.join(root, "base.txt"), "base\n");
+    git(root, "add", "-A");
+    git(root, "commit", "-q", "-m", "inicial");
+  }
+  return root;
+}
+
+type RestoreCall = { phase: "before" | "after"; messageId: string; conversationId: string };
+
+type RestoreRigOptions = {
+  restoreSnapshot?: (request: RestoreSnapshotRequest) => Promise<RestoreSnapshotOutcome>;
+  homeDir?: string;
+  env?: NodeJS.ProcessEnv;
+  limit?: number;
+  onSend?: (conversationId: string) => Promise<void> | void;
+  compact?: boolean;
+};
+
+async function createRestoreRig(options: RestoreRigOptions = {}) {
+  const entries = new Map<
+    string,
+    { emit: (event: AdapterEvent) => void; starts: number; sends: number; interrupts: number }
+  >();
+  const order: string[] = [];
+  const harness = await createHarness("texto", options.env ?? {}, {
+    ...(options.homeDir ? { homeDir: options.homeDir } : {}),
+    ...(options.restoreSnapshot ? { restoreSnapshot: options.restoreSnapshot } : {}),
+    adapterFactory: (conversation, emit) => {
+      const entry = { emit, starts: 0, sends: 0, interrupts: 0 };
+      entries.set(conversation.id, entry);
+      return {
+        start: async () => {
+          entry.starts += 1;
+        },
+        send: async () => {
+          entry.sends += 1;
+          order.push("send");
+          await options.onSend?.(conversation.id);
+          emit({ kind: "state", state: "working" });
+        },
+        ...(options.compact
+          ? {
+              compact: async () => {
+                order.push("compact");
+                emit({ kind: "state", state: "working" });
+              },
+            }
+          : {}),
+        respond: async () => undefined,
+        interrupt: async () => {
+          entry.interrupts += 1;
+          emit({
+            kind: "turn-end",
+            status: "interrupted",
+            error: { type: "interrupted", text: "Interrompida." },
+          });
+        },
+        dispose: async () => undefined,
+      };
+    },
+  });
+  if (options.limit !== undefined) setSetting(harness.db, "agents.maxConcurrent", options.limit);
+  const create = (cwd: string) =>
+    harness.manager.create({ agent: "claude", title: "Conversa de teste", cwd, mode: "edit" });
+  const until = async (predicate: () => boolean, label: string, attempts = 300) => {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (predicate()) return;
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error(`Timeout esperando: ${label}`);
+  };
+  const finish = (id: string, status: "done" | "error" = "done") =>
+    entries
+      .get(id)
+      ?.emit(
+        status === "error"
+          ? { kind: "turn-end", status, error: { type: "failed", text: "falhou" } }
+          : { kind: "turn-end", status },
+      );
+  const stateOf = (id: string) => harness.manager.get(id)?.conversation.state;
+  return { harness, entries, order, create, until, finish, stateOf };
+}
+
+/** Foto simulada: guarda as chamadas e devolve um commit falso por fase/mensagem. */
+function recordingSnapshot(
+  calls: RestoreCall[],
+  repoRoot: string | ((request: RestoreSnapshotRequest) => string) = "/repo-falso",
+  hooks: { gate?: (request: RestoreSnapshotRequest) => Promise<void> | undefined } = {},
+) {
+  return async (request: RestoreSnapshotRequest): Promise<RestoreSnapshotOutcome> => {
+    calls.push({
+      phase: request.phase,
+      messageId: request.messageId,
+      conversationId: request.conversationId,
+    });
+    await hooks.gate?.(request);
+    const root = typeof repoRoot === "function" ? repoRoot(request) : repoRoot;
+    return { repoRoot: root, commit: `${request.phase}-${request.messageId}`, head: null };
+  };
+}
+
+async function withDeadline<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Preso: ${label}`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+test("restauração: pasta sem Git grava no-git e a mensagem segue", async () => {
+  const rig = await createRestoreRig();
+  try {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "karont-rp-nogit-"));
+    const conversation = rig.create(cwd);
+    const { agentMessage } = await rig.harness.manager.send(conversation.id, "oi");
+    assert.equal(rig.entries.get(conversation.id)?.sends, 1);
+    const row = getRestorePoint(rig.harness.db, agentMessage.id);
+    assert.equal(row?.unavailableReason, "no-git");
+    assert.equal(row?.repoRoot, null);
+    assert.equal(row?.beforeCommit, null);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("restauração: raiz na pasta pessoal grava home, sem criar ref, e a mensagem segue", async () => {
+  const repo = await createTestRepo();
+  const rig = await createRestoreRig({ homeDir: repo });
+  try {
+    const conversation = rig.create(repo);
+    const { agentMessage } = await rig.harness.manager.send(conversation.id, "oi");
+    assert.equal(rig.entries.get(conversation.id)?.sends, 1);
+    assert.equal(getRestorePoint(rig.harness.db, agentMessage.id)?.unavailableReason, "home");
+    rig.finish(conversation.id);
+    await rig.until(() => rig.stateOf(conversation.id) === "idle", "turno termina");
+    assert.equal(git(repo, "for-each-ref", "refs/karont").trim(), "");
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("restauração: foto que falha ou estoura o tempo não impede a mensagem e guarda o motivo", async () => {
+  const failing = await createRestoreRig({
+    restoreSnapshot: async () => {
+      throw new Error("git quebrou");
+    },
+  });
+  try {
+    const conversation = failing.create(os.tmpdir());
+    const { agentMessage } = await failing.harness.manager.send(conversation.id, "oi");
+    assert.equal(failing.entries.get(conversation.id)?.sends, 1);
+    assert.equal(getRestorePoint(failing.harness.db, agentMessage.id)?.unavailableReason, "failed");
+  } finally {
+    await failing.harness.close();
+  }
+
+  const hanging = await createRestoreRig({
+    env: { KARONT_RESTORE_TIMEOUT_MS: "60" },
+    restoreSnapshot: () => new Promise<RestoreSnapshotOutcome>(() => undefined),
+  });
+  try {
+    const conversation = hanging.create(os.tmpdir());
+    const { agentMessage } = await withDeadline(
+      hanging.harness.manager.send(conversation.id, "oi"),
+      3_000,
+      "send com foto travada",
+    );
+    assert.equal(hanging.entries.get(conversation.id)?.sends, 1);
+    assert.equal(
+      getRestorePoint(hanging.harness.db, agentMessage.id)?.unavailableReason,
+      "timeout",
+    );
+  } finally {
+    await hanging.harness.close();
+  }
+});
+
+test("restauração: parar durante a foto devolve true, interrompe e nunca inicia o adaptador", async () => {
+  let started: () => void = () => undefined;
+  const snapshotStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let sawAbort = false;
+  const rig = await createRestoreRig({
+    restoreSnapshot: (request) =>
+      new Promise<RestoreSnapshotOutcome>((resolve) => {
+        started();
+        request.signal.addEventListener("abort", () => {
+          sawAbort = true;
+          resolve({ repoRoot: null, unavailable: "failed" });
+        });
+      }),
+  });
+  try {
+    const conversation = rig.create(os.tmpdir());
+    const sending = rig.harness.manager.send(conversation.id, "oi");
+    await snapshotStarted;
+    assert.equal(await rig.harness.manager.stop(conversation.id), true);
+    const { agentMessage } = await sending;
+    assert.equal(sawAbort, true);
+    const stored = rig.harness.manager.get(conversation.id);
+    const message = stored?.messages.find((item) => item.id === agentMessage.id);
+    assert.equal(message?.status, "interrupted");
+    assert.equal(stored?.conversation.state, "idle");
+    const errorPart = message?.parts.find((part) => part.type === "error");
+    assert.equal(errorPart?.type === "error" ? errorPart.errorType : "", "interrupted");
+    assert.equal(rig.entries.has(conversation.id), false);
+    assert.equal(getRestorePoint(rig.harness.db, agentMessage.id), null);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("restauração: remove e deleteAll durante a foto não ficam presos", async () => {
+  for (const mode of ["remove", "deleteAll"] as const) {
+    let started: () => void = () => undefined;
+    const snapshotStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const rig = await createRestoreRig({
+      // Ignora o sinal de propósito: o serviço não pode depender da boa vontade da foto.
+      restoreSnapshot: () => {
+        started();
+        return new Promise<RestoreSnapshotOutcome>(() => undefined);
+      },
+    });
+    try {
+      const conversation = rig.create(os.tmpdir());
+      const sending = rig.harness.manager.send(conversation.id, "oi");
+      await snapshotStarted;
+      if (mode === "remove") {
+        assert.equal(
+          await withDeadline(rig.harness.manager.remove(conversation.id), 3_000, "remove"),
+          true,
+        );
+      } else {
+        assert.equal(await withDeadline(rig.harness.manager.deleteAll(), 3_000, "deleteAll"), 1);
+      }
+      await withDeadline(sending, 3_000, "send depois de apagar");
+      assert.equal(rig.entries.has(conversation.id), false);
+      assert.equal(rig.harness.manager.get(conversation.id), null);
+    } finally {
+      await rig.harness.close();
+    }
+  }
+});
+
+test("restauração: before antes de adapter.send, after no fim, também em erro e em parar", async () => {
+  const calls: RestoreCall[] = [];
+  const rig = await createRestoreRig({
+    restoreSnapshot: async (request) => {
+      rig.order.push(request.phase);
+      return recordingSnapshot(calls)(request);
+    },
+  });
+  try {
+    const conversation = rig.create(os.tmpdir());
+    const first = await rig.harness.manager.send(conversation.id, "um");
+    assert.deepEqual(rig.order, ["before", "send"]);
+    rig.finish(conversation.id);
+    await rig.until(() => rig.order.length === 3, "after do primeiro turno");
+    assert.deepEqual(rig.order, ["before", "send", "after"]);
+    await rig.until(
+      () => getRestorePoint(rig.harness.db, first.agentMessage.id)?.afterCommit !== null,
+      "after gravado",
+    );
+    const row = getRestorePoint(rig.harness.db, first.agentMessage.id);
+    assert.equal(row?.beforeCommit, `before-${first.agentMessage.id}`);
+    assert.equal(row?.afterCommit, `after-${first.agentMessage.id}`);
+
+    // Erro do turno.
+    const second = await rig.harness.manager.send(conversation.id, "dois");
+    rig.finish(conversation.id, "error");
+    await rig.until(
+      () => getRestorePoint(rig.harness.db, second.agentMessage.id)?.afterCommit !== null,
+      "after depois de erro",
+    );
+
+    // Parar durante o turno.
+    const third = await rig.harness.manager.send(conversation.id, "três");
+    assert.equal(await rig.harness.manager.stop(conversation.id), true);
+    await rig.until(
+      () => getRestorePoint(rig.harness.db, third.agentMessage.id)?.afterCommit !== null,
+      "after depois de parar",
+    );
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("restauração: after também roda quando o adaptador falha ao iniciar", async () => {
+  const calls: RestoreCall[] = [];
+  const harness = await createHarness(
+    "texto",
+    {},
+    {
+      restoreSnapshot: recordingSnapshot(calls),
+      adapterFactory: () => ({
+        start: async () => {
+          throw new Error("falha ao iniciar");
+        },
+        send: async () => undefined,
+        respond: async () => undefined,
+        interrupt: async () => undefined,
+        dispose: async () => undefined,
+      }),
+    },
+  );
+  try {
+    const conversation = createConversation(harness.manager);
+    const { agentMessage } = await harness.manager.send(conversation.id, "oi");
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (getRestorePoint(harness.db, agentMessage.id)?.afterCommit) break;
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(harness.manager.get(conversation.id)?.conversation.state, "error");
+    assert.equal(
+      getRestorePoint(harness.db, agentMessage.id)?.afterCommit,
+      `after-${agentMessage.id}`,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("restauração: plano pendente não tira after; compactar e mensagem tirada da fila não criam linha", async () => {
+  const calls: RestoreCall[] = [];
+  const rig = await createRestoreRig({
+    restoreSnapshot: recordingSnapshot(calls),
+    limit: 1,
+    compact: true,
+  });
+  try {
+    const first = rig.create(os.tmpdir());
+    const { agentMessage } = await rig.harness.manager.send(first.id, "planeje");
+    rig.entries.get(first.id)?.emit({
+      kind: "part",
+      part: { id: "plano-1", type: "plan", markdown: "1. Ler", state: "pending" },
+    });
+    rig.finish(first.id);
+    await rig.until(() => rig.stateOf(first.id) === "waiting", "plano aguardando");
+    await new Promise<void>((resolve) => setTimeout(resolve, 80));
+    assert.deepEqual(
+      calls.map((call) => call.phase),
+      ["before"],
+    );
+    assert.equal(getRestorePoint(rig.harness.db, agentMessage.id)?.afterCommit, null);
+
+    // Mensagem tirada da fila: sem linha. O plano pendente não ocupa vaga, então ocupa-se uma.
+    const second = rig.create(os.tmpdir());
+    const running = await rig.harness.manager.send(second.id, "ocupa a vaga");
+    const third = rig.create(os.tmpdir());
+    const queued = await rig.harness.manager.send(third.id, "na fila");
+    assert.equal(rig.stateOf(third.id), "queued");
+    assert.equal(await rig.harness.manager.stop(third.id), true);
+    assert.equal(getRestorePoint(rig.harness.db, queued.agentMessage.id), null);
+    assert.equal(listRestorePoints(rig.harness.db, third.id).length, 0);
+    rig.finish(second.id);
+    await rig.until(
+      () => getRestorePoint(rig.harness.db, running.agentMessage.id)?.afterCommit !== null,
+      "after da vaga",
+    );
+
+    // Compactar não cria ponto.
+    setAgentSession(rig.harness.db, second.id, "sessao-1");
+    const before = calls.length;
+    await rig.harness.manager.compact(second.id);
+    assert.equal(calls.length, before);
+    assert.equal(listRestorePoints(rig.harness.db, second.id).length, 1);
+    assert.equal(rig.order.includes("compact"), true);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("restauração: a segunda mensagem espera a foto after da primeira", async () => {
+  const calls: RestoreCall[] = [];
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const rig = await createRestoreRig({
+    restoreSnapshot: recordingSnapshot(calls, "/repo-falso", {
+      gate: (request) => (request.phase === "after" ? gate : undefined),
+    }),
+  });
+  try {
+    const conversation = rig.create(os.tmpdir());
+    await rig.harness.manager.send(conversation.id, "um");
+    rig.finish(conversation.id);
+    await rig.until(() => calls.some((call) => call.phase === "after"), "after começou");
+    await rig.until(() => rig.stateOf(conversation.id) === "idle", "conversa livre");
+    const second = rig.harness.manager.send(conversation.id, "dois");
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    assert.deepEqual(
+      calls.map((call) => call.phase),
+      ["before", "after"],
+    );
+    release();
+    await second;
+    assert.deepEqual(
+      calls.map((call) => call.phase),
+      ["before", "after", "before"],
+    );
+    assert.equal(rig.entries.get(conversation.id)?.sends, 2);
+  } finally {
+    release();
+    await rig.harness.close();
+  }
+});
+
+test("restauração: dois turnos no mesmo repositório marcam concurrent; repositórios diferentes não", async () => {
+  const calls: RestoreCall[] = [];
+  const rig = await createRestoreRig({
+    restoreSnapshot: recordingSnapshot(calls, (request) =>
+      request.cwd.endsWith("-b") ? "/repo-b" : "/repo-a",
+    ),
+  });
+  try {
+    const cwdA = path.join(os.tmpdir(), "proj-a");
+    const cwdA2 = path.join(os.tmpdir(), "proj-a2");
+    const cwdB = path.join(os.tmpdir(), "proj-b");
+    const [one, two, other] = [rig.create(cwdA), rig.create(cwdA2), rig.create(cwdB)];
+    const a = await rig.harness.manager.send(one.id, "a");
+    assert.equal(getRestorePoint(rig.harness.db, a.agentMessage.id)?.concurrent, false);
+    const c = await rig.harness.manager.send(other.id, "c");
+    assert.equal(getRestorePoint(rig.harness.db, c.agentMessage.id)?.concurrent, false);
+    assert.equal(getRestorePoint(rig.harness.db, a.agentMessage.id)?.concurrent, false);
+    const b = await rig.harness.manager.send(two.id, "b");
+    assert.equal(getRestorePoint(rig.harness.db, a.agentMessage.id)?.concurrent, true);
+    assert.equal(getRestorePoint(rig.harness.db, b.agentMessage.id)?.concurrent, true);
+    assert.equal(getRestorePoint(rig.harness.db, c.agentMessage.id)?.concurrent, false);
+
+    // Depois que os dois terminam, um turno novo no mesmo repositório começa limpo.
+    rig.finish(one.id);
+    rig.finish(two.id);
+    await rig.until(
+      () =>
+        getRestorePoint(rig.harness.db, a.agentMessage.id)?.afterCommit !== null &&
+        getRestorePoint(rig.harness.db, b.agentMessage.id)?.afterCommit !== null,
+      "afters",
+    );
+    const d = await rig.harness.manager.send(one.id, "d");
+    assert.equal(getRestorePoint(rig.harness.db, d.agentMessage.id)?.concurrent, false);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("restauração: plano aprovado volta a contar como turno no mesmo repositório", async () => {
+  const calls: RestoreCall[] = [];
+  const rig = await createRestoreRig({
+    restoreSnapshot: recordingSnapshot(calls, () => "/repo-a"),
+  });
+  try {
+    const planner = rig.create(path.join(os.tmpdir(), "proj-plano"));
+    const { agentMessage: planned } = await rig.harness.manager.send(planner.id, "planeje");
+    rig.entries.get(planner.id)?.emit({
+      kind: "part",
+      part: { id: "plano-2", type: "plan", markdown: "1. Editar", state: "pending" },
+    });
+    rig.finish(planner.id);
+    await rig.until(() => rig.stateOf(planner.id) === "waiting", "plano aguardando");
+
+    // A aprovação retoma a mesma mensagem: é nessa fase que o agente escreve.
+    rig.entries.get(planner.id)?.emit({ kind: "state", state: "working" });
+    await rig.until(() => rig.stateOf(planner.id) === "working", "plano aprovado");
+
+    const other = rig.create(path.join(os.tmpdir(), "proj-outro"));
+    const { agentMessage: running } = await rig.harness.manager.send(other.id, "outro agente");
+    assert.equal(getRestorePoint(rig.harness.db, planned.id)?.concurrent, true);
+    assert.equal(getRestorePoint(rig.harness.db, running.id)?.concurrent, true);
+  } finally {
+    await rig.harness.close();
+  }
+});
+
+test("restauração com Git de verdade: fotos antes e depois, limite de 50 e limpeza das refs", async () => {
+  const repo = await createTestRepo();
+  const rig = await createRestoreRig({
+    onSend: async () => {
+      await writeFile(path.join(repo, "novo.txt"), `${Math.random()}\n`);
+    },
+  });
+  try {
+    const conversation = rig.create(repo);
+    const ids: string[] = [];
+    for (let index = 0; index < 52; index += 1) {
+      const { agentMessage } = await rig.harness.manager.send(conversation.id, `m${index}`);
+      ids.push(agentMessage.id);
+      rig.finish(conversation.id);
+      await rig.until(
+        () => getRestorePoint(rig.harness.db, agentMessage.id)?.afterCommit !== null,
+        `after ${index}`,
+        500,
+      );
+      if (index === 0) {
+        const row = getRestorePoint(rig.harness.db, agentMessage.id);
+        assert.equal(row?.repoRoot, repo);
+        const headNow = git(repo, "rev-parse", "HEAD").trim();
+        assert.equal(row?.headBefore, headNow);
+        assert.equal(row?.headAfter, headNow);
+        const before = git(repo, "ls-tree", "-r", "--name-only", row?.beforeCommit ?? "").split(
+          "\n",
+        );
+        const after = git(repo, "ls-tree", "-r", "--name-only", row?.afterCommit ?? "").split("\n");
+        assert.equal(before.includes("novo.txt"), false);
+        assert.equal(after.includes("novo.txt"), true);
+      }
+    }
+    await rig.until(
+      () => listRestorePoints(rig.harness.db, conversation.id).length === 50,
+      "50 pontos",
+      500,
+    );
+    const refs = () =>
+      git(repo, "for-each-ref", "--format=%(refname)", "refs/karont").split("\n").filter(Boolean);
+    await rig.until(() => refs().length === 100, "100 refs", 500);
+    const remaining = new Set(
+      listRestorePoints(rig.harness.db, conversation.id).map((p) => p.messageId),
+    );
+    assert.equal(remaining.has(ids[0] as string), false);
+    assert.equal(remaining.has(ids[1] as string), false);
+    assert.equal(remaining.has(ids[51] as string), true);
+    for (const old of ids.slice(0, 2)) {
+      assert.equal(
+        refs().some((ref) => ref.includes(old)),
+        false,
+      );
+    }
+    assert.equal(await rig.harness.manager.remove(conversation.id), true);
+    await rig.until(() => refs().length === 0, "refs apagadas com a conversa", 500);
   } finally {
     await rig.harness.close();
   }
