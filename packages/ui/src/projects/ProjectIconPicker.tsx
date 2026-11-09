@@ -1,5 +1,13 @@
 import { ChevronDown } from "lucide-react";
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { t } from "../i18n/pt-BR.ts";
 import styles from "./ProjectDialog.module.css";
 import { getProjectIcon, PROJECT_ICONS } from "./projectIcons.ts";
@@ -16,12 +24,34 @@ export function ProjectIconPicker({
   onChange: (icon: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState<{ side: "bottom" | "top"; maxHeight?: number }>({
+    side: "bottom",
+  });
+  const panelRef = useRef<HTMLFieldSetElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
   const groupName = useId();
   const CurrentIcon = getProjectIcon(value);
   const currentLabel = t.projects.iconNames[value] ?? value;
+
+  // Abre para baixo; se não couber, abre para cima, e limita a altura (rolagem interna) se nenhum lado couber.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    const trigger = triggerRef.current;
+    if (!panel || !trigger) return;
+    const margin = 8;
+    const gap = 4;
+    const rect = trigger.getBoundingClientRect();
+    const height = panel.scrollHeight + panel.offsetHeight - panel.clientHeight;
+    const below = window.innerHeight - rect.bottom - gap - margin;
+    const above = rect.top - gap - margin;
+    if (height <= below) setPlacement({ side: "bottom" });
+    else if (height <= above) setPlacement({ side: "top" });
+    else if (above > below) setPlacement({ side: "top", maxHeight: Math.max(above, 0) });
+    else setPlacement({ side: "bottom", maxHeight: Math.max(below, 0) });
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -77,7 +107,14 @@ export function ProjectIconPicker({
         aria-label={t.projects.iconLabel}
         className={styles.iconPanel}
         data-open={open}
+        data-placement={placement.side}
         id={panelId}
+        ref={panelRef}
+        style={
+          placement.maxHeight === undefined
+            ? undefined
+            : ({ "--icon-panel-max-height": `${placement.maxHeight}px` } as CSSProperties)
+        }
       >
         {PROJECT_ICONS.map(({ name, Icon }) => {
           const label = t.projects.iconNames[name] ?? name;
