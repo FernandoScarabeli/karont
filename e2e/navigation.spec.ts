@@ -684,7 +684,85 @@ test("busca: Ctrl K, acento, destaque, setas, outro workspace, terminal e entrad
   }
 });
 
-test("composer em painel estreito: nada se sobrepõe nem sai do cartão, e o enviar fica na primeira linha", async () => {
+type Box = {
+  name: string;
+  submit: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+/** Define a largura do composer (o contêiner dos pontos de quebra) e confere a barra de controles. */
+async function checkComposerRow(window: Page, form: Locator, width: number, minimum: number) {
+  await form.evaluate((element, value) => {
+    const wrapper = (element as unknown as { parentElement: { style: { width: string } } })
+      .parentElement;
+    wrapper.style.width = `${value}px`;
+  }, width);
+  await window.evaluate("new Promise((resolve) => requestAnimationFrame(resolve))");
+
+  const card = await form.boundingBox();
+  if (!card) throw new Error("composer sem caixa");
+  const buttons = form.getByRole("button");
+  const count = await buttons.count();
+  const boxes: Box[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const button = buttons.nth(index);
+    const box = await button.boundingBox();
+    if (!box || box.width === 0) continue;
+    boxes.push({
+      name: (await button.getAttribute("aria-label")) ?? "",
+      submit: (await button.getAttribute("type")) === "submit",
+      ...box,
+    });
+  }
+  expect(boxes.length, `controles visíveis a ${width}px`).toBeGreaterThanOrEqual(minimum);
+
+  // Nenhum controle passa da borda do cartão nem se sobrepõe a outro.
+  for (const box of boxes) {
+    expect(box.x, `${box.name} a ${width}px`).toBeGreaterThanOrEqual(card.x - 1);
+    expect(box.x + box.width, `${box.name} a ${width}px`).toBeLessThanOrEqual(
+      card.x + card.width + 1,
+    );
+  }
+  for (const [index, first] of boxes.entries()) {
+    for (const second of boxes.slice(index + 1)) {
+      const overlapX =
+        Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x);
+      const overlapY =
+        Math.min(first.y + first.height, second.y + second.height) - Math.max(first.y, second.y);
+      expect(
+        overlapX > 1 && overlapY > 1,
+        `${first.name} sobrepõe ${second.name} a ${width}px`,
+      ).toBe(false);
+    }
+  }
+
+  // Uma linha só: todos os controles têm o centro na mesma altura, e o enviar é o último.
+  const send = boxes.find((box) => box.submit);
+  if (!send) throw new Error("sem botão enviar");
+  for (const box of boxes) {
+    expect(
+      Math.abs(box.y + box.height / 2 - (send.y + send.height / 2)),
+      `${box.name} na mesma linha do enviar a ${width}px`,
+    ).toBeLessThanOrEqual(6);
+    if (box !== send) {
+      expect(
+        box.x + box.width,
+        `${box.name} à esquerda do enviar a ${width}px`,
+      ).toBeLessThanOrEqual(send.x + 1);
+    }
+  }
+  // O placeholder cabe em uma linha: o campo vazio não cresce.
+  const textarea = await form.locator("textarea").boundingBox();
+  expect(textarea?.height ?? 0, `campo vazio a ${width}px`).toBeLessThanOrEqual(41);
+  return boxes;
+}
+
+const COMPOSER_WIDTHS = [150, 180, 220, 260, 300, 360, 420, 520, 640, 800, 1200];
+
+test("composer em painel estreito, em conversa aberta: uma linha só, sem sobreposição, e modelo no popover", async () => {
   const kit = await launch();
   const { window } = kit;
   try {
@@ -704,75 +782,55 @@ test("composer em painel estreito: nada se sobrepõe nem sai do cartão, e o env
       .locator("form")
       .filter({ has: window.locator("textarea") })
       .first();
-    const submit = form.getByRole("button", { name: /Enviar/ });
-    await expect(submit).toBeVisible();
-    await expect(form.getByRole("button", { name: /Acesso total/ })).toBeVisible();
+    await expect(
+      form.getByRole("button", { name: "Opções da conversa", exact: true }),
+    ).toBeVisible();
 
-    for (const width of [180, 260, 340, 420, 520, 640, 800, 1200]) {
-      await form.evaluate((element, value) => {
-        const wrapper = (element as unknown as { parentElement: { style: { width: string } } })
-          .parentElement;
-        wrapper.style.width = `${value}px`;
-      }, width);
-      await window.evaluate("new Promise((resolve) => requestAnimationFrame(resolve))");
-
-      const card = await form.boundingBox();
-      if (!card) throw new Error("composer sem caixa");
-      const buttons = form.getByRole("button");
-      const count = await buttons.count();
-      const boxes: { name: string; x: number; y: number; width: number; height: number }[] = [];
-      for (let index = 0; index < count; index += 1) {
-        const button = buttons.nth(index);
-        const box = await button.boundingBox();
-        if (!box || box.width === 0) continue;
-        boxes.push({ name: (await button.getAttribute("aria-label")) ?? "", ...box });
-      }
-      expect(boxes.length, `controles visíveis a ${width}px`).toBeGreaterThanOrEqual(5);
-
-      // Nenhum controle passa da borda do cartão nem se sobrepõe a outro.
-      for (const box of boxes) {
-        expect(box.x, `${box.name} a ${width}px`).toBeGreaterThanOrEqual(card.x - 1);
-        expect(box.x + box.width, `${box.name} a ${width}px`).toBeLessThanOrEqual(
-          card.x + card.width + 1,
-        );
-      }
-      for (const [index, first] of boxes.entries()) {
-        for (const second of boxes.slice(index + 1)) {
-          const overlapX =
-            Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x);
-          const overlapY =
-            Math.min(first.y + first.height, second.y + second.height) -
-            Math.max(first.y, second.y);
-          expect(
-            overlapX > 1 && overlapY > 1,
-            `${first.name} sobrepõe ${second.name} a ${width}px`,
-          ).toBe(false);
-        }
-      }
-
-      // O enviar está na primeira linha dos controles, à direita de todos nela.
-      const send = boxes.find((box) => /Enviar/.test(box.name));
-      if (!send) throw new Error("sem botão enviar");
-      const topRow = Math.min(...boxes.map((box) => box.y));
-      expect(
-        Math.abs(send.y + send.height / 2 - (topRow + 18)),
-        `enviar a ${width}px`,
-      ).toBeLessThan(8);
-      for (const box of boxes) {
-        if (box !== send && Math.abs(box.y - send.y) < 20) {
-          expect(
-            box.x + box.width,
-            `${box.name} à esquerda do enviar a ${width}px`,
-          ).toBeLessThanOrEqual(send.x + 1);
-        }
+    for (const width of COMPOSER_WIDTHS) {
+      await checkComposerRow(window, form, width, 3);
+      const modelInBar = form.getByRole("button", { name: /Modelo: GPT-6-Luna/ });
+      if (width <= 414) {
+        // Painel estreito: o modelo sai da barra e aparece nas opções, com a mesma escolha.
+        await expect(modelInBar).toHaveCount(0);
+        await form.getByRole("button", { name: "Opções da conversa", exact: true }).click();
+        const dialog = window.getByRole("dialog", { name: "Opções da conversa" });
+        await expect(dialog.getByRole("radio", { name: /GPT-6-Luna/ })).toBeVisible();
+        await expect(dialog.getByRole("radio", { name: "Médio" })).toBeVisible();
+        const popover = await dialog.boundingBox();
+        const viewport = (await window.evaluate("({ w: innerWidth, h: innerHeight })")) as {
+          w: number;
+          h: number;
+        };
+        expect(popover?.x ?? -1, `popover a ${width}px`).toBeGreaterThanOrEqual(0);
+        expect((popover?.x ?? 0) + (popover?.width ?? 0)).toBeLessThanOrEqual(viewport.w);
+        expect((popover?.y ?? 0) + (popover?.height ?? 0)).toBeLessThanOrEqual(viewport.h);
+        await window.keyboard.press("Escape");
+        await expect(dialog).toBeHidden();
+      } else if (width >= 424) {
+        // Acima do limiar (com a folga da volta), o modelo está na barra.
+        await expect(modelInBar).toBeVisible();
       }
     }
 
-    // Mesmo no menor painel, o nome acessível diz agente, modelo e acesso.
-    await expect(form.getByRole("button", { name: /Modelo: GPT-6-Luna/ })).toBeVisible();
-    await expect(form.getByRole("button", { name: /Acesso total/ })).toBeVisible();
+    // O acesso continua informado nos menores tamanhos (ícone ou popover), e o agente também.
     await expect(form.getByText("Claude Code", { exact: true })).toBeAttached();
     await expect(form.getByText("Agente: Claude Code")).toBeAttached();
+  } finally {
+    await kit.close();
+  }
+});
+
+test("composer em painel estreito, em nova conversa: uma linha só e placeholder curto", async () => {
+  const kit = await launch();
+  const { window } = kit;
+  try {
+    await window.getByRole("button", { name: "Nova conversa", exact: true }).click();
+    const form = window
+      .locator("form")
+      .filter({ has: window.locator("textarea") })
+      .first();
+    await expect(form.locator('button[type="submit"]')).toBeVisible();
+    for (const width of COMPOSER_WIDTHS) await checkComposerRow(window, form, width, 2);
   } finally {
     await kit.close();
   }

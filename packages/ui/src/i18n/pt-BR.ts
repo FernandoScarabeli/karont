@@ -438,6 +438,7 @@ export const t = {
     conversationError: "A resposta falhou",
     stop: "Parar",
     messageInput: "Pergunte qualquer coisa · @ arquivos, / comandos",
+    composerPlaceholderShort: "Pergunte qualquer coisa",
     composerPlaceholder: (supportsSkills: boolean) =>
       `Pergunte qualquer coisa · @ arquivos${supportsSkills ? ", $ skills" : ""}, / comandos`,
     shortcutSuggestions: {

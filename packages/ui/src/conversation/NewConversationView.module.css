@@ -50,7 +50,11 @@
 }
 
 .composerSection {
-  width: min(calc(100% - var(--k-space-6) - var(--k-space-6)), var(--k-new-conversation-width));
+  /* A margem lateral encolhe com o painel (de 24px a 8px), para o composer não ficar espremido. */
+  width: min(
+    calc(100% - 2 * clamp(var(--k-space-2), 4%, var(--k-space-6))),
+    var(--k-new-conversation-width)
+  );
   margin: auto;
   container-name: new-conversation;
   container-type: inline-size;
@@ -67,10 +71,12 @@
   margin: 0 0 var(--k-space-5);
   color: var(--k-color-text-primary);
   font-family: var(--k-font-brand);
-  font-size: var(--k-text-32);
+  /* Tamanho fluido pela largura do contêiner: encolhe aos poucos, sem pular de 2 para 4 linhas. */
+  font-size: clamp(var(--k-new-title-min-size), 5.5cqi, var(--k-new-title-max-size));
   font-weight: var(--k-weight-brand);
   line-height: var(--k-leading-tight);
   text-align: center;
+  text-wrap: balance;
 }
 
 .controls {
@@ -247,15 +253,16 @@
 }
 
 /* Largura do painel (cartão do composer): o nome do agente vira só o ícone. */
-@container composer (max-width: 680px) {
+@container composer (max-width: 714px) {
   .agentName {
     display: none;
   }
 }
 
-@container composer (max-width: 380px) {
-  .controls {
-    flex-wrap: wrap;
-    row-gap: var(--k-space-1);
+/* Painel estreito: a faixa da pasta tem a largura do composer, com a borda alinhada. */
+@container composer (max-width: 330px) {
+  .folderStrip {
+    width: 100%;
+    padding-inline: var(--k-space-2);
   }
 }

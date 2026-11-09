@@ -1770,22 +1770,26 @@ export function ConversationView({
             (capabilities?.contextUsage === true || userMessageCount >= 2) ? (
               <>
                 {capabilities?.contextUsage === true ? (
-                  <ConversationContextUsageControl
-                    compactAvailable={capabilities.compact}
-                    compacting={isCompacting}
-                    initialUsage={contextUsage}
-                    key={id}
-                    onCompact={compactConversation}
-                  />
+                  <span className={styles.composerRing}>
+                    <ConversationContextUsageControl
+                      compactAvailable={capabilities.compact}
+                      compacting={isCompacting}
+                      initialUsage={contextUsage}
+                      key={id}
+                      onCompact={compactConversation}
+                    />
+                  </span>
                 ) : null}
                 {userMessageCount >= 2 ? (
-                  <ConversationHistory
-                    entries={historyEntries}
-                    onOpenChange={setHistoryOpen}
-                    onSelectMessage={navigateToHistoryMessage}
-                    open={historyOpen}
-                    popupContainerRef={messageRegionRef}
-                  />
+                  <span className={styles.composerHistory}>
+                    <ConversationHistory
+                      entries={historyEntries}
+                      onOpenChange={setHistoryOpen}
+                      onSelectMessage={navigateToHistoryMessage}
+                      open={historyOpen}
+                      popupContainerRef={messageRegionRef}
+                    />
+                  </span>
                 ) : null}
               </>
             ) : undefined
@@ -1801,6 +1805,7 @@ export function ConversationView({
           onStop={composerStop}
           onSubmit={composerSubmit}
           placeholder={t.chat.composerPlaceholder(capabilities?.skills === true)}
+          shortPlaceholder={t.chat.composerPlaceholderShort}
           autocomplete={composerAutocomplete}
           submitDisabled={
             !bridge ||
