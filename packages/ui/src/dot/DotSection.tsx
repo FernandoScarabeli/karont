@@ -5,11 +5,11 @@ import { Button } from "../components/Button/Button.tsx";
 import { ColorWell } from "../components/ColorPicker/ColorPicker.tsx";
 import { Dialog } from "../components/Dialog/Dialog.tsx";
 import { TextField } from "../components/TextField/TextField.tsx";
-import { EyeTracker } from "../dot/EyeTracker.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import styles from "./DotSection.module.css";
 import { dotFields as copy, dotPatch, mergeDotDraft } from "./dotDraft.ts";
+import { EyeTracker } from "./EyeTracker.tsx";
 
 const same = (a: DotFields, b: DotFields) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -126,11 +126,7 @@ export function DotSection() {
   }
 
   return (
-    <section className={styles.section} aria-labelledby="dot-settings-title">
-      <h2 className={styles.heading} id="dot-settings-title">
-        {t.dotSettings.title}
-      </h2>
-      <p className={styles.note}>{t.dotSettings.upcoming}</p>
+    <section className={styles.section} aria-label={t.dotSettings.title}>
       {loading ? <p role="status">{t.dotSettings.loading}</p> : null}
       {!loading && !draft ? (
         <Button onClick={() => void load()}>{t.dotSettings.retry}</Button>
@@ -138,9 +134,9 @@ export function DotSection() {
       {draft ? (
         <>
           <div className={styles.preview}>
-            <EyeTracker color={draft.color} size={96} />
+            <EyeTracker color={draft.color} size={160} />
           </div>
-          <fieldset className={styles.fields} disabled={loading || saving}>
+          <fieldset className={`${styles.fields} ${styles.form}`} disabled={loading || saving}>
             <TextField
               label={t.dotSettings.name}
               maxLength={80}
@@ -198,6 +194,7 @@ export function DotSection() {
               />
               {t.dotSettings.enabled}
             </label>
+            <p className={styles.note}>{t.dotSettings.upcoming}</p>
             <div className={styles.actions}>
               <Button disabled={!dirty} onClick={() => void save()}>
                 {saving ? t.dotSettings.saving : t.dotSettings.save}

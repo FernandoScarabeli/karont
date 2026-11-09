@@ -1,14 +1,21 @@
 .section {
-  display: grid;
-  align-content: start;
-  gap: var(--k-space-4);
+  --k-dots-form-basis: 18rem;
+  --k-dots-form-max-width: 28rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--k-space-8);
   min-width: 0;
+  margin-top: var(--k-space-8);
 }
-.heading {
-  margin: 0;
-  color: var(--k-color-text-primary);
-  font-size: var(--k-text-16);
-  font-weight: var(--k-weight-semibold);
+.section > [role="status"],
+.section > [role="alert"],
+.section > button {
+  flex: 1 0 100%;
+}
+.form {
+  flex: 1 1 var(--k-dots-form-basis);
+  max-width: var(--k-dots-form-max-width);
 }
 .note {
   margin: 0;
@@ -18,6 +25,7 @@
 }
 .preview {
   display: flex;
+  flex: 0 0 auto;
   justify-content: center;
   padding: var(--k-space-4);
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { DotSection } from "../dot/DotSection.tsx";
 import { t } from "../i18n/pt-BR.ts";
 import { useNavigation } from "../navigation/NavigationContext.tsx";
 import { useWorkspaces } from "../projects/useWorkspaces.ts";
@@ -83,6 +84,13 @@ export function Sheet() {
             {t.inbox.title}
           </h1>
           <InboxScreen titleRef={titleRef} />
+        </>
+      ) : view.name === "dots" ? (
+        <>
+          <h1 className={styles.pageTitle} ref={titleRef} tabIndex={-1}>
+            {t.dotSettings.title}
+          </h1>
+          <DotSection />
         </>
       ) : (
         <>

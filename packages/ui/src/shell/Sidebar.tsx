@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Columns2,
   Ellipsis,
+  Ghost,
   GitFork,
   Inbox,
   ListTodo,
@@ -1062,6 +1063,16 @@ export function Sidebar({ collapsed }: SidebarProps) {
                 ) : null}
               </Button>
               <Button
+                aria-current={view.name === "dots" ? "page" : undefined}
+                className={styles.navigationAction}
+                iconStart={<Ghost aria-hidden="true" size={16} strokeWidth={1.75} />}
+                onClick={() => navigate({ name: "dots" })}
+                ref={(element) => fluidHover.registerItem("dots", element)}
+                variant="ghost"
+              >
+                {t.shell.dots}
+              </Button>
+              <Button
                 aria-description={t.shell.availableSoon}
                 className={styles.navigationAction}
                 disabled
@@ -1245,7 +1256,9 @@ export function Sidebar({ collapsed }: SidebarProps) {
         collapsed={collapsed}
         inboxTotal={inboxTotal}
         inboxActive={view.name === "inbox"}
+        dotsActive={view.name === "dots"}
         newConversationActive={newConversationActive}
+        onDots={() => navigate({ name: "dots" })}
         onInbox={() => navigate({ name: "inbox" })}
         onNewConversation={() => navigate({ name: "new-conversation" })}
         onSettings={() => navigate({ name: "settings", section: "general" })}

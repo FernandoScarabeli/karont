@@ -50,9 +50,10 @@ export type View =
   | { name: "home" }
   | { name: "workspace" }
   | { name: "inbox" }
+  | { name: "dots" }
   | {
       name: "settings";
-      section: "general" | "profile" | "appearance" | "agents" | "diagnostics" | "dot";
+      section: "general" | "profile" | "appearance" | "agents" | "diagnostics";
     };
 
 export type NavigationTarget =
@@ -312,8 +313,8 @@ export function NavigationProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (!bridge || !navigationLoaded) return;
-    // A caixa de entrada não é lembrada: ao abrir o app volta-se à última tela de antes dela.
-    if (view.name === "inbox") return;
+    // Caixa de entrada e Dots não são lembradas: ao abrir o app volta-se à última tela de antes delas.
+    if (view.name === "inbox" || view.name === "dots") return;
     const lastView: PersistedView = view.name;
     void bridge.request("settings.set", { key: LAST_VIEW_SETTING, value: lastView }).catch(() => {
       setStatusMessage(t.workspace.navigationSaveFailed);

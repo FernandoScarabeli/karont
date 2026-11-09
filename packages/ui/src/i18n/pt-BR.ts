@@ -81,12 +81,12 @@ function greetingFor(name: string | null, hour: number, sample: number): string 
 
 export const t = {
   dotSettings: {
-    title: "Dot",
+    title: "Dots",
     name: "Nome",
     color: "Cor",
     enabled: "Ativar o Dot nas conversas",
     upcoming:
-      "Personalize seu Dot e salve suas preferências. A personalização das respostas ainda não está disponível.",
+      "Nome e cor mudam na hora. Personalidade e ativação valem a partir da próxima conversa aberta.",
     personality: "Personalidade",
     explanation: "Direto ↔ explicativo",
     playfulness: "Sério ↔ brincalhão",
@@ -124,6 +124,7 @@ export const t = {
     newConversation: "Nova conversa",
     tasks: "Tarefas",
     inbox: "Caixa de entrada",
+    dots: "Dots",
     inboxCount: (count: number) => (count === 1 ? "1 item esperando" : `${count} itens esperando`),
     projects: "Projetos",
     newProject: "Novo projeto",

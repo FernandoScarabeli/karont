@@ -41,15 +41,13 @@ async function launch(root: string) {
   return { app, window, pid };
 }
 
-const sections = (window: Page) =>
-  window.getByRole("navigation", { name: "Seções das configurações" });
+const sidebar = (window: Page) => window.getByRole("navigation", { name: "Navegação principal" });
 const nameField = (window: Page) => window.getByRole("main").getByLabel("Nome");
 const discardDialog = (window: Page) =>
   window.getByRole("dialog", { name: "Descartar alterações?" });
 
 async function openDot(window: Page) {
-  await window.getByRole("button", { name: "Configurações" }).click();
-  await sections(window).getByRole("button", { name: "Dot", exact: true }).click();
+  await sidebar(window).getByRole("button", { name: "Dots", exact: true }).click();
   await expect(nameField(window)).toBeVisible();
 }
 
@@ -85,23 +83,22 @@ test("Dot: salvar, cor digitada, descartar na mesma seção e abrir ao lado com 
     // A cor digitada vale mesmo sem Enter, ao clicar fora.
     await window.getByRole("button", { name: /^Cor do Dot,/ }).click();
     await window.getByLabel("Cor em hexadecimal").fill("#ff0000");
-    await window.getByRole("heading", { name: "Dot", exact: true }).click();
+    await window.getByRole("heading", { name: "Dots", exact: true }).click();
     await expect(window.getByRole("button", { name: "Cor do Dot, #ff0000" })).toBeVisible();
     await window.getByRole("button", { name: "Cancelar" }).click();
 
     // Descartar na própria seção volta o campo, e a proteção segue valendo para a próxima edição.
     await nameField(window).fill("Rascunho");
-    await sections(window).getByRole("button", { name: "Dot", exact: true }).click();
+    await sidebar(window).getByRole("button", { name: "Dots", exact: true }).click();
     await discardDialog(window).getByRole("button", { name: "Descartar" }).click();
     await expect(nameField(window)).toHaveValue("Caronte");
     await nameField(window).fill("Outro rascunho");
-    await sections(window).getByRole("button", { name: "Geral" }).click();
+    await sidebar(window).getByRole("button", { name: "Caixa de entrada" }).click();
     await expect(discardDialog(window)).toBeVisible();
     await discardDialog(window).getByRole("button", { name: "Continuar editando" }).click();
 
     // Abrir ao lado espera a confirmação, sem acusar limite de painéis.
-    await window
-      .getByRole("navigation", { name: "Navegação principal" })
+    await sidebar(window)
       .getByRole("button", { name: "Conversa do Dot", exact: true })
       .click({ button: "right" });
     await window.getByRole("menuitem", { name: "Abrir ao lado" }).click();

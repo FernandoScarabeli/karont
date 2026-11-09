@@ -1,4 +1,4 @@
-import { Inbox, ListTodo, Settings, SquarePen } from "lucide-react";
+import { Ghost, Inbox, ListTodo, Settings, SquarePen } from "lucide-react";
 import type { ReactNode } from "react";
 import { Tooltip } from "../components/Tooltip/Tooltip.tsx";
 import { t } from "../i18n/pt-BR.ts";
@@ -77,10 +77,12 @@ type SidebarRailProps = {
   collapsed: boolean;
   inboxTotal: number;
   inboxActive: boolean;
+  dotsActive: boolean;
   newConversationActive: boolean;
   settingsActive: boolean;
   onNewConversation: () => void;
   onInbox: () => void;
+  onDots: () => void;
   onSettings: () => void;
 };
 
@@ -89,10 +91,12 @@ export function SidebarRail({
   collapsed,
   inboxTotal,
   inboxActive,
+  dotsActive,
   newConversationActive,
   settingsActive,
   onNewConversation,
   onInbox,
+  onDots,
   onSettings,
 }: SidebarRailProps) {
   return (
@@ -111,6 +115,12 @@ export function SidebarRail({
           icon={<Inbox aria-hidden="true" size={16} strokeWidth={1.75} />}
           label={t.shell.inbox}
           onClick={onInbox}
+        />
+        <RailButton
+          active={dotsActive}
+          icon={<Ghost aria-hidden="true" size={16} strokeWidth={1.75} />}
+          label={t.shell.dots}
+          onClick={onDots}
         />
         <RailButton
           description={t.shell.availableSoon}
