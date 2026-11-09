@@ -143,6 +143,8 @@ export {
   normalizeSourceUrl,
   safeSourceUrl,
 } from "./sources.ts";
+export type { AgentUsage, UsageWindow } from "./usage.ts";
+export { agentUsageSchema, usageWindowSchema } from "./usage.ts";
 export type {
   ParsedRequest,
   ParseEventResult,

@@ -5,6 +5,7 @@ import type {
   ConversationAttachment,
   MessagePart,
   MessageSource,
+  UsageWindow,
 } from "@karont/contract";
 
 export type AdapterEvent =
@@ -16,6 +17,7 @@ export type AdapterEvent =
   | { kind: "state"; state: "working" | "waiting" }
   | { kind: "context-usage"; usedTokens: number; windowTokens: number }
   | { kind: "context-usage-unknown" }
+  | { kind: "usage"; windows: UsageWindow[] }
   | {
       kind: "turn-end";
       status: "done" | "interrupted" | "error";

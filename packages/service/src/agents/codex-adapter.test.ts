@@ -1397,3 +1397,29 @@ test("Codex recebe texto e localImage; o arquivo temporário some ao fim do turn
     await harness.close();
   }
 });
+
+test("Codex publica e guarda o uso das janelas sem alterar as partes da mensagem", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, fixturePrompt("texto"));
+    await waitForState(harness, conversation.id, "idle");
+
+    const updates = harness.events.filter((event) => event.event === "usage.updated");
+    assert.ok(updates.length >= 1);
+    const last = updates.at(-1)?.payload as { agent: string; windows: unknown };
+    assert.equal(last.agent, "codex");
+    assert.deepEqual(last.windows, [
+      { id: "five_hour", usedPercent: 7, resetsAt: new Date(1793508694 * 1000).toISOString() },
+      { id: "weekly", usedPercent: 30, resetsAt: new Date(1793901203 * 1000).toISOString() },
+    ]);
+    assert.ok(
+      harness.manager
+        .get(conversation.id)
+        ?.messages.at(-1)
+        ?.parts.every((part) => part.type !== ("usage" as string)),
+    );
+  } finally {
+    await harness.close();
+  }
+});

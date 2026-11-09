@@ -4400,3 +4400,33 @@ test("caixa: depois de reiniciar o serviço não sobra pendência respondível, 
     }
   }
 });
+
+test("Claude publica e guarda o uso das janelas sem alterar as partes da mensagem", async () => {
+  const harness = await createHarness("texto");
+  try {
+    const conversation = createConversation(harness.manager);
+    await harness.manager.send(conversation.id, "Gere uma resposta.");
+    await waitForState(harness, conversation.id, "idle");
+
+    const updates = harness.events.filter((event) => event.event === "usage.updated");
+    assert.equal(updates.length, 1);
+    const payload = updates[0]?.payload as { observedAt: string } | undefined;
+    assert.deepEqual(payload, {
+      agent: "claude",
+      windows: [
+        { id: "five_hour", usedPercent: 3, resetsAt: new Date(1793507400 * 1000).toISOString() },
+        { id: "weekly", usedPercent: 44, resetsAt: new Date(1793908800 * 1000).toISOString() },
+      ],
+      observedAt: payload?.observedAt,
+    });
+    assert.deepEqual(
+      harness.manager
+        .get(conversation.id)
+        ?.messages.at(-1)
+        ?.parts.map((part) => part.type),
+      ["text"],
+    );
+  } finally {
+    await harness.close();
+  }
+});

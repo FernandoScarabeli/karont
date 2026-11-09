@@ -24,7 +24,7 @@ import {
 } from "@karont/contract";
 import type { AdapterFactory, AgentAdapter, AgentAdapterRegistration } from "./agents/adapter.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
-import { addMessage, openDatabase, recordRecentFolder } from "./db.ts";
+import { addMessage, openDatabase, recordRecentFolder, setSetting } from "./db.ts";
 import type { HandlerConnection } from "./handlers.ts";
 import { createHandlers, ServiceError } from "./handlers.ts";
 import type { TerminalPty } from "./terminals/manager.ts";
@@ -2221,4 +2221,40 @@ test("system.diagnostics traz caminhos reais, sem segredo, e respeita a detecç�
     diagnostics.agents.some((agent) => agent.found),
     false,
   );
+});
+
+test("usage.list devolve o uso guardado em ordem estável e ignora valor corrompido", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ks-"));
+  const db = openDatabase(path.join(root, "karont.db"));
+  try {
+    const handlers = createHandlers({
+      db,
+      startedAt: "2026-10-31T00:00:00.000Z",
+      dev: false,
+      emit: async () => undefined,
+      env: { PATH: "" },
+      homeDir: root,
+    });
+    const conn = connection([]);
+    assert.deepEqual(await handlers.handle(request("usage.list", {}), conn), { usage: [] });
+    const codex = {
+      agent: "codex",
+      windows: [{ id: "five_hour", usedPercent: 20, resetsAt: null }],
+      observedAt: "2026-11-09T10:00:00.000Z",
+    };
+    const claude = {
+      agent: "claude",
+      windows: [{ id: "weekly", usedPercent: 44, resetsAt: "2026-11-09T12:00:00.000Z" }],
+      observedAt: "2026-11-09T10:00:00.000Z",
+    };
+    setSetting(db, "usage.latest.codex", codex);
+    setSetting(db, "usage.latest.claude", claude);
+    setSetting(db, "usage.latest.quebrado", { agent: "quebrado", windows: "x" });
+    setSetting(db, "outra.coisa", codex);
+    assert.deepEqual(await handlers.handle(request("usage.list", {}), conn), {
+      usage: [claude, codex],
+    });
+  } finally {
+    db.close();
+  }
 });

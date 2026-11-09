@@ -475,3 +475,22 @@ test("system.diagnostics aceita parâmetros vazios e recusa resultado inválido"
   const { agents: _agents, ...semAgentes } = valid;
   assert.equal(methods["system.diagnostics"].result.safeParse(semAgentes).success, false);
 });
+
+test("usage.list valida resultado e usage.updated valida o evento", () => {
+  const usage = {
+    agent: "codex",
+    windows: [{ id: "five_hour", usedPercent: 20, resetsAt: "2026-11-09T12:00:00.000Z" }],
+    observedAt: "2026-11-09T10:00:00.000Z",
+  };
+  assert.equal(methods["usage.list"].params.safeParse({}).success, true);
+  assert.equal(methods["usage.list"].params.safeParse({ x: 1 }).success, false);
+  assert.equal(methods["usage.list"].result.safeParse({ usage: [usage] }).success, true);
+  assert.equal(methods["usage.list"].result.safeParse({ usage: [] }).success, true);
+  const badWindow = { ...usage, windows: [{ id: "daily", usedPercent: 20, resetsAt: null }] };
+  assert.equal(methods["usage.list"].result.safeParse({ usage: [badWindow] }).success, false);
+  const over = { ...usage, windows: [{ id: "weekly", usedPercent: 101, resetsAt: null }] };
+  assert.equal(methods["usage.list"].result.safeParse({ usage: [over] }).success, false);
+  assert.equal(events["usage.updated"].safeParse(usage).success, true);
+  assert.equal(events["usage.updated"].safeParse({ ...usage, observedAt: "ontem" }).success, false);
+  assert.equal(isMethodName("usage.list"), true);
+});

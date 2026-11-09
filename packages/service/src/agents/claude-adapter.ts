@@ -26,6 +26,7 @@ import { resolveAgentCommand } from "./detect.ts";
 import { removeSkillMentions } from "./skill-mention.ts";
 import { makeMessageSource, mergeMessageSources } from "./source-metadata.ts";
 import { mapClaudeToolAction, truncateUtf8 } from "./tool-actions.ts";
+import { parseClaudeRateLimit } from "./usage.ts";
 
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
 const MAX_STDOUT_LINE_BYTES = 32 * 1024 * 1024;
@@ -625,6 +626,11 @@ export class ClaudeAdapter implements AgentAdapter {
         this.#compactBoundaryTokens = tokenCount(metadata?.post_tokens ?? metadata?.postTokens);
       }
       if (value.subtype === "permission_denied") this.#emit({ kind: "state", state: "working" });
+      return;
+    }
+    if (type === "rate_limit_event") {
+      const windows = parseClaudeRateLimit(value);
+      if (windows.length > 0) this.#emit({ kind: "usage", windows });
       return;
     }
     if (type === "stream_event") {

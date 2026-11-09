@@ -14,6 +14,7 @@ import {
 import { inboxMethods } from "./inbox.ts";
 import { restoreMethods } from "./restore.ts";
 import { searchMethods } from "./search.ts";
+import { usageMethods } from "./usage.ts";
 import { worktreeMethods } from "./worktrees.ts";
 
 export const MAX_SETTING_BYTES = 65_536;
@@ -485,6 +486,7 @@ export const methods = {
   ...inboxMethods,
   ...searchMethods,
   ...restoreMethods,
+  ...usageMethods,
   ...worktreeMethods,
   "terminals.list": {
     params: emptyParamsSchema,

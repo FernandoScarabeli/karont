@@ -3,6 +3,7 @@ import os from "node:os";
 import type { DatabaseSync } from "node:sqlite";
 import {
   type AnyEvent,
+  agentUsageSchema,
   CONTRACT_VERSION,
   type JsonValue,
   MAX_CONCURRENT_AGENTS_SETTING,
@@ -12,6 +13,7 @@ import type { AdapterFactory, AgentAdapterRegistration } from "./agents/adapter.
 import { ConversationManager } from "./agents/conversation-manager.ts";
 import type { AgentDetectionFs } from "./agents/detect.ts";
 import { AgentRegistry } from "./agents/registry.ts";
+import { USAGE_SETTING_PREFIX } from "./agents/usage.ts";
 import { DeltaCoalescer } from "./coalescer.ts";
 import {
   createProject,
@@ -20,6 +22,7 @@ import {
   getSetting,
   getWorktree,
   listProjects,
+  listSettingsByPrefix,
   listWorkspaces,
   listWorktrees,
   recordRecentFolder,
@@ -335,6 +338,13 @@ export function createHandlers({
         );
       case "restore.undo":
         return conversationManager.undo(request.params.conversationId, request.params.messageId);
+      case "usage.list":
+        return {
+          usage: listSettingsByPrefix(db, USAGE_SETTING_PREFIX).flatMap(({ value }) => {
+            const parsed = agentUsageSchema.safeParse(value);
+            return parsed.success ? [parsed.data] : [];
+          }),
+        };
       case "agent.models":
         return conversationManager.models(request.params.agent);
       case "agent.capabilities":

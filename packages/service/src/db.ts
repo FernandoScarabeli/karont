@@ -794,6 +794,24 @@ export function setSetting(db: DatabaseSync, key: string, value: JsonValue): voi
   ).run(key, serialized, new Date().toISOString());
 }
 
+export function listSettingsByPrefix(
+  db: DatabaseSync,
+  prefix: string,
+): { key: string; value: JsonValue }[] {
+  const rows = db
+    .prepare("SELECT key, value FROM settings WHERE substr(key, 1, ?) = ? ORDER BY key ASC")
+    .all(prefix.length, prefix) as { key: string; value: string }[];
+  const result: { key: string; value: JsonValue }[] = [];
+  for (const row of rows) {
+    try {
+      result.push({ key: row.key, value: JSON.parse(row.value) as JsonValue });
+    } catch {
+      // valor corrompido: ignora
+    }
+  }
+  return result;
+}
+
 export function listCustomAgents(db: DatabaseSync): CustomAgentRecord[] {
   const rows = db
     .prepare("SELECT id, name, command, created_at FROM agents ORDER BY created_at ASC, rowid ASC")

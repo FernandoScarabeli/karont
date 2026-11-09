@@ -30,6 +30,7 @@ import { resolveAgentCommand } from "./detect.ts";
 import { removeSkillMentions } from "./skill-mention.ts";
 import { makeMessageSource, mergeMessageSources } from "./source-metadata.ts";
 import { mapCodexSpecialAction, truncateUtf8 } from "./tool-actions.ts";
+import { parseCodexRateLimits } from "./usage.ts";
 
 const MAX_ACTION_OUTPUT_BYTES = 64 * 1024;
 const RPC_TIMEOUT_MS = 30_000;
@@ -719,6 +720,11 @@ export class CodexAdapter implements AgentAdapter {
       }
       const usage = codexContextUsage(params.tokenUsage);
       if (usage) this.#emit({ kind: "context-usage", ...usage });
+      return;
+    }
+    if (method === "account/rateLimits/updated") {
+      const windows = parseCodexRateLimits(params);
+      if (windows.length > 0) this.#emit({ kind: "usage", windows });
       return;
     }
     if (method === "skills/changed") {
