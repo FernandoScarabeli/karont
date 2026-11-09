@@ -5,7 +5,6 @@
   transition: grid-template-columns var(--k-sidebar-anim, 0s) var(--k-ease);
   min-width: 0;
   height: var(--k-topbar-height);
-  border-bottom: var(--k-border-width) solid var(--k-color-border);
   background: var(--k-color-bg-app);
 }
 
@@ -52,6 +51,8 @@
   gap: var(--k-topbar-search-gap);
   min-width: 0;
   padding-inline: var(--k-space-3);
+  /* A linha existe só sob as abas: a marca e a sidebar formam uma superfície só. */
+  border-bottom: var(--k-border-width) solid var(--k-color-border);
 }
 
 .areas {

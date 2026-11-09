@@ -344,3 +344,70 @@ for (const reducedMotion of [false, true]) {
     }
   });
 }
+
+for (const reducedMotion of [false, true]) {
+  test(`barra lateral: arrastar além do limite recolhe ${reducedMotion ? "na hora (movimento reduzido)" : "com animação"}, salva ao soltar e o topo fica igual à sidebar`, async () => {
+    const { app, window, root } = await launchEmpty();
+    try {
+      await window.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
+      const aside = window.getByRole("complementary", { name: "Barra lateral" });
+      const brand = window.locator("header > div").first();
+      const handle = window.getByRole("separator", { name: "Largura da barra lateral" });
+      const box = await handle.boundingBox();
+      if (!box) throw new Error("alça sem caixa");
+      const y = box.y + box.height / 2;
+      const saved = async () =>
+        (
+          (await window.evaluate(() =>
+            (globalThis as unknown as NativeWindow).karontNative.request("settings.get", {
+              key: "shell.sidebar",
+            }),
+          )) as SettingsReply
+        ).result?.value ?? null;
+
+      // Mede a largura da sidebar e do topo a cada quadro, durante a passagem pelo limite.
+      await window.evaluate(`(() => {
+        const samples = [];
+        const aside = document.querySelector("aside");
+        const brand = document.querySelector("header > div");
+        const tick = () => {
+          samples.push([aside.getBoundingClientRect().width, brand.getBoundingClientRect().width]);
+          globalThis.__samples = samples;
+          globalThis.__frame = requestAnimationFrame(tick);
+        };
+        tick();
+      })()`);
+      await window.mouse.move(box.x + box.width / 2, y);
+      await window.mouse.down();
+      await window.mouse.move(box.x - 130, y, { steps: 1 });
+      await expect.poll(async () => (await aside.boundingBox())?.width ?? 0).toBeCloseTo(48, 0);
+      // Segue o ponteiro de volta, passando pelo limite no sentido contrário.
+      await window.mouse.move(box.x + 60, y, { steps: 1 });
+      await expect.poll(async () => (await aside.boundingBox())?.width ?? 0).toBeGreaterThan(250);
+      await window.mouse.move(box.x - 130, y, { steps: 1 });
+      await expect.poll(async () => (await aside.boundingBox())?.width ?? 0).toBeCloseTo(48, 0);
+      // Nada foi salvo durante o arrasto.
+      expect(await saved()).toBeNull();
+      await window.mouse.up();
+      const samples = (await window.evaluate(
+        "cancelAnimationFrame(globalThis.__frame), globalThis.__samples",
+      )) as number[][];
+
+      // O topo acompanha a sidebar em todos os quadros (a linha da alça soma 1px).
+      for (const [sidebarWidth, brandWidth] of samples) {
+        expect(Math.abs((brandWidth ?? 0) - ((sidebarWidth ?? 0) + 1))).toBeLessThanOrEqual(1.5);
+      }
+      const intermediate = samples.filter(([width]) => (width ?? 0) > 60 && (width ?? 0) < 190);
+      if (reducedMotion) expect(intermediate).toHaveLength(0);
+      else expect(intermediate.length).toBeGreaterThan(2);
+
+      await expect.poll(saved).toMatchObject({ collapsed: true });
+      await expect.poll(async () => (await aside.boundingBox())?.width ?? 0).toBeCloseTo(48, 0);
+      await expect.poll(async () => (await brand.boundingBox())?.width ?? 0).toBeCloseTo(49, 0);
+    } finally {
+      await stopService(window).catch(() => {});
+      await app.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
